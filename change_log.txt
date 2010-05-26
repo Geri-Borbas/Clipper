@@ -1,0 +1,22 @@
+============================================================
+TClipper Change Log
+============================================================
+
+1.2i - 23 May 2010
+* Minor code tidy up.
+* Demo application updated.
+
+1.2e - 21 May 2010
+* Added ForceAlternateOrientation property to TClipper class.
+  This property is only useful when operating on 'simple' 
+  polygons. It ensures that the result of the TClipper
+  Execute method will be (simple) polygons with clockwise  
+  'outer' and counter-clockwise 'inner' (or 'hole') polygons. 
+  Note: there is no danger in enabling this property when 
+  operating on complex polygons. The only downside is a 
+  very minor penalty in execution speed. (Default = false)
+* Minor code tidy up.
+
+1.2c - 17 May 2010
+
+1.0 - 9 May 2010
