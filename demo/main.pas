@@ -232,7 +232,6 @@ end;
 procedure TMainForm.ShowStaticPolys;
 var
   isOK: boolean;
-  i: integer;
 begin
   solution := nil;
   p(subj); //fills subj with an array of predefined polygons
@@ -244,10 +243,8 @@ begin
   begin
     ForceAlternateOrientation := true; //nb this isn't really necessary here.
     clear;
-    for i := 0 to high(subj) do
-      AddPolygon(subj[i], ptSubject);
-    for i := 0 to high(clip) do
-      AddPolygon(clip[i], ptClip);
+    AddPolyPolygon(subj, ptSubject);
+    AddPolyPolygon(clip, ptClip);
 
     if rbIntersection.Checked then
       isOK := Execute(ctIntersection, solution)
@@ -270,23 +267,27 @@ var
   isOK: boolean;
   i,highI,w,h: integer;
 begin
-  w := (ImgView321.ClientWidth -30) div 10;
-  h := (ImgView321.ClientHeight -30) div 10;
+  w := (ImgView321.ClientWidth -30);
+  h := (ImgView321.ClientHeight -30);
 
   if newPoly then
   begin
     solution := nil;
     Randomize;
-    highI := tbSubj.Position -1;
+    //nb: although for this demo I chose to display just one random subject
+    //and one random clip polygon, it would be very easy to make multiple
+    //subject and clip polygons here. Clipper would handle them just as easily
+    //(as is demonstrated in ShowStaticPolys).
     setLength(subj, 1);
+    highI := tbSubj.Position -1;
     setLength(subj[0], highI+1);
     for i := 0 to highI do
-      subj[0][i] := FloatPoint(10+round(random*w)*10, 10+round(random*h)*10);
-    highI := tbClip.Position - 1;
+      subj[0][i] := FloatPoint(10+round(random*w), 10+round(random*h));
     setLength(clip, 1);
+    highI := tbClip.Position - 1;
     setLength(clip[0], highI+1);
     for i := 0 to highI do
-      clip[0][i] := FloatPoint(10+round(random*w)*10, 10+round(random*h)*10);
+      clip[0][i] := FloatPoint(10+round(random*w), 10+round(random*h));
   end;
   RePaintBitmap;
 
@@ -294,8 +295,8 @@ begin
   begin
     ForceAlternateOrientation := false;
     clear;
-    AddPolygon(subj[0], ptSubject);
-    AddPolygon(clip[0], ptClip);
+    AddPolyPolygon(subj, ptSubject);
+    AddPolyPolygon(clip, ptClip);
 
     if rbIntersection.Checked then
       isOK := Execute(ctIntersection, solution)
