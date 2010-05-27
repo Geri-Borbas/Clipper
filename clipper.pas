@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2i                                                            *
-* Date      :  23 May 2010                                                     *
+* Version   :  1.2m                                                            *
+* Date      :  27 May 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -154,7 +154,8 @@ type
     constructor Create; virtual;
     destructor Destroy; override;
     procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType);
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType);
+    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
+      polyType: TPolyType);
     procedure Clear;
     function Reset: boolean;
     procedure PopLocalMinima;
@@ -174,36 +175,38 @@ type
     fForceAlternateOrientation: boolean;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function InitializeScanbeam: boolean;
-    procedure InsertScanbeam(y: double);
+    procedure InsertScanbeam(const y: double);
     function PopScanbeam: double;
     procedure DisposeScanbeamList;
-    procedure InsertLocalMinimaIntoAEL(botY: double);
+    procedure InsertLocalMinimaIntoAEL(const botY: double);
     procedure AddHorzEdgeToSEL(edge: PEdge);
-    function IsTopHorz(horzEdge: PEdge; XPos: double): boolean;
+    function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
     procedure ProcessHorizontal(horzEdge: PEdge);
     procedure ProcessHorizontals;
     procedure SwapPositionsInAEL(edge1, edge2: PEdge);
     procedure SwapWithNextInSEL(edge: PEdge);
     function BubbleSwap(edge: PEdge): PEdge;
     procedure AddIntersectNode(e1, e2: PEdge; const pt: TDoublePoint);
-    procedure ProcessIntersections(topY: double);
-    procedure BuildIntersectList(topY: double);
-    procedure ProcessIntersectList(yTop: double);
+    procedure ProcessIntersections(const topY: double);
+    procedure BuildIntersectList(const topY: double);
+    procedure ProcessIntersectList;
     procedure IntersectEdges(e1,e2: PEdge;
       const pt: TDoublePoint; protects: TIntersectProtects = []);
     function GetMaximaPair(e: PEdge): PEdge;
     procedure DeleteFromAEL(e: PEdge);
     procedure DeleteFromSEL(e: PEdge);
-    procedure DoMaxima(e: PEdge; topY: double);
+    procedure DoMaxima(e: PEdge; const topY: double);
     procedure UpdateEdgeIntoAEL(var e: PEdge);
-    procedure ProcessEdgesAtTopOfScanbeam(topY: double);
+    procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
     function IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
-    function AddPolyPt(idx: integer; const pt: TDoublePoint; ToFront: boolean): integer;
+    function AddPolyPt(idx: integer;
+      const pt: TDoublePoint; ToFront: boolean): integer;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AppendPolygon(e1, e2: PEdge);
   public
-    function Execute(clipType: TClipType; out solution: TArrayOfArrayOfFloatPoint): boolean;
+    function Execute(clipType: TClipType;
+      out solution: TArrayOfArrayOfFloatPoint): boolean;
     constructor Create; override;
     destructor Destroy; override;
   property
@@ -231,7 +234,7 @@ end;
 //------------------------------------------------------------------------------
 {$ENDIF}
 
-function DoublePoint(X, Y: double): TDoublePoint;
+function DoublePoint(const X, Y: double): TDoublePoint;
 begin
   Result.X := X;
   Result.Y := Y;
@@ -289,7 +292,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Slope(pt1, pt2: TFloatPoint): double; overload;
+function Slope(const pt1, pt2: TFloatPoint): double; overload;
 begin
   if abs(pt1.y - pt2.y) < tolerance then
     result:= infinite else
@@ -297,7 +300,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Slope(pt1, pt2: TDoublePoint): double; overload;
+function Slope(const pt1, pt2: TDoublePoint): double; overload;
 begin
   if abs(pt1.y - pt2.y) < tolerance then
     result:= infinite else
@@ -331,7 +334,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TopX(edge: PEdge; currentY: double): double; {inline}
+function TopX(edge: PEdge; const currentY: double): double; {inline}
 begin
   if currentY = edge.ytop then
     result := edge.xtop else
@@ -464,7 +467,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType);
+procedure TPolyManager.AddPolygon(const polygon: TArrayOfFloatPoint;
+  polyType: TPolyType);
 var
   i, highI: integer;
   edges: PEdgeArray;
@@ -967,7 +971,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.InsertScanbeam(y: double);
+procedure TClipper.InsertScanbeam(const y: double);
 var
   newSb, sb2: PScanbeam;
 begin
@@ -1006,7 +1010,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.InsertLocalMinimaIntoAEL(botY: double);
+procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
 
   //----------------------------------------------------------------------
   function Edge2InsertsBeforeEdge1(e1,e2: PEdge): boolean;
@@ -1088,7 +1092,7 @@ begin
           IntersectEdges(rightBound, e, pt);
           e := e.nextInAEL;
           if not assigned(e) then
-            raise exception.Create('AddLocalMinima: intersect with unexpected maxima');
+            raise exception.Create('AddLocalMinima: intersect with maxima!??');
         end;
       end;
     end;
@@ -1184,13 +1188,13 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsMaxima(e: PEdge; Y: double): boolean;
+function IsMaxima(e: PEdge; const Y: double): boolean;
 begin
   result := assigned(e) and (e.ytop = Y) and not assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
-function IsIntermediate(e: PEdge; Y: double): boolean;
+function IsIntermediate(e: PEdge; const Y: double): boolean;
 begin
   result := (e.ytop = Y) and assigned(e.nextInLML);
 end;
@@ -1203,7 +1207,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.DoMaxima(e: PEdge; topY: double);
+procedure TClipper.DoMaxima(e: PEdge; const topY: double);
 var
   eNext, eMaxPair: PEdge;
   X: double;
@@ -1243,7 +1247,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsTopHorz(horzEdge: PEdge; XPos: double): boolean;
+function TClipper.IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
 var
   e: PEdge;
 begin
@@ -1356,7 +1360,8 @@ begin
 
     if assigned(nextInLML) then
     begin
-      if (polyIdx >= 0) then AddPolyPt(polyIdx, DoublePoint(xtop, ytop), side = esLeft);
+      if (polyIdx >= 0) then
+        AddPolyPt(polyIdx, DoublePoint(xtop, ytop), side = esLeft);
       UpdateEdgeIntoAEL(horzEdge);
     end else
       DeleteFromAEL(horzEdge);
@@ -1364,7 +1369,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.AddPolyPt(idx: integer; const pt: TDoublePoint; ToFront: boolean): integer;
+function TClipper.AddPolyPt(idx: integer;
+  const pt: TDoublePoint; ToFront: boolean): integer;
 var
   fp, newPolyPt: PPolyPt;
   e: PEdge;
@@ -1410,14 +1416,14 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.ProcessIntersections(topY: double);
+procedure TClipper.ProcessIntersections(const topY: double);
 var
   iNode: PIntersectNode;
 begin
   if not assigned(fActiveEdges) then exit;
   try try
     BuildIntersectList(topY);
-    ProcessIntersectList(topY);
+    ProcessIntersectList;
   finally
     //if there's been a problem, clean up the mess ...
     while assigned(fIntersectNodes) do
@@ -1503,7 +1509,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.BuildIntersectList(topY: double);
+procedure TClipper.BuildIntersectList(const topY: double);
 var
   e, eNext: PEdge;
   pt: TDoublePoint;
@@ -1549,7 +1555,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.ProcessIntersectList(yTop: double);
+procedure TClipper.ProcessIntersectList;
 var
   iNode: PIntersectNode;
 begin
@@ -1849,7 +1855,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.ProcessEdgesAtTopOfScanbeam(topY: double);
+procedure TClipper.ProcessEdgesAtTopOfScanbeam(const topY: double);
 var
   e, ePrior: PEdge;
 begin

@@ -71,7 +71,7 @@ const
   subjClr32 = $00AAFFFF;
   clipClr32 = $00FFFFCC;
   edgeClr32 = $FFA0A0A0;
-  maskClr32 = $FFD0D0D0;
+  maskClr32 = $40000000;
 
 var
   subj: TArrayOfArrayOfFloatPoint = nil;

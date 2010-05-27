@@ -15,9 +15,9 @@ unit GR32_Misc;
  *
  * The Original Code is GR32_Misc.
  * The Initial Developer of the Original Code is Angus Johnson and is
- * Copyright (C) 2009 the Initial Developer. All Rights Reserved.
+ * Copyright (C) 2009-2010 the Initial Developer. All Rights Reserved.
  *
- * Version 3.8 (Last updated 17-May-10)
+ * Version 3.9a (Last updated 28-May-10)
  *
  * END LICENSE BLOCK **********************************************************)
 
@@ -3469,15 +3469,16 @@ var
   sc: TColor32;
 begin
   if ((dx = 0) and (dy = 0)) or (length(pts) = 0) then exit;
+
   if abs(dy) > abs(dx) then
   begin
     maxD := abs(dy);
-    sy := 1;
+    sy := sign(dy);
     sx := dx/maxD;
   end else
   begin
     maxD := abs(dx);
-    sx := 1;
+    sx := sign(dx);
     sy := dy/maxD;
   end;
 
@@ -3546,8 +3547,8 @@ begin
   mask := CreateMaskFromPolygon(bitmap,pts);
   try
     orig.Assign(bitmap);
-    SimpleShadow(bitmap, pts, dx, dy, fadeRate, topLeftColor, true);
     SimpleShadow(bitmap, pts, -dx, -dy, fadeRate, bottomRightColor, true);
+    SimpleShadow(bitmap, pts, dx, dy, fadeRate, topLeftColor, true);
     ApplyMask(bitmap, orig, mask, true);
   finally
     orig.Free;
