@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  1.2m                                                            *
-* Date      :  27 May 2010                                                     *
+* Date      :  28 May 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -16,7 +16,7 @@ unit clipper;
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
-* http://www.google.com/search?hl=en&q=vatti+clipping+site:books.google.com    *
+* http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************)
 
@@ -1274,19 +1274,19 @@ begin
 (*******************************************************************************
 * Notes: Horizontal edges (HEs) at scanline intersections (ie at the top or    *
 * bottom of a scanbeam) are processed as if layered. The order in which HEs    *
-* are processed doesn't seem to matter. HEs intersect with other HE xbots only *
-* [o], and with other non-horizontal edges [*]. Once these intersections are   *
+* are processed doesn't matter. HEs intersect with other HE xbots only [#],    *
+* and with other non-horizontal edges [*]. Once these intersections are        *
 * processed, intermediate HEs then 'promote' the edge above (nextInLML) into   *
-* the AEL. These 'promoted' edges may in turn intersect with other HEs.        *
+* the AEL. These 'promoted' edges may in turn intersect [%] with other HEs.    *
 *******************************************************************************)
 
 (*******************************************************************************
 *           \                         \ /                      /          /    *
-*            \                         •                      /          /     *
-*             \                       / \         ·——————————*——————————·  (3) *
-*              ·——————————·  (2)     /   \        ·         /                  *
-* horizontal intersects   ·         /     \       ·        /                   *
-*         ·———————————————o————————*———————*——————o———————·  (1)               *
+*            \                         +                      /          /     *
+*             \                       / \         o==========%==========o      *
+*              o==========o          /   \        |         /                  *
+*                         |         /     \       |        /                   *
+*         o===============#========*=======*======#=======o                    *
 *        /                 \      /         \    /                             *
 *******************************************************************************)
 
@@ -1870,12 +1870,12 @@ begin
 
 (*******************************************************************************
 *  \                               /    /        \     /                       *
-*   \     horiz. minima intersect /    /          \   /                        *
-*    ·———————————————————————————#————·            \ /                         *
-*      horiz. maxima intersects /                   * scanline intersect       *
-*      ·———————————————————————o———————————————————o—o————————·                *
+*   \      horizontal minima      /    /          \   /                        *
+*    o===========================#====o            \ /                         *
+*         horizontal maxima     /                   * scanline intersect       *
+*      o=======================#===================#=#========o                *
 *      |                      /                   /   \        \               *
-*      • maxima intersect    /                   /     \        \              *
+*      + maxima intersect    /                   /     \        \              *
 *     /|\                   /                   /       \        \             *
 *    / | \                 /                   /         \        \            *
 *******************************************************************************)

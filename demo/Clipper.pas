@@ -16,7 +16,7 @@ unit clipper;
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
-* http://www.google.com/search?hl=en&q=vatti+clipping+site:books.google.com    *
+* http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************)
 
@@ -1277,13 +1277,13 @@ begin
 * are processed doesn't matter. HEs intersect with other HE xbots only [#],    *
 * and with other non-horizontal edges [*]. Once these intersections are        *
 * processed, intermediate HEs then 'promote' the edge above (nextInLML) into   *
-* the AEL. These 'promoted' edges may in turn intersect [*] with other HEs.    *
+* the AEL. These 'promoted' edges may in turn intersect [%] with other HEs.    *
 *******************************************************************************)
 
 (*******************************************************************************
 *           \                         \ /                      /          /    *
 *            \                         +                      /          /     *
-*             \                       / \         o==========*==========o      *
+*             \                       / \         o==========%==========o      *
 *              o==========o          /   \        |         /                  *
 *                         |         /     \       |        /                   *
 *         o===============#========*=======*======#=======o                    *
