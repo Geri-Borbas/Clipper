@@ -2,6 +2,14 @@
 TClipper Change Log
 ============================================================
 
+1.2n - 30 May 2010
+* Minor bug in the 'uses' clause fixed.
+
+
+1.2m - 28 May 2010
+* Minor code tidy up.
+* Demo application updated.
+
 1.2i - 23 May 2010
 * Minor code tidy up.
 * Demo application updated.

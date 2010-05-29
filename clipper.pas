@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2m                                                            *
-* Date      :  28 May 2010                                                     *
+* Version   :  1.2n                                                            *
+* Date      :  30 May 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -51,15 +51,15 @@ unit clipper;
 //Several type definitions used in this code are defined in the Delphi
 //Graphics32 library ( see http://www.graphics32.org/wiki/ ). These type
 //definitions are redefined here in case you don't wish to use Graphics32.
-{$DEFINE USE_GRAPHICS32}
+{$DEFINE USING_GRAPHICS32}
 
 interface
 
 uses
-{$IFDEF USE_GRAPHICS32}
-  SysUtils, GR32,
+{$IFDEF USING_GRAPHICS32}
+  GR32,
 {$ENDIF}
-  Classes, Math;
+  SysUtils, Classes, Math;
 
 const
   infinite = -MaxSingle;
@@ -74,7 +74,7 @@ type
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
 
-{$IFNDEF USE_GRAPHICS32}
+{$IFNDEF USING_GRAPHICS32}
   TFloat = Single;
   TFloatPoint = record X, Y: TFloat; end;
   TArrayOfFloatPoint = array of TFloatPoint;
@@ -225,7 +225,7 @@ implementation
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-{$IFNDEF USE_GRAPHICS32}
+{$IFNDEF USING_GRAPHICS32}
 function FloatPoint(X, Y: Single): TFloatPoint;
 begin
   Result.X := X;
