@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2n                                                            *
-* Date      :  30 May 2010                                                     *
+* Version   :  1.2s                                                            *
+* Date      :  31 May 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -241,7 +241,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AlmostSamePoint(const pt1, pt2: TFloatPoint): boolean; overload;
+function PointsEqual(const pt1, pt2: TFloatPoint): boolean; overload;
 begin
   result :=
     (abs(pt1.X - pt2.X) < same_point_tolerance) and
@@ -249,7 +249,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AlmostSamePoint(const pt1, pt2: TDoublePoint): boolean; overload;
+function PointsEqual(const pt1, pt2: TDoublePoint): boolean; overload;
 begin
   result :=
     (abs(pt1.X - pt2.X) < same_point_tolerance) and
@@ -257,7 +257,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AlmostSamePoint(edge: PEdge): boolean; overload;
+function PointsEqual(edge: PEdge): boolean; overload;
 begin
   result := (abs(edge.xbot - edge.xtop) < same_point_tolerance) and
               (abs(edge.ybot - edge.ytop) < same_point_tolerance);
@@ -342,13 +342,13 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function EdgesShareSamePoly(e1, e2: PEdge): boolean;
+function ShareSamePoly(e1, e2: PEdge): boolean;
 begin
   result := assigned(e1) and assigned(e2) and (e1.polyIdx = e2.polyIdx);
 end;
 //------------------------------------------------------------------------------
 
-function SameSlope(e1, e2: PEdge): boolean;
+function SlopesEqual(e1, e2: PEdge): boolean;
 begin
   if IsHorizontal(e1) then
     result := IsHorizontal(e2) else
@@ -527,8 +527,8 @@ var
     begin
       result := false;
     end
-    else if AlmostSamePoint(e) or
-      AlmostSamePoint(e.savedBot, e.prev.savedBot) or SameSlope(e.prev, e) then
+    else if PointsEqual(e) or
+      PointsEqual(e.savedBot, e.prev.savedBot) or SlopesEqual(e.prev, e) then
     begin
       //fixup the previous edge because 'e' is about to come out of the loop ...
       ReInitEdge(e.prev, e.prev.savedBot, e.Next.savedBot);
@@ -671,7 +671,7 @@ begin
   {AddPolygon}
 
   highI := high(polygon);
-  while (highI > 1) and AlmostSamePoint(polygon[0],polygon[highI]) do dec(highI);
+  while (highI > 1) and PointsEqual(polygon[0],polygon[highI]) do dec(highI);
   if highI < 2 then exit;
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
@@ -1018,7 +1018,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
     if (e2.xbot - tolerance > e1.xbot) then result := false
     else if (e2.xbot + tolerance < e1.xbot) then result := true
     else if IsHorizontal(e2) then result := false
-    else if SameSlope(e1, e2) then result := false
+    else if SlopesEqual(e1, e2) then result := false
     else result := e2.dx > e1.dx;
   end;
   //----------------------------------------------------------------------
@@ -1399,8 +1399,8 @@ begin
     result := idx;
     fp := PPolyPt(fPolyPtList[idx]);
 
-    if (ToFront and AlmostSamePoint(pt, fp.pt)) or
-      (not ToFront and AlmostSamePoint(pt, fp.prev.pt)) then
+    if (ToFront and PointsEqual(pt, fp.pt)) or
+      (not ToFront and PointsEqual(pt, fp.prev.pt)) then
     begin
       dispose(newPolyPt);
       exit;
@@ -1455,7 +1455,7 @@ begin
   begin
     if (Node1.edge1.dx = Node2.edge1.dx) then
     begin
-      if SameSlope(Node1.edge2, Node2.edge2) then
+      if SlopesEqual(Node1.edge2, Node2.edge2) then
       begin
         if Node1.edge2 = Node2.edge2 then
         begin
@@ -1813,13 +1813,13 @@ begin
   //nb: cnt will always be greater than 1 here
   if cnt = 2 then
   begin
-    if SameSlope(edge, edge.nextInAEL) then exit;
+    if SlopesEqual(edge, edge.nextInAEL) or (edge.dx > edge.nextInAEL.dx) then exit;
     IntersectEdges(edge, edge.nextInAEL, DoublePoint(edge.xbot,edge.ybot));
     SwapPositionsInAEL(edge, edge.nextInAEL);
   end else
   begin
-    //create the sort list ...
     try
+      //create the sort list ...
       fSortedEdges := edge;
       edge.prevInSEL := nil;
       e := edge.nextInAEL;
@@ -1830,6 +1830,7 @@ begin
         if i = cnt then e.nextInSEL := nil;
         e := e.nextInAEL;
       end;
+
       //fSortedEdges now contains the sort list. Bubble sort this list,
       //processing intersections and dropping the last edge on each pass
       //until the list contains fewer than two edges.
@@ -1848,6 +1849,7 @@ begin
         end;
         e.prevInSEL.nextInSEL := nil; //removes 'e' from SEL
       end;
+
     finally
       fSortedEdges := nil;
     end;
@@ -1883,11 +1885,10 @@ begin
   e := fActiveEdges;
   while assigned(e) do
   begin
-    //1. process all maxima ...
-    //   logic behind code - maxima are treated as if 'bent' horizontal edges
+    //1. process all maxima (treating them as if 'bent' horizontal edges) ...
     if IsMaxima(e, topY) and not IsHorizontal(GetMaximaPair(e)) then
     begin
-      //'e' might be removed from AEL, as may any following so ...
+      //'e' might be removed from AEL, as may any following edges so ...
       ePrior := e.prevInAEL;
       DoMaxima(e, topY);
       if not assigned(ePrior) then
@@ -1945,7 +1946,7 @@ end;
 procedure TClipper.AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
 begin
   AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
-  if EdgesShareSamePoly(e1,e2) then
+  if ShareSamePoly(e1, e2) then
   begin
     e1.polyIdx := -1;
     e2.polyIdx := -1;

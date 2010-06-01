@@ -1,10 +1,13 @@
 ============================================================
-TClipper Change Log
+Clipper Change Log
 ============================================================
+
+1.2s - 2 June 2010
+* Minor code tidy up.
+* Added C++ translation of clipper.pas
 
 1.2n - 30 May 2010
 * Minor bug in the 'uses' clause fixed.
-
 
 1.2m - 28 May 2010
 * Minor code tidy up.
