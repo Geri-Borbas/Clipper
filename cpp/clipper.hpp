@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2s                                                            *
-* Date      :  31 May 2010                                                     *
+* Version   :  1.2u                                                            *
+* Date      :  3 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -62,7 +62,7 @@
 #include <list>
 
 //if also compiling the Graphics32 library then ...
-//#define using_graphics32
+#define using_graphics32
 
 #ifdef using_graphics32
  #include "gr32.hpp"

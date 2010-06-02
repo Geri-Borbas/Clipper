@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2s                                                            *
-* Date      :  31 May 2010                                                     *
+* Version   :  1.2u                                                            *
+* Date      :  3 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -581,9 +581,9 @@ void PolyManager::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
 
 void PolyManager::Clear()
 {
-  DisposeLocalMinimaList();
-  for (unsigned i = 0; i < m_edges.size(); i++) free (m_edges[i]);
-  m_edges.clear();
+	DisposeLocalMinimaList();
+	for (unsigned i = 0; i < m_edges.size(); i++) free (m_edges[i]);
+	m_edges.clear();
 }
 //------------------------------------------------------------------------------
 
@@ -1495,12 +1495,14 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &polypoly)
 
 		//build the return polygons ...
 		BuildResult(polypoly);
+		DisposeAllPolyPts();
 		m_ExecuteLocked = false;
 		return true;
 	}
 	catch(...) {
-		DisposeAllPolyPts();
+		//returns false ...
 	}
+	DisposeAllPolyPts();
 	m_ExecuteLocked = false;
 	return false;
 }
