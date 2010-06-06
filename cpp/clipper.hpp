@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2u                                                            *
-* Date      :  3 June 2010                                                     *
+* Version   :  1.2v                                                            *
+* Date      :  6 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -61,34 +61,19 @@
 #include <vector>
 #include <list>
 
-//if also compiling the Graphics32 library then ...
-#define using_graphics32
-
-#ifdef using_graphics32
- #include "gr32.hpp"
- using namespace Gr32;
-#endif
-
 namespace clipper
 {
 typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { esLeft, esRight } TEdgeSide;
-typedef enum { dRightToLeft, dLeftToRight } TDirection;
 typedef unsigned TIntersectProtects;
-static const unsigned ipLeft = 1;
-static const unsigned ipRight = 2;
 
 using namespace std;
 
-#ifndef using_graphics32
-struct TFloatPoint { float X; float Y; };
-TFloatPoint FloatPoint(float const &X, float const &Y);
-#endif
-typedef vector<TFloatPoint> TPolygon;
-typedef vector< TPolygon > TPolyPolygon;
-
 struct TDoublePoint { double X; double Y; };
+TDoublePoint DoublePoint(double const &X, double const &Y);
+typedef vector<TDoublePoint> TPolygon;
+typedef vector< TPolygon > TPolyPolygon;
 
 struct TEdge {
 	double xbot;
@@ -117,8 +102,6 @@ struct TIntersectNode {
 	TIntersectNode *next;
 	TIntersectNode *prev;
 };
-
-typedef enum { itIgnore, itMax, itMin, itEdge1, itEdge2 } TIntersectType;
 
 struct TLocalMinima {
 	double Y;

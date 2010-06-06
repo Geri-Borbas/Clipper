@@ -2,11 +2,11 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2u                                                            *
-* Date      :  3 June 2010                                                     *
+* Version   :  2.0                                                             *
+* Date      :  4 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
-* This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
+* The code in this library is based on Bala Vatti's clipping algorithm:        *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
@@ -65,20 +65,18 @@
 namespace clipper
 {
 static double const infinite = -3.4E+38;
-static double const tolerance = 0.0000001;
+//tolerance: be very careful if you make this value larger!!
+static double const tolerance = 0.00000001;
+//same_point_tolerance: can be customized to individual needs but must be > 0
+//and also must be less than tolerance ...
 static double const same_point_tolerance = 0.001;
 
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
+static const unsigned ipLeft = 1;
+static const unsigned ipRight = 2;
+typedef enum { dRightToLeft, dLeftToRight } TDirection;
+typedef enum { itIgnore, itMax, itMin, itEdge1, itEdge2 } TIntersectType;
 
-TFloatPoint FloatPoint(float const &X, float const &Y)
-{
-	TFloatPoint p;
-
-	p.X = X;
-	p.Y = Y;
-	return p;
-}
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
 TDoublePoint DoublePoint(double const &X, double const &Y)
@@ -88,13 +86,6 @@ TDoublePoint DoublePoint(double const &X, double const &Y)
 	p.X = X;
 	p.Y = Y;
 	return p;
-}
-//------------------------------------------------------------------------------
-
-bool PointsEqual( TFloatPoint const &pt1, TFloatPoint const &pt2)
-{
-	return ( fabs( pt1.X - pt2.X ) < same_point_tolerance ) &&
-	( fabs( pt1.Y - pt2.Y ) < same_point_tolerance );
 }
 //------------------------------------------------------------------------------
 
@@ -147,17 +138,10 @@ void ReversePolyPtLinks(TPolyPt &pp)
 }
 //------------------------------------------------------------------------------
 
-double Slope(TFloatPoint const &pt1, TFloatPoint const &pt2)
-{
-	if(  fabs( pt1.Y - pt2.Y ) < tolerance ) return infinite;
-	return ( pt1.X - pt2.X )*1.0/( pt1.Y - pt2.Y );
-}
-//------------------------------------------------------------------------------
-
 double Slope(TDoublePoint const &pt1, TDoublePoint const &pt2)
 {
 	if(  fabs( pt1.Y - pt2.Y ) < tolerance ) return infinite;
-	return ( pt1.X - pt2.X )*1.0/( pt1.Y - pt2.Y );
+	return ( pt1.X - pt2.X )/( pt1.Y - pt2.Y );
 }
 //------------------------------------------------------------------------------
 
@@ -258,7 +242,7 @@ TDoublePoint GetUnitNormal( TDoublePoint const &pt1, TDoublePoint const &pt2)
 bool ValidateOrientation(TPolyPt *pt)
 {
   TPolyPt *ptStart, *bottomPt, *ptPrev, *ptNext;
-  TDoublePoint N1; TDoublePoint N2;
+	TDoublePoint N1; TDoublePoint N2;
   bool IsClockwise;
 
   //compares the orientation (clockwise vs counter-clockwise) of a *simple*
@@ -285,8 +269,8 @@ bool ValidateOrientation(TPolyPt *pt)
 }
 //------------------------------------------------------------------------------
 
-void InitEdge(TEdge *e, TFloatPoint
-	const &pt1, TFloatPoint const &pt2, TPolyType polyType)
+void InitEdge(TEdge *e, TDoublePoint
+	const &pt1, TDoublePoint const &pt2, TPolyType polyType)
 {
 	memset( e, 0, sizeof( TEdge ));
 	if(  ( pt1.Y > pt2.Y ) )

@@ -3,11 +3,11 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2s                                                            *
-* Date      :  31 May 2010                                                     *
+* Version   :  1.2v                                                            *
+* Date      :  6 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
-* This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
+* The code in this library is based on Bala Vatti's clipping algorithm:        *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
@@ -48,7 +48,7 @@ unit clipper;
 *                                                                              *
 ******* END LICENSE BLOCK *****************************************************)
 
-//Several type definitions used in this code are defined in the Delphi
+//Several type definitions used in the code below are defined in the Delphi
 //Graphics32 library ( see http://www.graphics32.org/wiki/ ). These type
 //definitions are redefined here in case you don't wish to use Graphics32.
 {$DEFINE USING_GRAPHICS32}
@@ -62,9 +62,12 @@ uses
   SysUtils, Classes, Math;
 
 const
-  infinite = -MaxSingle;
-  tolerance = 0.0000001;
-  same_point_tolerance = 0.001;
+  infinite: double = -3.4e+38;
+  //tolerance: be very careful if you make this value larger!!
+  tolerance: double = 0.00000001;
+  //same_point_tolerance: can be customized to individual needs but must be > 0
+  //and also must be less than tolerance ...
+  same_point_tolerance: double = 0.001;
 
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
@@ -153,9 +156,10 @@ type
   public
     constructor Create; virtual;
     destructor Destroy; override;
-    procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType);
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
-      polyType: TPolyType);
+    procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
     procedure Clear;
     function Reset: boolean;
     procedure PopLocalMinima;
@@ -174,6 +178,7 @@ type
     fExecuteLocked: boolean;
     fForceAlternateOrientation: boolean;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
+    function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
     procedure InsertScanbeam(const y: double);
     function PopScanbeam: double;
@@ -204,9 +209,13 @@ type
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AppendPolygon(e1, e2: PEdge);
+    function ExecuteInternal(clipType: TClipType): boolean;
+    procedure DisposeAllPolyPts;
   public
     function Execute(clipType: TClipType;
-      out solution: TArrayOfArrayOfFloatPoint): boolean;
+      out solution: TArrayOfArrayOfFloatPoint): boolean; overload;
+    function Execute(clipType: TClipType;
+      out solution: TArrayOfArrayOfDoublePoint): boolean; overload;
     constructor Create; override;
     destructor Destroy; override;
   property
@@ -219,6 +228,8 @@ type
     ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
+
+  function DoublePoint(const X, Y: double): TDoublePoint; overload;
 
 implementation
 
@@ -238,6 +249,66 @@ function DoublePoint(const X, Y: double): TDoublePoint;
 begin
   Result.X := X;
   Result.Y := Y;
+end;
+//------------------------------------------------------------------------------
+
+function AFloatPt2ADoublePt(const pts: TArrayOfFloatPoint): TArrayOfDoublePoint;
+var
+  i: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    result[i].X := pts[i].X;
+    result[i].Y := pts[i].Y;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function ArDoublePt2ArFloatPt(const pts: TArrayOfDoublePoint): TArrayOfFloatPoint;
+var
+  i: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    result[i].X := pts[i].X;
+    result[i].Y := pts[i].Y;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function AAFloatPt2AADoublePt(const pts: TArrayOfArrayOfFloatPoint): TArrayOfArrayOfDoublePoint;
+var
+  i,j: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    setlength(result[i], length(pts[i]));
+    for j := 0 to high(pts[i]) do
+    begin
+      result[i][j].X := pts[i][j].X;
+      result[i][j].Y := pts[i][j].Y;
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function AADoublePt2AAFloatPt(const pts: TArrayOfArrayOfDoublePoint): TArrayOfArrayOfFloatPoint;
+var
+  i,j: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    setlength(result[i], length(pts[i]));
+    for j := 0 to high(pts[i]) do
+    begin
+      result[i][j].X := pts[i][j].X;
+      result[i][j].Y := pts[i][j].Y;
+    end;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -470,13 +541,22 @@ end;
 procedure TPolyManager.AddPolygon(const polygon: TArrayOfFloatPoint;
   polyType: TPolyType);
 var
+  dblPts: TArrayOfDoublePoint;
+begin
+  dblPts := AFloatPt2ADoublePt(polygon);
+  AddPolygon(dblPts, polyType);
+end;
+//------------------------------------------------------------------------------
+
+procedure TPolyManager.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
+var
   i, highI: integer;
   edges: PEdgeArray;
   e, e2: PEdge;
 
   //----------------------------------------------------------------------
 
-  procedure InitEdge(e: PEdge; const pt1, pt2: TFloatPoint);
+  procedure InitEdge(e: PEdge; const pt1, pt2: TDoublePoint);
   begin
     fillChar(e^, sizeof(TEdge), 0);
     if (pt1.Y > pt2.Y) then
@@ -744,6 +824,16 @@ end;
 procedure TPolyManager.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
   polyType: TPolyType);
 var
+  dblPts: TArrayOfArrayOfDoublePoint;
+begin
+  dblPts := AAFloatPt2AADoublePt(polyPolygon);
+  AddPolyPolygon(dblPts, polyType);
+end;
+//------------------------------------------------------------------------------
+
+procedure TPolyManager.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
+  polyType: TPolyType);
+var
   i: integer;
 begin
   for i := 0 to high(polyPolygon) do AddPolygon(polyPolygon[i], polyType);
@@ -865,19 +955,59 @@ end;
 
 function TClipper.Execute(clipType: TClipType;
   out solution: TArrayOfArrayOfFloatPoint): boolean;
+begin
+  result := false;
+  if fExecuteLocked then exit;
+  try
+    fExecuteLocked := true;
+    result := ExecuteInternal(clipType);
+    if result then
+      solution := ResultAsFloatPointArray;
+  finally
+    DisposeAllPolyPts;
+    fExecuteLocked := false;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.Execute(clipType: TClipType;
+  out solution: TArrayOfArrayOfDoublePoint): boolean;
+begin
+  result := false;
+  if fExecuteLocked then exit;
+  try
+    fExecuteLocked := true;
+    result := ExecuteInternal(clipType);
+    if result then
+      solution := ResultAsDoublePointArray;
+  finally
+    DisposeAllPolyPts;
+    fExecuteLocked := false;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.DisposeAllPolyPts;
 var
   i: integer;
+begin
+  for i := 0 to fPolyPtList.Count -1 do
+    if assigned(fPolyPtList[i]) then
+      DisposePolyPts(PPolyPt(fPolyPtList[i]));
+  fPolyPtList.Clear;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.ExecuteInternal(clipType: TClipType): boolean;
+var
   yBot, yTop: double;
 begin
   result := false;
-  solution := nil;
-  if fExecuteLocked or not InitializeScanbeam then exit;
-  try try
-    fExecuteLocked := true;
+  try
+    if not InitializeScanbeam then exit;
     fActiveEdges := nil;
     fSortedEdges := nil;
     fClipType := clipType;
-
     yBot := PopScanbeam;
     repeat
       InsertLocalMinimaIntoAEL(yBot);
@@ -887,25 +1017,50 @@ begin
       ProcessEdgesAtTopOfScanbeam(yTop);
       yBot := yTop;
     until not assigned(fScanbeam);
-
-    //build the return polygons ...
-    solution := ResultAsFloatPointArray;
     result := true;
-  finally
-    //clean up ...
-    for i := 0 to fPolyPtList.Count -1 do
-      if assigned(fPolyPtList[i]) then
-        DisposePolyPts(PPolyPt(fPolyPtList[i]));
-    fPolyPtList.Clear;
-    fExecuteLocked := false;
-  end;
   except
-    result := false;
+    //result := false;
   end;
 end;
 //------------------------------------------------------------------------------
 
 function TClipper.ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
+var
+  i,j,k,cnt: integer;
+  pt: PPolyPt;
+begin
+  k := 0;
+  setLength(result, fPolyPtList.Count);
+  for i := 0 to fPolyPtList.Count -1 do
+    if assigned(fPolyPtList[i]) then
+    begin
+      cnt := 0;
+      pt := PPolyPt(fPolyPtList[i]);
+      repeat
+        pt := pt.next;
+        inc(cnt);
+      until (pt = PPolyPt(fPolyPtList[i]));
+      if cnt < 2 then continue;
+
+      //optionally validate the orientation of simple polygons ...
+      pt := PPolyPt(fPolyPtList[i]);
+      if fForceAlternateOrientation and
+        not ValidateOrientation(pt) then ReversePolyPtLinks(pt);
+
+      setLength(result[k], cnt);
+      for j := 0 to cnt -1 do
+      begin
+        result[k][j].X := pt.pt.X;
+        result[k][j].Y := pt.pt.Y;
+        pt := pt.next;
+      end;
+      inc(k);
+    end;
+  setLength(result, k);
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
 var
   i,j,k,cnt: integer;
   pt: PPolyPt;
@@ -1421,7 +1576,7 @@ var
   iNode: PIntersectNode;
 begin
   if not assigned(fActiveEdges) then exit;
-  try try
+  try
     BuildIntersectList(topY);
     ProcessIntersectList;
   finally
@@ -1432,9 +1587,6 @@ begin
       dispose(fIntersectNodes);
       fIntersectNodes := iNode;
     end;
-  end;
-  except
-    raise;
   end;
 end;
 //------------------------------------------------------------------------------
