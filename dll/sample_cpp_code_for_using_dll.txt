@@ -32,7 +32,7 @@
 			(*clipperExecute)(c, ctIntersection, &cnt);
 			float *solution = new float [cnt];
 			(*clipperSolution)(c, solution, cnt);
-			if (solution[2] == 0 || solution[3] == 0 ) Beep(0,0);
+			//do something with solution then ...
 			free (solution);
 			(*clipperFree)(c);
 		}
