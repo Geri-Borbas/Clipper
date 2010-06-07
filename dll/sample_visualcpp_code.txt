@@ -1,0 +1,38 @@
+		//define exported clipper.dll funtions ...
+		typedef void *(__stdcall *ClipperCreate) (void);
+		typedef bool (__stdcall *ClipperFree) (void *);
+		typedef bool (__stdcall *ClipperClear)(void *);
+		typedef bool (__stdcall *ClipperAddPolygon)(void *, float *, int);
+		typedef bool (__stdcall *ClipperExecute)(void *, int , int *);
+		typedef bool (__stdcall *ClipperSolution)(void *, float *, int);
+		enum {ptSubject, ptClip};
+		enum {ctIntersection, ctUnion, ctDifference, ctXor};
+
+		//load the clipper.dll funtions ...
+		HMODULE hModule = LoadLibrary(TEXT("clipper.dll"));
+		if (hModule){
+			ClipperCreate clipperCreate = (ClipperCreate)GetProcAddress(hModule, "ClipperCreate");
+			ClipperFree clipperFree = (ClipperFree)GetProcAddress(hModule, "ClipperFree");
+			ClipperClear clipperClear = (ClipperClear)GetProcAddress(hModule, "ClipperClear");
+			ClipperAddPolygon clipperAddPolygon = (ClipperAddPolygon)GetProcAddress(hModule, "ClipperAddPolygon");
+			ClipperExecute clipperExecute = (ClipperExecute)GetProcAddress(hModule, "ClipperExecute");
+			ClipperSolution clipperSolution = (ClipperSolution)GetProcAddress(hModule, "ClipperSolution");
+
+			//use the funtions ...
+			int cnt = 0;
+			//float arrays defining polygons are in the form...
+			//{pgCnt, pg0.vertCnt, pg0[0].X, pg0[0].Y, ... pg0[pg0.vertCnt-1].X, pg0[pg0.vertCnt-1].Y, pg1.vertCnt, ...} 
+			float sub[15] = {2, 3, 20,20, 220,20, 120,120, 3, 30,30, 230,90, 60, 180};
+			float clip[8] = {1, 3, 40,30, 200,30, 120,140};
+
+			void *c;
+			c = (*clipperCreate)();
+			(*clipperAddPolygon)(c, sub, ptSubject);
+			(*clipperAddPolygon)(c, clip, ptClip);
+			(*clipperExecute)(c, ctIntersection, &cnt);
+			float *solution = new float [cnt];
+			(*clipperSolution)(c, solution, cnt);
+			//do something with solution then ...
+			free (solution);
+			(*clipperFree)(c);
+		}
