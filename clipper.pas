@@ -3,11 +3,11 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2v                                                            *
-* Date      :  6 June 2010                                                     *
+* Version   :  1.3                                                             *
+* Date      :  8 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
-* The code in this library is based on Bala Vatti's clipping algorithm:        *
+* The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
@@ -65,8 +65,8 @@ const
   infinite: double = -3.4e+38;
   //tolerance: be very careful if you make this value larger!!
   tolerance: double = 0.00000001;
-  //same_point_tolerance: can be customized to individual needs but must be > 0
-  //and also must be less than tolerance ...
+  //same_point_tolerance: can be customized to individual needs as long as -
+  //same_point_tolerance > 0 AND same_point_tolerance < tolerance.
   same_point_tolerance: double = 0.001;
 
 type
@@ -141,39 +141,43 @@ type
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: boolean; //(*)
+    isHole: boolean; //See TClipper ForceAlternateOrientation property
   end;
-  //* Sometimes simple polygons need to be arranged in 'alternate' orientations.
-  //  See TClipper ForceAlternateOrientation property for more info.
 
-  TPolyManager = class
+  //TClipperBase (ancestor to TClipper class).
+  //Converts polygon sets into edges that are stored in a LocalMinima list.
+  TClipperBase = class
   private
     fList             : TList;
-    fLocalMinima      : PLocalMinima;
     fRecycledLocMin   : PLocalMinima;
     fRecycledLocMinEnd: PLocalMinima;
     procedure DisposeLocalMinimaList;
+  protected
+    fLocalMinima      : PLocalMinima;
+    procedure PopLocalMinima;
+    function Reset: boolean;
   public
     constructor Create; virtual;
     destructor Destroy; override;
+    //Any number of subject and clip polygons can be added to the clipping task,
+    //either individually via the AddPolygon() method, or as a group via the
+    //AddPolyPolygon() method, or even using both methods ...
     procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
     procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
     procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
     procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
+    //If multiple clipping operations are to be preformed on different polygon
+    //sets, the Clear() methods avoids the need to create new Clipper objects.
     procedure Clear;
-    function Reset: boolean;
-    procedure PopLocalMinima;
-  property
-    LocalMinima: PLocalMinima read fLocalMinima;
   end;
 
-  TClipper = class(TPolyManager)
+  TClipper = class(TClipperBase)
   private
     fPolyPtList: TList;
     fClipType: TClipType;
     fScanbeam: PScanbeam;
     fActiveEdges: PEdge;
-    fSortedEdges: PEdge; //used for both intersection and horizontal edge sorts
+    fSortedEdges: PEdge; //used for intersection sorts and horizontal edges
     fIntersectNodes: PIntersectNode;
     fExecuteLocked: boolean;
     fForceAlternateOrientation: boolean;
@@ -212,6 +216,12 @@ type
     function ExecuteInternal(clipType: TClipType): boolean;
     procedure DisposeAllPolyPts;
   public
+    //SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
+
+    //The Execute() method performs the specified clipping task on the
+    //previously assigned subject and clip polygon sets. This method can be
+    //called multiple times using different clipping operations without having
+    //to reassign the subject and clip polygon sets.
     function Execute(clipType: TClipType;
       out solution: TArrayOfArrayOfFloatPoint): boolean; overload;
     function Execute(clipType: TClipType;
@@ -265,37 +275,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function ArDoublePt2ArFloatPt(const pts: TArrayOfDoublePoint): TArrayOfFloatPoint;
-var
-  i: integer;
-begin
-  setlength(result, length(pts));
-  for i := 0 to high(pts) do
-  begin
-    result[i].X := pts[i].X;
-    result[i].Y := pts[i].Y;
-  end;
-end;
-//------------------------------------------------------------------------------
-
 function AAFloatPt2AADoublePt(const pts: TArrayOfArrayOfFloatPoint): TArrayOfArrayOfDoublePoint;
-var
-  i,j: integer;
-begin
-  setlength(result, length(pts));
-  for i := 0 to high(pts) do
-  begin
-    setlength(result[i], length(pts[i]));
-    for j := 0 to high(pts[i]) do
-    begin
-      result[i][j].X := pts[i][j].X;
-      result[i][j].Y := pts[i][j].Y;
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function AADoublePt2AAFloatPt(const pts: TArrayOfArrayOfDoublePoint): TArrayOfArrayOfFloatPoint;
 var
   i,j: integer;
 begin
@@ -518,10 +498,10 @@ begin
 end;
 
 //------------------------------------------------------------------------------
-// TPolyManager methods ...
+// TClipperBase methods ...
 //------------------------------------------------------------------------------
 
-constructor TPolyManager.Create;
+constructor TClipperBase.Create;
 begin
   fList := TList.Create;
   fLocalMinima       := nil;
@@ -530,7 +510,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-destructor TPolyManager.Destroy;
+destructor TClipperBase.Destroy;
 begin
   Clear;
   fList.Free;
@@ -538,7 +518,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.AddPolygon(const polygon: TArrayOfFloatPoint;
+procedure TClipperBase.AddPolygon(const polygon: TArrayOfFloatPoint;
   polyType: TPolyType);
 var
   dblPts: TArrayOfDoublePoint;
@@ -548,7 +528,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
+procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
 var
   i, highI: integer;
   edges: PEdgeArray;
@@ -821,7 +801,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
+procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
   polyType: TPolyType);
 var
   dblPts: TArrayOfArrayOfDoublePoint;
@@ -831,7 +811,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
+procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
   polyType: TPolyType);
 var
   i: integer;
@@ -840,7 +820,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.Clear;
+procedure TClipperBase.Clear;
 var
   i: Integer;
 begin
@@ -850,13 +830,13 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TPolyManager.Reset: boolean;
+function TClipperBase.Reset: boolean;
 var
   e: PEdge;
   lm: PLocalMinima;
 begin
-  //this allows clipping operations to be executed multiple times
-  //on the same polygons.
+  //Reset() allows various clipping operations to be executed
+  //multiple times on the same polygon sets. (Protected method.)
 
   while assigned(fLocalMinima) do PopLocalMinima;
   if assigned(fRecycledLocMin) then fLocalMinima := fRecycledLocMin;
@@ -892,7 +872,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.PopLocalMinima;
+procedure TClipperBase.PopLocalMinima;
 var
   tmpLm: PLocalMinima;
 begin
@@ -915,7 +895,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TPolyManager.DisposeLocalMinimaList;
+procedure TClipperBase.DisposeLocalMinimaList;
 var
   tmpLm: PLocalMinima;
 begin
@@ -961,8 +941,7 @@ begin
   try
     fExecuteLocked := true;
     result := ExecuteInternal(clipType);
-    if result then
-      solution := ResultAsFloatPointArray;
+    if result then solution := ResultAsFloatPointArray;
   finally
     DisposeAllPolyPts;
     fExecuteLocked := false;
@@ -978,8 +957,7 @@ begin
   try
     fExecuteLocked := true;
     result := ExecuteInternal(clipType);
-    if result then
-      solution := ResultAsDoublePointArray;
+    if result then solution := ResultAsDoublePointArray;
   finally
     DisposeAllPolyPts;
     fExecuteLocked := false;
@@ -1117,7 +1095,7 @@ begin
   result := Reset; //returns false when no polygons to process
   if not result then exit;
   //add all the local minima into a fresh fScanbeam list ...
-  lm := LocalMinima;
+  lm := fLocalMinima;
   while assigned(lm) do
   begin
     InsertScanbeam(lm.y);
@@ -1211,23 +1189,23 @@ var
   pt: TDoublePoint;
 begin
   {InsertLocalMinimaIntoAEL}
-  while assigned(LocalMinima) and (LocalMinima.y = botY) do
+  while assigned(fLocalMinima) and (fLocalMinima.y = botY) do
   begin
-    InsertEdgeIntoAEL(LocalMinima.leftBound);
-    InsertScanbeam(LocalMinima.leftBound.ytop);
-    InsertEdgeIntoAEL(LocalMinima.rightBound);
-
-    e := LocalMinima.leftBound.nextInAEL;
-    if IsHorizontal(LocalMinima.rightBound) then
+    with fLocalMinima^ do
     begin
-      //nb: only rightbounds can have a horizontal bottom edge
-      AddHorzEdgeToSEL(LocalMinima.rightBound);
-      InsertScanbeam(LocalMinima.rightBound.nextInLML.ytop);
-    end else
-      InsertScanbeam(LocalMinima.rightBound.ytop);
+      InsertEdgeIntoAEL(leftBound);
+      InsertScanbeam(leftBound.ytop);
+      InsertEdgeIntoAEL(rightBound);
 
-    with LocalMinima^ do
-    begin
+      e := leftBound.nextInAEL;
+      if IsHorizontal(rightBound) then
+      begin
+        //nb: only rightbounds can have a horizontal bottom edge
+        AddHorzEdgeToSEL(rightBound);
+        InsertScanbeam(rightBound.nextInLML.ytop);
+      end else
+        InsertScanbeam(rightBound.ytop);
+
       if IsContributing(leftBound, reverseSides) then
       begin
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));

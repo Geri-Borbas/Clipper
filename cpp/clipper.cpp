@@ -2,11 +2,11 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.0                                                             *
-* Date      :  4 June 2010                                                     *
+* Version   :  1.3                                                             *
+* Date      :  8 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
-* The code in this library is based on Bala Vatti's clipping algorithm:        *
+* The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
@@ -40,7 +40,7 @@
 * Please see the file LICENSE.txt for additional information concerning this   *
 * license.                                                                     *
 *                                                                              *
-* The Original Code is clipper.h & clipper.cpp                                 *
+* The Original Code is clipper.hpp & clipper.cpp                               *
 *                                                                              *
 * The Initial Developer of the Original Code is                                *
 * Angus Johnson (http://www.angusj.com)                                        *
@@ -51,6 +51,8 @@
 *                                                                              *
 *  This is a translation of my Delphi clipper code and is the very first stuff *
 *  I've written in C++ (or C). My apologies if the coding style is unorthodox. *
+*  Please see the accompanying Delphi Clipper library (clipper.pas) for a more *
+*  detailed explanation of the code logic.                                     *
 *                                                                              *
 *******************************************************************************/
 
@@ -59,11 +61,10 @@
 #include <alloc.h>
 #include <mem.h>
 #include <vector>
-#include <list>
 #include <math>
 
-namespace clipper
-{
+namespace clipper {
+
 static double const infinite = -3.4E+38;
 //tolerance: be very careful if you make this value larger!!
 static double const tolerance = 0.00000001;
@@ -171,7 +172,7 @@ void SwapPolyIndexes(TEdge &edge1, TEdge &edge2)
 }
 //------------------------------------------------------------------------------
 
-double TopX(TEdge *edge,  double const currentY)
+double TopX(TEdge *edge,  double const &currentY)
 {
 	if(  currentY == edge->ytop ) return edge->xtop;
 	return edge->savedBot.X + edge->dx *( currentY - edge->savedBot.Y );
@@ -389,10 +390,10 @@ TEdge *BuildBound(TEdge *e,  TEdgeSide s,  bool buildForward)
 }
 
 //------------------------------------------------------------------------------
-// PolyManager methods ...
+// ClipperBase methods ...
 //------------------------------------------------------------------------------
 
-PolyManager::PolyManager() //constructor
+ClipperBase::ClipperBase() //constructor
 {
 	m_localMinimaList = 0;
 	m_recycledLocMin = 0;
@@ -401,13 +402,13 @@ PolyManager::PolyManager() //constructor
 }
 //------------------------------------------------------------------------------
 
-PolyManager::~PolyManager() //destructor
+ClipperBase::~ClipperBase() //destructor
 {
 	Clear();
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::InsertLocalMinima(TLocalMinima *newLm)
+void ClipperBase::InsertLocalMinima(TLocalMinima *newLm)
 {
 	TLocalMinima *tmpLm;
 
@@ -430,7 +431,7 @@ void PolyManager::InsertLocalMinima(TLocalMinima *newLm)
 }
 //------------------------------------------------------------------------------
 
-TEdge *PolyManager::AddLML(TEdge *e)
+TEdge *ClipperBase::AddLML(TEdge *e)
 {
 	TLocalMinima *newLm;
 	TEdge *e2;
@@ -478,7 +479,7 @@ TEdge *NextMin(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::AddPolygon( TPolygon const &pg, TPolyType polyType)
+void ClipperBase::AddPolygon( TPolygon const &pg, TPolyType polyType)
 {
 	int i; int highI;
 	TEdge *e, *e2;
@@ -556,14 +557,14 @@ void PolyManager::AddPolygon( TPolygon const &pg, TPolyType polyType)
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
+void ClipperBase::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
 {
 	for (unsigned i = 0; i < ppg.size(); i++)
 	AddPolygon(ppg[i], polyType);
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::Clear()
+void ClipperBase::Clear()
 {
 	DisposeLocalMinimaList();
 	for (unsigned i = 0; i < m_edges.size(); i++) free (m_edges[i]);
@@ -571,7 +572,7 @@ void PolyManager::Clear()
 }
 //------------------------------------------------------------------------------
 
-bool PolyManager::Reset()
+bool ClipperBase::Reset()
 {
 	TEdge *e;
 	TLocalMinima *lm;
@@ -610,7 +611,7 @@ bool PolyManager::Reset()
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::PopLocalMinima()
+void ClipperBase::PopLocalMinima()
 {
 	TLocalMinima *tmpLm;
 
@@ -632,7 +633,7 @@ void PolyManager::PopLocalMinima()
 }
 //------------------------------------------------------------------------------
 
-void PolyManager::DisposeLocalMinimaList()
+void ClipperBase::DisposeLocalMinimaList()
 {
 	TLocalMinima *tmpLm;
 
@@ -655,7 +656,7 @@ void PolyManager::DisposeLocalMinimaList()
 // Clipper methods ...
 //------------------------------------------------------------------------------
 
-Clipper::Clipper() : PolyManager() //constructor
+Clipper::Clipper() : ClipperBase() //constructor
 {
 	m_Scanbeam = 0;
 	m_ActiveEdges = 0;
@@ -691,7 +692,7 @@ bool Clipper::InitializeScanbeam()
 }
 //------------------------------------------------------------------------------
 
-void Clipper::InsertScanbeam( double const Y)
+void Clipper::InsertScanbeam( double const &Y)
 {
 	TScanbeam *newSb; TScanbeam *sb2;
 
@@ -1586,7 +1587,8 @@ TEdge *Clipper::BubbleSwap(TEdge *edge)
 				}
 				e->prevInSEL->nextInSEL = 0; //removes 'e' from SEL
 			}
-		}catch(...) {
+		}
+		catch(...) {
 			m_SortedEdges = 0;
 			throw "BubbleSwap error";
 		}

@@ -2,7 +2,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.2v                                                            *
+* Version   :  1.3                                                             *
 * Date      :  6 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -40,7 +40,7 @@
 * Please see the file LICENSE.txt for additional information concerning this   *
 * license.                                                                     *
 *                                                                              *
-* The Original Code is clipper.h & clipper.cpp                                 *
+* The Original Code is clipper.hpp & clipper.cpp                               *
 *                                                                              *
 * The Initial Developer of the Original Code is                                *
 * Angus Johnson (http://www.angusj.com)                                        *
@@ -51,18 +51,19 @@
 *                                                                              *
 *  This is a translation of my Delphi clipper code and is the very first stuff *
 *  I've written in C++ (or C). My apologies if the coding style is unorthodox. *
+*  Please see the accompanying Delphi Clipper library (clipper.pas) for a more *
+*  detailed explanation of the code logic.                                     *
 *                                                                              *
 *******************************************************************************/
 
 #pragma once
-#ifndef clipper_h
-#define clipper_h
+#ifndef clipper_hpp
+#define clipper_hpp
 
 #include <vector>
-#include <list>
 
-namespace clipper
-{
+namespace clipper {
+
 typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { esLeft, esRight } TEdgeSide;
@@ -72,6 +73,7 @@ using namespace std;
 
 struct TDoublePoint { double X; double Y; };
 TDoublePoint DoublePoint(double const &X, double const &Y);
+
 typedef vector<TDoublePoint> TPolygon;
 typedef vector< TPolygon > TPolyPolygon;
 
@@ -122,7 +124,7 @@ struct TPolyPt {
 	bool isHole;
 };
 
-class PolyManager
+class ClipperBase
 {
 private:
 	vector< TEdge * >  m_edges;
@@ -132,18 +134,18 @@ protected:
 	TLocalMinima      *m_recycledLocMinEnd;
 	void DisposeLocalMinimaList();
 	void InsertLocalMinima(TLocalMinima *newLm);
-	TEdge *PolyManager::AddLML(TEdge *e);
+	TEdge* AddLML(TEdge *e);
 	void PopLocalMinima();
 	bool Reset();
 public:
-	PolyManager();
-	virtual ~PolyManager();
+	ClipperBase();
+	virtual ~ClipperBase();
 	void AddPolygon(TPolygon const &pg, TPolyType polyType);
 	void AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType);
 	void Clear();
 };
 
-class Clipper : public PolyManager
+class Clipper : public ClipperBase
 {
 private:
 	vector < TPolyPt * >  m_PolyPts;
@@ -156,7 +158,7 @@ private:
 	bool                  m_ForceAlternateOrientation;
 	void DisposeScanbeamList();
 	bool InitializeScanbeam();
-	void InsertScanbeam( double const Y);
+	void InsertScanbeam( double const &Y);
 	double PopScanbeam();
 	void InsertLocalMinimaIntoAEL( double const &botY);
 	void InsertEdgeIntoAEL(TEdge *edge);
@@ -170,7 +172,7 @@ private:
 	void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
 	void DoMaxima(TEdge *e, double const &topY);
 	void ProcessHorizontals();
-  void ProcessHorizontal(TEdge *horzEdge);
+	void ProcessHorizontal(TEdge *horzEdge);
 	void AddLocalMaxPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
 	void AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
 	void AppendPolygon(TEdge *e1, TEdge *e2);
@@ -197,5 +199,5 @@ public:
 };
 
 } //clipper namespace
-#endif //clipper_h
+#endif //clipper_hpp
 

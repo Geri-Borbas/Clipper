@@ -1,7 +1,5 @@
 #include "clipper_dll.h"
 
-//build clipper.lib with implib.exe and add to project
-
 //2 overlapping subject polygons ...
 float sub[15] = {2, 3, 20,20, 220,20, 120,120, 3, 40,30, 220,90, 60, 180};
 //1 clipping polygon ...

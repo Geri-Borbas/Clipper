@@ -8,10 +8,12 @@ C++ code sample:
 	TPolygon subject, clip;
 	TPolyPolygon solution;
 
+  subject.reserve(3);
 	subject.push_back(FloatPoint(20,20));
 	subject.push_back(FloatPoint(220,20));
 	subject.push_back(FloatPoint(120,220));
 
+  clip.reserve(3);
 	clip.push_back(FloatPoint(120,20));
 	clip.push_back(FloatPoint(200,250));
 	clip.push_back(FloatPoint(40,250));
