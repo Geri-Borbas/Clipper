@@ -113,7 +113,7 @@ void DisposePolyPts(TPolyPt *&pp)
 	{
 	tmpPp = pp;
 	pp = pp->next;
-	delete( tmpPp );
+	delete tmpPp ;
 	}
 }
 //------------------------------------------------------------------------------
@@ -525,7 +525,7 @@ void ClipperBase::AddPolygon( TPolygon const &pg, TPolyType polyType)
 	if( e->next == e->prev )
 	{
 		m_edges.pop_back();
-		free (edges);
+		delete edges;
 		return; //oops!!
 	}
 
@@ -567,7 +567,7 @@ void ClipperBase::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
 void ClipperBase::Clear()
 {
 	DisposeLocalMinimaList();
-	for (unsigned i = 0; i < m_edges.size(); i++) free (m_edges[i]);
+	for (unsigned i = 0; i < m_edges.size(); i++) delete m_edges[i];
 	m_edges.clear();
 }
 //------------------------------------------------------------------------------
@@ -640,13 +640,13 @@ void ClipperBase::DisposeLocalMinimaList()
 	while( m_localMinimaList )
 	{
 		tmpLm = m_localMinimaList->nextLm;
-		free ( m_localMinimaList );
+		delete m_localMinimaList;
 		m_localMinimaList = tmpLm;
 	}
 	while( m_recycledLocMin )
 	{
 		tmpLm = m_recycledLocMin->nextLm;
-		free ( m_recycledLocMin );
+		delete m_recycledLocMin;
 		m_recycledLocMin = tmpLm;
 	}
 	m_recycledLocMinEnd = 0;
@@ -728,7 +728,7 @@ double Clipper::PopScanbeam()
   Y = m_Scanbeam->Y;
   sb2 = m_Scanbeam;
   m_Scanbeam = m_Scanbeam->nextSb;
-  free( sb2 );
+	delete sb2;
   return Y;
 }
 //------------------------------------------------------------------------------
@@ -738,7 +738,7 @@ void Clipper::DisposeScanbeamList()
   TScanbeam *sb2;
   while ( m_Scanbeam ) {
 	sb2 = m_Scanbeam->nextSb;
-	free ( m_Scanbeam );
+	delete m_Scanbeam;
 	m_Scanbeam = sb2;
   }
 }
@@ -852,7 +852,7 @@ void Clipper::ProcessIntersections( double const& topY)
 	catch(...) {
 		while( m_IntersectNodes ){
 			iNode = m_IntersectNodes->next;
-			free ( m_IntersectNodes );
+			delete m_IntersectNodes;
 			m_IntersectNodes = iNode;
 		}
 		m_SortedEdges = 0;
@@ -993,7 +993,7 @@ void Clipper::ProcessIntersectList()
 				m_IntersectNodes->edge2 , m_IntersectNodes->pt, 0 );
 			SwapPositionsInAEL( m_IntersectNodes->edge1 , m_IntersectNodes->edge2 );
 		}
-		delete ( m_IntersectNodes );
+		delete m_IntersectNodes;
 		m_IntersectNodes = iNode;
 	}
 }
@@ -1709,7 +1709,7 @@ int Clipper::AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront)
 		if( (ToFront && PointsEqual(pt, pp->pt)) ||
 			(!ToFront && PointsEqual(pt, pp->prev->pt)) )
 		{
-			delete (newPolyPt);
+		  delete newPolyPt;
 			return idx;
 		}
 
