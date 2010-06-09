@@ -14,6 +14,11 @@
 //flt[n+1] = polygon[1].vertex[0].X;
 //flt[n+2] = polygon[1].vertex[0].Y;
 //...
+//any type of polygon (concave, self-intersecting etc) and any 
+//numbers of polygons can be added to the clipping task through
+//the ClipperAddPolygon() function. With simple polygons, 'holes'
+//are inferred by the position of polygons within other polygons 
+//of the same type (ie ptSubject or ptClip).
 ///////////////////////////////////////////////////////////////////*/
 
 //2 overlapping subject polygons ...
@@ -29,6 +34,7 @@ void *c = ClipperCreate();
 if (c) {
 	ClipperAddPolygon(c, sub, ptSubject);
 	ClipperAddPolygon(c, clip, ptClip);
+	//clip operations: ctIntersection, ctUnion, ctDifference, ctXor
 	if (ClipperExecute(c, ctIntersection, &cnt) && cnt > 0){
 		float *solution = new float [cnt];
 		ClipperSolution(c, solution, cnt);
