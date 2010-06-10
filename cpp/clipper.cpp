@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3                                                             *
-* Date      :  8 June 2010                                                     *
+* Version   :  1.3c                                                            *
+* Date      :  10 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -525,7 +525,7 @@ void ClipperBase::AddPolygon( TPolygon const &pg, TPolyType polyType)
 	if( e->next == e->prev )
 	{
 		m_edges.pop_back();
-		delete edges;
+		delete [] edges;
 		return; //oops!!
 	}
 
@@ -567,7 +567,7 @@ void ClipperBase::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
 void ClipperBase::Clear()
 {
 	DisposeLocalMinimaList();
-	for (unsigned i = 0; i < m_edges.size(); i++) delete m_edges[i];
+	for (unsigned i = 0; i < m_edges.size(); i++) delete [] m_edges[i];
 	m_edges.clear();
 }
 //------------------------------------------------------------------------------
@@ -1709,7 +1709,7 @@ int Clipper::AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront)
 		if( (ToFront && PointsEqual(pt, pp->pt)) ||
 			(!ToFront && PointsEqual(pt, pp->prev->pt)) )
 		{
-		  delete newPolyPt;
+			delete newPolyPt;
 			return idx;
 		}
 
