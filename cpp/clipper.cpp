@@ -871,39 +871,17 @@ bool Edge2BeforeEdge1InAEL(TEdge *e1, TEdge *e2)
 }
 //------------------------------------------------------------------------------
 
-bool Node1IsBelow2(TIntersectNode *Node1, TIntersectNode *Node2)
+bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
 {
-
-	if( fabs(Node1->pt.Y - Node2->pt.Y) < tolerance )
-	{
-		if( Node1->edge1->dx == Node2->edge1->dx )
-		{
-			if(  SlopesEqual(*Node1->edge2, *Node2->edge2) )
-			{
+	if( fabs(Node1->pt.Y - Node2->pt.Y) < tolerance ){
+		if( SlopesEqual(*Node1->edge1, *Node2->edge1) ){
+			if( SlopesEqual(*Node1->edge2, *Node2->edge2) ){
 				if(Node1->edge2 == Node2->edge2)
-				{
-					//e2=e2 ...
-					if(Node1->edge2->dx > Node1->edge1->dx)
-						return Edge2BeforeEdge1InAEL(Node1->edge1, Node2->edge1);
-					else
-						return Edge2BeforeEdge1InAEL(Node2->edge1, Node1->edge1);
-				} else
-				{
-					//e1=e1 ...
-					if(  Node1->edge1->dx > Node1->edge2->dx )
-						return Edge2BeforeEdge1InAEL( Node1->edge2 , Node2->edge2 );
-					else
-						return Edge2BeforeEdge1InAEL( Node2->edge2 , Node1->edge2 );
-				}
-			}
-			else
-				return ( Node1->edge2->dx < Node2->edge2->dx );
-		}
-		else
-			return ( Node1->edge1->dx < Node2->edge1->dx );
-	}
-	else
-		return ( Node1->pt.Y > Node2->pt.Y );
+					return Edge2BeforeEdge1InAEL(Node1->edge1, Node2->edge1); else
+					return Edge2BeforeEdge1InAEL(Node2->edge2, Node1->edge2);
+			} else return ( Node1->edge2->dx < Node2->edge2->dx );
+		} else return ( Node1->edge1->dx < Node2->edge1->dx );
+	} else return ( Node1->pt.Y > Node2->pt.Y );
 }
 //------------------------------------------------------------------------------
 
@@ -919,7 +897,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
 	IntersectNode->prev = 0;
 	if( !m_IntersectNodes )
 		m_IntersectNodes = IntersectNode;
-	else if(  Node1IsBelow2(IntersectNode , m_IntersectNodes) )
+	else if(  Process1Before2(IntersectNode , m_IntersectNodes) )
 	{
 		IntersectNode->next = m_IntersectNodes;
 		m_IntersectNodes->prev = IntersectNode;
@@ -928,7 +906,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
 	else
 	{
 		iNode = m_IntersectNodes;
-		while( iNode->next  && Node1IsBelow2(iNode->next, IntersectNode) )
+		while( iNode->next  && Process1Before2(iNode->next, IntersectNode) )
 			iNode = iNode->next;
 		if( iNode->next ) iNode->next->prev = IntersectNode;
 		IntersectNode->next = iNode->next;

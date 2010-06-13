@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3                                                             *
+* Version   :  1.3a                                                            *
 * Date      :  8 June 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -166,7 +166,7 @@ type
     procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
     procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
     procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
-    //If multiple clipping operations are to be preformed on different polygon
+    //If multiple clipping operations are to be performed on different polygon
     //sets, the Clear() methods avoids the need to create new Clipper objects.
     procedure Clear;
   end;
@@ -1414,12 +1414,12 @@ begin
 *******************************************************************************)
 
 (*******************************************************************************
-*           \                         \ /                      /          /    *
-*            \                         +                      /          /     *
-*             \                       / \         o==========%==========o      *
-*              o==========o          /   \        |         /                  *
-*                         |         /     \       |        /                   *
-*         o===============#========*=======*======#=======o                    *
+*           \   nb: HE processing     \ /                      /          /    *
+*            \  order doesn't matter   +                      /          /     *
+*             \                       / \     (3) o==========%==========o      *
+*              o==========o (2)      /   \        |          |                 *
+*                         |         /     \       |          |                 *
+*         o===============#========*=======*======#==========o  (1)            *
 *        /                 \      /         \    /                             *
 *******************************************************************************)
 
@@ -1569,9 +1569,9 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Node1IsBelow2(Node1, Node2: PIntersectNode): boolean;
+function Process1Before2(Node1, Node2: PIntersectNode): boolean;
 
-  function Edge2BeforeEdge1InAEL(e1,e2: PEdge): boolean;
+  function E2PrecedesE1inAEL(e1,e2: PEdge): boolean;
   begin
     result := true;
     while assigned(e2) do
@@ -1583,23 +1583,13 @@ function Node1IsBelow2(Node1, Node2: PIntersectNode): boolean;
 begin
   if (abs(Node1.pt.Y - Node2.pt.Y) < tolerance) then
   begin
-    if (Node1.edge1.dx = Node2.edge1.dx) then
+    if SlopesEqual(Node1.edge1, Node2.edge1) then
     begin
       if SlopesEqual(Node1.edge2, Node2.edge2) then
       begin
         if Node1.edge2 = Node2.edge2 then
-        begin
-          //e2=e2 ...
-          if Node1.edge2.dx > Node1.edge1.dx then
-            result := Edge2BeforeEdge1InAEL(Node1.edge1, Node2.edge1) else
-            result := Edge2BeforeEdge1InAEL(Node2.edge1, Node1.edge1);
-        end else
-        begin
-          //e1=e1 ...
-          if Node1.edge1.dx > Node1.edge2.dx then
-            result := Edge2BeforeEdge1InAEL(Node1.edge2, Node2.edge2) else
-            result := Edge2BeforeEdge1InAEL(Node2.edge2, Node1.edge2);
-        end;
+          result := E2PrecedesE1inAEL(Node1.edge1, Node2.edge1) else
+          result := E2PrecedesE1inAEL(Node2.edge2, Node1.edge2);
       end else
         result := (Node1.edge2.dx < Node2.edge2.dx)
     end else
@@ -1621,7 +1611,7 @@ begin
   IntersectNode.prev := nil;
   if not assigned(fIntersectNodes) then
     fIntersectNodes := IntersectNode
-  else if Node1IsBelow2(IntersectNode, fIntersectNodes) then
+  else if Process1Before2(IntersectNode, fIntersectNodes) then
   begin
     IntersectNode.next := fIntersectNodes;
     fIntersectNodes.prev := IntersectNode;
@@ -1629,7 +1619,7 @@ begin
   end else
   begin
     iNode := fIntersectNodes;
-    while assigned(iNode.next) and Node1IsBelow2(iNode.next, IntersectNode) do
+    while assigned(iNode.next) and Process1Before2(iNode.next, IntersectNode) do
       iNode := iNode.next;
     if assigned(iNode.next) then iNode.next.prev := IntersectNode;
     IntersectNode.next := iNode.next;
@@ -1995,27 +1985,27 @@ begin
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
 * of a scanbeam) needs to be done in multiple stages and in the correct order. *
 * Firstly, edges forming a 'maxima' need to be processed and then removed.     *
-* Next, 'intermediate' and 'maxima' horizontal edges are processed.            *
-* Then edges that intersect exactly at the top of the scanbeam are processed.  *
+* Next, 'intermediate' and 'maxima' horizontal edges are processed. Then edges *
+* that intersect exactly at the top of the scanbeam are processed [o].         *
 * Finally, new minima are added and any intersects they create are processed.  *
 *******************************************************************************)
 
 (*******************************************************************************
-*  \                               /    /        \     /                       *
-*   \      horizontal minima      /    /          \   /                        *
-*    o===========================#====o            \ /                         *
-*         horizontal maxima     /                   * scanline intersect       *
-*      o=======================#===================#=#========o                *
-*      |                      /                   /   \        \               *
-*      + maxima intersect    /                   /     \        \              *
-*     /|\                   /                   /       \        \             *
-*    / | \                 /                   /         \        \            *
+*  \                             /    /          \   /                         *
+*   \      horizontal minima    /    /            \ /                          *
+*    o=========================#====o              .                           *
+*         horizontal maxima    |                   o  scanline intersect       *
+*      o=======================#===================#========o                  *
+*      |                      /                   / \        \                 *
+*      + maxima intersect    /                   /   \        \                *
+*     /|\                   /                   /     \        \               *
+*    / | \                 /                   /       \        \              *
 *******************************************************************************)
 
   e := fActiveEdges;
   while assigned(e) do
   begin
-    //1. process all maxima (treating them as if 'bent' horizontal edges) ...
+    //1. process maxima, treating them as if they're 'bent' horizontal edges ...
     if IsMaxima(e, topY) and not IsHorizontal(GetMaximaPair(e)) then
     begin
       //'e' might be removed from AEL, as may any following edges so ...
