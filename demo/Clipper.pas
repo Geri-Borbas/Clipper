@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3a                                                            *
-* Date      :  8 June 2010                                                     *
+* Version   :  1.3e                                                            *
+* Date      :  13 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -1571,12 +1571,12 @@ end;
 
 function Process1Before2(Node1, Node2: PIntersectNode): boolean;
 
-  function E2PrecedesE1inAEL(e1,e2: PEdge): boolean;
+  function E1PrecedesE2inAEL(e1, e2: PEdge): boolean;
   begin
     result := true;
-    while assigned(e2) do
-      if e2 = e1 then exit
-      else e2 := e2.nextInAEL;
+    while assigned(e1) do
+      if e1 = e2 then exit
+      else e1 := e1.nextInAEL;
     result := false;
   end;
 
@@ -1588,8 +1588,8 @@ begin
       if SlopesEqual(Node1.edge2, Node2.edge2) then
       begin
         if Node1.edge2 = Node2.edge2 then
-          result := E2PrecedesE1inAEL(Node1.edge1, Node2.edge1) else
-          result := E2PrecedesE1inAEL(Node2.edge2, Node1.edge2);
+          result := E1PrecedesE2inAEL(Node2.edge1, Node1.edge1) else
+          result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2);
       end else
         result := (Node1.edge2.dx < Node2.edge2.dx)
     end else

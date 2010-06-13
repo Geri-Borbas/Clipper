@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3c                                                            *
-* Date      :  10 June 2010                                                    *
+* Version   :  1.3e                                                            *
+* Date      :  13 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -861,11 +861,11 @@ void Clipper::ProcessIntersections( double const& topY)
 }
 //------------------------------------------------------------------------------
 
-bool Edge2BeforeEdge1InAEL(TEdge *e1, TEdge *e2)
+bool E1PrecedesE2inAEL(TEdge *e1, TEdge *e2)
 {
-	while( e2 ){
-		if(  e2 == e1 ) return true;
-		else e2 = e2->nextInAEL;
+	while( e1 ){
+		if(  e1 == e2 ) return true;
+		else e1 = e1->nextInAEL;
 	}
 	return false;
 }
@@ -877,8 +877,8 @@ bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
 		if( SlopesEqual(*Node1->edge1, *Node2->edge1) ){
 			if( SlopesEqual(*Node1->edge2, *Node2->edge2) ){
 				if(Node1->edge2 == Node2->edge2)
-					return Edge2BeforeEdge1InAEL(Node1->edge1, Node2->edge1); else
-					return Edge2BeforeEdge1InAEL(Node2->edge2, Node1->edge2);
+					return E1PrecedesE2inAEL(Node2->edge1, Node1->edge1); else
+					return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
 			} else return ( Node1->edge2->dx < Node2->edge2->dx );
 		} else return ( Node1->edge1->dx < Node2->edge1->dx );
 	} else return ( Node1->pt.Y > Node2->pt.Y );
