@@ -299,7 +299,7 @@ begin
      cmd:=counter.vertex(@x ,@y );
 
     end;
-   rgba.ConstrDbl  (0.5 ,0.0 ,0 ,0.5 );
+   rgba.ConstrDbl  (0.5 ,0.75 ,0.5 ,0.5 );
    ren.color_      (@rgba );
    render_scanlines(ras ,sl ,ren );
 
@@ -365,7 +365,8 @@ var
  tat  : trans_affine_translation;
  tas  : trans_affine_scaling;
 
- stroke         ,
+ stroke,
+ stroke_stroke,
  stroke_gb_poly : conv_stroke;
 
  trans         ,
@@ -427,7 +428,7 @@ begin
 
     ras.reset;
     ras.add_path    (@ps2 );
-    rgba.ConstrDbl  (0 ,0.6 ,0 ,0.1 );
+    rgba.ConstrDbl  (0.5 ,0.5 ,0 ,0.1 );
     ren.color_      (@rgba );
     render_scanlines(ras ,sl ,@ren );
 
@@ -478,7 +479,7 @@ begin
 
     ras.reset;
     ras.add_path    (@stroke );
-    rgba.ConstrDbl  (0 ,0.6 ,0 ,0.1 );
+    rgba.ConstrDbl  (0.5 ,0.5 ,0 ,0.1 );
     ren.color_      (@rgba );
     render_scanlines(ras ,sl ,@ren );
 
@@ -568,7 +569,7 @@ begin
     render_scanlines(ras ,sl ,@ren );
 
     stroke_gb_poly.Construct(@trans_gb_poly );
-    stroke_gb_poly.width_   (0.1 );
+    stroke_gb_poly.width_   (0.2 );
     ras.add_path            (@stroke_gb_poly );
     rgba.ConstrDbl          (0 ,0 ,0 );
     ren.color_              (@rgba );
@@ -579,9 +580,17 @@ begin
     ren.color_      (@rgba );
     render_scanlines(ras ,sl ,@ren );
 
+    stroke_stroke.Construct(@stroke);
+    stroke_stroke.width_(0.1);
+    ras.add_path(@stroke_stroke );
+    rgba.ConstrDbl          (0 ,0 ,0 );
+    ren.color_              (@rgba );
+    render_scanlines        (ras ,sl ,@ren );
+
     perform_rendering(sl ,ras ,@ren ,@clipper );
 
     stroke.Destruct;
+    stroke_stroke.Destruct;
     gb_poly.Destruct;
     stroke_gb_poly.Destruct;
     clipper.Destruct;
@@ -659,7 +668,7 @@ begin
 
     ras.reset;
     ras.add_path    (@curve );
-    rgba.ConstrDbl  (0 ,0.6 ,0 ,0.1 );
+    rgba.ConstrDbl  (0.5 ,0.5 ,0 ,0.1 );
     ren.color_      (@rgba );
     render_scanlines(ras ,sl ,@ren );
 
@@ -948,7 +957,7 @@ VAR
 
 BEGIN
  app.Construct(pix_format_bgr24 ,flip_y );
- app.caption_ ('AGG Example. Polygon Clipping - Clipper (F1-Help)' );
+ app.caption_ ('AGG Example. Polygon Clipping with Clipper (F1-Help)' );
 
  if app.init(640 ,520 ,window_resize ) then
   app.run;

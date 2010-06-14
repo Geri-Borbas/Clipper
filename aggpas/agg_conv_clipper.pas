@@ -6,7 +6,7 @@
 // Pascal Port By: Milan Marusinec alias Milano
 //                 milan@marusinec.sk
 //                 http://www.aggpas.org
-// Copyright (c) 2005-2010
+// Copyright (c) 2005-2006
 //
 // Permission to copy, use, modify, sell and distribute this software
 // is granted provided this copyright notice appears in all copies.
@@ -274,9 +274,11 @@ end;
 procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfDoublePoint);
 var
   cmd: unsigned;
-  x, y: double;
+  x, y, start_x ,start_y: double;
   starting_first_line : boolean;
 begin
+  start_x := 0.0;
+  start_y := 0.0;
   starting_first_line := true;
   p := nil;
 
@@ -289,9 +291,16 @@ begin
       begin
         if not starting_first_line then end_contour(p);
         start_contour;
+        start_x := x;
+        start_y := y;
       end;
       add_vertex_(x ,y );
       starting_first_line := false;
+    end
+    else if is_end_poly(cmd ) then
+    begin
+      if not starting_first_line and is_closed(cmd ) then
+        add_vertex_(start_x ,start_y );
     end;
     cmd := src.vertex(@x ,@y );
   end;
