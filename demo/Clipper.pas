@@ -63,7 +63,9 @@ uses
 
 const
   infinite: double = -3.4e+38;
-  //tolerance: be very careful if you make this value larger!!
+  //tolerance: May need to be varied if polygon coordinates are very large
+  //(eg 10,000+) or very small (eg < 0.0001), but generally be very careful
+  //before varying this value.
   tolerance: double = 0.00000001;
   //same_point_tolerance: can be customized to individual needs as long as -
   //same_point_tolerance > 0 AND same_point_tolerance < tolerance.
@@ -234,7 +236,7 @@ type
     //method will be (simple) polygons with clockwise 'outer' and
     //counter-clockwise 'inner' (or 'hole') polygons. There is no danger with
     //enabling this property when operating on complex polygons, the only
-    //downside being a very minor penalty in execution speed. (Default = false)
+    //downside being a very minor penalty in execution speed. (Default = true)
     ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
@@ -922,6 +924,7 @@ constructor TClipper.Create;
 begin
   inherited;
   fPolyPtList := TList.Create;
+  fForceAlternateOrientation := true;
 end;
 //------------------------------------------------------------------------------
 
@@ -1414,13 +1417,13 @@ begin
 *******************************************************************************)
 
 (*******************************************************************************
-*           \   nb: HE processing     \ /                      /          /    *
-*            \  order doesn't matter   +                      /          /     *
-*             \                       / \     (3) o==========%==========o      *
-*              o==========o (2)      /   \        |          |                 *
-*                         |         /     \       |          |                 *
-*         o===============#========*=======*======#==========o  (1)            *
-*        /                 \      /         \    /                             *
+*           \   nb: HE processing order doesn't matter         /          /    *
+*            \                                                /          /     *
+* { --------  \  -------------------  /  \  - (3) o==========%==========o  - } *
+* {            o==========o (2)      /    \       .          .               } *
+* {                       .         /      \      .          .               } *
+* { ----  o===============#========*========*=====#==========o  (1)  ------- } *
+*        /                 \      /          \   /                             *
 *******************************************************************************)
 
   with horzEdge^ do
@@ -1575,8 +1578,7 @@ function Process1Before2(Node1, Node2: PIntersectNode): boolean;
   begin
     result := true;
     while assigned(e1) do
-      if e1 = e2 then exit
-      else e1 := e1.nextInAEL;
+      if e1 = e2 then exit else e1 := e1.nextInAEL;
     result := false;
   end;
 
@@ -1986,16 +1988,16 @@ begin
 * of a scanbeam) needs to be done in multiple stages and in the correct order. *
 * Firstly, edges forming a 'maxima' need to be processed and then removed.     *
 * Next, 'intermediate' and 'maxima' horizontal edges are processed. Then edges *
-* that intersect exactly at the top of the scanbeam are processed [o].         *
+* that intersect exactly at the top of the scanbeam are processed [%].         *
 * Finally, new minima are added and any intersects they create are processed.  *
 *******************************************************************************)
 
 (*******************************************************************************
-*  \                             /    /          \   /                         *
-*   \      horizontal minima    /    /            \ /                          *
-*    o=========================#====o              .                           *
-*         horizontal maxima    |                   o  scanline intersect       *
-*      o=======================#===================#========o                  *
+*     \                          /    /          \   /                         *
+*      \   horizontal minima    /    /            \ /                          *
+* { --  o======================#====o   --------   .     ------------------- } *
+* {       horizontal maxima    .                   %  scanline intersect     } *
+* { -- o=======================#===================#========o     ---------- } *
 *      |                      /                   / \        \                 *
 *      + maxima intersect    /                   /   \        \                *
 *     /|\                   /                   /     \        \               *

@@ -234,7 +234,7 @@ type
     //method will be (simple) polygons with clockwise 'outer' and
     //counter-clockwise 'inner' (or 'hole') polygons. There is no danger with
     //enabling this property when operating on complex polygons, the only
-    //downside being a very minor penalty in execution speed. (Default = false)
+    //downside being a very minor penalty in execution speed. (Default = true)
     ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
@@ -922,6 +922,7 @@ constructor TClipper.Create;
 begin
   inherited;
   fPolyPtList := TList.Create;
+  fForceAlternateOrientation := true;
 end;
 //------------------------------------------------------------------------------
 
