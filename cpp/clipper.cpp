@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3e                                                            *
-* Date      :  13 June 2010                                                    *
+* Version   :  1.4                                                             *
+* Date      :  15 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -58,15 +58,14 @@
 
 #include "clipper.hpp"
 #include "math.h"
-#include <alloc.h>
-#include <mem.h>
 #include <vector>
-#include <math>
 
 namespace clipper {
 
 static double const infinite = -3.4E+38;
-//tolerance: be very careful if you make this value larger!!
+//tolerance: May need to be varied if polygon coordinates are very large
+//(eg 10,000+) or very small (eg < 0.001), but generally be very careful
+//before varying this value.
 static double const tolerance = 0.00000001;
 //same_point_tolerance: can be customized to individual needs but must be > 0
 //and also must be less than tolerance ...
@@ -167,7 +166,7 @@ void SwapPolyIndexes(TEdge &edge1, TEdge &edge2)
   int polyIdx;
 
   polyIdx =  edge1.polyIdx;
-  edge1.polyIdx = edge2.polyIdx;
+	edge1.polyIdx = edge2.polyIdx;
 	edge2.polyIdx = polyIdx;
 }
 //------------------------------------------------------------------------------
@@ -248,7 +247,7 @@ bool ValidateOrientation(TPolyPt *pt)
 
   //compares the orientation (clockwise vs counter-clockwise) of a *simple*
   //polygon with its hole status (ie test whether an inner or outer polygon).
-  //nb: complex polygons have indeterminate orientations.
+	//nb: complex polygons have indeterminate orientations.
   bottomPt = pt;
   ptStart = pt;
   pt = pt->next;
@@ -663,7 +662,7 @@ Clipper::Clipper() : ClipperBase() //constructor
 	m_SortedEdges = 0;
 	m_IntersectNodes = 0;
 	m_ExecuteLocked = false;
-	m_ForceAlternateOrientation = false;
+	m_ForceAlternateOrientation = true;
 	m_PolyPts.reserve(32);
 };
 //------------------------------------------------------------------------------

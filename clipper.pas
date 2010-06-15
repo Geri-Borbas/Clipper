@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3e                                                            *
-* Date      :  13 June 2010                                                    *
+* Version   :  1.4                                                             *
+* Date      :  15 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -85,6 +85,7 @@ type
   TArrayOfFloatPoint = array of TFloatPoint;
   TArrayOfArrayOfFloatPoint = array of TArrayOfFloatPoint;
 {$ENDIF}
+  PDoublePoint = ^TDoublePoint;
   TDoublePoint = record X, Y: double; end;
   TArrayOfDoublePoint = array of TDoublePoint;
   TArrayOfArrayOfDoublePoint = array of TArrayOfDoublePoint;

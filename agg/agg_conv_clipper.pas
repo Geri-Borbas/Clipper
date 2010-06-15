@@ -35,15 +35,14 @@ uses
 
 { TYPES DEFINITION }
 type
- clipper_op_e = (
-  clipper_or ,
-  clipper_and ,
-  clipper_xor ,
-  clipper_a_minus_b ,
-  clipper_b_minus_a
+  clipper_op_e = (
+    clipper_or ,
+    clipper_and ,
+    clipper_xor ,
+    clipper_a_minus_b ,
+    clipper_b_minus_a
   );
 
-  PDoublePoint = ^TDoublePoint;
 
  status = (status_move_to, status_line_to, status_stop );
 

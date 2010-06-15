@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+1.4c - 16 June 2010
+* Added C++ support for AGG graphics library 
+  
+1.4  - 15 June 2010
+* Added Delphi support for AGG graphics library
+  
 1.3  - 9 June 2010
 * Added clipper.dll (& support files) to provide any Windows 
   application with to access Clipper's functionality.
