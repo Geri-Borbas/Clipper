@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+1.4e - 17 June 2010
+* Bugfix: Clipper.pas & Clipper.cpp
+  
 1.4c - 16 June 2010
 * Added C++ support for AGG graphics library 
   

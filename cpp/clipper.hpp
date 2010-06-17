@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3                                                             *
-* Date      :  6 June 2010                                                     *
+* Version   :  1.4                                                             *
+* Date      :  15 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -73,7 +73,6 @@ using namespace std;
 
 struct TDoublePoint { double X; double Y; };
 TDoublePoint DoublePoint(double const &X, double const &Y);
-
 typedef vector<TDoublePoint> TPolygon;
 typedef vector< TPolygon > TPolyPolygon;
 
@@ -140,8 +139,8 @@ protected:
 public:
 	ClipperBase();
 	virtual ~ClipperBase();
-	void AddPolygon(TPolygon const &pg, TPolyType polyType);
-	void AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType);
+	void AddPolygon(TPolygon &pg, TPolyType polyType);
+	void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
 	void Clear();
 };
 

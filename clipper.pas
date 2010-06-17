@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4                                                             *
-* Date      :  15 June 2010                                                    *
+* Version   :  1.4e                                                            *
+* Date      :  17 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -63,13 +63,13 @@ uses
 
 const
   infinite: double = -3.4e+38;
-  //tolerance: May need to be varied if polygon coordinates are very large
-  //(eg 10,000+) or very small (eg < 0.0001), but generally be very careful
-  //before varying this value.
-  tolerance: double = 0.00000001;
-  //same_point_tolerance: can be customized to individual needs as long as -
-  //same_point_tolerance > 0 AND same_point_tolerance < tolerance.
-  same_point_tolerance: double = 0.001;
+  tolerance: double = 1.0e-10;
+
+  //same_point_tolerance ...
+  //Can be customized to individual needs to indicate the point at which
+  //adjacent vertices will be merged. Necessary because edges must have a slope.
+  //Must be significantly greater than 'tolerance' ...
+  same_point_tolerance: double = 1.0e-4;
 
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
@@ -165,10 +165,10 @@ type
     //Any number of subject and clip polygons can be added to the clipping task,
     //either individually via the AddPolygon() method, or as a group via the
     //AddPolyPolygon() method, or even using both methods ...
-    procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
     //If multiple clipping operations are to be performed on different polygon
     //sets, the Clear() methods avoids the need to create new Clipper objects.
     procedure Clear;
@@ -292,6 +292,12 @@ begin
       result[i][j].Y := pts[i][j].Y;
     end;
   end;
+end;
+//------------------------------------------------------------------------------
+
+function RoundToTolerance(const number: double): double;
+begin
+  result := floor(number/same_point_tolerance + 0.5)*same_point_tolerance;
 end;
 //------------------------------------------------------------------------------
 
@@ -521,8 +527,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(const polygon: TArrayOfFloatPoint;
-  polyType: TPolyType);
+procedure TClipperBase.AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType);
 var
   dblPts: TArrayOfDoublePoint;
 begin
@@ -531,7 +536,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
+procedure TClipperBase.AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType);
 var
   i, highI: integer;
   edges: PEdgeArray;
@@ -539,7 +544,7 @@ var
 
   //----------------------------------------------------------------------
 
-  procedure InitEdge(e: PEdge; const pt1, pt2: TDoublePoint);
+  procedure InitEdge(e: PEdge; pt1, pt2: TDoublePoint);
   begin
     fillChar(e^, sizeof(TEdge), 0);
     if (pt1.Y > pt2.Y) then
@@ -734,6 +739,12 @@ begin
   {AddPolygon}
 
   highI := high(polygon);
+  for i := 0 to highI do
+  begin
+		polygon[i].X := RoundToTolerance(polygon[i].X);
+		polygon[i].Y := RoundToTolerance(polygon[i].Y);
+  end;
+
   while (highI > 1) and PointsEqual(polygon[0],polygon[highI]) do dec(highI);
   if highI < 2 then exit;
 
@@ -804,7 +815,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
+procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint;
   polyType: TPolyType);
 var
   dblPts: TArrayOfArrayOfDoublePoint;
@@ -814,7 +825,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
+procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint;
   polyType: TPolyType);
 var
   i: integer;
@@ -1103,6 +1114,7 @@ begin
   while assigned(lm) do
   begin
     InsertScanbeam(lm.y);
+    InsertScanbeam(lm.leftBound.ytop); //this is necessary too!
     lm := lm.nextLm;
   end;
 end;
@@ -2058,6 +2070,7 @@ begin
   begin
     if not assigned(e.nextInAEL) then break;
     if e.nextInAEL.xbot < e.xbot - tolerance then
+
       raise Exception.Create('ProcessEdgesAtTopOfScanbeam: Broken AEL order');
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else

@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4                                                             *
-* Date      :  15 June 2010                                                    *
+* Version   :  1.4e                                                            *
+* Date      :  17 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -63,13 +63,13 @@
 namespace clipper {
 
 static double const infinite = -3.4E+38;
-//tolerance: May need to be varied if polygon coordinates are very large
-//(eg 10,000+) or very small (eg < 0.001), but generally be very careful
-//before varying this value.
-static double const tolerance = 0.00000001;
-//same_point_tolerance: can be customized to individual needs but must be > 0
-//and also must be less than tolerance ...
-static double const same_point_tolerance = 0.001;
+static double const tolerance = 1.0E-10;
+
+//same_point_tolerance ...
+//Can be customized to individual needs to indicate the point at which adjacent
+//vertices will be merged. Necessary because edges must have a slope.
+//Must be significantly greater than 'tolerance' ...
+static double const same_point_tolerance = 1.0E-4;
 
 static const unsigned ipLeft = 1;
 static const unsigned ipRight = 2;
@@ -260,18 +260,20 @@ bool ValidateOrientation(TPolyPt *pt)
   }
 
   ptPrev = bottomPt->prev;
-  ptNext = bottomPt->next;
-  N1 = GetUnitNormal( ptPrev->pt , bottomPt->pt );
-  N2 = GetUnitNormal( bottomPt->pt , ptNext->pt );
-  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
-  IsClockwise = ( N1.X * N2.Y - N2.X * N1.Y ) > 0; //ie angle > 180deg.
-  return (IsClockwise != bottomPt->isHole);
+	ptNext = bottomPt->next;
+	N1 = GetUnitNormal( ptPrev->pt , bottomPt->pt );
+	N2 = GetUnitNormal( bottomPt->pt , ptNext->pt );
+	//(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
+	IsClockwise = ( N1.X * N2.Y - N2.X * N1.Y ) > 0; //ie angle > 180deg.
+	return (IsClockwise != bottomPt->isHole);
 }
 //------------------------------------------------------------------------------
 
-void InitEdge(TEdge *e, TDoublePoint
-	const &pt1, TDoublePoint const &pt2, TPolyType polyType)
+void InitEdge(TEdge *e, TDoublePoint const &pt1,
+	TDoublePoint const &pt2, TPolyType polyType)
 {
+	//nb: round the vertices to 6 decimal places (roundToVal == -6)
+	//to further minimize floating point errors ...
 	memset( e, 0, sizeof( TEdge ));
 	if(  ( pt1.Y > pt2.Y ) )
 	{
@@ -478,12 +480,22 @@ TEdge *NextMin(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-void ClipperBase::AddPolygon( TPolygon const &pg, TPolyType polyType)
+double RoundToTolerance(double const number){
+	return floor( number/same_point_tolerance + 0.5 )*same_point_tolerance;
+}
+//------------------------------------------------------------------------------
+
+void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
 {
 	int i; int highI;
 	TEdge *e, *e2;
 
 	highI = pg.size() -1;
+	for (i = 0; i <= highI; i++) {
+		pg[i].X = RoundToTolerance(pg[i].X);
+		pg[i].Y = RoundToTolerance(pg[i].Y);
+	}
+
 	while(  ( highI > 1 ) && PointsEqual(pg[0] , pg[highI] ) ) --highI;
 	if(  highI < 2 ) return;
 
@@ -556,7 +568,7 @@ void ClipperBase::AddPolygon( TPolygon const &pg, TPolyType polyType)
 }
 //------------------------------------------------------------------------------
 
-void ClipperBase::AddPolyPolygon( TPolyPolygon const &ppg, TPolyType polyType)
+void ClipperBase::AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType)
 {
 	for (unsigned i = 0; i < ppg.size(); i++)
 	AddPolygon(ppg[i], polyType);
@@ -676,15 +688,16 @@ Clipper::~Clipper() //destructor
 
 bool Clipper::InitializeScanbeam()
 {
-  TLocalMinima *lm;
+	TLocalMinima *lm;
 
-  DisposeScanbeamList();
-  if(  !Reset() ) return false;
-  //add all the local minima into a fresh fScanbeam list ...
+	DisposeScanbeamList();
+	if(  !Reset() ) return false;
+	//add all the local minima into a fresh fScanbeam list ...
 	lm = m_localMinimaList;
 	while( lm )
 	{
 	InsertScanbeam( lm->Y );
+	InsertScanbeam(lm->leftBound->ytop); //this is necessary too!
 	lm = lm->nextLm;
 	}
 	return true;

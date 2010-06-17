@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.3e                                                            *
-* Date      :  13 June 2010                                                    *
+* Version   :  1.4e                                                            *
+* Date      :  17 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -63,11 +63,13 @@ uses
 
 const
   infinite: double = -3.4e+38;
-  //tolerance: be very careful if you make this value larger!!
-  tolerance: double = 0.00000001;
-  //same_point_tolerance: can be customized to individual needs as long as -
-  //same_point_tolerance > 0 AND same_point_tolerance < tolerance.
-  same_point_tolerance: double = 0.001;
+  tolerance: double = 1.0e-10;
+
+  //same_point_tolerance ...
+  //Can be customized to individual needs to indicate the point at which
+  //adjacent vertices will be merged. Necessary because edges must have a slope.
+  //Must be significantly greater than 'tolerance' ...
+  same_point_tolerance: double = 1.0e-4;
 
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
@@ -83,6 +85,7 @@ type
   TArrayOfFloatPoint = array of TFloatPoint;
   TArrayOfArrayOfFloatPoint = array of TArrayOfFloatPoint;
 {$ENDIF}
+  PDoublePoint = ^TDoublePoint;
   TDoublePoint = record X, Y: double; end;
   TArrayOfDoublePoint = array of TDoublePoint;
   TArrayOfArrayOfDoublePoint = array of TArrayOfDoublePoint;
@@ -162,10 +165,10 @@ type
     //Any number of subject and clip polygons can be added to the clipping task,
     //either individually via the AddPolygon() method, or as a group via the
     //AddPolyPolygon() method, or even using both methods ...
-    procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
     //If multiple clipping operations are to be performed on different polygon
     //sets, the Clear() methods avoids the need to create new Clipper objects.
     procedure Clear;
@@ -289,6 +292,12 @@ begin
       result[i][j].Y := pts[i][j].Y;
     end;
   end;
+end;
+//------------------------------------------------------------------------------
+
+function RoundToTolerance(const number: double): double;
+begin
+  result := floor(number/same_point_tolerance + 0.5)*same_point_tolerance;
 end;
 //------------------------------------------------------------------------------
 
@@ -518,8 +527,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(const polygon: TArrayOfFloatPoint;
-  polyType: TPolyType);
+procedure TClipperBase.AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType);
 var
   dblPts: TArrayOfDoublePoint;
 begin
@@ -528,7 +536,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
+procedure TClipperBase.AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType);
 var
   i, highI: integer;
   edges: PEdgeArray;
@@ -536,7 +544,7 @@ var
 
   //----------------------------------------------------------------------
 
-  procedure InitEdge(e: PEdge; const pt1, pt2: TDoublePoint);
+  procedure InitEdge(e: PEdge; pt1, pt2: TDoublePoint);
   begin
     fillChar(e^, sizeof(TEdge), 0);
     if (pt1.Y > pt2.Y) then
@@ -731,6 +739,12 @@ begin
   {AddPolygon}
 
   highI := high(polygon);
+  for i := 0 to highI do
+  begin
+		polygon[i].X := RoundToTolerance(polygon[i].X);
+		polygon[i].Y := RoundToTolerance(polygon[i].Y);
+  end;
+
   while (highI > 1) and PointsEqual(polygon[0],polygon[highI]) do dec(highI);
   if highI < 2 then exit;
 
@@ -801,7 +815,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
+procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint;
   polyType: TPolyType);
 var
   dblPts: TArrayOfArrayOfDoublePoint;
@@ -811,7 +825,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
+procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint;
   polyType: TPolyType);
 var
   i: integer;
@@ -1100,6 +1114,7 @@ begin
   while assigned(lm) do
   begin
     InsertScanbeam(lm.y);
+    InsertScanbeam(lm.leftBound.ytop); //this is necessary too!
     lm := lm.nextLm;
   end;
 end;
@@ -1415,13 +1430,13 @@ begin
 *******************************************************************************)
 
 (*******************************************************************************
-*           \   nb: HE processing     \ /                      /          /    *
-*            \  order doesn't matter   +                      /          /     *
-*             \                       / \     (3) o==========%==========o      *
-*              o==========o (2)      /   \        |          |                 *
-*                         |         /     \       |          |                 *
-*         o===============#========*=======*======#==========o  (1)            *
-*        /                 \      /         \    /                             *
+*           \   nb: HE processing order doesn't matter         /          /    *
+*            \                                                /          /     *
+* { --------  \  -------------------  /  \  - (3) o==========%==========o  - } *
+* {            o==========o (2)      /    \       .          .               } *
+* {                       .         /      \      .          .               } *
+* { ----  o===============#========*========*=====#==========o  (1)  ------- } *
+*        /                 \      /          \   /                             *
 *******************************************************************************)
 
   with horzEdge^ do
@@ -1576,8 +1591,7 @@ function Process1Before2(Node1, Node2: PIntersectNode): boolean;
   begin
     result := true;
     while assigned(e1) do
-      if e1 = e2 then exit
-      else e1 := e1.nextInAEL;
+      if e1 = e2 then exit else e1 := e1.nextInAEL;
     result := false;
   end;
 
@@ -1987,16 +2001,16 @@ begin
 * of a scanbeam) needs to be done in multiple stages and in the correct order. *
 * Firstly, edges forming a 'maxima' need to be processed and then removed.     *
 * Next, 'intermediate' and 'maxima' horizontal edges are processed. Then edges *
-* that intersect exactly at the top of the scanbeam are processed [o].         *
+* that intersect exactly at the top of the scanbeam are processed [%].         *
 * Finally, new minima are added and any intersects they create are processed.  *
 *******************************************************************************)
 
 (*******************************************************************************
-*  \                             /    /          \   /                         *
-*   \      horizontal minima    /    /            \ /                          *
-*    o=========================#====o              .                           *
-*         horizontal maxima    |                   o  scanline intersect       *
-*      o=======================#===================#========o                  *
+*     \                          /    /          \   /                         *
+*      \   horizontal minima    /    /            \ /                          *
+* { --  o======================#====o   --------   .     ------------------- } *
+* {       horizontal maxima    .                   %  scanline intersect     } *
+* { -- o=======================#===================#========o     ---------- } *
 *      |                      /                   / \        \                 *
 *      + maxima intersect    /                   /   \        \                *
 *     /|\                   /                   /     \        \               *
@@ -2056,6 +2070,7 @@ begin
   begin
     if not assigned(e.nextInAEL) then break;
     if e.nextInAEL.xbot < e.xbot - tolerance then
+
       raise Exception.Create('ProcessEdgesAtTopOfScanbeam: Broken AEL order');
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else
