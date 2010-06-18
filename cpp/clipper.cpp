@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4e                                                            *
-* Date      :  17 June 2010                                                    *
+* Version   :  1.4i                                                            *
+* Date      :  18 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -57,8 +57,10 @@
 *******************************************************************************/
 
 #include "clipper.hpp"
-#include "math.h"
+#include <cmath>
 #include <vector>
+#include <cstring>
+#include <algorithm>
 
 namespace clipper {
 
@@ -91,15 +93,15 @@ TDoublePoint DoublePoint(double const &X, double const &Y)
 
 bool PointsEqual( TDoublePoint const &pt1, TDoublePoint const &pt2)
 {
-	return ( fabs( pt1.X - pt2.X ) < same_point_tolerance ) &&
-	( fabs( pt1.Y - pt2.Y ) < same_point_tolerance );
+	return ( std::fabs( pt1.X - pt2.X ) < same_point_tolerance ) &&
+	( std::fabs( pt1.Y - pt2.Y ) < same_point_tolerance );
 }
 //------------------------------------------------------------------------------
 
 bool PointsEqual(TEdge const &edge)
 {
-	return ( fabs( edge.xbot - edge.xtop ) < same_point_tolerance ) &&
-				( fabs( edge.ybot - edge.ytop ) < same_point_tolerance );
+	return ( std::fabs( edge.xbot - edge.xtop ) < same_point_tolerance ) &&
+				( std::fabs( edge.ybot - edge.ytop ) < same_point_tolerance );
 }
 //------------------------------------------------------------------------------
 
@@ -140,7 +142,7 @@ void ReversePolyPtLinks(TPolyPt &pp)
 
 double Slope(TDoublePoint const &pt1, TDoublePoint const &pt2)
 {
-	if(  fabs( pt1.Y - pt2.Y ) < tolerance ) return infinite;
+	if(  std::fabs( pt1.Y - pt2.Y ) < tolerance ) return infinite;
 	return ( pt1.X - pt2.X )/( pt1.Y - pt2.Y );
 }
 //------------------------------------------------------------------------------
@@ -187,7 +189,7 @@ bool EdgesShareSamePoly(TEdge &e1, TEdge &e2)
 bool SlopesEqual(TEdge &e1, TEdge &e2)
 {
 	if(IsHorizontal(e1)) return IsHorizontal(e2);
-	return ! IsHorizontal(e2) && (fabs(e1.dx - e2.dx)*1000 <= fabs(e1.dx));
+	return ! IsHorizontal(e2) && (std::fabs(e1.dx - e2.dx)*1000 <= std::fabs(e1.dx));
 }
 //------------------------------------------------------------------------------
 
@@ -205,7 +207,7 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2, TDoublePoint &ip)
 		m2 = 1.0/edge2.dx;
 		b2 = edge2.savedBot.Y - edge2.savedBot.X/edge2.dx;
 	}
-	if(  fabs( m1 - m2 ) < tolerance ) return false;
+	if(  std::fabs( m1 - m2 ) < tolerance ) return false;
 	if(  edge1.dx == 0 )
 	{
 		ip.X = edge1.savedBot.X;
@@ -226,14 +228,14 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2, TDoublePoint &ip)
 
 TDoublePoint GetUnitNormal( TDoublePoint const &pt1, TDoublePoint const &pt2)
 {
-  float dx; float dy; float f;
+  double dx; double dy; double f;
 
   dx = ( pt2.X - pt1.X );
   dy = ( pt2.Y - pt1.Y );
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
-  f = 1 *1.0/ hypot( dx , dy );
-  dx = dx * f;
+	f = 1 *1.0/ std::hypot( dx , dy );
+	dx = dx * f;
   dy = dy * f;
   return DoublePoint(dy, -dx);
 }
@@ -248,18 +250,18 @@ bool ValidateOrientation(TPolyPt *pt)
   //compares the orientation (clockwise vs counter-clockwise) of a *simple*
   //polygon with its hole status (ie test whether an inner or outer polygon).
 	//nb: complex polygons have indeterminate orientations.
-  bottomPt = pt;
-  ptStart = pt;
-  pt = pt->next;
-  while(  ( pt != ptStart ) )
-  {
+	bottomPt = pt;
+	ptStart = pt;
+	pt = pt->next;
+	while(  ( pt != ptStart ) )
+	{
 	if(  ( pt->pt.Y > bottomPt->pt.Y ) ||
-	  ( ( pt->pt.Y == bottomPt->pt.Y ) && ( pt->pt.X > bottomPt->pt.X ) ) )
+		( ( pt->pt.Y == bottomPt->pt.Y ) && ( pt->pt.X > bottomPt->pt.X ) ) )
 		bottomPt = pt;
 	pt = pt->next;
-  }
+	}
 
-  ptPrev = bottomPt->prev;
+	ptPrev = bottomPt->prev;
 	ptNext = bottomPt->next;
 	N1 = GetUnitNormal( ptPrev->pt , bottomPt->pt );
 	N2 = GetUnitNormal( bottomPt->pt , ptNext->pt );
@@ -274,7 +276,7 @@ void InitEdge(TEdge *e, TDoublePoint const &pt1,
 {
 	//nb: round the vertices to 6 decimal places (roundToVal == -6)
 	//to further minimize floating point errors ...
-	memset( e, 0, sizeof( TEdge ));
+	std::memset( e, 0, sizeof( TEdge ));
 	if(  ( pt1.Y > pt2.Y ) )
 	{
 		e->xbot = pt1.X;
@@ -333,7 +335,7 @@ bool FixupIfDupOrColinear( TEdge *&e, TEdge *edges)
 		e->prev->next = e->next;
 		if(  ( e == edges ) )
 		{
-			memcpy(e, e->next, sizeof(TEdge));
+			std::memcpy(e, e->next, sizeof(TEdge));
 			e->prev->next = e;
 			e->next->prev = e;
 		} else
@@ -481,7 +483,7 @@ TEdge *NextMin(TEdge *e)
 //------------------------------------------------------------------------------
 
 double RoundToTolerance(double const number){
-	return floor( number/same_point_tolerance + 0.5 )*same_point_tolerance;
+	return std::floor( number/same_point_tolerance + 0.5 )*same_point_tolerance;
 }
 //------------------------------------------------------------------------------
 
@@ -738,7 +740,7 @@ double Clipper::PopScanbeam()
   double Y;
   TScanbeam *sb2;
   Y = m_Scanbeam->Y;
-  sb2 = m_Scanbeam;
+	sb2 = m_Scanbeam;
   m_Scanbeam = m_Scanbeam->nextSb;
 	delete sb2;
   return Y;
@@ -885,7 +887,7 @@ bool E1PrecedesE2inAEL(TEdge *e1, TEdge *e2)
 
 bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
 {
-	if( fabs(Node1->pt.Y - Node2->pt.Y) < tolerance ){
+	if( std::fabs(Node1->pt.Y - Node2->pt.Y) < tolerance ){
 		if( SlopesEqual(*Node1->edge1, *Node2->edge1) ){
 			if( SlopesEqual(*Node1->edge2, *Node2->edge2) ){
 				if(Node1->edge2 == Node2->edge2)
@@ -995,11 +997,11 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
 	bool e1stops, e2stops, e1Contributing, e2contributing;
 
 	e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
-		( fabs( e1->xtop - pt.X ) < tolerance ) &&
-		( fabs( e1->ytop - pt.Y ) < tolerance );
+		( std::fabs( e1->xtop - pt.X ) < tolerance ) &&
+		( std::fabs( e1->ytop - pt.Y ) < tolerance );
 	e2stops = !(ipRight & protects) &&  !e2->nextInLML &&
-		( fabs( e2->xtop - pt.X ) < tolerance ) &&
-		( fabs( e2->ytop - pt.Y ) < tolerance );
+		( std::fabs( e2->xtop - pt.X ) < tolerance ) &&
+		( std::fabs( e2->ytop - pt.Y ) < tolerance );
 	e1Contributing = ( e1->polyIdx >= 0 );
 	e2contributing = ( e2->polyIdx >= 0 );
 
@@ -1354,8 +1356,8 @@ bool Clipper::IsTopHorz(TEdge *horzEdge, double const &XPos)
 	e = m_SortedEdges;
 	while( e )
 	{
-		if(  ( XPos >= min(e->xbot, e->xtop) ) &&
-			( XPos <= max(e->xbot, e->xtop) ) ) return false;
+		if(  ( XPos >= std::min(e->xbot, e->xtop) ) &&
+			( XPos <= std::max(e->xbot, e->xtop) ) ) return false;
 		e = e->nextInSEL;
 	}
 	return true;
@@ -1533,7 +1535,7 @@ TEdge *Clipper::BubbleSwap(TEdge *edge)
 	int i, cnt = 1;
 
 	result = edge->nextInAEL;
-	while( result  && ( fabs(result->xbot - edge->xbot) <= tolerance ) )
+	while( result  && ( std::fabs(result->xbot - edge->xbot) <= tolerance ) )
 	{
 		++cnt;
 		result = result->nextInAEL;

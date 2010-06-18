@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4                                                             *
-* Date      :  15 June 2010                                                    *
+* Version   :  1.4i                                                            *
+* Date      :  18 June 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
@@ -69,12 +69,10 @@ typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { esLeft, esRight } TEdgeSide;
 typedef unsigned TIntersectProtects;
 
-using namespace std;
-
 struct TDoublePoint { double X; double Y; };
 TDoublePoint DoublePoint(double const &X, double const &Y);
-typedef vector<TDoublePoint> TPolygon;
-typedef vector< TPolygon > TPolyPolygon;
+typedef std::vector<TDoublePoint> TPolygon;
+typedef std::vector< TPolygon > TPolyPolygon;
 
 struct TEdge {
 	double xbot;
@@ -126,7 +124,7 @@ struct TPolyPt {
 class ClipperBase
 {
 private:
-	vector< TEdge * >  m_edges;
+	std::vector< TEdge * >  m_edges;
 protected:
 	TLocalMinima      *m_localMinimaList;
 	TLocalMinima      *m_recycledLocMin;
@@ -147,7 +145,7 @@ public:
 class Clipper : public ClipperBase
 {
 private:
-	vector < TPolyPt * >  m_PolyPts;
+	std::vector < TPolyPt * >  m_PolyPts;
 	TClipType             m_ClipType ;
 	TScanbeam            *m_Scanbeam;
 	TEdge                *m_ActiveEdges;
