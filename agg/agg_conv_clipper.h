@@ -12,6 +12,13 @@
 // mcseemagg@yahoo.com
 // http://www.antigrain.com
 //----------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------
+// agg_conv_clipper.h
+// Author    :  Angus Johnson                                                   
+// Version   :  1.0a                                                            
+// Date      :  19 June 2010                                                    
+//----------------------------------------------------------------------------
 
 #ifndef AGG_CONV_CLIPPER_INCLUDED
 #define AGG_CONV_CLIPPER_INCLUDED
@@ -183,7 +190,7 @@ namespace agg
   len = p.size();
   p.resize(len+1);
   p[len].resize(m_vertex_accumulator.size());
-  for( i = 0 ; i < m_vertex_accumulator.size() ; ++i )
+  for( i = 0 ; i < m_vertex_accumulator.size() ; i++ )
     p[len][i] = m_vertex_accumulator[i];
   m_vertex_accumulator.remove_all();
   }
