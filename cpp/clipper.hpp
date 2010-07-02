@@ -2,11 +2,11 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4i                                                            *
-* Date      :  18 June 2010                                                    *
+* Version   :  1.4m                                                            *
+* Date      :  3 July 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
-* This is an implementation of Bala Vatti's clipping algorithm outlined in:    *
+* The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
@@ -126,6 +126,7 @@ class ClipperBase
 private:
 	std::vector< TEdge * >  m_edges;
 protected:
+	double            m_DupPtTolerance;
 	TLocalMinima      *m_localMinimaList;
 	TLocalMinima      *m_recycledLocMin;
 	TLocalMinima      *m_recycledLocMinEnd;
@@ -140,6 +141,14 @@ public:
 	void AddPolygon(TPolygon &pg, TPolyType polyType);
 	void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
 	void Clear();
+	//DuplicatePointTolerance:
+	//Polygon coordinates will be rounded to the specified number of decimal
+	//places, and any resulting adjacent duplicate vertices will ignored to
+	//prevent edges from having indeterminate slope.
+	//Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
+	//nb: change DuplicatePointTolerance() *before* calling AddPolygon().
+	int DuplicatePointTolerance();
+	void DuplicatePointTolerance(int value);
 };
 
 class Clipper : public ClipperBase

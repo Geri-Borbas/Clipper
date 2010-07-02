@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4e                                                            *
-* Date      :  17 June 2010                                                    *
+* Version   :  1.4m                                                            *
+* Date      :  3 July 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -63,14 +63,13 @@ uses
 
 const
   infinite: double = -3.4e+38;
+  //tolerance: ideally this value should vary depending on how big (or small)
+  //the supplied polygon coordinate values are. If coordinate values are greater
+  //than 1.0E+5 (ie 100,000+) then tolerance should be adjusted up (since the
+  //significand of type double is 15 decimal places). However, for the vast
+  //majority of uses ... tolerance = 1.0e-10 will be just fine.
   tolerance: double = 1.0e-10;
-
-  //same_point_tolerance ...
-  //Can be customized to individual needs to indicate the point at which
-  //adjacent vertices will be merged. Necessary because edges must have a slope.
-  //Must be significantly greater than 'tolerance' ...
-  same_point_tolerance: double = 1.0e-4;
-
+  default_dup_pt_tolerance: double = 1.0e-6;
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
@@ -155,7 +154,10 @@ type
     fRecycledLocMin   : PLocalMinima;
     fRecycledLocMinEnd: PLocalMinima;
     procedure DisposeLocalMinimaList;
+    function GetDuplicatePointTolerance: integer;
+    procedure SetDuplicatePointTolerance(const value: integer);
   protected
+    fDupPtTolerance: double;
     fLocalMinima      : PLocalMinima;
     procedure PopLocalMinima;
     function Reset: boolean;
@@ -163,7 +165,7 @@ type
     constructor Create; virtual;
     destructor Destroy; override;
     //Any number of subject and clip polygons can be added to the clipping task,
-    //either individually via the AddPolygon() method, or as a group via the
+    //either individually via the AddPolygon() method, or as groups via the
     //AddPolyPolygon() method, or even using both methods ...
     procedure AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
     procedure AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
@@ -172,6 +174,14 @@ type
     //If multiple clipping operations are to be performed on different polygon
     //sets, the Clear() methods avoids the need to create new Clipper objects.
     procedure Clear;
+    //DuplicatePointTolerance:
+    //Polygon coordinates will be rounded to the specified number of decimal
+    //places, and any resulting adjacent duplicate vertices will ignored to
+    //prevent edges from having indeterminate slope.
+	  //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
+	  //nb: change DuplicatePointTolerance() *before* calling AddPolygon().
+    property DuplicatePointTolerance: integer read GetDuplicatePointTolerance
+      write SetDuplicatePointTolerance;
   end;
 
   TClipper = class(TClipperBase)
@@ -231,14 +241,13 @@ type
       out solution: TArrayOfArrayOfDoublePoint): boolean; overload;
     constructor Create; override;
     destructor Destroy; override;
-  property
     //The ForceAlternateOrientation property is only useful when operating on
     //simple polygons. It ensures that the result of the TClipper Execute
     //method will be (simple) polygons with clockwise 'outer' and
     //counter-clockwise 'inner' (or 'hole') polygons. There is no danger with
     //enabling this property when operating on complex polygons, the only
     //downside being a very minor penalty in execution speed. (Default = true)
-    ForceAlternateOrientation: boolean read
+    property ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
 
@@ -295,32 +304,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function RoundToTolerance(const number: double): double;
+function RoundToTolerance(const number, epsilon: double): double;
 begin
-  result := floor(number/same_point_tolerance + 0.5)*same_point_tolerance;
+  Result := Round(number / epsilon) * epsilon;
 end;
 //------------------------------------------------------------------------------
 
-function PointsEqual(const pt1, pt2: TFloatPoint): boolean; overload;
+function PointsEqual(const pt1, pt2: TDoublePoint;
+  const epsilon: double): boolean; overload;
 begin
-  result :=
-    (abs(pt1.X - pt2.X) < same_point_tolerance) and
-      (abs(pt1.Y - pt2.Y) < same_point_tolerance);
+  result := (abs(pt1.X-pt2.X) < epsilon) and (abs(pt1.Y-pt2.Y) < epsilon);
 end;
 //------------------------------------------------------------------------------
 
-function PointsEqual(const pt1, pt2: TDoublePoint): boolean; overload;
+function PointsEqual(edge: PEdge; const epsilon: double): boolean; overload;
 begin
-  result :=
-    (abs(pt1.X - pt2.X) < same_point_tolerance) and
-      (abs(pt1.Y - pt2.Y) < same_point_tolerance);
-end;
-//------------------------------------------------------------------------------
-
-function PointsEqual(edge: PEdge): boolean; overload;
-begin
-  result := (abs(edge.xbot - edge.xtop) < same_point_tolerance) and
-              (abs(edge.ybot - edge.ytop) < same_point_tolerance);
+  result := (abs(edge.xbot - edge.xtop) < epsilon) and
+    (abs(edge.ybot - edge.ytop) < epsilon);
 end;
 //------------------------------------------------------------------------------
 
@@ -352,16 +352,9 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Slope(const pt1, pt2: TFloatPoint): double; overload;
+function Slope(const pt1, pt2: TDoublePoint): double;
 begin
-  if abs(pt1.y - pt2.y) < tolerance then
-    result:= infinite else
-    result := (pt1.x - pt2.x)/(pt1.y - pt2.y);
-end;
-//------------------------------------------------------------------------------
-
-function Slope(const pt1, pt2: TDoublePoint): double; overload;
-begin
+  //todo - change this to cross-multiplication
   if abs(pt1.y - pt2.y) < tolerance then
     result:= infinite else
     result := (pt1.x - pt2.x)/(pt1.y - pt2.y);
@@ -408,49 +401,39 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SlopesEqual(e1, e2: PEdge): boolean;
+function SlopesEqual(e1, e2: PEdge; const epsilon: double): boolean;
 begin
   if IsHorizontal(e1) then
-    result := IsHorizontal(e2) else
-    result := not IsHorizontal(e2) and (abs(e1.dx - e2.dx)*1000 <= abs(e1.dx));
+    result := IsHorizontal(e2)
+  else if IsHorizontal(e2) then
+    result := false
+  else
+    result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
+      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < epsilon;
 end;
 //---------------------------------------------------------------------------
 
 function IntersectPoint(edge1, edge2: PEdge; out ip: TDoublePoint): boolean;
 var
-  m1,m2,b1,b2: double;
+  b1,b2: double;
 begin
-  m1 := 0; m2 := 0; b1 := 0; b2 := 0;
-  with edge1^ do
-    if dx <> 0 then
-    begin
-      m1 := 1/dx;
-      b1 := savedBot.Y - savedBot.X/dx;
-    end;
-  with edge2^ do
-    if dx <> 0 then
-    begin
-      m2 := 1/dx;
-      b2 := savedBot.Y - savedBot.X/dx;
-    end;
-  if abs(m1 - m2) < tolerance then
-  begin
-    result := false;
-    exit;
-  end;
   if edge1.dx = 0 then
   begin
     ip.X := edge1.savedBot.X;
-    ip.Y := m2*ip.X + b2;
+    with edge2^ do b2 := savedBot.Y - savedBot.X/dx;
+    ip.Y := ip.X/edge2.dx + b2;
   end
   else if edge2.dx = 0 then
   begin
     ip.X := edge2.savedBot.X;
-    ip.Y := m1*ip.X + b1;
+    with edge1^ do b1 := savedBot.Y - savedBot.X/dx;
+    ip.Y := ip.X/edge1.dx + b1;
   end else
   begin
-    ip.X := (b2 - b1)/(m1 - m2);
-    ip.Y := (m1 * ip.X + b1);
+    with edge1^ do b1 := savedBot.X - savedBot.Y *dx;
+    with edge2^ do b2 := savedBot.X - savedBot.Y *dx;
+    ip.Y := (b2-b1)/(edge1.dx - edge2.dx);
+    ip.X := edge1.dx * ip.Y + b1;
   end;
   result := (ip.Y > edge1.ytop + tolerance) and (ip.Y > edge2.ytop + tolerance);
 end;
@@ -516,6 +499,7 @@ begin
   fLocalMinima       := nil;
   fRecycledLocMin    := nil;
   fRecycledLocMinEnd := nil;
+  fDupPtTolerance := default_dup_pt_tolerance;
 end;
 //------------------------------------------------------------------------------
 
@@ -524,6 +508,20 @@ begin
   Clear;
   fList.Free;
   inherited;
+end;
+//------------------------------------------------------------------------------
+
+function TClipperBase.GetDuplicatePointTolerance: integer;
+begin
+  result := - round(log10(fDupPtTolerance));
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipperBase.SetDuplicatePointTolerance(const value: integer);
+begin
+  if (value < 0) or (value > 6) then
+    raise exception.Create('DuplicatePointTolerance: 0 .. 6 (decimal places)');
+  fDupPtTolerance := power(10, -value);
 end;
 //------------------------------------------------------------------------------
 
@@ -589,14 +587,23 @@ var
   end;
   //----------------------------------------------------------------------
 
+  function SlopesEqualInternal(e1, e2: PEdge): boolean;
+  begin
+    //cross product of dy1/dx1 = dy2/dx2 ...
+    result := abs((e1.ytop-e1.ybot)*(e2.xtop-e2.xbot) -
+      (e1.xtop-e1.xbot)*(e2.ytop-e2.ybot)) < fDupPtTolerance;
+  end;
+  //----------------------------------------------------------------------
+
   function FixupIfDupOrColinear(var e: PEdge): boolean;
   begin
     if (e.next = e.prev) then
     begin
       result := false;
     end
-    else if PointsEqual(e) or
-      PointsEqual(e.savedBot, e.prev.savedBot) or SlopesEqual(e.prev, e) then
+    else if PointsEqual(e, fDupPtTolerance) or
+      PointsEqual(e.savedBot, e.prev.savedBot, fDupPtTolerance) or
+      SlopesEqualInternal(e.prev, e) then
     begin
       //fixup the previous edge because 'e' is about to come out of the loop ...
       ReInitEdge(e.prev, e.prev.savedBot, e.Next.savedBot);
@@ -738,14 +745,16 @@ var
 begin
   {AddPolygon}
 
+  //q := round(log10(fDupPtTolerance));
   highI := high(polygon);
   for i := 0 to highI do
   begin
-		polygon[i].X := RoundToTolerance(polygon[i].X);
-		polygon[i].Y := RoundToTolerance(polygon[i].Y);
+		polygon[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
+		polygon[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
   end;
 
-  while (highI > 1) and PointsEqual(polygon[0],polygon[highI]) do dec(highI);
+  while (highI > 1) and
+    PointsEqual(polygon[0], polygon[highI], fDupPtTolerance) do dec(highI);
   if highI < 2 then exit;
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
@@ -1167,7 +1176,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
     if (e2.xbot - tolerance > e1.xbot) then result := false
     else if (e2.xbot + tolerance < e1.xbot) then result := true
     else if IsHorizontal(e2) then result := false
-    else if SlopesEqual(e1, e2) then result := false
+    else if SlopesEqual(e1, e2, fDupPtTolerance) then result := false
     else result := e2.dx > e1.dx;
   end;
   //----------------------------------------------------------------------
@@ -1542,14 +1551,14 @@ begin
         e := e.nextInAEL;
       end;
     end;
-    
+
   end else
   begin
     result := idx;
     fp := PPolyPt(fPolyPtList[idx]);
 
-    if (ToFront and PointsEqual(pt, fp.pt)) or
-      (not ToFront and PointsEqual(pt, fp.prev.pt)) then
+    if (ToFront and PointsEqual(pt, fp.pt, fDupPtTolerance)) or
+      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then
     begin
       dispose(newPolyPt);
       exit;
@@ -1585,7 +1594,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Process1Before2(Node1, Node2: PIntersectNode): boolean;
+function Process1Before2(Node1, Node2: PIntersectNode; const epsilon: double): boolean;
 
   function E1PrecedesE2inAEL(e1, e2: PEdge): boolean;
   begin
@@ -1598,9 +1607,9 @@ function Process1Before2(Node1, Node2: PIntersectNode): boolean;
 begin
   if (abs(Node1.pt.Y - Node2.pt.Y) < tolerance) then
   begin
-    if SlopesEqual(Node1.edge1, Node2.edge1) then
+    if SlopesEqual(Node1.edge1, Node2.edge1, epsilon) then
     begin
-      if SlopesEqual(Node1.edge2, Node2.edge2) then
+      if SlopesEqual(Node1.edge2, Node2.edge2, epsilon) then
       begin
         if Node1.edge2 = Node2.edge2 then
           result := E1PrecedesE2inAEL(Node2.edge1, Node1.edge1) else
@@ -1626,7 +1635,7 @@ begin
   IntersectNode.prev := nil;
   if not assigned(fIntersectNodes) then
     fIntersectNodes := IntersectNode
-  else if Process1Before2(IntersectNode, fIntersectNodes) then
+  else if Process1Before2(IntersectNode,fIntersectNodes,fDupPtTolerance) then
   begin
     IntersectNode.next := fIntersectNodes;
     fIntersectNodes.prev := IntersectNode;
@@ -1634,7 +1643,8 @@ begin
   end else
   begin
     iNode := fIntersectNodes;
-    while assigned(iNode.next) and Process1Before2(iNode.next, IntersectNode) do
+    while assigned(iNode.next) and
+      Process1Before2(iNode.next, IntersectNode, fDupPtTolerance) do
       iNode := iNode.next;
     if assigned(iNode.next) then iNode.next.prev := IntersectNode;
     IntersectNode.next := iNode.next;
@@ -1945,13 +1955,7 @@ begin
     inc(cnt);
     result := Result.nextInAEL;
   end;
-  //nb: cnt will always be greater than 1 here
-  if cnt = 2 then
-  begin
-    if SlopesEqual(edge, edge.nextInAEL) or (edge.dx > edge.nextInAEL.dx) then exit;
-    IntersectEdges(edge, edge.nextInAEL, DoublePoint(edge.xbot,edge.ybot));
-    SwapPositionsInAEL(edge, edge.nextInAEL);
-  end else
+  if cnt > 2 then
   begin
     try
       //create the sort list ...
@@ -2070,7 +2074,6 @@ begin
   begin
     if not assigned(e.nextInAEL) then break;
     if e.nextInAEL.xbot < e.xbot - tolerance then
-
       raise Exception.Create('ProcessEdgesAtTopOfScanbeam: Broken AEL order');
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else

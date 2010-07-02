@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4i                                                            *
-* Date      :  18 June 2010                                                    *
+* Version   :  1.4m                                                            *
+* Date      :  3 July 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -65,13 +65,13 @@
 namespace clipper {
 
 static double const infinite = -3.4E+38;
+//tolerance: ideally this value should vary depending on how big (or small)
+//the supplied polygon coordinate values are. If coordinate values are greater
+//than 1.0E+5 (ie 100,000+) then tolerance should be adjusted up (since the
+//significand of type double is 15 decimal places). However, for the vast
+//majority of uses ... tolerance = 1.0e-10 will be just fine.
 static double const tolerance = 1.0E-10;
-
-//same_point_tolerance ...
-//Can be customized to individual needs to indicate the point at which adjacent
-//vertices will be merged. Necessary because edges must have a slope.
-//Must be significantly greater than 'tolerance' ...
-static double const same_point_tolerance = 1.0E-4;
+static double const default_dup_pt_tolerance = 1.0E-6;
 
 static const unsigned ipLeft = 1;
 static const unsigned ipRight = 2;
@@ -91,17 +91,18 @@ TDoublePoint DoublePoint(double const &X, double const &Y)
 }
 //------------------------------------------------------------------------------
 
-bool PointsEqual( TDoublePoint const &pt1, TDoublePoint const &pt2)
+bool PointsEqual( TDoublePoint const &pt1,
+	TDoublePoint const &pt2, double const &epsilon)
 {
-	return ( std::fabs( pt1.X - pt2.X ) < same_point_tolerance ) &&
-	( std::fabs( pt1.Y - pt2.Y ) < same_point_tolerance );
+	return ( std::fabs( pt1.X - pt2.X ) < epsilon ) &&
+	( std::fabs( pt1.Y - pt2.Y ) < epsilon );
 }
 //------------------------------------------------------------------------------
 
-bool PointsEqual(TEdge const &edge)
+bool PointsEqual(TEdge const &edge, double const &epsilon)
 {
-	return ( std::fabs( edge.xbot - edge.xtop ) < same_point_tolerance ) &&
-				( std::fabs( edge.ybot - edge.ytop ) < same_point_tolerance );
+	return ( std::fabs( edge.xbot - edge.xtop ) < epsilon ) &&
+				( std::fabs( edge.ybot - edge.ytop ) < epsilon );
 }
 //------------------------------------------------------------------------------
 
@@ -186,43 +187,38 @@ bool EdgesShareSamePoly(TEdge &e1, TEdge &e2)
 }
 //------------------------------------------------------------------------------
 
-bool SlopesEqual(TEdge &e1, TEdge &e2)
+bool SlopesEqual(TEdge &e1, TEdge &e2, double const &epsilon)
 {
-	if(IsHorizontal(e1)) return IsHorizontal(e2);
-	return ! IsHorizontal(e2) && (std::fabs(e1.dx - e2.dx)*1000 <= std::fabs(e1.dx));
+	if (IsHorizontal(e1)) return IsHorizontal(e2);
+	if (IsHorizontal(e2)) return false;
+	return std::fabs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
+			(e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < epsilon;
 }
 //------------------------------------------------------------------------------
 
 bool IntersectPoint(TEdge &edge1, TEdge &edge2, TDoublePoint &ip)
 {
-	double m1; double m2; double b1; double b2;
+	double b1; double b2;
 
-	m1 = 0; m2 = 0; b1 = 0; b2 = 0;
-	if( edge1.dx != 0 ){
-		m1 = 1.0/edge1.dx;
-		b1 = edge1.savedBot.Y - edge1.savedBot.X/edge1.dx;
-	}
-	if( edge2.dx != 0 )
-	{
-		m2 = 1.0/edge2.dx;
-		b2 = edge2.savedBot.Y - edge2.savedBot.X/edge2.dx;
-	}
-	if(  std::fabs( m1 - m2 ) < tolerance ) return false;
 	if(  edge1.dx == 0 )
 	{
 		ip.X = edge1.savedBot.X;
-		ip.Y = m2*ip.X + b2;
+		b2 = edge2.savedBot.Y - edge2.savedBot.X/edge2.dx;
+		ip.Y = ip.X/edge2.dx + b2;
 	}
 	else if(  edge2.dx == 0 )
 	{
 		ip.X = edge2.savedBot.X;
-		ip.Y = m1*ip.X + b1;
+		b1 = edge1.savedBot.Y - edge1.savedBot.X/edge1.dx;
+		ip.Y = ip.X/edge1.dx + b1;
 	} else
 	{
-		ip.X = ( b2 - b1 )*1.0/( m1 - m2 );
-		ip.Y = ( m1 * ip.X + b1 );
+		b1 = edge1.savedBot.X - edge1.savedBot.Y *edge1.dx;
+		b2 = edge2.savedBot.X - edge2.savedBot.Y *edge2.dx;
+		ip.Y = (b2-b1)/(edge1.dx - edge2.dx);
+		ip.X = edge1.dx * ip.Y + b1;
 	}
-	return ( ip.Y > edge1.ytop + tolerance ) && ( ip.Y > edge2.ytop + tolerance );
+	return (ip.Y > edge1.ytop + tolerance) && (ip.Y > edge2.ytop + tolerance);
 }
 //------------------------------------------------------------------------------
 
@@ -320,13 +316,20 @@ void ReInitEdge(TEdge *e, TDoublePoint
 }
 //------------------------------------------------------------------------------
 
-bool FixupIfDupOrColinear( TEdge *&e, TEdge *edges)
+bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
+{
+	return std::fabs((e1.ytop-e1.ybot)*(e2.xtop-e2.xbot) -
+		(e1.xtop-e1.xbot)*(e2.ytop-e2.ybot)) < default_dup_pt_tolerance;
+}
+//------------------------------------------------------------------------------
+
+bool FixupIfDupOrColinear( TEdge *&e, TEdge *edges, double const &epsilon)
 {
 	if(  ( e->next == e->prev ) ) return false;
 
-	if(  PointsEqual( *e ) ||
-		PointsEqual( e->savedBot , e->prev->savedBot ) ||
-		SlopesEqual( *e->prev , *e ) )
+	if(  PointsEqual( *e, epsilon) ||
+		PointsEqual( e->savedBot , e->prev->savedBot, epsilon ) ||
+		SlopesEqualInternal( *e->prev , *e ) )
 	{
 		//fixup the previous edge because 'e' is about to come out of the loop ...
 		ReInitEdge( e->prev , e->prev->savedBot , e->next->savedBot );
@@ -402,12 +405,27 @@ ClipperBase::ClipperBase() //constructor
 	m_recycledLocMin = 0;
 	m_recycledLocMinEnd = 0;
 	m_edges.reserve(32);
+	m_DupPtTolerance = default_dup_pt_tolerance;
 }
 //------------------------------------------------------------------------------
 
 ClipperBase::~ClipperBase() //destructor
 {
 	Clear();
+}
+//------------------------------------------------------------------------------
+
+int ClipperBase::DuplicatePointTolerance()
+{
+	return - std::log10(m_DupPtTolerance);
+}
+//------------------------------------------------------------------------------
+
+void ClipperBase::DuplicatePointTolerance(int value)
+{
+	if (value < 0 || value > 6)
+	  throw "DuplicatePointTolerance: 0 .. 6 (decimal places)";
+	m_DupPtTolerance = std::pow(10,(float)-value);
 }
 //------------------------------------------------------------------------------
 
@@ -482,8 +500,8 @@ TEdge *NextMin(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-double RoundToTolerance(double const number){
-	return std::floor( number/same_point_tolerance + 0.5 )*same_point_tolerance;
+double RoundToTolerance(double const number, double const epsilon){
+	return std::floor( number/epsilon + 0.5 ) * epsilon;
 }
 //------------------------------------------------------------------------------
 
@@ -494,16 +512,17 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
 
 	highI = pg.size() -1;
 	for (i = 0; i <= highI; i++) {
-		pg[i].X = RoundToTolerance(pg[i].X);
-		pg[i].Y = RoundToTolerance(pg[i].Y);
+		pg[i].X = RoundToTolerance(pg[i].X, m_DupPtTolerance);
+		pg[i].Y = RoundToTolerance(pg[i].Y, m_DupPtTolerance);
 	}
 
-	while(  ( highI > 1 ) && PointsEqual(pg[0] , pg[highI] ) ) --highI;
+	while( (highI > 1) &&
+		PointsEqual(pg[0] , pg[highI], m_DupPtTolerance) ) highI--;
 	if(  highI < 2 ) return;
 
 	//make sure this is a sensible polygon (ie with at least one minima) ...
 	i = 1;
-	while(  ( i <= highI ) && ( pg[i].Y == pg[0].Y ) ) ++i;
+	while(  (i <= highI) && (pg[i].Y == pg[0].Y) ) i++;
 	if(  i > highI ) return;
 
 	//create a new edge array ...
@@ -527,12 +546,12 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
 	//fixup any co-linear edges or duplicate points ...
 	e = &edges[0];
 	do {
-		while( FixupIfDupOrColinear(e, &edges[0]) ) ;
+		while( FixupIfDupOrColinear(e, &edges[0], m_DupPtTolerance) ) ;
 	} while((e != &edges[0]) && ( e->next != e->prev ));
 	if( e->next != e->prev)
 		do {
 			e = &edges[0];
-		} while(FixupIfDupOrColinear( e, &edges[0] ));
+		} while(FixupIfDupOrColinear( e, &edges[0], m_DupPtTolerance ));
 
 	//make sure we still have a valid polygon ...
 	if( e->next == e->prev )
@@ -758,11 +777,11 @@ void Clipper::DisposeScanbeamList()
 }
 //------------------------------------------------------------------------------
 
-bool Edge2InsertsBeforeEdge1(TEdge &e1, TEdge &e2)
+bool Edge2InsertsBeforeEdge1(TEdge &e1, TEdge &e2, double const &epsilon)
 {
 	if( e2.xbot - tolerance > e1.xbot ) return false;
 	if( e2.xbot + tolerance < e1.xbot ) return true;
-	if( IsHorizontal(e2) || SlopesEqual(e1,e2) ) return false;
+	if( IsHorizontal(e2) || SlopesEqual(e1,e2,epsilon) ) return false;
   return (e2.dx > e1.dx);
 }
 //------------------------------------------------------------------------------
@@ -777,7 +796,7 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
 	{
 		m_ActiveEdges = edge;
 	}
-	else if( Edge2InsertsBeforeEdge1(*m_ActiveEdges, *edge) )
+	else if( Edge2InsertsBeforeEdge1(*m_ActiveEdges, *edge, m_DupPtTolerance) )
 	{
 		edge->nextInAEL = m_ActiveEdges;
 		m_ActiveEdges->prevInAEL = edge;
@@ -785,7 +804,8 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
 	} else
 	{
 		e = m_ActiveEdges;
-		while( e->nextInAEL  && !Edge2InsertsBeforeEdge1(*e->nextInAEL , *edge) )
+		while( e->nextInAEL  &&
+		  !Edge2InsertsBeforeEdge1(*e->nextInAEL , *edge, m_DupPtTolerance) )
 			e = e->nextInAEL;
 		edge->nextInAEL = e->nextInAEL;
 		if( e->nextInAEL ) e->nextInAEL->prevInAEL = edge;
@@ -885,11 +905,12 @@ bool E1PrecedesE2inAEL(TEdge *e1, TEdge *e2)
 }
 //------------------------------------------------------------------------------
 
-bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
+bool Process1Before2(TIntersectNode *Node1,
+  TIntersectNode *Node2, double const &epsilon)
 {
 	if( std::fabs(Node1->pt.Y - Node2->pt.Y) < tolerance ){
-		if( SlopesEqual(*Node1->edge1, *Node2->edge1) ){
-			if( SlopesEqual(*Node1->edge2, *Node2->edge2) ){
+		if( SlopesEqual(*Node1->edge1, *Node2->edge1, epsilon) ){
+			if( SlopesEqual(*Node1->edge2, *Node2->edge2, epsilon) ){
 				if(Node1->edge2 == Node2->edge2)
 					return E1PrecedesE2inAEL(Node2->edge1, Node1->edge1); else
 					return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
@@ -911,7 +932,8 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
 	IntersectNode->prev = 0;
 	if( !m_IntersectNodes )
 		m_IntersectNodes = IntersectNode;
-	else if(  Process1Before2(IntersectNode , m_IntersectNodes) )
+	else if(  Process1Before2(IntersectNode ,
+		m_IntersectNodes, m_DupPtTolerance) )
 	{
 		IntersectNode->next = m_IntersectNodes;
 		m_IntersectNodes->prev = IntersectNode;
@@ -920,8 +942,9 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
 	else
 	{
 		iNode = m_IntersectNodes;
-		while( iNode->next  && Process1Before2(iNode->next, IntersectNode) )
-			iNode = iNode->next;
+		while( iNode->next  &&
+			Process1Before2(iNode->next, IntersectNode, m_DupPtTolerance) )
+				iNode = iNode->next;
 		if( iNode->next ) iNode->next->prev = IntersectNode;
 		IntersectNode->next = iNode->next;
 		IntersectNode->prev = iNode;
@@ -1183,7 +1206,7 @@ void Clipper::InsertLocalMinimaIntoAEL( double const &botY)
 		InsertScanbeam( m_localMinimaList->leftBound->ytop );
 		InsertEdgeIntoAEL( m_localMinimaList->rightBound );
 
-		e = m_localMinimaList->leftBound->nextInAEL;
+		//e = m_localMinimaList->leftBound->nextInAEL;
 		if(  IsHorizontal( *m_localMinimaList->rightBound ) )
 		{
 			//nb: only rightbounds can have a horizontal bottom edge
@@ -1541,15 +1564,7 @@ TEdge *Clipper::BubbleSwap(TEdge *edge)
 		result = result->nextInAEL;
 	}
 
-	if( cnt == 2 )
-	{
-		if( SlopesEqual(*edge, *edge->nextInAEL) ||
-			(edge->dx > edge->nextInAEL->dx)) return result;
-		IntersectEdges( edge , edge->nextInAEL ,
-			DoublePoint(edge->xbot, edge->ybot), 0 );
-		SwapPositionsInAEL( edge, edge->nextInAEL );
-	}
-	else
+	if( cnt > 2 )
 	{
 		//create the sort list ...
 		try {
@@ -1583,8 +1598,7 @@ TEdge *Clipper::BubbleSwap(TEdge *edge)
 		catch(...) {
 			m_SortedEdges = 0;
 			throw "BubbleSwap error";
-		}
-		m_SortedEdges = 0;
+		}		m_SortedEdges = 0;
 	}
 return result;
 }
@@ -1698,8 +1712,8 @@ int Clipper::AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront)
 	{
 		pp = m_PolyPts[idx];
 
-		if( (ToFront && PointsEqual(pt, pp->pt)) ||
-			(!ToFront && PointsEqual(pt, pp->prev->pt)) )
+		if( (ToFront && PointsEqual(pt, pp->pt, m_DupPtTolerance)) ||
+			(!ToFront && PointsEqual(pt, pp->prev->pt, m_DupPtTolerance)) )
 		{
 			delete newPolyPt;
 			return idx;

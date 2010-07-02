@@ -138,10 +138,10 @@ begin
   if assigned(solution) and not rbNone.Checked then
   begin
     PolyPolygonFS(ImgView321.Bitmap, solution, maskClr32);
-    PolyPolylineFS(ImgView321.Bitmap, solution, clBlack32, true);
     //now add a 3D effect to the solution to make it stand out ...
     Simple3D(ImgView321.Bitmap,
       FixedPoints(solution),6,6,MAXIMUM_SHADOW_FADE,clWhite32,$80000000);
+    PolyPolylineFS(ImgView321.Bitmap, solution, clGray32, true);
   end;
   ImgView321.Repaint;
 end;

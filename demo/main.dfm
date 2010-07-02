@@ -1,6 +1,6 @@
 object MainForm: TMainForm
-  Left = 151
-  Top = 140
+  Left = 164
+  Top = 122
   Width = 859
   Height = 604
   Caption = 'Clipper Demo'
