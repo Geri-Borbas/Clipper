@@ -354,7 +354,6 @@ end;
 
 function Slope(const pt1, pt2: TDoublePoint): double;
 begin
-  //todo - change this to cross-multiplication
   if abs(pt1.y - pt2.y) < tolerance then
     result:= infinite else
     result := (pt1.x - pt2.x)/(pt1.y - pt2.y);
@@ -367,7 +366,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure SwapSides(edge1, edge2: PEdge); {inline}
+procedure SwapSides(edge1, edge2: PEdge);
 var
   side: TEdgeSide;
 begin
@@ -387,7 +386,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TopX(edge: PEdge; const currentY: double): double; {inline}
+function TopX(edge: PEdge; const currentY: double): double;
 begin
   if currentY = edge.ytop then
     result := edge.xtop else
@@ -745,7 +744,6 @@ var
 begin
   {AddPolygon}
 
-  //q := round(log10(fDupPtTolerance));
   highI := high(polygon);
   for i := 0 to highI do
   begin

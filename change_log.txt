@@ -4,7 +4,7 @@ Clipper Change Log
 
 1.4m - 3 July 2010
 * Added DuplicatePointTolerance() to Clipper class
-* Minor tweaks to clipping algorithm
+* Very minor tweaks to clipping algorithm
 
 1.4i - 18 June 2010
 * Minor improvements to C++ code
