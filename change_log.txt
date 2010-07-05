@@ -50,7 +50,7 @@ Clipper Change Log
   'outer' and counter-clockwise 'inner' (or 'hole') polygons. 
   Note: there is no danger in enabling this property when 
   operating on complex polygons. The only downside is a 
-  very minor penalty in execution speed. (Default = false)
+  very minor penalty in execution speed. (Default = true)
 * Minor code tidy up.
 
 1.2c - 17 May 2010

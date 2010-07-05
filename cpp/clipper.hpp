@@ -2,7 +2,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4m                                                            *
+* Version   :  1.4n                                                            *
 * Date      :  3 July 2010                                                     *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -75,133 +75,145 @@ typedef std::vector<TDoublePoint> TPolygon;
 typedef std::vector< TPolygon > TPolyPolygon;
 
 struct TEdge {
-	double xbot;
-	double ybot;
-	double xtop;
-	double ytop;
-	double dx;
-	double tmpX;
-	TPolyType polyType;
-	TEdgeSide side;
-	int polyIdx;
-	TEdge *next;
-	TEdge *prev;
-	TEdge *nextInLML;
-	TEdge *nextInAEL;
-	TEdge *prevInAEL;
-	TEdge *nextInSEL;
-	TEdge *prevInSEL;
-	TDoublePoint savedBot;
+  double xbot;
+  double ybot;
+  double xtop;
+  double ytop;
+  double dx;
+  double tmpX;
+  TPolyType polyType;
+  TEdgeSide side;
+  int polyIdx;
+  TEdge *next;
+  TEdge *prev;
+  TEdge *nextInLML;
+  TEdge *nextInAEL;
+  TEdge *prevInAEL;
+  TEdge *nextInSEL;
+  TEdge *prevInSEL;
+  TDoublePoint savedBot;
 };
 
 struct TIntersectNode {
-	TEdge *edge1;
-	TEdge *edge2;
-	TDoublePoint pt;
-	TIntersectNode *next;
-	TIntersectNode *prev;
+  TEdge *edge1;
+  TEdge *edge2;
+  TDoublePoint pt;
+  TIntersectNode *next;
+  TIntersectNode *prev;
 };
 
 struct TLocalMinima {
-	double Y;
-	TEdge *leftBound;
-	TEdge *rightBound;
-	TLocalMinima *nextLm;
+  double Y;
+  TEdge *leftBound;
+  TEdge *rightBound;
+  TLocalMinima *nextLm;
 };
 
 struct TScanbeam {
-	double Y;
-	TScanbeam *nextSb;
+  double Y;
+  TScanbeam *nextSb;
 };
 
 struct TPolyPt {
-	TDoublePoint pt;
-	TPolyPt *next;
-	TPolyPt *prev;
-	bool isHole;
+  TDoublePoint pt;
+  TPolyPt *next;
+  TPolyPt *prev;
+  bool isHole;
 };
 
+//ClipperBase is the ancestor to the Clipper class. It should not be
+//instantiated directly. This class simply abstracts the conversion of sets of
+//polygon coordinates into edge objects that are stored in a LocalMinima list.
 class ClipperBase
 {
 private:
-	std::vector< TEdge * >  m_edges;
+  std::vector< TEdge * >  m_edges;
 protected:
-	double            m_DupPtTolerance;
-	TLocalMinima      *m_localMinimaList;
-	TLocalMinima      *m_recycledLocMin;
-	TLocalMinima      *m_recycledLocMinEnd;
-	void DisposeLocalMinimaList();
-	void InsertLocalMinima(TLocalMinima *newLm);
-	TEdge* AddLML(TEdge *e);
-	void PopLocalMinima();
-	bool Reset();
+  double            m_DupPtTolerance;
+  TLocalMinima      *m_localMinimaList;
+  TLocalMinima      *m_recycledLocMin;
+  TLocalMinima      *m_recycledLocMinEnd;
+  void DisposeLocalMinimaList();
+  void InsertLocalMinima(TLocalMinima *newLm);
+  TEdge* AddLML(TEdge *e);
+  void PopLocalMinima();
+  bool Reset();
 public:
-	ClipperBase();
-	virtual ~ClipperBase();
-	void AddPolygon(TPolygon &pg, TPolyType polyType);
-	void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
-	void Clear();
-	//DuplicatePointTolerance:
-	//Polygon coordinates will be rounded to the specified number of decimal
-	//places, and any resulting adjacent duplicate vertices will ignored to
-	//prevent edges from having indeterminate slope.
-	//Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-	//nb: change DuplicatePointTolerance() *before* calling AddPolygon().
-	int DuplicatePointTolerance();
-	void DuplicatePointTolerance(int value);
+  ClipperBase();
+  virtual ~ClipperBase();
+  void AddPolygon(TPolygon &pg, TPolyType polyType);
+  void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
+  void Clear();
+  //DuplicatePointTolerance represents the number of decimal places to which
+  //input and output polygon coordinates will be rounded. Any resulting
+  //adjacent duplicate vertices will be ignored so as to prevent edges from
+  //having indeterminate slope.
+  //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
+  //nb: DuplicatePointTolerance() can't be reset once polygons have been
+  //added to the Clipper object.
+  int DuplicatePointTolerance();
+  void DuplicatePointTolerance(int value);
 };
 
 class Clipper : public ClipperBase
 {
 private:
-	std::vector < TPolyPt * >  m_PolyPts;
-	TClipType             m_ClipType ;
-	TScanbeam            *m_Scanbeam;
-	TEdge                *m_ActiveEdges;
-	TEdge                *m_SortedEdges;
-	TIntersectNode       *m_IntersectNodes;
-	bool                  m_ExecuteLocked;
-	bool                  m_ForceAlternateOrientation;
-	void DisposeScanbeamList();
-	bool InitializeScanbeam();
-	void InsertScanbeam( double const &Y);
-	double PopScanbeam();
-	void InsertLocalMinimaIntoAEL( double const &botY);
-	void InsertEdgeIntoAEL(TEdge *edge);
-	void AddHorzEdgeToSEL(TEdge *edge);
-	void DeleteFromSEL(TEdge *e);
-	void DeleteFromAEL(TEdge *e);
-	void UpdateEdgeIntoAEL(TEdge *&e);
-	void SwapWithNextInSEL(TEdge *edge);
-	bool IsContributing(TEdge *edge, bool &reverseSides);
-	bool IsTopHorz(TEdge *horzEdge, double const &XPos);
-	void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
-	void DoMaxima(TEdge *e, double const &topY);
-	void ProcessHorizontals();
-	void ProcessHorizontal(TEdge *horzEdge);
-	void AddLocalMaxPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
-	void AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
-	void AppendPolygon(TEdge *e1, TEdge *e2);
-	void DoEdge1(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
-	void DoEdge2(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
-	void DoBothEdges(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
-	void IntersectEdges(TEdge *e1, TEdge *e2,
-		 TDoublePoint const &pt, TIntersectProtects protects);
-	int AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront);
-	void DisposeAllPolyPts();
-	void ProcessIntersections( double const &topY);
-	void AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
-	void BuildIntersectList(double const &topY);
-	void ProcessIntersectList();
-	TEdge *BubbleSwap(TEdge *edge);
-	void ProcessEdgesAtTopOfScanbeam( double const &topY);
-	void BuildResult(TPolyPolygon &polypoly);
+  std::vector < TPolyPt * >  m_PolyPts;
+  TClipType             m_ClipType ;
+  TScanbeam            *m_Scanbeam;
+  TEdge                *m_ActiveEdges;
+  TEdge                *m_SortedEdges;
+  TIntersectNode       *m_IntersectNodes;
+  bool                  m_ExecuteLocked;
+  bool                  m_ForceAlternateOrientation;
+  void DisposeScanbeamList();
+  bool InitializeScanbeam();
+  void InsertScanbeam( double const &Y);
+  double PopScanbeam();
+  void InsertLocalMinimaIntoAEL( double const &botY);
+  void InsertEdgeIntoAEL(TEdge *edge);
+  void AddHorzEdgeToSEL(TEdge *edge);
+  void DeleteFromSEL(TEdge *e);
+  void DeleteFromAEL(TEdge *e);
+  void UpdateEdgeIntoAEL(TEdge *&e);
+  void SwapWithNextInSEL(TEdge *edge);
+  bool IsContributing(TEdge *edge, bool &reverseSides);
+  bool IsTopHorz(TEdge *horzEdge, double const &XPos);
+  void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
+  void DoMaxima(TEdge *e, double const &topY);
+  void ProcessHorizontals();
+  void ProcessHorizontal(TEdge *horzEdge);
+  void AddLocalMaxPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
+  void AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
+  void AppendPolygon(TEdge *e1, TEdge *e2);
+  void DoEdge1(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
+  void DoEdge2(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
+  void DoBothEdges(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
+  void IntersectEdges(TEdge *e1, TEdge *e2,
+     TDoublePoint const &pt, TIntersectProtects protects);
+  int AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront);
+  void DisposeAllPolyPts();
+  void ProcessIntersections( double const &topY);
+  void AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
+  void BuildIntersectList(double const &topY);
+  void ProcessIntersectList();
+  TEdge *BubbleSwap(TEdge *edge);
+  void ProcessEdgesAtTopOfScanbeam( double const &topY);
+  void BuildResult(TPolyPolygon &polypoly);
 public:
-	Clipper();
-	~Clipper();
-	bool Execute(TClipType clipType, TPolyPolygon &polypoly);
-	bool ForceAlternateOrientation();
-	void ForceAlternateOrientation(bool value);
+  Clipper();
+  ~Clipper();
+  bool Execute(TClipType clipType, TPolyPolygon &polypoly);
+  //ForceAlternateOrientation() is only useful when operating on
+  //simple polygons. It ensures that simple polygons returned from
+  //Clipper.Execute() calls will have clockwise 'outer' and counter-clockwise
+  //'inner' (or 'hole') polygons. If ForceAlternateOrientation = false, then
+  //the polygons returned in the solution can have any orientation.
+  //There's no danger leaving ForceAlternateOrientation set true when operating
+  //on complex polygons, it will just cause a minor penalty in execution speed.
+  //(Default = true)
+  bool ForceAlternateOrientation();
+  void ForceAlternateOrientation(bool value);
 };
 
 } //clipper namespace
