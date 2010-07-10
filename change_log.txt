@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+1.4r - 10 July 2010
+* Bugfix: The returned orientation of polygons 
+  (clockwise vs counter-clockwise) was not always correct. 
+* Improvement: Removed occasional overlapping co-linear segments 
+  (empty spikes) from result polygons. 
+
 1.4m - 3 July 2010
 * Added DuplicatePointTolerance() to Clipper class
 * Very minor tweaks to clipping algorithm

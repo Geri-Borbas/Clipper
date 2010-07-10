@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4n                                                            *
-* Date      :  3 July 2010                                                     *
+* Version   :  1.4r                                                            *
+* Date      :  10 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -266,7 +266,12 @@ bool ValidateOrientation(TPolyPt *pt)
   N2 = GetUnitNormal( bottomPt->pt , ptNext->pt );
   //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
   IsClockwise = ( N1.X * N2.Y - N2.X * N1.Y ) > 0; //ie angle > 180deg.
-  return (IsClockwise != bottomPt->isHole);
+
+  while (bottomPt->isHole == sUndefined &&
+    bottomPt->next->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->next;
+  while (bottomPt->isHole == sUndefined &&
+    bottomPt->prev->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->prev;
+  return (IsClockwise != (bottomPt->isHole == sTrue));
 }
 //------------------------------------------------------------------------------
 
@@ -1426,10 +1431,15 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     eNext = GetNextInAEL( e, Direction );
     if(  ( e->xbot >= horzLeft - tolerance ) && ( e->xbot <= horzRight + tolerance ) )
     {
-      //ok, we seem to be in range of the horizontal edge ...
-      if(  ( e->xbot == horzEdge->xtop ) && horzEdge->nextInLML  &&
-        (e->dx < horzEdge->nextInLML->dx) ) break;
-      if( e == eMaxPair )
+      //ok, so far it looks like we're still in range of the horizontal edge
+      if ((e->xbot == horzEdge->xtop ) && horzEdge->nextInLML  &&
+        (SlopesEqual(*e, *horzEdge->nextInLML, m_DupPtTolerance) ||
+            (e->dx < horzEdge->nextInLML->dx))){
+          //we really have gone past the end of intermediate horz edge so quit.
+          //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
+          break;
+      }
+      else if( e == eMaxPair )
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         IntersectEdges( e , horzEdge , DoublePoint( e->xbot , horzEdge->ybot ), ipRight );
@@ -1511,6 +1521,29 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &polypoly)
 }
 //------------------------------------------------------------------------------
 
+void FixupSolutionColinears(PolyPtList &list, int idx, double const &epsilon){
+  //fixup overlapping colinear edges (ie edges that reflect back on themselves)
+  //by removing the middle vertex ...
+  TPolyPt* tmp;
+  TPolyPt *pp = list[idx];
+  do {
+    if (pp->prev == pp) return;
+    if (std::fabs((pp->pt.Y - pp->prev->pt.Y)*(pp->next->pt.X - pp->pt.X) -
+        (pp->pt.X - pp->prev->pt.X)*(pp->next->pt.Y - pp->pt.Y)) < epsilon) {
+      pp->prev->next = pp->next;
+      pp->next->prev = pp->prev;
+      tmp = pp;
+      if (list[idx] == pp) {
+        list[idx] = pp->prev;
+        pp = pp->next;
+      } else pp = pp->prev;
+      delete tmp;
+    } else
+        pp = pp->next;
+  } while (pp != list[idx]);
+}
+//------------------------------------------------------------------------------
+
 void Clipper::BuildResult(TPolyPolygon &polypoly){
   unsigned i, j, k, cnt;
   TPolyPt *pt;
@@ -1519,8 +1552,10 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
   polypoly.resize(m_PolyPts.size());
   for (i = 0; i < m_PolyPts.size(); i++) {
     if (m_PolyPts[i]) {
-      pt = m_PolyPts[i];
 
+      FixupSolutionColinears(m_PolyPts, i, m_DupPtTolerance);
+
+      pt = m_PolyPts[i];
       //first, validate the orientation of simple polygons ...
       if ( ForceAlternateOrientation() &&
         !ValidateOrientation(pt) ) ReversePolyPtLinks(*pt);
@@ -1678,7 +1713,6 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
     else
       e = BubbleSwap( e );
   }
-
 }
 //------------------------------------------------------------------------------
 
@@ -1699,42 +1733,28 @@ int Clipper::AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront)
   TPolyPt *pp, *newPolyPt;
   TEdge *e;
 
-  newPolyPt = new TPolyPt;
-  newPolyPt->pt = pt;
   if(  idx < 0 )
   {
+    newPolyPt = new TPolyPt;
+    newPolyPt->pt = pt;
     m_PolyPts.push_back(newPolyPt);
     newPolyPt->next = newPolyPt;
     newPolyPt->prev = newPolyPt;
-
-    newPolyPt->isHole = false;
-    if( m_ForceAlternateOrientation )
-    {
-      e = m_ActiveEdges;
-      while( e  && ( e->xbot < pt.X ) )
-      {
-        if( e->polyIdx >= 0 ) newPolyPt->isHole = !newPolyPt->isHole;
-        e = e->nextInAEL;
-      }
-    }
+    newPolyPt->isHole = sUndefined;
     return m_PolyPts.size()-1;
   } else
   {
     pp = m_PolyPts[idx];
-
-    if( (ToFront && PointsEqual(pt, pp->pt, m_DupPtTolerance)) ||
-      (!ToFront && PointsEqual(pt, pp->prev->pt, m_DupPtTolerance)) )
-    {
-      delete newPolyPt;
-      return idx;
-    }
-
-    newPolyPt->isHole = pp->isHole;
+    if((ToFront && PointsEqual(pt, pp->pt, m_DupPtTolerance)) ||
+      (!ToFront && PointsEqual(pt, pp->prev->pt, m_DupPtTolerance))) return idx;
+    newPolyPt = new TPolyPt;
+    newPolyPt->pt = pt;
+    newPolyPt->isHole = sUndefined;
     newPolyPt->next = pp;
     newPolyPt->prev = pp->prev;
     newPolyPt->prev->next = newPolyPt;
     pp->prev = newPolyPt;
-    if( ToFront ) m_PolyPts[idx] = newPolyPt;
+    if (ToFront) m_PolyPts[idx] = newPolyPt;
     return idx;
   }
 }
@@ -1744,6 +1764,18 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt)
 {
   e1->polyIdx = AddPolyPt( e1->polyIdx , pt , true );
   e2->polyIdx = e1->polyIdx;
+
+  if (m_ForceAlternateOrientation) {
+    TPolyPt* pp = m_PolyPts[e1->polyIdx];
+    bool isAHole = false;
+    TEdge* e = m_ActiveEdges;
+    while (e) {
+      if (e->polyIdx >= 0 && TopX(e,pp->pt.Y) < pp->pt.X - m_DupPtTolerance)
+        isAHole = !isAHole;
+      e = e->nextInAEL;
+    }
+    if (isAHole) pp->isHole = sTrue; else pp->isHole = sFalse;
+  }
 }
 //------------------------------------------------------------------------------
 

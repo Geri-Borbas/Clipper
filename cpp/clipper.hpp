@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4n                                                            *
-* Date      :  3 July 2010                                                     *
+* Version   :  1.4r                                                            *
+* Date      :  10 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -68,6 +68,7 @@ typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { esLeft, esRight } TEdgeSide;
 typedef unsigned TIntersectProtects;
+typedef enum { sFalse, sTrue, sUndefined} TriState;
 
 struct TDoublePoint { double X; double Y; };
 TDoublePoint DoublePoint(double const &X, double const &Y);
@@ -95,7 +96,7 @@ struct TEdge {
 };
 
 struct TIntersectNode {
-  TEdge *edge1;
+	TEdge *edge1;
   TEdge *edge2;
   TDoublePoint pt;
   TIntersectNode *next;
@@ -115,11 +116,13 @@ struct TScanbeam {
 };
 
 struct TPolyPt {
-  TDoublePoint pt;
-  TPolyPt *next;
-  TPolyPt *prev;
-  bool isHole;
+	TDoublePoint pt;
+	TPolyPt *next;
+	TPolyPt *prev;
+	TriState isHole;
 };
+
+typedef std::vector < TPolyPt * > PolyPtList;
 
 //ClipperBase is the ancestor to the Clipper class. It should not be
 //instantiated directly. This class simply abstracts the conversion of sets of
@@ -158,14 +161,14 @@ public:
 class Clipper : public ClipperBase
 {
 private:
-  std::vector < TPolyPt * >  m_PolyPts;
-  TClipType             m_ClipType ;
-  TScanbeam            *m_Scanbeam;
-  TEdge                *m_ActiveEdges;
-  TEdge                *m_SortedEdges;
-  TIntersectNode       *m_IntersectNodes;
-  bool                  m_ExecuteLocked;
-  bool                  m_ForceAlternateOrientation;
+	PolyPtList        m_PolyPts;
+	TClipType         m_ClipType;
+	TScanbeam        *m_Scanbeam;
+	TEdge            *m_ActiveEdges;
+	TEdge            *m_SortedEdges;
+	TIntersectNode   *m_IntersectNodes;
+	bool              m_ExecuteLocked;
+	bool              m_ForceAlternateOrientation;
   void DisposeScanbeamList();
   bool InitializeScanbeam();
   void InsertScanbeam( double const &Y);
@@ -198,7 +201,7 @@ private:
   void BuildIntersectList(double const &topY);
   void ProcessIntersectList();
   TEdge *BubbleSwap(TEdge *edge);
-  void ProcessEdgesAtTopOfScanbeam( double const &topY);
+	void ProcessEdgesAtTopOfScanbeam( double const &topY);
   void BuildResult(TPolyPolygon &polypoly);
 public:
   Clipper();

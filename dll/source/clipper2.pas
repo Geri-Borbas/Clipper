@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4m                                                            *
-* Date      :  3 July 2010                                                     *
+* Version   :  1.4r                                                            *
+* Date      :  10 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -62,6 +62,7 @@ uses
   SysUtils, Classes, Math;
 
 const
+  //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
   infinite: double = -3.4e+38;
   //tolerance: ideally this value should vary depending on how big (or small)
   //the supplied polygon coordinate values are. If coordinate values are greater
@@ -69,6 +70,7 @@ const
   //significand of type double is 15 decimal places). However, for the vast
   //majority of uses ... tolerance = 1.0e-10 will be just fine.
   tolerance: double = 1.0e-10;
+  //default_dup_pt_tolerance: see TClipperBase.DuplicatePointTolerance property
   default_dup_pt_tolerance: double = 1.0e-6;
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
@@ -138,16 +140,19 @@ type
     nextSb: PScanbeam;
   end;
 
+  TriState = (sFalse, sTrue, sUndefined);
+
   PPolyPt = ^TPolyPt;
   TPolyPt = record
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: boolean; //See TClipper ForceAlternateOrientation property
+    isHole: TriState; //See TClipper ForceAlternateOrientation property
   end;
 
-  //TClipperBase (ancestor to TClipper class).
-  //Converts polygon sets into edges that are stored in a LocalMinima list.
+  //TClipperBase is the ancestor to the TClipper class. It should not be
+  //instantiated directly. This class simply abstracts the conversion of sets of
+  //polygon coordinates into edge objects that are stored in a LocalMinima list.
   TClipperBase = class
   private
     fList             : TList;
@@ -164,22 +169,26 @@ type
   public
     constructor Create; virtual;
     destructor Destroy; override;
+
     //Any number of subject and clip polygons can be added to the clipping task,
     //either individually via the AddPolygon() method, or as groups via the
     //AddPolyPolygon() method, or even using both methods ...
-    procedure AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
-    procedure AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
-    //If multiple clipping operations are to be performed on different polygon
-    //sets, the Clear() methods avoids the need to create new Clipper objects.
+    procedure AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint; polyType: TPolyType); overload;
+    procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
+
+    //Clear: If multiple clipping operations are to be performed on different
+    //polygon sets, then Clear avoids the need to create new Clipper objects.
     procedure Clear;
-    //DuplicatePointTolerance:
-    //Polygon coordinates will be rounded to the specified number of decimal
-    //places, and any resulting adjacent duplicate vertices will ignored to
-    //prevent edges from having indeterminate slope.
-	  //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-	  //nb: change DuplicatePointTolerance() *before* calling AddPolygon().
+
+    //DuplicatePointTolerance represents the number of decimal places to which
+    //input and output polygon coordinates will be rounded. Any resulting
+    //adjacent duplicate vertices will be ignored so as to prevent edges from
+    //having indeterminate slope.
+    //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
+    //nb: DuplicatePointTolerance can't be reset once polygons have been added
+    //to the Clipper object.
     property DuplicatePointTolerance: integer read GetDuplicatePointTolerance
       write SetDuplicatePointTolerance;
   end;
@@ -231,22 +240,26 @@ type
   public
     SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
 
-    //The Execute() method performs the specified clipping task on the
-    //previously assigned subject and clip polygon sets. This method can be
-    //called multiple times using different clipping operations without having
-    //to reassign the subject and clip polygon sets.
+    //The Execute() method performs the specified clipping task on previously
+    //assigned subject and clip polygons. This method can be called multiple
+    //times (ie to perform different clipping operations) without having to
+    //reassign either subject or clip polygons.
     function Execute(clipType: TClipType;
       out solution: TArrayOfArrayOfFloatPoint): boolean; overload;
     function Execute(clipType: TClipType;
       out solution: TArrayOfArrayOfDoublePoint): boolean; overload;
+
     constructor Create; override;
     destructor Destroy; override;
+
     //The ForceAlternateOrientation property is only useful when operating on
-    //simple polygons. It ensures that the result of the TClipper Execute
-    //method will be (simple) polygons with clockwise 'outer' and
-    //counter-clockwise 'inner' (or 'hole') polygons. There is no danger with
-    //enabling this property when operating on complex polygons, the only
-    //downside being a very minor penalty in execution speed. (Default = true)
+    //simple polygons. It ensures that simple polygons that result from
+    //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
+    //'inner' (or 'hole') polygons.If ForceAlternateOrientation = false, then
+    //the polygons returned in the solution can have any orientation.<br>
+    //There's no danger with leaving this property set to true when operating
+    //on complex polygons, but it will cause a minor penalty in execution speed.
+    //(Default = true)
     property ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
@@ -254,6 +267,15 @@ type
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
 
 implementation
+
+resourcestring
+  rsDupToleranceRange = 'DuplicatePointTolerance: range 0 .. 6 (decimal places)';
+  rsDupToleranceEmpty = 'Clear polygons before setting DuplicatePointTolerance';
+  rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
+  rsDoMaxima = 'DoMaxima error';
+  rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
+  rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam: Broken AEL order';
+  rsAppendPolygon = 'AppendPolygon error';
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -324,6 +346,34 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure FixupSolutionColinears(list: TList; idx: integer; const epsilon: double);
+var
+  pp, tmp: PPolyPt;
+begin
+  //fixup overlapping colinear edges (ie edges that reflect back on themselves)
+  //by removing the middle vertex ...
+  pp := PPolyPt(list[idx]);
+  repeat
+    if pp.prev = pp then exit;
+    if abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
+        (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < epsilon then
+    begin
+      pp.prev.next := pp.next;
+      pp.next.prev := pp.prev;
+      tmp := pp;
+      if list[idx] = pp then
+      begin
+        list[idx] := pp.prev;
+        pp := pp.next;
+      end else
+        pp := pp.prev;
+      dispose(tmp);
+    end else
+      pp := pp.next;
+  until (pp = list[idx]);
+end;
+//------------------------------------------------------------------------------
+
 procedure DisposePolyPts(pp: PPolyPt);
 var
   tmpPp: PPolyPt;
@@ -352,9 +402,9 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Slope(const pt1, pt2: TDoublePoint): double;
+function Slope(const pt1, pt2: TDoublePoint; const epsilon: double): double;
 begin
-  if abs(pt1.y - pt2.y) < tolerance then
+  if abs(pt1.y - pt2.y) < epsilon then
     result:= infinite else
     result := (pt1.x - pt2.x)/(pt1.y - pt2.y);
 end;
@@ -388,9 +438,8 @@ end;
 
 function TopX(edge: PEdge; const currentY: double): double;
 begin
-  if currentY = edge.ytop then
-    result := edge.xtop else
-    result := edge.savedBot.X + edge.dx*(currentY - edge.savedBot.Y);
+  if currentY = edge.ytop then result := edge.xtop
+  else result := edge.savedBot.X + edge.dx*(currentY - edge.savedBot.Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -485,7 +534,12 @@ begin
   N2 := GetUnitNormal(bottomPt.pt, ptNext.pt);
   //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
   IsClockwise := (N1.X * N2.Y - N2.X * N1.Y) > 0; //ie angle > 180deg.
-  result := IsClockwise <> bottomPt.isHole;
+
+  while (bottomPt.isHole = sUndefined) and
+    (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
+  while (bottomPt.isHole = sUndefined) and
+    (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
+  result := IsClockwise <> (bottomPt.isHole = sTrue);
 end;
 
 //------------------------------------------------------------------------------
@@ -518,13 +572,13 @@ end;
 
 procedure TClipperBase.SetDuplicatePointTolerance(const value: integer);
 begin
-  if (value < 0) or (value > 6) then
-    raise exception.Create('DuplicatePointTolerance: 0 .. 6 (decimal places)');
+  if (value < 0) or (value > 6) then raise exception.Create(rsDupToleranceRange);
+  if fList.Count > 0 then raise exception.Create(rsDupToleranceEmpty);
   fDupPtTolerance := power(10, -value);
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(polygon: TArrayOfFloatPoint; polyType: TPolyType);
+procedure TClipperBase.AddPolygon(const polygon: TArrayOfFloatPoint; polyType: TPolyType);
 var
   dblPts: TArrayOfDoublePoint;
 begin
@@ -533,11 +587,12 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolygon(polygon: TArrayOfDoublePoint; polyType: TPolyType);
+procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
 var
   i, highI: integer;
   edges: PEdgeArray;
   e, e2: PEdge;
+  polyg: TArrayOfDoublePoint;
 
   //----------------------------------------------------------------------
 
@@ -561,7 +616,7 @@ var
     e.savedBot.Y := pt1.Y; //temporary (just until duplicates removed)
     e.polyType := polyType;
     e.polyIdx := -1;
-    e.dx := Slope(pt1,pt2);
+    e.dx := Slope(pt1, pt2, fDupPtTolerance);
   end;
   //----------------------------------------------------------------------
 
@@ -582,7 +637,7 @@ var
       e.ytop := pt1.Y;
     end;
     e.savedBot := pt1; //temporary (until duplicates etc removed)
-    e.dx := Slope(pt1,pt2);
+    e.dx := Slope(pt1, pt2, fDupPtTolerance);
   end;
   //----------------------------------------------------------------------
 
@@ -745,33 +800,34 @@ begin
   {AddPolygon}
 
   highI := high(polygon);
+  setlength(polyg, highI +1);
   for i := 0 to highI do
   begin
-		polygon[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
-		polygon[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
+    polyg[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
+    polyg[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
   end;
 
   while (highI > 1) and
-    PointsEqual(polygon[0], polygon[highI], fDupPtTolerance) do dec(highI);
+    PointsEqual(polyg[0], polyg[highI], fDupPtTolerance) do dec(highI);
   if highI < 2 then exit;
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
   i := 1;
-  while (i <= highI) and (polygon[i].Y = polygon[0].Y) do inc(i);
+  while (i <= highI) and (polyg[i].Y = polyg[0].Y) do inc(i);
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
 
   //fill the edge array ...
-  InitEdge(@edges[highI], polygon[highI], polygon[0]);
+  InitEdge(@edges[highI], polyg[highI], polyg[0]);
   edges[highI].prev := @edges[highI-1];
   edges[highI].next := @edges[0];
-  InitEdge(@edges[0], polygon[0], polygon[1]);
+  InitEdge(@edges[0], polyg[0], polyg[1]);
   edges[0].prev := @edges[highI];
   edges[0].next := @edges[1];
   for i := 1 to highI-1 do
   begin
-    InitEdge(@edges[i], polygon[i], polygon[i+1]);
+    InitEdge(@edges[i], polyg[i], polyg[i+1]);
     edges[i].prev := @edges[i-1];
     edges[i].next := @edges[i+1];
   end;
@@ -822,7 +878,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfFloatPoint;
+procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfFloatPoint;
   polyType: TPolyType);
 var
   dblPts: TArrayOfArrayOfDoublePoint;
@@ -832,7 +888,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.AddPolyPolygon(polyPolygon: TArrayOfArrayOfDoublePoint;
+procedure TClipperBase.AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint;
   polyType: TPolyType);
 var
   i: integer;
@@ -1034,6 +1090,8 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
+      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
       repeat
@@ -1070,6 +1128,8 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
+      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
       repeat
@@ -1244,11 +1304,9 @@ begin
         pt := DoublePoint(leftBound.xbot,leftBound.ybot);
         while e <> rightBound do
         begin
-          if not assigned(e) then raise exception.Create('missing rightbound!');
+          if not assigned(e) then raise exception.Create(rsMissingRightbound);
           IntersectEdges(rightBound, e, pt);
           e := e.nextInAEL;
-          if not assigned(e) then
-            raise exception.Create('AddLocalMinima: intersect with maxima!??');
         end;
       end;
     end;
@@ -1385,7 +1443,7 @@ begin
   begin
     IntersectEdges(e, eMaxPair, DoublePoint(X, topY));
   end
-  else raise exception.Create('DoMaxima error');
+  else raise exception.Create(rsDoMaxima);
 end;
 //------------------------------------------------------------------------------
 
@@ -1468,10 +1526,11 @@ begin
       eNext := GetNextInAEL(e, Direction);
       if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
       begin
-        //ok, we seem to be in range of the horizontal edge ...
-        if (e.xbot = xtop) and assigned(nextInLML) and (e.dx < nextInLML.dx) then
+        //ok, so far it looks like we're still in range of the horizontal edge
+        if (e.xbot = xtop) and assigned(nextInLML) and
+          (SlopesEqual(e, nextInLML, fDupPtTolerance) or (e.dx < nextInLML.dx)) then
         begin
-          //we've gone past the end of an intermediate horz edge so quit.
+            //we really have gone past the end of intermediate horz edge so quit.
           //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
           break;
         end
@@ -1529,40 +1588,24 @@ function TClipper.AddPolyPt(idx: integer;
   const pt: TDoublePoint; ToFront: boolean): integer;
 var
   fp, newPolyPt: PPolyPt;
-  e: PEdge;
 begin
-  new(newPolyPt);
-  newPolyPt.pt := pt;
   if idx < 0 then
   begin
+    new(newPolyPt);
+    newPolyPt.pt := pt;
     result := fPolyPtList.Add(newPolyPt);
     newPolyPt.next := newPolyPt;
     newPolyPt.prev := newPolyPt;
-
-    newPolyPt.isHole := false;
-    if fForceAlternateOrientation then
-    begin
-      e := fActiveEdges;
-      while assigned(e) and (e.xbot < pt.X) do
-      begin
-        if (e.polyIdx >= 0) then newPolyPt.isHole := not newPolyPt.isHole;
-        e := e.nextInAEL;
-      end;
-    end;
-
+    newPolyPt.isHole := sUndefined;
   end else
   begin
     result := idx;
     fp := PPolyPt(fPolyPtList[idx]);
-
     if (ToFront and PointsEqual(pt, fp.pt, fDupPtTolerance)) or
-      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then
-    begin
-      dispose(newPolyPt);
-      exit;
-    end;
-
-    newPolyPt.isHole := fp.isHole;
+      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then exit;
+    new(newPolyPt);
+    newPolyPt.pt := pt;
+    newPolyPt.isHole := sUndefined;
     newPolyPt.next := fp;
     newPolyPt.prev := fp.prev;
     newPolyPt.prev.next := newPolyPt;
@@ -1581,7 +1624,7 @@ begin
     BuildIntersectList(topY);
     ProcessIntersectList;
   finally
-    //if there's been a problem, clean up the mess ...
+    //if there's been an error, clean up the mess ...
     while assigned(fIntersectNodes) do
     begin
       iNode := fIntersectNodes.next;
@@ -1609,6 +1652,7 @@ begin
     begin
       if SlopesEqual(Node1.edge2, Node2.edge2, epsilon) then
       begin
+        //nb: probably overlapping co-linear segments to get here
         if Node1.edge2 = Node2.edge2 then
           result := E1PrecedesE2inAEL(Node2.edge1, Node1.edge1) else
           result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2);
@@ -1906,8 +1950,7 @@ procedure TClipper.UpdateEdgeIntoAEL(var e: PEdge);
 var
   AelPrev, AelNext: PEdge;
 begin
-  if not assigned(e.nextInLML) then
-    raise exception.Create('UpdateEdgeIntoAEL: invalid call');
+  if not assigned(e.nextInLML) then raise exception.Create(rsUpdateEdgeIntoAEL);
   AelPrev := e.prevInAEL;
   AelNext := e.nextInAEL;
   e.nextInLML.polyIdx := e.polyIdx;
@@ -1953,6 +1996,14 @@ begin
     inc(cnt);
     result := Result.nextInAEL;
   end;
+  //let e = no edges in a complex intersect (ie >2 edges intersect at same pt).
+  //if cnt = no intersection ops between those edges at that intersection
+  //then ... when e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
+  //series s (where s = intersections per no edges) ... s = 0,1,3,6,10,15 ...
+  //generalising: given i = e-1, and s[0] = 0, then ... cnt = i + s[i-1]
+  //example: no. intersect ops required by 4 edges in a complex intersection ...
+  //         cnt = 3 + 2 + 1 + 0 = 6 intersection ops
+  //nb: parallel edges within intersections will cause unexpected cnt values.
   if cnt > 2 then
   begin
     try
@@ -2072,7 +2123,7 @@ begin
   begin
     if not assigned(e.nextInAEL) then break;
     if e.nextInAEL.xbot < e.xbot - tolerance then
-      raise Exception.Create('ProcessEdgesAtTopOfScanbeam: Broken AEL order');
+      raise Exception.Create(rsProcessEdgesAtTopOfScanbeam);
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else
       e := BubbleSwap(e);
@@ -2093,9 +2144,27 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
+var
+  e: PEdge;
+  pp: PPolyPt;
+  isAHole: boolean;
 begin
   e1.polyIdx := AddPolyPt(e1.polyIdx, pt, true);
   e2.polyIdx := e1.polyIdx;
+
+  if fForceAlternateOrientation then
+  begin
+    pp := PPolyPt(fPolyPtList[e1.polyIdx]);
+    isAHole := false;
+    e := fActiveEdges;
+    while assigned(e) do
+    begin
+      if (e.polyIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - fDupPtTolerance) then
+        isAHole := not isAHole;
+      e := e.nextInAEL;
+    end;
+    if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -2107,7 +2176,7 @@ var
   ObsoleteIdx: integer;
 begin
   if (e1.polyIdx < 0) or (e2.polyIdx < 0) then
-    raise Exception.Create('AppendPolygon error');
+    raise Exception.Create(rsAppendPolygon);
 
   //get the start and ends of both output polygons ...
   p1_lft := PPolyPt(fPolyPtList[e1.polyIdx]);

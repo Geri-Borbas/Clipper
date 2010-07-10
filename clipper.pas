@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4m                                                            *
-* Date      :  3 July 2010                                                     *
+* Version   :  1.4r                                                            *
+* Date      :  10 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -140,12 +140,14 @@ type
     nextSb: PScanbeam;
   end;
 
+  TriState = (sFalse, sTrue, sUndefined);
+
   PPolyPt = ^TPolyPt;
   TPolyPt = record
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: boolean; //See TClipper ForceAlternateOrientation property
+    isHole: TriState; //See TClipper ForceAlternateOrientation property
   end;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
@@ -180,11 +182,13 @@ type
     //polygon sets, then Clear avoids the need to create new Clipper objects.
     procedure Clear;
 
-    //Polygon coordinates will be rounded to the specified number of decimal
-    //places, and any resulting adjacent duplicate vertices will be ignored to
-    //prevent edges from having indeterminate slope.<br>
-	  //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)<br>
-	  //nb: change DuplicatePointTolerance() *before* calling AddPolygon().
+    //DuplicatePointTolerance represents the number of decimal places to which
+    //input and output polygon coordinates will be rounded. Any resulting
+    //adjacent duplicate vertices will be ignored so as to prevent edges from
+    //having indeterminate slope.
+    //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
+    //nb: DuplicatePointTolerance can't be reset once polygons have been added
+    //to the Clipper object.
     property DuplicatePointTolerance: integer read GetDuplicatePointTolerance
       write SetDuplicatePointTolerance;
   end;
@@ -256,7 +260,6 @@ type
     //There's no danger with leaving this property set to true when operating
     //on complex polygons, but it will cause a minor penalty in execution speed.
     //(Default = true)
-    //<img src="solution_direction_1.png">&nbsp;<img src="solution_direction_2.png">
     property ForceAlternateOrientation: boolean read
       fForceAlternateOrientation write fForceAlternateOrientation;
   end;
@@ -343,6 +346,34 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure FixupSolutionColinears(list: TList; idx: integer; const epsilon: double);
+var
+  pp, tmp: PPolyPt;
+begin
+  //fixup overlapping colinear edges (ie edges that reflect back on themselves)
+  //by removing the middle vertex ...
+  pp := PPolyPt(list[idx]);
+  repeat
+    if pp.prev = pp then exit;
+    if abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
+        (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < epsilon then
+    begin
+      pp.prev.next := pp.next;
+      pp.next.prev := pp.prev;
+      tmp := pp;
+      if list[idx] = pp then
+      begin
+        list[idx] := pp.prev;
+        pp := pp.next;
+      end else
+        pp := pp.prev;
+      dispose(tmp);
+    end else
+      pp := pp.next;
+  until (pp = list[idx]);
+end;
+//------------------------------------------------------------------------------
+
 procedure DisposePolyPts(pp: PPolyPt);
 var
   tmpPp: PPolyPt;
@@ -407,9 +438,8 @@ end;
 
 function TopX(edge: PEdge; const currentY: double): double;
 begin
-  if currentY = edge.ytop then
-    result := edge.xtop else
-    result := edge.savedBot.X + edge.dx*(currentY - edge.savedBot.Y);
+  if currentY = edge.ytop then result := edge.xtop
+  else result := edge.savedBot.X + edge.dx*(currentY - edge.savedBot.Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -504,7 +534,12 @@ begin
   N2 := GetUnitNormal(bottomPt.pt, ptNext.pt);
   //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
   IsClockwise := (N1.X * N2.Y - N2.X * N1.Y) > 0; //ie angle > 180deg.
-  result := IsClockwise <> bottomPt.isHole;
+
+  while (bottomPt.isHole = sUndefined) and
+    (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
+  while (bottomPt.isHole = sUndefined) and
+    (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
+  result := IsClockwise <> (bottomPt.isHole = sTrue);
 end;
 
 //------------------------------------------------------------------------------
@@ -1055,6 +1090,8 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
+      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
       repeat
@@ -1091,6 +1128,8 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
+      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
       repeat
@@ -1487,10 +1526,11 @@ begin
       eNext := GetNextInAEL(e, Direction);
       if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
       begin
-        //ok, we seem to be in range of the horizontal edge ...
-        if (e.xbot = xtop) and assigned(nextInLML) and (e.dx < nextInLML.dx) then
+        //ok, so far it looks like we're still in range of the horizontal edge
+        if (e.xbot = xtop) and assigned(nextInLML) and
+          (SlopesEqual(e, nextInLML, fDupPtTolerance) or (e.dx < nextInLML.dx)) then
         begin
-          //we've gone past the end of an intermediate horz edge so quit.
+            //we really have gone past the end of intermediate horz edge so quit.
           //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
           break;
         end
@@ -1548,40 +1588,24 @@ function TClipper.AddPolyPt(idx: integer;
   const pt: TDoublePoint; ToFront: boolean): integer;
 var
   fp, newPolyPt: PPolyPt;
-  e: PEdge;
 begin
-  new(newPolyPt);
-  newPolyPt.pt := pt;
   if idx < 0 then
   begin
+    new(newPolyPt);
+    newPolyPt.pt := pt;
     result := fPolyPtList.Add(newPolyPt);
     newPolyPt.next := newPolyPt;
     newPolyPt.prev := newPolyPt;
-
-    newPolyPt.isHole := false;
-    if fForceAlternateOrientation then
-    begin
-      e := fActiveEdges;
-      while assigned(e) and (e.xbot < pt.X) do
-      begin
-        if (e.polyIdx >= 0) then newPolyPt.isHole := not newPolyPt.isHole;
-        e := e.nextInAEL;
-      end;
-    end;
-
+    newPolyPt.isHole := sUndefined;
   end else
   begin
     result := idx;
     fp := PPolyPt(fPolyPtList[idx]);
-
     if (ToFront and PointsEqual(pt, fp.pt, fDupPtTolerance)) or
-      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then
-    begin
-      dispose(newPolyPt);
-      exit;
-    end;
-
-    newPolyPt.isHole := fp.isHole;
+      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then exit;
+    new(newPolyPt);
+    newPolyPt.pt := pt;
+    newPolyPt.isHole := sUndefined;
     newPolyPt.next := fp;
     newPolyPt.prev := fp.prev;
     newPolyPt.prev.next := newPolyPt;
@@ -1628,6 +1652,7 @@ begin
     begin
       if SlopesEqual(Node1.edge2, Node2.edge2, epsilon) then
       begin
+        //nb: probably overlapping co-linear segments to get here
         if Node1.edge2 = Node2.edge2 then
           result := E1PrecedesE2inAEL(Node2.edge1, Node1.edge1) else
           result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2);
@@ -1971,13 +1996,14 @@ begin
     inc(cnt);
     result := Result.nextInAEL;
   end;
-  //let e = no edges in a complex intersection
-  //let cnt = no intersection ops between those edges at that intersection
-  //then ... e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
+  //let e = no edges in a complex intersect (ie >2 edges intersect at same pt).
+  //if cnt = no intersection ops between those edges at that intersection
+  //then ... when e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
   //series s (where s = intersections per no edges) ... s = 0,1,3,6,10,15 ...
   //generalising: given i = e-1, and s[0] = 0, then ... cnt = i + s[i-1]
   //example: no. intersect ops required by 4 edges in a complex intersection ...
   //         cnt = 3 + 2 + 1 + 0 = 6 intersection ops
+  //nb: parallel edges within intersections will cause unexpected cnt values.
   if cnt > 2 then
   begin
     try
@@ -2118,9 +2144,27 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
+var
+  e: PEdge;
+  pp: PPolyPt;
+  isAHole: boolean;
 begin
   e1.polyIdx := AddPolyPt(e1.polyIdx, pt, true);
   e2.polyIdx := e1.polyIdx;
+
+  if fForceAlternateOrientation then
+  begin
+    pp := PPolyPt(fPolyPtList[e1.polyIdx]);
+    isAHole := false;
+    e := fActiveEdges;
+    while assigned(e) do
+    begin
+      if (e.polyIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - fDupPtTolerance) then
+        isAHole := not isAHole;
+      e := e.nextInAEL;
+    end;
+    if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
+  end;
 end;
 //------------------------------------------------------------------------------
 
