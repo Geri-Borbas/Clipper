@@ -1556,16 +1556,16 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
       FixupSolutionColinears(m_PolyPts, i, m_DupPtTolerance);
 
       pt = m_PolyPts[i];
-      //first, validate the orientation of simple polygons ...
-      if ( ForceAlternateOrientation() &&
-        !ValidateOrientation(pt) ) ReversePolyPtLinks(*pt);
-
       cnt = 0;
       do {
         pt = pt->next;
         cnt++;
       } while (pt != m_PolyPts[i]);
       if ( cnt < 2 ) continue;
+
+      //validate the orientation of simple polygons ...
+      if ( ForceAlternateOrientation() &&
+        !ValidateOrientation(pt) ) ReversePolyPtLinks(*pt);
 
       polypoly[k].resize(cnt);
       for (j = 0; j < cnt; j++) {
