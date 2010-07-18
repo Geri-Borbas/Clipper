@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4r                                                            *
-* Date      :  10 July 2010                                                    *
+* Version   :  1.4v                                                            *
+* Date      :  16 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -180,7 +180,7 @@ private:
   void DeleteFromAEL(TEdge *e);
   void UpdateEdgeIntoAEL(TEdge *&e);
   void SwapWithNextInSEL(TEdge *edge);
-  bool IsContributing(TEdge *edge, bool &reverseSides);
+  bool IsContributing(TEdge *edge);
   bool IsTopHorz(TEdge *horzEdge, double const &XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
   void DoMaxima(TEdge *e, double const &topY);

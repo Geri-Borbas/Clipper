@@ -243,7 +243,7 @@ namespace agg
 	  else 
 	  {
         m_status = status_stop;
-        return path_cmd_end_poly || path_flags_close;
+        return path_cmd_end_poly | path_flags_close;
       }
     } 
 	else

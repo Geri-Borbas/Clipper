@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+1.4s - 11 July 2010
+* Bugfix: Some code in BuildResult() in clipper.cpp was being 
+  executed out of order.
+
 1.4r - 10 July 2010
 * Bugfix: The returned orientation of polygons 
   (clockwise vs counter-clockwise) was not always correct. 

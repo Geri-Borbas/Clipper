@@ -2,50 +2,30 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4r                                                            *
-* Date      :  10 July 2010                                                    *
-* Copyright :  Angus Johnson                                                   *
+* Version   :  1.4v                                                            *
+* Date      :  16 July 2010                                                    *
+* Website   :  http://www.angusj.com                                           *
+* Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
+* License:                                                                     *
+* Use, modification & distribution is subject to Boost Software License Ver 1. *
+* http://www.boost.org/LICENSE_1_0.txt                                         *
+* (nb: This library was initially release under dual MPL and LGPL licenses.    *
+* This Boost License is much simpler and imposes even fewer restrictions on    *
+* the use of this code, yet it still accomplishes the desired purposes.)       *
+*                                                                              *
+* Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
 *                                                                              *
-* See also:                                                                    *
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************/
-
-/****** BEGIN LICENSE BLOCK ****************************************************
-*                                                                              *
-* Version: MPL 1.1 or LGPL 2.1 with linking exception                          *
-*                                                                              *
-* The contents of this file are subject to the Mozilla Public License Version  *
-* 1.1 (the "License"); you may not use this file except in compliance with     *
-* the License. You may obtain a copy of the License at                         *
-* http://www.mozilla.org/MPL/                                                  *
-*                                                                              *
-* Software distributed under the License is distributed on an "AS IS" basis,   *
-* WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License     *
-* for the specific language governing rights and limitations under the         *
-* License.                                                                     *
-*                                                                              *
-* Alternatively, the contents of this file may be used under the terms of the  *
-* Free Pascal modified version of the GNU Lesser General Public License        *
-* Version 2.1 (the "FPC modified LGPL License"), in which case the provisions  *
-* of this license are applicable instead of those above.                       *
-* Please see the file LICENSE.txt for additional information concerning this   *
-* license.                                                                     *
-*                                                                              *
-* The Original Code is clipper.hpp & clipper.cpp                               *
-*                                                                              *
-* The Initial Developer of the Original Code is                                *
-* Angus Johnson (http://www.angusj.com)                                        *
-*                                                                              *
-******* END LICENSE BLOCK *****************************************************/
 
 /*******************************************************************************
 *                                                                              *
@@ -1155,21 +1135,18 @@ void Clipper::SwapWithNextInSEL(TEdge *edge)
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::IsContributing(TEdge *edge, bool &reverseSides)
+bool Clipper::IsContributing(TEdge *edge)
 {
   bool isContrib;
   TPolyType polyType = edge->polyType;
-  reverseSides = false;
+  edge = edge->prevInAEL;
    switch( m_ClipType ) {
     case ctIntersection:
       {
         isContrib = false;
-        while( edge->prevInAEL )
+        while(edge)
         {
-          if( edge->prevInAEL->polyType == polyType )
-            reverseSides = !reverseSides;
-          else
-            isContrib = !isContrib;
+          if( edge->polyType != polyType ) isContrib = !isContrib;
           edge = edge->prevInAEL;
         }
       break;
@@ -1177,9 +1154,9 @@ bool Clipper::IsContributing(TEdge *edge, bool &reverseSides)
     case ctUnion:
       {
         isContrib = true;
-        while( edge->prevInAEL )
+        while(edge)
         {
-          if(  edge->prevInAEL->polyType != polyType )
+          if(  edge->polyType != polyType )
             isContrib = !isContrib;
           edge = edge->prevInAEL;
         }
@@ -1188,9 +1165,9 @@ bool Clipper::IsContributing(TEdge *edge, bool &reverseSides)
     case ctDifference:
       {
         isContrib = (polyType == ptSubject);
-        while( edge->prevInAEL )
+        while(edge)
         {
-          if(  edge->prevInAEL->polyType != polyType )
+          if(  edge->polyType != polyType )
             isContrib = !isContrib;
           edge = edge->prevInAEL;
         }
@@ -1227,16 +1204,9 @@ void Clipper::InsertLocalMinimaIntoAEL( double const &botY)
       InsertScanbeam( m_localMinimaList->rightBound->ytop );
 
     lm = m_localMinimaList;
-    if( IsContributing(lm->leftBound, reverseSides) )
-    {
+    if( IsContributing(lm->leftBound) )
       AddLocalMinPoly( lm->leftBound,
         lm->rightBound, DoublePoint( lm->leftBound->xbot , lm->Y ) );
-      if( reverseSides && (lm->leftBound->nextInAEL == lm->rightBound) )
-      {
-        lm->leftBound->side = esRight;
-        lm->rightBound->side = esLeft;
-      }
-    }
 
     if( lm->leftBound->nextInAEL != lm->rightBound )
     {
@@ -1442,10 +1412,10 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       else if( e == eMaxPair )
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
-        IntersectEdges( e , horzEdge , DoublePoint( e->xbot , horzEdge->ybot ), ipRight );
-        break;
+        IntersectEdges(e, horzEdge, DoublePoint(e->xbot , horzEdge->ybot), 0);
+        return;
       }
-      else if(  IsHorizontal(*e) &&  !IsMinima(e) &&  !(e->xbot > e->xtop) )
+      else if( IsHorizontal(*e) &&  !IsMinima(e) &&  !(e->xbot > e->xtop) )
       {
         if(  Direction == dLeftToRight )
           IntersectEdges( horzEdge , e , DoublePoint(e->xbot, horzEdge->ybot),
@@ -1522,8 +1492,7 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &polypoly)
 //------------------------------------------------------------------------------
 
 void FixupSolutionColinears(PolyPtList &list, int idx, double const &epsilon){
-  //fixup overlapping colinear edges (ie edges that reflect back on themselves)
-  //by removing the middle vertex ...
+  //fixup those occasional overlapping colinear edges (ie empty protrusions) ...
   TPolyPt* tmp;
   TPolyPt *pp = list[idx];
   do {

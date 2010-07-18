@@ -5,48 +5,28 @@ unit clipper;
 * Author    :  Angus Johnson                                                   *
 * Version   :  1.4r                                                            *
 * Date      :  10 July 2010                                                    *
-* Copyright :  Angus Johnson                                                   *
+* Website   :  http://www.angusj.com                                           *
+* Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
+* License:                                                                     *
+* Use, modification & distribution is subject to Boost Software License Ver 1. *
+* http://www.boost.org/LICENSE_1_0.txt                                         *
+* (nb: This library was initially release under dual MPL and LGPL licenses.    *
+* This Boost License is much simpler and imposes even fewer restrictions on    *
+* the use of this code, yet it still accomplishes the desired purposes.)       *
+*                                                                              *
+* Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
 *                                                                              *
-* See also:                                                                    *
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************)
-
-(****** BEGIN LICENSE BLOCK ****************************************************
-*                                                                              *
-* Version: MPL 1.1 or LGPL 2.1 with linking exception                          *
-*                                                                              *
-* The contents of this file are subject to the Mozilla Public License Version  *
-* 1.1 (the "License"); you may not use this file except in compliance with     *
-* the License. You may obtain a copy of the License at                         *
-* http://www.mozilla.org/MPL/                                                  *
-*                                                                              *
-* Software distributed under the License is distributed on an "AS IS" basis,   *
-* WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License     *
-* for the specific language governing rights and limitations under the         *
-* License.                                                                     *
-*                                                                              *
-* Alternatively, the contents of this file may be used under the terms of the  *
-* Free Pascal modified version of the GNU Lesser General Public License        *
-* Version 2.1 (the "FPC modified LGPL License"), in which case the provisions  *
-* of this license are applicable instead of those above.                       *
-* Please see the file LICENSE.txt for additional information concerning this   *
-* license.                                                                     *
-*                                                                              *
-* The Original Code is Clipper.pas                                             *
-*                                                                              *
-* The Initial Developer of the Original Code is                                *
-* Angus Johnson (http://www.angusj.com)                                        *
-*                                                                              *
-******* END LICENSE BLOCK *****************************************************)
 
 //Several type definitions used in the code below are defined in the Delphi
 //Graphics32 library ( see http://www.graphics32.org/wiki/ ). These type
@@ -229,7 +209,7 @@ type
     procedure DoMaxima(e: PEdge; const topY: double);
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
-    function IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
+    function IsContributing(edge: PEdge): boolean;
     function AddPolyPt(idx: integer;
       const pt: TDoublePoint; ToFront: boolean): integer;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
@@ -350,8 +330,7 @@ procedure FixupSolutionColinears(list: TList; idx: integer; const epsilon: doubl
 var
   pp, tmp: PPolyPt;
 begin
-  //fixup overlapping colinear edges (ie edges that reflect back on themselves)
-  //by removing the middle vertex ...
+	//fixup those occasional overlapping colinear edges (ie empty protrusions) ...
   pp := PPolyPt(list[idx]);
   repeat
     if pp.prev = pp then exit;
@@ -765,25 +744,26 @@ var
     until e2.ytop <> e.ybot;
     if IsHorizontal(e) then e := e.prev;
 
-    with newLm^ do
-      if ((e.next <> e2) and (e.xbot < e2.xbot))
-        or ((e.next = e2) and (e.dx > e2.dx)) then
-      begin
-        leftBound := e;
-        rightBound := e.next;
-        BuildBound(leftBound, esLeft, false);
+    if ((e.next <> e2) and (e.xbot < e2.xbot))
+      or ((e.next = e2) and (e.dx > e2.dx)) then
+    begin
+      newLm.leftBound := e;
+      newLm.rightBound := e.next;
+      BuildBound(newLm.leftBound, esLeft, false);
+      with newLm^ do
         if IsHorizontal(rightBound) and (rightBound.xbot <> leftBound.xbot) then
           SwapX(rightBound);
-        result := BuildBound(rightBound, esRight, true);
-      end else
-      begin
-        leftBound := e2;
-        rightBound := e2.prev;
+      result := BuildBound(newLm.rightBound, esRight, true);
+    end else
+    begin
+      newLm.leftBound := e2;
+      newLm.rightBound := e2.prev;
+      with newLm^ do
         if IsHorizontal(rightBound) and (rightBound.xbot <> leftBound.xbot) then
           SwapX(rightBound);
-        BuildBound(rightBound, esRight, false);
-        result := BuildBound(leftBound, esLeft, true);
-      end;
+      BuildBound(newLm.rightBound, esRight, false);
+      result := BuildBound(newLm.leftBound, esLeft, true);
+    end;
     InsertLocalMinima(newLm);
   end;
   //----------------------------------------------------------------------
@@ -1267,37 +1247,30 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
   //----------------------------------------------------------------------
 
 var
-  reverseSides: boolean;
   e: PEdge;
   pt: TDoublePoint;
 begin
   {InsertLocalMinimaIntoAEL}
   while assigned(fLocalMinima) and (fLocalMinima.y = botY) do
   begin
-    with fLocalMinima^ do
+    InsertEdgeIntoAEL(fLocalMinima.leftBound);
+    InsertScanbeam(fLocalMinima.leftBound.ytop);
+    InsertEdgeIntoAEL(fLocalMinima.rightBound);
+
+    e := fLocalMinima.leftBound.nextInAEL;
+    if IsHorizontal(fLocalMinima.rightBound) then
     begin
-      InsertEdgeIntoAEL(leftBound);
-      InsertScanbeam(leftBound.ytop);
-      InsertEdgeIntoAEL(rightBound);
+      //nb: only rightbounds can have a horizontal bottom edge
+      AddHorzEdgeToSEL(fLocalMinima.rightBound);
+      InsertScanbeam(fLocalMinima.rightBound.nextInLML.ytop);
+    end else
+      InsertScanbeam(fLocalMinima.rightBound.ytop);
 
-      e := leftBound.nextInAEL;
-      if IsHorizontal(rightBound) then
-      begin
-        //nb: only rightbounds can have a horizontal bottom edge
-        AddHorzEdgeToSEL(rightBound);
-        InsertScanbeam(rightBound.nextInLML.ytop);
-      end else
-        InsertScanbeam(rightBound.ytop);
-
-      if IsContributing(leftBound, reverseSides) then
-      begin
+    with fLocalMinima^ do
+      if IsContributing(leftBound) then
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
-        if reverseSides and (leftBound.nextInAEL = rightBound) then
-        begin
-          leftBound.side := esRight;
-          rightBound.side := esLeft;
-        end;
-      end;
+
+    with fLocalMinima^ do
       if (leftBound.nextInAEL <> rightBound) then
       begin
         e := leftBound.nextInAEL;
@@ -1309,7 +1282,6 @@ begin
           e := e.nextInAEL;
         end;
       end;
-    end;
     PopLocalMinima;
   end;
 end;
@@ -1504,83 +1476,82 @@ begin
 *        /                 \      /          \   /                             *
 *******************************************************************************)
 
-  with horzEdge^ do
+  if horzEdge.xbot < horzEdge.xtop then
   begin
-    if xbot < xtop then
-    begin
-      horzLeft := xbot; horzRight := xtop;
-      Direction := dLeftToRight;
-    end else
-    begin
-      horzLeft := xtop; horzRight := xbot;
-      Direction := dRightToLeft;
-    end;
-
-    if assigned(nextInLML) then
-      eMaxPair := nil else
-      eMaxPair := GetMaximaPair(horzEdge);
-
-    e := GetNextInAEL(horzEdge, Direction);
-    while assigned(e) do
-    begin
-      eNext := GetNextInAEL(e, Direction);
-      if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
-      begin
-        //ok, so far it looks like we're still in range of the horizontal edge
-        if (e.xbot = xtop) and assigned(nextInLML) and
-          (SlopesEqual(e, nextInLML, fDupPtTolerance) or (e.dx < nextInLML.dx)) then
-        begin
-            //we really have gone past the end of intermediate horz edge so quit.
-          //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
-          break;
-        end
-        else if (e = eMaxPair) then
-        begin
-          //horzEdge is evidently a maxima horizontal and we've arrived at its end.
-          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, ybot),[ipRight]);
-          break;
-        end
-        else if IsHorizontal(e) and not IsMinima(e) and not (e.xbot > e.xtop) then
-        begin
-          //An overlapping horizontal edge. Overlapping horizontal edges are
-          //processed as if layered with the current horizontal edge (horizEdge)
-          //being infinitesimally lower that the next (e). Therfore, we
-          //intersect with e only if e.xbot is within the bounds of horzEdge ...
-          if Direction = dLeftToRight then
-            IntersectEdges(horzEdge, e, DoublePoint(e.xbot, ybot),
-              ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
-          else
-            IntersectEdges(e, horzEdge, DoublePoint(e.xbot, ybot),
-              ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
-        end
-        else if (Direction = dLeftToRight) then
-        begin
-          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, ybot),
-            ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
-        end else
-        begin
-          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, ybot),
-            ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
-        end;
-        SwapPositionsInAEL(horzEdge, e);
-      end
-      else if (Direction = dLeftToRight) and
-        (e.xbot > horzRight + tolerance) and not assigned(nextInSEL) then
-          break
-      else if (Direction = dRightToLeft) and
-        (e.xbot < horzLeft - tolerance) and not assigned(nextInSEL) then
-          break;
-      e := eNext;
-    end;
-
-    if assigned(nextInLML) then
-    begin
-      if (polyIdx >= 0) then
-        AddPolyPt(polyIdx, DoublePoint(xtop, ytop), side = esLeft);
-      UpdateEdgeIntoAEL(horzEdge);
-    end else
-      DeleteFromAEL(horzEdge);
+    horzLeft := horzEdge.xbot; horzRight := horzEdge.xtop;
+    Direction := dLeftToRight;
+  end else
+  begin
+    horzLeft := horzEdge.xtop; horzRight := horzEdge.xbot;
+    Direction := dRightToLeft;
   end;
+
+  if assigned(horzEdge.nextInLML) then
+    eMaxPair := nil else
+    eMaxPair := GetMaximaPair(horzEdge);
+
+  e := GetNextInAEL(horzEdge, Direction);
+  while assigned(e) do
+  begin
+    eNext := GetNextInAEL(e, Direction);
+    if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
+    begin
+      //ok, so far it looks like we're still in range of the horizontal edge
+      if (e.xbot = horzEdge.xtop) and assigned(horzEdge.nextInLML) and
+        (SlopesEqual(e, horzEdge.nextInLML, fDupPtTolerance) or
+        (e.dx < horzEdge.nextInLML.dx)) then
+      begin
+        //we really have gone past the end of intermediate horz edge so quit.
+        //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
+        break;
+      end
+      else if (e = eMaxPair) then
+      begin
+        //horzEdge is evidently a maxima horizontal and we've arrived at its end.
+        IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),[]);
+        exit;
+      end
+      else if IsHorizontal(e) and not IsMinima(e) and not (e.xbot > e.xtop) then
+      begin
+        //An overlapping horizontal edge. Overlapping horizontal edges are
+        //processed as if layered with the current horizontal edge (horizEdge)
+        //being infinitesimally lower that the next (e). Therfore, we
+        //intersect with e only if e.xbot is within the bounds of horzEdge ...
+        if Direction = dLeftToRight then
+          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
+            ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
+        else
+          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
+            ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
+      end
+      else if (Direction = dLeftToRight) then
+      begin
+        IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
+          ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
+      end else
+      begin
+        IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
+          ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
+      end;
+      SwapPositionsInAEL(horzEdge, e);
+    end
+    else if (Direction = dLeftToRight) and
+      (e.xbot > horzRight + tolerance) and not assigned(horzEdge.nextInSEL) then
+        break
+    else if (Direction = dRightToLeft) and
+      (e.xbot < horzLeft - tolerance) and not assigned(horzEdge.nextInSEL) then
+        break;
+    e := eNext;
+  end;
+
+  if assigned(horzEdge.nextInLML) then
+  begin
+    if (horzEdge.polyIdx >= 0) then
+      AddPolyPt(horzEdge.polyIdx,
+        DoublePoint(horzEdge.xtop, horzEdge.ytop), horzEdge.side = esLeft);
+    UpdateEdgeIntoAEL(horzEdge);
+  end else
+    DeleteFromAEL(horzEdge);
 end;
 //------------------------------------------------------------------------------
 
@@ -1778,7 +1749,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   end;
   //----------------------------------------------------------------------
 
-  procedure DoEdge1(edge1, edge2: PEdge);
+  procedure DoEdge1;
   begin
     AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
     SwapSides(e1, e2);
@@ -1786,7 +1757,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   end;
   //----------------------------------------------------------------------
 
-  procedure DoEdge2(edge1, edge2: PEdge);
+  procedure DoEdge2;
   begin
     AddPolyPt(e2.polyIdx, pt, e2.side = esLeft);
     SwapSides(e1, e2);
@@ -1794,7 +1765,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   end;
   //----------------------------------------------------------------------
 
-  procedure DoBothEdges(edge1, edge2: PEdge);
+  procedure DoBothEdges;
   begin
     AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
     AddPolyPt(e2.polyIdx, pt, e2.side = esLeft);
@@ -1808,6 +1779,8 @@ var
   e1Contributing, e2contributing: boolean;
 begin
   {IntersectEdges}
+
+  //nb: e1 always just precedes e2 in AEL ...
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
     (abs(e1.xtop - pt.x) < tolerance) and (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
@@ -1822,12 +1795,10 @@ begin
         begin
           if e1stops or e2stops or (e1.polytype <> e2.polytype) then
               AddLocalMaxPoly(e1, e2, pt) else
-              DoBothEdges(e1,e2);
+              DoBothEdges;
         end
-          else if e1Contributing then
-          DoEdge1(e1,e2)
-        else if e2contributing then
-          DoEdge2(e1,e2)
+        else if e1Contributing then DoEdge1
+        else if e2contributing then DoEdge2
         else
         begin
           //neither edge contributing
@@ -1846,7 +1817,7 @@ begin
         begin
           if e1stops or e2stops then
             AddLocalMaxPoly(e1, e2, pt) else
-            DoBothEdges(e1,e2);
+            DoBothEdges;
         end else if e1Contributing then
           AddPolyPt(e1.polyIdx, pt, e1.side = esLeft)
         else if e2Contributing then
@@ -1867,21 +1838,19 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
+function TClipper.IsContributing(edge: PEdge): boolean;
 var
   polyType: TPolyType;
 begin
   result := true;
   polyType := edge.polyType;
-  reverseSides := false;
   case fClipType of
     ctIntersection:
       begin
         result := false;
         while assigned(edge.prevInAEL) do
         begin
-          if edge.prevInAEL.polyType = polyType then
-            reverseSides := not reverseSides else
+          if edge.prevInAEL.polyType <> polyType then
             result := not result;
           edge := edge.prevInAEL;
         end;
