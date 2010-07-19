@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4r                                                            *
-* Date      :  10 July 2010                                                    *
+* Version   :  1.4v                                                            *
+* Date      :  19 July 2010                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -209,7 +209,7 @@ type
     procedure DoMaxima(e: PEdge; const topY: double);
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
-    function IsContributing(edge: PEdge): boolean;
+    function IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
     function AddPolyPt(idx: integer;
       const pt: TDoublePoint; ToFront: boolean): integer;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
@@ -1247,6 +1247,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
   //----------------------------------------------------------------------
 
 var
+  reverseSides: boolean;
   e: PEdge;
   pt: TDoublePoint;
 begin
@@ -1267,8 +1268,15 @@ begin
       InsertScanbeam(fLocalMinima.rightBound.ytop);
 
     with fLocalMinima^ do
-      if IsContributing(leftBound) then
+      if IsContributing(leftBound, reverseSides) then
+      begin
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
+        if reverseSides and (leftBound.nextInAEL = rightBound) then
+        begin
+          leftBound.side := esRight;
+          rightBound.side := esLeft;
+        end;
+      end;
 
     with fLocalMinima^ do
       if (leftBound.nextInAEL <> rightBound) then
@@ -1838,19 +1846,21 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsContributing(edge: PEdge): boolean;
+function TClipper.IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
 var
   polyType: TPolyType;
 begin
   result := true;
   polyType := edge.polyType;
+  reverseSides := false;
   case fClipType of
     ctIntersection:
       begin
         result := false;
         while assigned(edge.prevInAEL) do
         begin
-          if edge.prevInAEL.polyType <> polyType then
+          if edge.prevInAEL.polyType = polyType then
+            reverseSides := not reverseSides else
             result := not result;
           edge := edge.prevInAEL;
         end;

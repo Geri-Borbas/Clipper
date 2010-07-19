@@ -3,7 +3,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  1.4v                                                            *
-* Date      :  16 July 2010                                                    *
+* Date      :  19 July 2010                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -1135,10 +1135,11 @@ void Clipper::SwapWithNextInSEL(TEdge *edge)
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::IsContributing(TEdge *edge)
+bool Clipper::IsContributing(TEdge *edge, bool &reverseSides)
 {
   bool isContrib;
   TPolyType polyType = edge->polyType;
+  reverseSides = false;
   edge = edge->prevInAEL;
    switch( m_ClipType ) {
     case ctIntersection:
@@ -1146,7 +1147,9 @@ bool Clipper::IsContributing(TEdge *edge)
         isContrib = false;
         while(edge)
         {
-          if( edge->polyType != polyType ) isContrib = !isContrib;
+          if( edge->polyType == polyType )
+            reverseSides = !reverseSides; else
+            isContrib = !isContrib;
           edge = edge->prevInAEL;
         }
       break;
@@ -1204,10 +1207,16 @@ void Clipper::InsertLocalMinimaIntoAEL( double const &botY)
       InsertScanbeam( m_localMinimaList->rightBound->ytop );
 
     lm = m_localMinimaList;
-    if( IsContributing(lm->leftBound) )
+    if( IsContributing(lm->leftBound, reverseSides) )
+    {
       AddLocalMinPoly( lm->leftBound,
         lm->rightBound, DoublePoint( lm->leftBound->xbot , lm->Y ) );
-
+      if( reverseSides && (lm->leftBound->nextInAEL == lm->rightBound) )
+      {
+        lm->leftBound->side = esRight;
+        lm->rightBound->side = esLeft;
+      }
+    }
     if( lm->leftBound->nextInAEL != lm->rightBound )
     {
       e = lm->leftBound->nextInAEL;
