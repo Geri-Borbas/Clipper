@@ -35,7 +35,7 @@ if (c) {
 	ClipperAddPolygon(c, sub, ptSubject);
 	ClipperAddPolygon(c, clip, ptClip);
 	//clip operations: ctIntersection, ctUnion, ctDifference, ctXor
-	if (ClipperExecute(c, ctIntersection, &cnt) && cnt > 0){
+	if (ClipperExecute(c, ctIntersection, &cnt, pftNonZero, pftNonZero) && cnt > 0){
 		float *solution = new float [cnt];
 		ClipperSolution(c, solution, cnt);
 		DrawPolygons(bmp, solution, 0x4066FF66, 0x8000FF00);

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4v                                                            *
-* Date      :  19 July 2010                                                    *
+* Version   :  2.0                                                             *
+* Date      :  30 July 2010                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -55,6 +55,7 @@ const
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
+  TPolyFillType = (pftEvenOdd, pftNonZero);
   TEdgeSide = (esLeft, esRight);
   TDirection = (dRightToLeft, dLeftToRight);
   TIntersectProtect = (ipLeft, ipRight);
@@ -81,6 +82,9 @@ type
     tmpX:  double;
     polyType: TPolyType;
     side: TEdgeSide;
+    windDelta: integer;
+    windCnt: integer;
+    windCnt2: integer;  //winding count of polytype <> self.polytype
     polyIdx: integer;
     next: PEdge;
     prev: PEdge;
@@ -183,12 +187,17 @@ type
     fIntersectNodes: PIntersectNode;
     fExecuteLocked: boolean;
     fForceAlternateOrientation: boolean;
+    fClipFillType: TPolyFillType;
+    fSubjFillType: TPolyFillType;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
     procedure InsertScanbeam(const y: double);
     function PopScanbeam: double;
     procedure DisposeScanbeamList;
+    procedure SetWindingDelta(edge: PEdge);
+    procedure SetWindingCount(edge: PEdge);
+    function IsNonZeroFillType(edge: PEdge): boolean;
     procedure InsertLocalMinimaIntoAEL(const botY: double);
     procedure AddHorzEdgeToSEL(edge: PEdge);
     function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
@@ -209,7 +218,7 @@ type
     procedure DoMaxima(e: PEdge; const topY: double);
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
-    function IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
+    function IsContributing(edge: PEdge): boolean;
     function AddPolyPt(idx: integer;
       const pt: TDoublePoint; ToFront: boolean): integer;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
@@ -225,9 +234,13 @@ type
     //times (ie to perform different clipping operations) without having to
     //reassign either subject or clip polygons.
     function Execute(clipType: TClipType;
-      out solution: TArrayOfArrayOfFloatPoint): boolean; overload;
+      out solution: TArrayOfArrayOfFloatPoint;
+      subjFillType: TPolyFillType = pftEvenOdd;
+      clipFillType: TPolyFillType = pftEvenOdd): boolean; overload;
     function Execute(clipType: TClipType;
-      out solution: TArrayOfArrayOfDoublePoint): boolean; overload;
+      out solution: TArrayOfArrayOfDoublePoint;
+      subjFillType: TPolyFillType = pftEvenOdd;
+      clipFillType: TPolyFillType = pftEvenOdd): boolean; overload;
 
     constructor Create; override;
     destructor Destroy; override;
@@ -437,6 +450,13 @@ begin
   else
     result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
       (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < epsilon;
+end;
+//---------------------------------------------------------------------------
+
+function NextEdgeIsAbove(edge:PEdge): boolean;
+begin
+  result := ((edge.next.xbot = edge.xtop) and (edge.next.ybot = edge.ytop)) or
+      ((edge.next.xtop = edge.xtop) and (edge.next.ytop = edge.ytop));
 end;
 //---------------------------------------------------------------------------
 
@@ -992,12 +1012,16 @@ end;
 //------------------------------------------------------------------------------
 
 function TClipper.Execute(clipType: TClipType;
-  out solution: TArrayOfArrayOfFloatPoint): boolean;
+  out solution: TArrayOfArrayOfFloatPoint;
+  subjFillType: TPolyFillType = pftEvenOdd;
+  clipFillType: TPolyFillType = pftEvenOdd): boolean;
 begin
   result := false;
   if fExecuteLocked then exit;
   try
     fExecuteLocked := true;
+    fSubjFillType := subjFillType;
+    fClipFillType := clipFillType;
     result := ExecuteInternal(clipType);
     if result then solution := ResultAsFloatPointArray;
   finally
@@ -1008,12 +1032,16 @@ end;
 //------------------------------------------------------------------------------
 
 function TClipper.Execute(clipType: TClipType;
-  out solution: TArrayOfArrayOfDoublePoint): boolean;
+  out solution: TArrayOfArrayOfDoublePoint;
+  subjFillType: TPolyFillType = pftEvenOdd;
+  clipFillType: TPolyFillType = pftEvenOdd): boolean;
 begin
   result := false;
   if fExecuteLocked then exit;
   try
     fExecuteLocked := true;
+    fSubjFillType := subjFillType;
+    fClipFillType := clipFillType;
     result := ExecuteInternal(clipType);
     if result then solution := ResultAsDoublePointArray;
   finally
@@ -1206,6 +1234,84 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipper.SetWindingDelta(edge: PEdge);
+begin
+  if not IsNonZeroFillType(edge) then edge.windDelta := 1
+  else if NextEdgeIsAbove(edge) then edge.windDelta := 1
+  else edge.windDelta := -1;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.SetWindingCount(edge: PEdge);
+var
+  e: PEdge;
+begin
+  e := edge.prevInAEL;
+  //find the edge of the same polytype that immediately preceeds 'edge' in AEL
+  while assigned(e) and (e.polyType <> edge.polyType) do e := e.prevInAEL;
+  if not assigned(e) then
+  begin
+    edge.windCnt := edge.windDelta;
+    edge.windCnt2 := 0;
+    e := fActiveEdges; //ie get ready to calc windCnt2
+  end else if IsNonZeroFillType(edge) then
+  begin
+    //nonZero filling ...
+    if e.windCnt * e.windDelta < 0 then
+    begin
+      if (abs(e.windCnt) > 1) then
+      begin
+        if (e.windDelta * edge.windDelta < 0) then edge.windCnt := e.windCnt
+        else edge.windCnt := e.windCnt + edge.windDelta;
+      end else
+        edge.windCnt := e.windCnt + e.windDelta + edge.windDelta;
+    end else
+    begin
+      if (abs(e.windCnt) > 1) and (e.windDelta * edge.windDelta < 0) then
+        edge.windCnt := e.windCnt
+      else if e.windCnt + edge.windDelta = 0 then
+        edge.windCnt := e.windCnt
+      else edge.windCnt := e.windCnt + edge.windDelta;
+    end;
+    edge.windCnt2 := e.windCnt2;
+    e := e.nextInAEL; //ie get ready to calc windCnt2
+  end else
+  begin
+    //even-odd filling ...
+    edge.windCnt := 1;
+    edge.windCnt2 := e.windCnt2;
+    e := e.nextInAEL; //ie get ready to calc windCnt2
+  end;
+
+  //update windCnt2 ...
+  if (edge.polyType = ptSubject) and (fClipFillType = pftNonZero) or
+    (edge.polyType = ptClip) and (fSubjFillType = pftNonZero) then
+  begin
+    //nonZero filling ...
+    while (e <> edge) do
+    begin
+      inc(edge.windCnt2, e.windDelta);
+      e := e.nextInAEL;
+    end;
+  end else
+  begin
+    //even-odd filling ...
+    while (e <> edge) do
+    begin
+      if edge.windCnt2 = 0 then edge.windCnt2 := 1 else edge.windCnt2 := 0;
+      e := e.nextInAEL;
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.IsNonZeroFillType(edge: PEdge): boolean;
+begin
+  result := (edge.polyType = ptSubject) and (fSubjFillType = pftNonZero) or
+    (edge.polyType = ptClip) and (fClipFillType = pftNonZero);
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
 
   //----------------------------------------------------------------------
@@ -1247,7 +1353,6 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
   //----------------------------------------------------------------------
 
 var
-  reverseSides: boolean;
   e: PEdge;
   pt: TDoublePoint;
 begin
@@ -1258,25 +1363,30 @@ begin
     InsertScanbeam(fLocalMinima.leftBound.ytop);
     InsertEdgeIntoAEL(fLocalMinima.rightBound);
 
-    e := fLocalMinima.leftBound.nextInAEL;
-    if IsHorizontal(fLocalMinima.rightBound) then
+    //set edge winding states ...
+    with fLocalMinima^ do
     begin
-      //nb: only rightbounds can have a horizontal bottom edge
-      AddHorzEdgeToSEL(fLocalMinima.rightBound);
-      InsertScanbeam(fLocalMinima.rightBound.nextInLML.ytop);
-    end else
-      InsertScanbeam(fLocalMinima.rightBound.ytop);
+      SetWindingDelta(leftBound);
+      if IsNonZeroFillType(leftBound) then
+        rightBound.windDelta := -leftBound.windDelta else
+        rightBound.windDelta := 1;
+      SetWindingCount(leftBound);
+      rightBound.windCnt := leftBound.windCnt;
+      rightBound.windCnt2 := leftBound.windCnt2;
+
+      e := leftBound.nextInAEL;
+      if IsHorizontal(rightBound) then
+      begin
+        //nb: only rightbounds can have a horizontal bottom edge
+        AddHorzEdgeToSEL(rightBound);
+        InsertScanbeam(rightBound.nextInLML.ytop);
+      end else
+        InsertScanbeam(rightBound.ytop);
+    end;
 
     with fLocalMinima^ do
-      if IsContributing(leftBound, reverseSides) then
-      begin
+      if IsContributing(leftBound) then
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
-        if reverseSides and (leftBound.nextInAEL = rightBound) then
-        begin
-          leftBound.side := esRight;
-          rightBound.side := esLeft;
-        end;
-      end;
 
     with fLocalMinima^ do
       if (leftBound.nextInAEL <> rightBound) then
@@ -1516,7 +1626,9 @@ begin
       else if (e = eMaxPair) then
       begin
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
-        IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),[]);
+        if Direction = dLeftToRight then
+          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),[]) else
+          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),[]);
         exit;
       end
       else if IsHorizontal(e) and not IsMinima(e) and not (e.xbot > e.xtop) then
@@ -1742,21 +1854,6 @@ end;
 procedure TClipper.IntersectEdges(e1,e2: PEdge;
   const pt: TDoublePoint; protects: TIntersectProtects = []);
 
-  //----------------------------------------------------------------------
-  procedure AdjustLocalMinSides(edge1, edge2: PEdge);
-  begin
-    if not IsHorizontal(edge2) and (edge1.dx > edge2.dx) then
-    begin
-      edge1.side := esLeft;
-      edge2.side := esRight;
-    end else
-    begin
-      edge1.side := esRight;
-      edge2.side := esLeft;
-    end;
-  end;
-  //----------------------------------------------------------------------
-
   procedure DoEdge1;
   begin
     AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
@@ -1783,12 +1880,13 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   //----------------------------------------------------------------------
 
 var
+  oldE1WindCnt: integer;
   e1stops, e2stops: boolean;
   e1Contributing, e2contributing: boolean;
 begin
   {IntersectEdges}
 
-  //nb: e1 always just precedes e2 in AEL ...
+  //nb: e1 always precedes e2 in AEL ...
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
     (abs(e1.xtop - pt.x) < tolerance) and (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
@@ -1796,41 +1894,87 @@ begin
   e1Contributing := (e1.polyidx >= 0);
   e2contributing := (e2.polyidx >= 0);
 
-  case Self.fClipType of
-    ctIntersection, ctUnion, ctDifference:
-      begin
-        if e1Contributing and e2contributing then
-        begin
-          if e1stops or e2stops or (e1.polytype <> e2.polytype) then
-              AddLocalMaxPoly(e1, e2, pt) else
-              DoBothEdges;
-        end
-        else if e1Contributing then DoEdge1
-        else if e2contributing then DoEdge2
-        else
-        begin
-          //neither edge contributing
-          if (e1.polytype <> e2.polytype) and not e1stops and not e2stops then
-          begin
+  //update winding counts ...
+  if e1.polyType = e2.polyType then
+  begin
+    if IsNonZeroFillType(e1) then
+    begin
+      if e1.windCnt + e2.windDelta = 0 then
+        e1.windCnt := -e1.windCnt else
+        inc(e1.windCnt, e2.windDelta);
+      if e2.windCnt - e1.windDelta = 0 then
+        e2.windCnt := -e2.windCnt else
+        dec(e2.windCnt, e1.windDelta);
+    end else
+    begin
+      oldE1WindCnt := e1.windCnt;
+      e1.windCnt := e2.windCnt;
+      e2.windCnt := oldE1WindCnt;
+    end;
+  end else
+  begin
+    if IsNonZeroFillType(e2) then inc(e1.windCnt2, e2.windDelta)
+    else if e1.windCnt2 = 0 then e1.windCnt2 := 1
+    else e1.windCnt2 := 0;
+    if IsNonZeroFillType(e1) then dec(e2.windCnt2, e1.windDelta)
+    else if e2.windCnt2 = 0 then e2.windCnt2 := 1
+    else e2.windCnt2 := 0;
+  end;
+
+  if e1Contributing and e2contributing then
+  begin
+    if e1stops or e2stops or
+      (abs(e1.windCnt) > 1) or (abs(e2.windCnt) > 1) or
+      ((e1.polytype <> e2.polytype) and (fClipType <> ctXor)) then
+        AddLocalMaxPoly(e1, e2, pt) else
+        DoBothEdges;
+  end
+  else if e1Contributing then
+  begin
+    case fClipType of
+      ctIntersection: if (abs(e2.windCnt) < 2) and
+        ((e2.polyType = ptSubject) or (e2.windCnt2 <> 0)) then DoEdge1;
+      else
+        if (abs(e2.windCnt) < 2) then DoEdge1;
+    end;
+  end
+  else if e2contributing then
+  begin
+    case fClipType of
+      ctIntersection: if (abs(e1.windCnt) < 2) and
+        ((e1.polyType = ptSubject) or (e1.windCnt2 <> 0)) then DoEdge2;
+      else
+        if (abs(e1.windCnt) < 2) then DoEdge2;
+    end;
+  end
+  else
+  begin
+    //neither edge is currently contributing ...
+    if (abs(e1.windCnt) > 1) and (abs(e2.windCnt) > 1) then
+      // do nothing
+    else if (e1.polytype <> e2.polytype) and
+      not e1stops and not e2stops and
+      (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2)then
+      AddLocalMinPoly(e1, e2, pt)
+    else if (abs(e1.windCnt) = 1) and (abs(e2.windCnt) = 1) then
+      case fClipType of
+        ctIntersection:
+          if (abs(e1.windCnt2) > 0) and (abs(e2.windCnt2) > 0) then
             AddLocalMinPoly(e1, e2, pt);
-            AdjustLocalMinSides(e1, e2);
-          end
-            else swapsides(e1,e2);
-        end;
-      end;
-    ctXor:
-      begin
-        //edges can be momentarily non-contributing at complex intersections ...
-        if e1Contributing and e2contributing then
-        begin
-          if e1stops or e2stops then
-            AddLocalMaxPoly(e1, e2, pt) else
-            DoBothEdges;
-        end else if e1Contributing then
-          AddPolyPt(e1.polyIdx, pt, e1.side = esLeft)
-        else if e2Contributing then
-          AddPolyPt(e2.polyIdx, pt, e2.side = esLeft);
-      end;
+        ctUnion:
+          if (e1.windCnt2 = 0) and (e2.windCnt2 = 0) then
+            AddLocalMinPoly(e1, e2, pt);
+        ctDifference:
+          if ((e1.polyType = ptClip) and (e2.polyType = ptClip) and
+            (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0)) or
+            ((e1.polyType = ptSubject) and (e2.polyType = ptSubject) and
+            (e1.windCnt2 = 0) and (e2.windCnt2 = 0)) then
+              AddLocalMinPoly(e1, e2, pt);
+        ctXor:
+          AddLocalMinPoly(e1, e2, pt);
+      end
+    else if (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2) then
+      swapsides(e1,e2);
   end;
 
   if (e1stops <> e2stops) and
@@ -1840,53 +1984,34 @@ begin
     SwapPolyIndexes(e1, e2);
   end;
 
-  //finally, delete any non-contrib. maxima edges  ...
+  //finally, delete any non-contributing maxima edges  ...
   if e1stops then deleteFromAEL(e1);
   if e2stops then deleteFromAEL(e2);
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsContributing(edge: PEdge; out reverseSides: boolean): boolean;
-var
-  polyType: TPolyType;
+function TClipper.IsContributing(edge: PEdge): boolean;
 begin
   result := true;
-  polyType := edge.polyType;
-  reverseSides := false;
   case fClipType of
     ctIntersection:
       begin
-        result := false;
-        while assigned(edge.prevInAEL) do
-        begin
-          if edge.prevInAEL.polyType = polyType then
-            reverseSides := not reverseSides else
-            result := not result;
-          edge := edge.prevInAEL;
-        end;
+        if edge.polyType = ptSubject then
+          result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0) else
+          result := (edge.windCnt2 <> 0) and (abs(edge.windCnt) = 1);
       end;
     ctUnion:
       begin
-        result := true;
-        while assigned(edge.prevInAEL) do
-        begin
-          if edge.prevInAEL.polyType <> polyType then
-            result := not result;
-          edge := edge.prevInAEL;
-        end;
+        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0);
       end;
     ctDifference:
       begin
-        result := polyType = ptSubject;
-        while assigned(edge.prevInAEL) do
-        begin
-          if edge.prevInAEL.polyType <> polyType then
-            result := not result;
-          edge := edge.prevInAEL;
-        end;
+        if edge.polyType = ptSubject then
+        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0) else
+        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0);
       end;
     ctXor:
-      result := true;
+      result := (abs(edge.windCnt) = 1);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1939,6 +2064,9 @@ begin
   if assigned(AelNext) then
     AelNext.prevInAEL := e.nextInLML;
   e.nextInLML.side := e.side;
+  e.nextInLML.windDelta := e.windDelta;
+  e.nextInLML.windCnt := e.windCnt;
+  e.nextInLML.windCnt2 := e.windCnt2;
   e := e.nextInLML;
   e.prevInAEL := AelPrev;
   e.nextInAEL := AelNext;
@@ -2130,6 +2258,16 @@ var
 begin
   e1.polyIdx := AddPolyPt(e1.polyIdx, pt, true);
   e2.polyIdx := e1.polyIdx;
+
+  if not IsHorizontal(e2) and (e1.dx > e2.dx) then
+  begin
+    e1.side := esLeft;
+    e2.side := esRight;
+  end else
+  begin
+    e1.side := esRight;
+    e2.side := esLeft;
+  end;
 
   if fForceAlternateOrientation then
   begin

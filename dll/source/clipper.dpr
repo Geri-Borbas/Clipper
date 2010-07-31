@@ -107,8 +107,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function ClipperExecute(clipper: Pointer; clipType: TClipType;
-  out SolutionCount: integer): boolean; export; stdcall;
+function ClipperExecute(clipper: Pointer;
+  clipType: TClipType;
+  out SolutionCount: integer;
+  subjFillType: TPolyFillType;
+  clipFillType: TPolyFillType): boolean; export; stdcall;
 var
   i: integer;
 begin
@@ -118,12 +121,13 @@ begin
   try
     with TClipper(clipper) do
     begin
-      Solution := nil;
-      result := Execute(clipType, Solution) and assigned(Solution);
+      SavedSolution := nil;
+      result := Execute(clipType, SavedSolution, subjFillType, clipFillType) and
+        assigned(SavedSolution);
       if not result then exit;
-      SolutionCount := 1 + length(Solution);
-      for i := 0 to length(Solution) -1 do
-        inc(SolutionCount, length(Solution[i])*2);
+      SolutionCount := 1 + length(SavedSolution);
+      for i := 0 to length(SavedSolution) -1 do
+        inc(SolutionCount, length(SavedSolution[i])*2);
     end;
   except
     result := false;
@@ -137,7 +141,7 @@ begin
   result := assigned(clipper);
   if result then
   try
-    AAFloatPointToASingle(TClipper(clipper).Solution, solution, solutionCount);
+    AAFloatPointToASingle(TClipper(clipper).SavedSolution, solution, solutionCount);
   except
     result := false;
   end;
@@ -149,7 +153,7 @@ begin
   result := assigned(clipper);
   try
     TClipper(clipper).Clear;
-    TClipper(clipper).Solution := nil;
+    TClipper(clipper).SavedSolution := nil;
   except
     result := false;
   end;

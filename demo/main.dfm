@@ -1,5 +1,5 @@
 object MainForm: TMainForm
-  Left = 164
+  Left = 151
   Top = 122
   Width = 859
   Height = 604
@@ -20,13 +20,13 @@ object MainForm: TMainForm
   object Panel1: TPanel
     Left = 0
     Top = 0
-    Width = 185
+    Width = 183
     Height = 547
     Align = alLeft
     TabOrder = 0
     object lblClipOpacity: TLabel
       Left = 21
-      Top = 459
+      Top = 468
       Width = 108
       Height = 16
       Caption = 'Clip Opacity (255):'
@@ -34,7 +34,7 @@ object MainForm: TMainForm
     end
     object lblSubjOpacity: TLabel
       Left = 21
-      Top = 416
+      Top = 425
       Width = 112
       Height = 16
       Caption = 'Subj &Opacity (255):'
@@ -43,13 +43,13 @@ object MainForm: TMainForm
     object GroupBox1: TGroupBox
       Left = 13
       Top = 8
-      Width = 156
-      Height = 122
+      Width = 157
+      Height = 115
       Caption = 'Clipping  Oper&ation'
       TabOrder = 0
       object rbIntersection: TRadioButton
         Left = 14
-        Top = 42
+        Top = 38
         Width = 113
         Height = 17
         Caption = 'Intersection'
@@ -60,7 +60,7 @@ object MainForm: TMainForm
       end
       object rbUnion: TRadioButton
         Left = 14
-        Top = 60
+        Top = 56
         Width = 113
         Height = 17
         Caption = 'Union'
@@ -69,7 +69,7 @@ object MainForm: TMainForm
       end
       object rbDifference: TRadioButton
         Left = 14
-        Top = 78
+        Top = 74
         Width = 113
         Height = 17
         Caption = 'Difference'
@@ -78,7 +78,7 @@ object MainForm: TMainForm
       end
       object rbXOR: TRadioButton
         Left = 14
-        Top = 96
+        Top = 92
         Width = 113
         Height = 17
         Caption = 'XOR'
@@ -87,7 +87,7 @@ object MainForm: TMainForm
       end
       object rbNone: TRadioButton
         Left = 14
-        Top = 24
+        Top = 20
         Width = 113
         Height = 17
         Caption = 'None'
@@ -96,11 +96,11 @@ object MainForm: TMainForm
       end
     end
     object rbStatic: TRadioButton
-      Left = 16
-      Top = 139
-      Width = 113
+      Left = 27
+      Top = 129
+      Width = 115
       Height = 17
-      Caption = '&Static Polygons'
+      Caption = '&Static'
       Checked = True
       TabOrder = 1
       TabStop = True
@@ -109,124 +109,160 @@ object MainForm: TMainForm
     object bExit: TButton
       Left = 21
       Top = 509
-      Width = 135
+      Width = 136
       Height = 25
+      Cancel = True
       Caption = 'E&xit'
-      TabOrder = 6
+      TabOrder = 7
       OnClick = bExitClick
     end
-    object GroupBox2: TGroupBox
+    object gbRandom: TGroupBox
       Left = 11
-      Top = 183
-      Width = 158
-      Height = 219
-      TabOrder = 3
+      Top = 184
+      Width = 157
+      Height = 233
+      TabOrder = 4
       object lblSubjCount: TLabel
         Left = 4
-        Top = 15
+        Top = 40
         Width = 146
         Height = 16
         Caption = 'Random S&ubj Count (10):'
+        Enabled = False
         FocusControl = tbSubj
       end
       object lblClipCount: TLabel
         Left = 4
-        Top = 62
+        Top = 87
         Width = 142
         Height = 16
         Caption = 'Random Cl&ip Count (10):'
+        Enabled = False
         FocusControl = tbClip
       end
       object tbSubj: TTrackBar
         Left = 5
-        Top = 33
+        Top = 58
         Width = 145
         Height = 28
+        Enabled = False
         Max = 60
         Min = 3
         Position = 10
-        TabOrder = 0
+        TabOrder = 2
         ThumbLength = 16
         TickStyle = tsNone
         OnChange = tbSubjChange
       end
       object tbClip: TTrackBar
         Left = 5
-        Top = 81
+        Top = 106
         Width = 145
         Height = 28
+        Enabled = False
         Max = 60
         Min = 3
         Position = 10
-        TabOrder = 1
+        TabOrder = 3
         ThumbLength = 16
         TickStyle = tsNone
         OnChange = tbSubjChange
       end
       object bNext: TButton
         Left = 10
-        Top = 148
-        Width = 135
+        Top = 162
+        Width = 134
         Height = 25
         Caption = '&Next Random'
         Enabled = False
-        TabOrder = 3
+        TabOrder = 5
         OnClick = bNextClick
       end
       object bStart: TButton
         Left = 10
-        Top = 118
-        Width = 135
+        Top = 132
+        Width = 134
         Height = 25
         Caption = 'S&tart Loop'
         Enabled = False
-        TabOrder = 2
+        TabOrder = 4
         OnClick = bStartClick
       end
       object bStop: TButton
         Left = 10
-        Top = 181
-        Width = 135
+        Top = 195
+        Width = 134
         Height = 25
         Cancel = True
         Caption = 'Stop Loop'
         Enabled = False
-        TabOrder = 4
+        TabOrder = 6
         OnClick = bStopClick
       end
+      object rbEvenOdd: TRadioButton
+        Left = 5
+        Top = 14
+        Width = 73
+        Height = 17
+        Caption = 'EvenOdd'
+        Checked = True
+        Enabled = False
+        TabOrder = 0
+        TabStop = True
+        OnClick = rbEvenOddClick
+      end
+      object rbNonZero: TRadioButton
+        Left = 82
+        Top = 14
+        Width = 69
+        Height = 17
+        Caption = 'NonZero'
+        Enabled = False
+        TabOrder = 1
+        OnClick = rbEvenOddClick
+      end
     end
-    object rbRandom: TRadioButton
-      Left = 16
-      Top = 159
-      Width = 131
+    object rbRandom1: TRadioButton
+      Left = 27
+      Top = 146
+      Width = 115
       Height = 17
-      Caption = '&Random Polygons'
+      Caption = '&Random 1'
       TabOrder = 2
       OnClick = rbStaticClick
     end
     object tbClipOpacity: TTrackBar
       Left = 16
-      Top = 476
-      Width = 145
+      Top = 485
+      Width = 148
       Height = 28
       Max = 255
       Position = 255
-      TabOrder = 5
+      TabOrder = 6
       ThumbLength = 16
       TickStyle = tsNone
       OnChange = tbClipOpacityChange
     end
     object tbSubjOpacity: TTrackBar
       Left = 16
-      Top = 433
-      Width = 145
+      Top = 442
+      Width = 148
       Height = 28
       Max = 255
       Position = 255
-      TabOrder = 4
+      TabOrder = 5
       ThumbLength = 16
       TickStyle = tsNone
       OnChange = tbSubjOpacityChange
+    end
+    object rbRandom2: TRadioButton
+      Left = 27
+      Top = 164
+      Width = 115
+      Height = 17
+      Caption = '&Random 2'
+      TabOrder = 3
+      OnClick = rbStaticClick
     end
   end
   object StatusBar1: TStatusBar
@@ -238,9 +274,9 @@ object MainForm: TMainForm
     SimplePanel = True
   end
   object ImgView321: TImgView32
-    Left = 185
+    Left = 183
     Top = 0
-    Width = 658
+    Width = 660
     Height = 547
     Align = alClient
     Bitmap.ResamplerClassName = 'TNearestResampler'

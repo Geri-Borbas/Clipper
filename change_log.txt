@@ -2,6 +2,11 @@
 Clipper Change Log
 ============================================================
 
+2.0 - 30 July 2010
+* Clipper now clips using both the Even-Odd (alternate) and 
+  Non-Zero (winding) polygon filling rules. (Previously Clipper 
+  assumed the Even-Odd rule for polygon filling.)
+  
 1.4s - 11 July 2010
 * Bugfix: Some code in BuildResult() in clipper.cpp was being 
   executed out of order.

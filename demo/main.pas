@@ -21,12 +21,12 @@ type
     bExit: TButton;
     Timer1: TTimer;
     rbNone: TRadioButton;
-    GroupBox2: TGroupBox;
+    gbRandom: TGroupBox;
     lblSubjCount: TLabel;
     lblClipCount: TLabel;
     tbSubj: TTrackBar;
     tbClip: TTrackBar;
-    rbRandom: TRadioButton;
+    rbRandom1: TRadioButton;
     bNext: TButton;
     bStart: TButton;
     bStop: TButton;
@@ -34,6 +34,9 @@ type
     lblClipOpacity: TLabel;
     lblSubjOpacity: TLabel;
     tbSubjOpacity: TTrackBar;
+    rbRandom2: TRadioButton;
+    rbEvenOdd: TRadioButton;
+    rbNonZero: TRadioButton;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure ImgView321Resize(Sender: TObject);
@@ -48,10 +51,14 @@ type
     procedure tbClipOpacityChange(Sender: TObject);
     procedure rbStaticClick(Sender: TObject);
     procedure tbSubjOpacityChange(Sender: TObject);
+    procedure rbEvenOddClick(Sender: TObject);
   private
     clipper: TClipper;
+    function GetFillType: TPolyFillType;
+    function GetOpType: TClipType;
     procedure ShowStaticPolys;
-    procedure ShowRandomPolys(newPoly: boolean);
+    procedure ShowRandomPolys1(newPoly: boolean);
+    procedure ShowRandomPolys2(newPoly: boolean);
     procedure RePaintBitmap;
   public
     { Public declarations }
@@ -105,6 +112,9 @@ end;
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
   clipper := TClipper.create;
+  tbSubjOpacity.Position := 128;
+  tbClipOpacity.Position := 128;
+  Randomize;
 end;
 //------------------------------------------------------------------------------
 
@@ -131,9 +141,13 @@ procedure TMainForm.RepaintBitmap;
 begin
   ImgView321.Bitmap.Clear(clWhite32);
 
-  PolyPolygonFS(ImgView321.Bitmap, subj, subjClr32 or subjOpacity, pfAlternate);
+  if rbEvenOdd.Checked then
+    PolyPolygonFS(ImgView321.Bitmap, subj, subjClr32 or subjOpacity, pfAlternate) else
+    PolyPolygonFS(ImgView321.Bitmap, subj, subjClr32 or subjOpacity, pfWinding);
   PolyPolylineFS(ImgView321.Bitmap, subj, (edgeClr32 and $00FFFFFF) or subjOpacity, true);
-  PolyPolygonFS(ImgView321.Bitmap, clip, clipClr32 or clipOpacity, pfAlternate);
+  if rbEvenOdd.Checked then
+    PolyPolygonFS(ImgView321.Bitmap, clip, clipClr32 or clipOpacity, pfAlternate) else
+    PolyPolygonFS(ImgView321.Bitmap, clip, clipClr32 or clipOpacity, pfWinding);
   PolyPolylineFS(ImgView321.Bitmap, clip, (edgeClr32 and $00FFFFFF) or clipOpacity, true);
   if assigned(solution) and not rbNone.Checked then
   begin
@@ -144,6 +158,21 @@ begin
     PolyPolylineFS(ImgView321.Bitmap, solution, clGray32, true);
   end;
   ImgView321.Repaint;
+end;
+//------------------------------------------------------------------------------
+
+function TMainForm.GetFillType: TPolyFillType;
+begin
+  if rbEvenOdd.checked then result := pftEvenOdd else result := pftNonZero;
+end;
+//------------------------------------------------------------------------------
+
+function TMainForm.GetOpType: TClipType;
+begin
+  if rbIntersection.Checked then result := ctIntersection
+  else if rbUnion.Checked then result := ctUnion
+  else if rbDifference.Checked then result := ctDifference
+  else result := ctXor;
 end;
 //------------------------------------------------------------------------------
 
@@ -169,9 +198,19 @@ begin
   begin
     Timer1.Enabled := false;
     ShowStaticPolys;
-  end else
-    ShowRandomPolys(true);
-  bNext.Enabled := rbRandom.Checked and not Timer1.Enabled;
+  end else if rbRandom1.Checked then
+    ShowRandomPolys1(true)
+  else
+    ShowRandomPolys2(true);
+
+  rbNonZero.Enabled := not rbStatic.Checked;
+  rbEvenOdd.Enabled := not rbStatic.Checked;
+  lblSubjCount.Enabled := rbRandom1.Checked;
+  tbSubj.Enabled := rbRandom1.Checked;
+  tbClip.Enabled := not rbStatic.Checked;
+  lblClipCount.Enabled := not rbStatic.Checked;
+
+  bNext.Enabled := not rbStatic.Checked and not Timer1.Enabled;
   bStart.Enabled := bNext.Enabled;
   bStop.Enabled := Timer1.Enabled;
 end;
@@ -179,15 +218,16 @@ end;
 
 procedure TMainForm.rbIntersectionClick(Sender: TObject);
 begin
-  if rbStatic.Checked then
-    ShowStaticPolys else
-    ShowRandomPolys(false);
+  if rbStatic.Checked then ShowStaticPolys
+  else if rbRandom1.Checked then ShowRandomPolys1(false)
+  else ShowRandomPolys2(false);
 end;
 //------------------------------------------------------------------------------
 
 procedure TMainForm.bNextClick(Sender: TObject);
 begin
-  ShowRandomPolys(true);
+  if rbRandom1.Checked then ShowRandomPolys1(true)
+  else ShowRandomPolys2(true);
 end;
 //------------------------------------------------------------------------------
 
@@ -211,7 +251,8 @@ end;
 
 procedure TMainForm.Timer1Timer(Sender: TObject);
 begin
-  ShowRandomPolys(true);
+  if rbRandom1.Checked then ShowRandomPolys1(true)
+  else ShowRandomPolys2(true);
 end;
 //------------------------------------------------------------------------------
 
@@ -225,13 +266,20 @@ procedure TMainForm.tbSubjChange(Sender: TObject);
 begin
   lblSubjCount.Caption := format('Random Subj Count (%d):',[tbSubj.Position]);
   lblClipCount.Caption := format('Random Clip Count (%d):',[tbClip.Position]);
-  if bNext.Enabled then ShowRandomPolys(true);
+  if not bNext.Enabled then exit;
+  if rbRandom1.Checked then ShowRandomPolys1(true)
+  else ShowRandomPolys2(true);
+end;
+//------------------------------------------------------------------------------
+
+procedure TMainForm.rbEvenOddClick(Sender: TObject);
+begin
+  if rbRandom1.Checked then ShowRandomPolys1(false)
+  else ShowRandomPolys2(false);
 end;
 //------------------------------------------------------------------------------
 
 procedure TMainForm.ShowStaticPolys;
-var
-  isOK: boolean;
 begin
   solution := nil;
   p(subj); //fills subj with an array of predefined polygons
@@ -245,30 +293,20 @@ begin
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
-
-    if rbIntersection.Checked then
-      isOK := Execute(ctIntersection, solution)
-    else if rbUnion.Checked then
-      isOK := Execute(ctUnion, solution)
-    else if rbDifference.Checked then
-      isOK := Execute(ctDifference, solution)
-    else if rbXOR.Checked then
-      isOK := Execute(ctXor, solution)
-    else
-      isOK := false;
+    if Execute(GetOpType, solution) then
+      RePaintBitmap;
   end;
-
-  if isOK then RepaintBitmap;
 end;
 //------------------------------------------------------------------------------
 
-procedure TMainForm.ShowRandomPolys(newPoly: boolean);
+procedure TMainForm.ShowRandomPolys1(newPoly: boolean);
 var
-  isOK: boolean;
   i,highI,w,h: integer;
+  fillType: TPolyFillType;
 begin
   w := (ImgView321.ClientWidth -30);
   h := (ImgView321.ClientHeight -30);
+  fillType := GetFillType;
 
   if newPoly then
   begin
@@ -297,23 +335,59 @@ begin
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
-
-    if rbIntersection.Checked then
-      isOK := Execute(ctIntersection, solution)
-    else if rbUnion.Checked then
-      isOK := Execute(ctUnion, solution)
-    else if rbDifference.Checked then
-      isOK := Execute(ctDifference, solution)
-    else if rbXOR.Checked then
-      isOK := Execute(ctXor, solution)
-    else
-      isOK := false;
+    if Execute(GetOpType, solution, fillType, fillType) then
+      RePaintBitmap;
   end;
-
-  if isOK then
-    RePaintBitmap;
 end;
 //------------------------------------------------------------------------------
+
+procedure TMainForm.ShowRandomPolys2(newPoly: boolean);
+var
+  i,j, w,h: integer;
+  pt: TFloatPoint;
+  rec: TFloatRect;
+  fillType: TPolyFillType;
+begin
+
+  w := (ImgView321.ClientWidth -30);
+  h := (ImgView321.ClientHeight -30);
+  fillType := GetFillType;
+
+  if newPoly then
+  begin
+    solution := nil;
+    australia(subj);
+    //resize australia ...
+    for i := 0 to high(subj) do
+      for j := 0 to high(subj[i]) do
+        with subj[i][j] do
+        begin
+          X := X *1.5 - 180;
+          Y := Y *1.5 - 130;
+        end;
+
+    //make bubbles for clip ...
+    setlength(clip, tbClip.Position);
+    for i := 0 to high(clip) do
+    begin
+      pt := FloatPoint(random*(w-100) +50, random*(h-100) +50);
+      j := round(random*45) + 5;
+      rec := FloatRect(pt.X -j, pt.Y - j, pt.X +j, pt.Y + j);
+      clip[i] := GetEllipsePoints(rec);
+    end;
+  end;
+  RePaintBitmap;
+
+  with clipper do
+  begin
+    ForceAlternateOrientation := false;
+    clear;
+    AddPolyPolygon(subj, ptSubject);
+    AddPolyPolygon(clip, ptClip);
+    if Execute(GetOpType, solution, fillType, fillType) then
+      RePaintBitmap;
+  end;
+end;
 //------------------------------------------------------------------------------
 
 procedure p(out poly: TArrayOfArrayOfFloatPoint);

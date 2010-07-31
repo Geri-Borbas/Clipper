@@ -2,16 +2,23 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.4v                                                            *
-* Date      :  19 July 2010                                                    *
+* Version   :  2.0                                                             *
+* Date      :  30 July 2010                                                    *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
+* License:                                                                     *
+* Use, modification & distribution is subject to Boost Software License Ver 1. *
+* http://www.boost.org/LICENSE_1_0.txt                                         *
+* (nb: This library was initially release under dual MPL and LGPL licenses.    *
+* This Boost License is much simpler and imposes even fewer restrictions on    *
+* the use of this code, yet it still accomplishes the desired purposes.)       *
+*                                                                              *
+* Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
 * "A generic solution to polygon clipping"                                     *
 * Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
 * http://portal.acm.org/citation.cfm?id=129906                                 *
 *                                                                              *
-* See also:                                                                    *
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
@@ -19,40 +26,12 @@
 *                                                                              *
 *******************************************************************************/
 
-/****** BEGIN LICENSE BLOCK ****************************************************
-*                                                                              *
-* Version: MPL 1.1 or LGPL 2.1 with linking exception                          *
-*                                                                              *
-* The contents of this file are subject to the Mozilla Public License Version  *
-* 1.1 (the "License"); you may not use this file except in compliance with     *
-* the License. You may obtain a copy of the License at                         *
-* http://www.mozilla.org/MPL/                                                  *
-*                                                                              *
-* Software distributed under the License is distributed on an "AS IS" basis,   *
-* WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License     *
-* for the specific language governing rights and limitations under the         *
-* License.                                                                     *
-*                                                                              *
-* Alternatively, the contents of this file may be used under the terms of the  *
-* Free Pascal modified version of the GNU Lesser General Public License        *
-* Version 2.1 (the "FPC modified LGPL License"), in which case the provisions  *
-* of this license are applicable instead of those above.                       *
-* Please see the file LICENSE.txt for additional information concerning this   *
-* license.                                                                     *
-*                                                                              *
-* The Original Code is clipper.hpp & clipper.cpp                               *
-*                                                                              *
-* The Initial Developer of the Original Code is                                *
-* Angus Johnson (http://www.angusj.com)                                        *
-*                                                                              *
-******* END LICENSE BLOCK *****************************************************/
-
 /*******************************************************************************
 *                                                                              *
 *  This is a translation of my Delphi clipper code and is the very first stuff *
 *  I've written in C++ (or C). My apologies if the coding style is unorthodox. *
 *  Please see the accompanying Delphi Clipper library (clipper.pas) for a more *
-*  detailed explanation of the code logic.                                     *
+*  detailed explanation of the code algorithms.                                *
 *                                                                              *
 *******************************************************************************/
 
@@ -66,6 +45,7 @@ namespace clipper {
 
 typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
+typedef enum { pftEvenOdd, pftNonZero} TPolyFillType;
 typedef enum { esLeft, esRight } TEdgeSide;
 typedef unsigned TIntersectProtects;
 typedef enum { sFalse, sTrue, sUndefined} TriState;
@@ -84,7 +64,10 @@ struct TEdge {
   double tmpX;
   TPolyType polyType;
   TEdgeSide side;
-  int polyIdx;
+  int windDelta;
+  int windCnt;
+  int windCnt2;
+  int outIdx;
   TEdge *next;
   TEdge *prev;
   TEdge *nextInLML;
@@ -169,7 +152,12 @@ private:
 	TIntersectNode   *m_IntersectNodes;
 	bool              m_ExecuteLocked;
 	bool              m_ForceAlternateOrientation;
+  TPolyFillType     m_ClipFillType;
+  TPolyFillType     m_SubjFillType;
   void DisposeScanbeamList();
+  void SetWindingDelta(TEdge *edge);
+  void SetWindingCount(TEdge *edge);
+  bool IsNonZeroFillType(TEdge *edge);
   bool InitializeScanbeam();
   void InsertScanbeam( double const &Y);
   double PopScanbeam();
@@ -180,7 +168,7 @@ private:
   void DeleteFromAEL(TEdge *e);
   void UpdateEdgeIntoAEL(TEdge *&e);
   void SwapWithNextInSEL(TEdge *edge);
-  bool IsContributing(TEdge *edge, bool &reverseSides);
+  bool IsContributing(TEdge *edge);
   bool IsTopHorz(TEdge *horzEdge, double const &XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
   void DoMaxima(TEdge *e, double const &topY);
@@ -206,7 +194,10 @@ private:
 public:
   Clipper();
   ~Clipper();
-  bool Execute(TClipType clipType, TPolyPolygon &polypoly);
+  bool Execute(TClipType clipType,
+    TPolyPolygon &solution,
+    TPolyFillType subjFillType = pftEvenOdd,
+    TPolyFillType clipFillType = pftEvenOdd);
   //ForceAlternateOrientation() is only useful when operating on
   //simple polygons. It ensures that simple polygons returned from
   //Clipper.Execute() calls will have clockwise 'outer' and counter-clockwise

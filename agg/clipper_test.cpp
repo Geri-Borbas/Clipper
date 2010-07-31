@@ -221,7 +221,7 @@ public:
                 agg::path_storage ps1;
                 agg::path_storage ps2;
 
-                agg::conv_clipper<agg::path_storage, agg::path_storage> clp(ps1, ps2);
+                agg::conv_clipper<agg::path_storage, agg::path_storage> clp(ps1, ps2, agg::clipper_or, agg::clipper_non_zero, agg::clipper_non_zero);
 
                 double x = m_x - initial_width()/2 + 100;
                 double y = m_y - initial_height()/2 + 100;
@@ -275,7 +275,7 @@ public:
                 stroke.width(10.0);
 
                 agg::conv_clipper<agg::path_storage, 
-                              agg::conv_stroke<agg::path_storage> > clp(ps1, stroke);
+                              agg::conv_stroke<agg::path_storage> > clp(ps1, stroke, agg::clipper_or, agg::clipper_non_zero, agg::clipper_non_zero);
 
 
                 double x = m_x - initial_width()/2 + 100;
@@ -337,7 +337,7 @@ public:
                 agg::conv_transform<agg::path_storage> trans_arrows(arrows, mtx2);
 
                 agg::conv_clipper<agg::conv_transform<agg::path_storage>, 
-                              agg::conv_transform<agg::path_storage> > clp(trans_gb_poly, trans_arrows);
+                              agg::conv_transform<agg::path_storage> > clp(trans_gb_poly, trans_arrows, agg::clipper_or, agg::clipper_non_zero, agg::clipper_non_zero);
 
                 ras.add_path(trans_gb_poly);
                 ren.color(agg::rgba(0.5, 0.5, 0, 0.1));
@@ -377,7 +377,7 @@ public:
                 agg::conv_transform<agg::path_storage> trans_gb_poly(gb_poly, mtx);
 
                 agg::conv_clipper<agg::conv_transform<agg::path_storage>, 
-                              agg::conv_stroke<spiral> > clp(trans_gb_poly, stroke);
+                              agg::conv_stroke<spiral> > clp(trans_gb_poly, stroke, agg::clipper_or, agg::clipper_non_zero, agg::clipper_non_zero);
 
                 ras.add_path(trans_gb_poly);
                 ren.color(agg::rgba(0.5, 0.5, 0, 0.1));
@@ -462,7 +462,7 @@ public:
                 agg::conv_clipper<agg::conv_stroke<spiral>, 
                                  agg::conv_curve<
                                      agg::conv_transform<
-                                         agg::path_storage> > > clp(stroke, curve);
+                                         agg::path_storage> > > clp(stroke, curve, agg::clipper_or, agg::clipper_non_zero, agg::clipper_non_zero);
 
                 ras.reset();
                 ras.add_path(stroke);

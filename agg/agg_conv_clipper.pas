@@ -19,11 +19,10 @@
 //          http://www.antigrain.com
 //----------------------------------------------------------------------------
 
-{ agg_conv_clipper.pas }
 unit
  agg_conv_clipper ;
 
-INTERFACE
+interface
 
 {$I agg_mode.inc }
 
@@ -33,7 +32,6 @@ uses
  agg_array ,
  agg_vertex_source ;
 
-{ TYPES DEFINITION }
 type
   clipper_op_e = (
     clipper_or ,
@@ -43,8 +41,12 @@ type
     clipper_b_minus_a
   );
 
+  clipper_polyFillType = (
+    clipper_evenOdd,
+    clipper_nonZero
+  );
 
- status = (status_move_to, status_line_to, status_stop );
+  status = (status_move_to, status_line_to, status_stop );
 
  conv_clipper_ptr = ^conv_clipper;
  conv_clipper = object(vertex_source )
@@ -56,6 +58,9 @@ type
    m_contour   : int;
    m_operation : clipper_op_e;
 
+   m_subjFillType,
+   m_clipFillType: clipper_polyFillType;
+
    m_poly_a ,
    m_poly_b ,
    m_result : TArrayOfArrayOfDoublePoint;
@@ -63,11 +68,17 @@ type
    m_vertex_accumulator: pod_deque;
    clipper: TClipper;
 
-   constructor Construct(a, b : vertex_source_ptr; op : clipper_op_e = clipper_or );
+   constructor Construct(a, b : vertex_source_ptr;
+     op : clipper_op_e = clipper_or;
+     subjFillType: clipper_polyFillType = clipper_evenOdd;
+     clipFillType: clipper_polyFillType = clipper_evenOdd);
+
    destructor  Destruct; virtual;
 
-   procedure set_source1(source : vertex_source_ptr );
-   procedure set_source2(source : vertex_source_ptr );
+   procedure set_source1(source : vertex_source_ptr;
+     subjFillType: clipper_polyFillType = clipper_evenOdd);
+   procedure set_source2(source : vertex_source_ptr;
+     clipFillType: clipper_polyFillType = clipper_evenOdd);
 
    procedure operation(v : clipper_op_e );
 
@@ -86,7 +97,17 @@ type
 
 implementation
 
-constructor conv_clipper.Construct(a, b: vertex_source_ptr; op: clipper_op_e);
+function pft(cpft: clipper_polyFillType): TPolyFillType;
+begin
+  if cpft = clipper_evenOdd then
+    result := pftEvenOdd else
+    result := pftNonZero;
+end;
+
+constructor conv_clipper.Construct(a, b: vertex_source_ptr;
+     op: clipper_op_e = clipper_or;
+     subjFillType: clipper_polyFillType = clipper_evenOdd;
+     clipFillType: clipper_polyFillType = clipper_evenOdd);
 begin
   m_src_a := a;
   m_src_b := b;
@@ -100,6 +121,9 @@ begin
   m_poly_b := nil;
   m_result := nil;
   m_vertex_accumulator.Construct (sizeof(TDoublePoint), 8 );
+
+  m_subjFillType := subjFillType;
+  m_clipFillType := clipFillType;
   clipper := TClipper.Create;
   clipper.ForceAlternateOrientation := true;
 
@@ -113,15 +137,19 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.set_source1(source : vertex_source_ptr );
+procedure conv_clipper.set_source1(source : vertex_source_ptr;
+  subjFillType: clipper_polyFillType = clipper_evenOdd);
 begin
- m_src_a := source;
+  m_src_a := source;
+  m_subjFillType := subjFillType;
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.set_source2(source : vertex_source_ptr );
+procedure conv_clipper.set_source2(source : vertex_source_ptr;
+  clipFillType: clipper_polyFillType = clipper_evenOdd);
 begin
   m_src_b := source;
+  m_clipFillType := clipFillType;
 end;
 //------------------------------------------------------------------------------
 
@@ -156,31 +184,31 @@ begin
        begin
          AddPolyPolygon(m_poly_a, ptSubject);
          AddPolyPolygon(m_poly_b, ptClip);
-         Execute(ctUnion, m_result);
+         Execute(ctUnion, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_and :
        begin
          AddPolyPolygon(m_poly_a, ptSubject);
          AddPolyPolygon(m_poly_b, ptClip);
-         Execute(ctIntersection, m_result);
+         Execute(ctIntersection, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_xor :
        begin
          AddPolyPolygon(m_poly_a, ptSubject);
          AddPolyPolygon(m_poly_b, ptClip);
-         Execute(ctXor, m_result);
+         Execute(ctXor, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_a_minus_b :
        begin
          AddPolyPolygon(m_poly_a, ptSubject);
          AddPolyPolygon(m_poly_b, ptClip);
-         Execute(ctDifference, m_result);
+         Execute(ctDifference, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_b_minus_a :
        begin
          AddPolyPolygon(m_poly_b, ptSubject);
          AddPolyPolygon(m_poly_a, ptClip);
-         Execute(ctDifference, m_result);
+         Execute(ctDifference, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
     end;
   end;
@@ -230,7 +258,6 @@ end;
 function conv_clipper.next_vertex;
 begin
   result:=false;
-  //if m_contour >= length(m_result) then exit;
   inc(m_vertex);
   if m_vertex >= length(m_result[m_contour]) then exit;
   x^ := m_result[m_contour][m_vertex].X;

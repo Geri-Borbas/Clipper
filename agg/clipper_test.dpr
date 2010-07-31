@@ -10,7 +10,7 @@ program
 
 uses
  SysUtils ,
-
+ 
  agg_basics ,
  agg_platform_support ,
 
@@ -299,14 +299,14 @@ begin
      cmd:=counter.vertex(@x ,@y );
 
     end;
-   rgba.ConstrDbl  (0.5 ,0.75 ,0.5 ,0.5 );
+   rgba.ConstrDbl  (0.5 ,0.75 ,0.5 ,1.0 );
    ren.color_      (@rgba );
    render_scanlines(ras ,sl ,ren );
 
    t2:=elapsed_time;
 
   // Render information text
-   sprintf(@buf[0 ]             ,'Contours: %d   ' ,counter.m_contours );
+   sprintf(@buf[0 ]             ,'Contours: %d     ' ,counter.m_contours );
    sprintf(@buf[StrLen(@buf ) ] ,'Points: %d' ,counter.m_points );
 
    txt.Construct;
@@ -390,14 +390,15 @@ begin
     ps1.Construct;
     ps2.Construct;
 
-    clipper.Construct(@ps1 ,@ps2 );
+    clipper.Construct(@ps1 ,@ps2 , clipper_or, clipper_nonZero, clipper_nonZero);
 
     x:=m_x - _initial_width / 2 + 100;
     y:=m_y - _initial_height / 2 + 100;
 
     ps1.move_to(x + 140 ,y + 145 );
     ps1.line_to(x + 225 ,y + 44 );
-    ps1.line_to(x + 296 ,y + 219 );
+    //ps1.line_to(x + 296 ,y + 219 );
+    ps1.line_to(x + 396 ,y + 319 );
     ps1.close_polygon;
 
     ps1.line_to(x + 226 ,y + 289 );
@@ -447,7 +448,7 @@ begin
     stroke.Construct(@ps2 );
     stroke.width_   (10.0 );
 
-    clipper.Construct(@ps1 ,@stroke );
+    clipper.Construct(@ps1 ,@stroke, clipper_or, clipper_nonZero, clipper_nonZero);
 
     x:=m_x - _initial_width / 2 + 100;
     y:=m_y - _initial_height / 2 + 100;
@@ -516,7 +517,8 @@ begin
     trans_gb_poly.Construct(@gb_poly ,@mtx1 );
     trans_arrows.Construct (@arrows  ,@mtx2 );
 
-    clipper.Construct(@trans_gb_poly ,@trans_arrows );
+    clipper.Construct(@trans_gb_poly ,@trans_arrows,
+      clipper_or, clipper_nonZero, clipper_nonZero);
 
     ras.add_path    (@trans_gb_poly );
     rgba.ConstrDbl  (0.5 ,0.5 ,0 ,0.1 );
@@ -561,7 +563,8 @@ begin
 
     trans_gb_poly.Construct(@gb_poly ,@mtx );
 
-    clipper.Construct(@trans_gb_poly ,@stroke );
+    clipper.Construct(@trans_gb_poly ,@stroke,
+      clipper_or, clipper_nonZero, clipper_nonZero);
 
     ras.add_path    (@trans_gb_poly );
     rgba.ConstrDbl  (0.5 ,0.5 ,0 ,0.1 );
@@ -658,7 +661,7 @@ begin
     trans.Construct(@glyph ,@mtx );
     curve.Construct(@trans );
 
-    clipper.Construct(@stroke ,@curve );
+    clipper.Construct(@stroke ,@curve, clipper_or, clipper_nonZero, clipper_nonZero);
 
     ras.reset;
     ras.add_path    (@stroke );
@@ -851,7 +854,7 @@ begin
 
  ps1.Construct;
  ps2.Construct;
- clipper.Construct(@ps1 ,@ps2 );
+ clipper.Construct(@ps1 ,@ps2, clipper_or, clipper_nonZero, clipper_nonZero);
 
  txt.Construct;
  txt_stroke.Construct(@txt );

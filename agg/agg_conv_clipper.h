@@ -16,8 +16,8 @@
 //----------------------------------------------------------------------------
 // agg_conv_clipper.h
 // Author    :  Angus Johnson                                                   
-// Version   :  1.0a                                                            
-// Date      :  19 June 2010                                                    
+// Version   :  2.0
+// Date      :  30 July 2010
 //----------------------------------------------------------------------------
 
 #ifndef AGG_CONV_CLIPPER_INCLUDED
@@ -30,37 +30,50 @@
 
 namespace agg
 {
-  enum clipper_op_e { clipper_or, clipper_and, clipper_xor, clipper_a_minus_b, clipper_b_minus_a };
+  enum clipper_op_e { clipper_or,
+    clipper_and, clipper_xor, clipper_a_minus_b, clipper_b_minus_a };
+  enum clipper_PolyFillType {clipper_even_odd, clipper_non_zero};
 
-  template<class VSA, class VSB> class conv_clipper 
+  clipper::TPolyFillType pft(clipper_PolyFillType &cpft){
+    if (cpft == clipper_even_odd) return clipper::pftEvenOdd; else return clipper::pftNonZero;
+  }
+
+  template<class VSA, class VSB> class conv_clipper
   {
     enum status { status_move_to, status_line_to, status_stop };
     typedef VSA source_a_type;
     typedef VSB source_b_type;
     typedef conv_clipper<source_a_type, source_b_type> self_type;
 	//typedef   vertex_array_type;
-    
+
   private:
     source_a_type*							m_src_a;
     source_b_type*							m_src_b;
-    status									m_status;
-    int										m_vertex;
-    int										m_contour;
-    clipper_op_e							m_operation;
+    status									    m_status;
+    int										      m_vertex;
+    int										      m_contour;
+    clipper_op_e							  m_operation;
     pod_bvector<clipper::TDoublePoint, 8>	m_vertex_accumulator;
     clipper::TPolyPolygon					m_poly_a;
     clipper::TPolyPolygon					m_poly_b;
     clipper::TPolyPolygon					m_result;
-    clipper::Clipper						m_clipper;
-    
+    clipper::Clipper						  m_clipper;
+    clipper_PolyFillType          m_subjFillType;
+    clipper_PolyFillType          m_clipFillType;
+
   public:
-    conv_clipper(source_a_type &a, source_b_type &b, clipper_op_e op = clipper_or) :
+    conv_clipper(source_a_type &a, source_b_type &b,
+      clipper_op_e op = clipper_or,
+      clipper_PolyFillType subjFillType = clipper_even_odd,
+      clipper_PolyFillType clipFillType = clipper_even_odd) :
         m_src_a(&a),
         m_src_b(&b),
         m_status(status_move_to),
         m_vertex(-1),
         m_contour(-1),
-        m_operation(op)
+        m_operation(op),
+        m_subjFillType(subjFillType),
+        m_clipFillType(clipFillType)
     {
       m_clipper.ForceAlternateOrientation(true);
     }
@@ -69,8 +82,10 @@ namespace agg
     {
     }
 
-    void attach1(VSA &source) { m_src_a = &source; }
-    void attach2(VSB &source) { m_src_b = &source; }
+    void attach1(VSA &source, clipper_PolyFillType subjFillType = clipper_even_odd)
+      { m_src_a = &source; m_subjFillType = subjFillType; }
+    void attach2(VSB &source, clipper_PolyFillType clipFillType = clipper_even_odd)
+      { m_src_b = &source; m_clipFillType = clipFillType; }
 
     void operation(clipper_op_e v) { m_operation = v; }
 
@@ -129,7 +144,7 @@ namespace agg
   }
   //------------------------------------------------------------------------------
 
-  template<class VSA, class VSB> 
+  template<class VSA, class VSB>
   void conv_clipper<VSA, VSB>::rewind(unsigned path_id)
   {
     m_src_a->rewind( path_id );
@@ -141,39 +156,44 @@ namespace agg
 
     m_clipper.Clear();
     switch( m_operation ) {
-      case clipper_or: 
+      case clipper_or:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctUnion , m_result );
+        m_clipper.Execute( clipper::ctUnion ,
+          m_result , pft(m_subjFillType), pft(m_clipFillType));
 		break;
         }
-      case clipper_and: 
+      case clipper_and:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctIntersection , m_result );
+        m_clipper.Execute( clipper::ctIntersection ,
+          m_result, pft(m_subjFillType), pft(m_clipFillType) );
 		break;
         }
-      case clipper_xor: 
+      case clipper_xor:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctXor , m_result );
+        m_clipper.Execute( clipper::ctXor ,
+          m_result, pft(m_subjFillType), pft(m_clipFillType) );
 		break;
         }
-      case clipper_a_minus_b: 
+      case clipper_a_minus_b:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctDifference , m_result );
+        m_clipper.Execute( clipper::ctDifference ,
+          m_result, pft(m_subjFillType), pft(m_clipFillType) );
 		break;
         }
-      case clipper_b_minus_a: 
+      case clipper_b_minus_a:
         {
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptClip );
-        m_clipper.Execute( clipper::ctDifference , m_result );
+        m_clipper.Execute( clipper::ctDifference ,
+          m_result, pft(m_subjFillType), pft(m_clipFillType) );
 		break;
         }
     }
@@ -181,7 +201,7 @@ namespace agg
   }
   //------------------------------------------------------------------------------
 
-  template<class VSA, class VSB> 
+  template<class VSA, class VSB>
   void conv_clipper<VSA, VSB>::end_contour( clipper::TPolyPolygon &p)
   {
   unsigned i, len;
@@ -243,7 +263,7 @@ namespace agg
 	  else 
 	  {
         m_status = status_stop;
-        return path_cmd_end_poly | path_flags_close;
+        return path_cmd_end_poly || path_flags_close;
       }
     } 
 	else
