@@ -2,7 +2,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.01                                                            *
+* Version   :  2.02                                                            *
 * Date      :  2 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -1635,11 +1635,15 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
 
       pt = m_PolyPts[i];
       cnt = 0;
+      double y = pt->pt.Y;
+      bool isHorizontalOnly = true;
       do {
         pt = pt->next;
+        if (isHorizontalOnly && std::fabs(pt->pt.Y - y) > m_DupPtTolerance)
+          isHorizontalOnly = false;
         cnt++;
       } while (pt != m_PolyPts[i]);
-      if ( cnt < 3 ) continue;
+      if ( cnt < 3  || isHorizontalOnly ) continue;
 
       //validate the orientation of simple polygons ...
       if ( ForceAlternateOrientation() &&

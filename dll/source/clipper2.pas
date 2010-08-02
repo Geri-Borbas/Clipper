@@ -3,7 +3,7 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.01                                                            *
+* Version   :  2.02                                                            *
 * Date      :  2 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
@@ -1092,6 +1092,8 @@ function TClipper.ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
 var
   i,j,k,cnt: integer;
   pt: PPolyPt;
+  y: double;
+  isHorizontalOnly: boolean;
 begin
   k := 0;
   setLength(result, fPolyPtList.Count);
@@ -1102,11 +1104,15 @@ begin
 
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
+      isHorizontalOnly := true;
+      y := pt.pt.Y;
       repeat
         pt := pt.next;
+        if isHorizontalOnly and (abs(pt.pt.Y - y) > fDupPtTolerance) then
+          isHorizontalOnly := false;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
-      if cnt < 3 then continue;
+      if (cnt < 3) or isHorizontalOnly then continue;
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
@@ -1130,6 +1136,8 @@ function TClipper.ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
 var
   i,j,k,cnt: integer;
   pt: PPolyPt;
+  y: double;
+  isHorizontalOnly: boolean;
 begin
   k := 0;
   setLength(result, fPolyPtList.Count);
@@ -1140,11 +1148,15 @@ begin
 
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
+      isHorizontalOnly := true;
+      y := pt.pt.Y;
       repeat
         pt := pt.next;
+        if isHorizontalOnly and (abs(pt.pt.Y - y) > fDupPtTolerance) then
+          isHorizontalOnly := false;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
-      if cnt < 3 then continue;
+      if (cnt < 3) or isHorizontalOnly then continue;
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
