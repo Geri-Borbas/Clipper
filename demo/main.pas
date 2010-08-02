@@ -327,7 +327,6 @@ begin
     for i := 0 to highI do
       clip[0][i] := FloatPoint(10+round(random*w), 10+round(random*h));
   end;
-  RePaintBitmap;
 
   with clipper do
   begin
@@ -335,9 +334,9 @@ begin
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
-    if Execute(GetOpType, solution, fillType, fillType) then
-      RePaintBitmap;
+    Execute(GetOpType, solution, fillType, fillType);
   end;
+  RePaintBitmap;
 end;
 //------------------------------------------------------------------------------
 
@@ -376,7 +375,6 @@ begin
       clip[i] := GetEllipsePoints(rec);
     end;
   end;
-  RePaintBitmap;
 
   with clipper do
   begin
@@ -384,9 +382,9 @@ begin
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
-    if Execute(GetOpType, solution, fillType, fillType) then
-      RePaintBitmap;
+    Execute(GetOpType, solution, fillType, fillType);
   end;
+  RePaintBitmap;
 end;
 //------------------------------------------------------------------------------
 

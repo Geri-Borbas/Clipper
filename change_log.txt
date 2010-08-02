@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.01 - 2 August 2010
+* Bugfix: BuildResult() very occasionally caused an endless loop. 
+
 2.0 - 30 July 2010
 * Clipper now clips using both the Even-Odd (alternate) and 
   Non-Zero (winding) polygon filling rules. (Previously Clipper 

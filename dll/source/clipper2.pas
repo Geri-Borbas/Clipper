@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.0                                                             *
-* Date      :  30 July 2010                                                    *
+* Version   :  2.01                                                            *
+* Date      :  2 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -1106,7 +1106,7 @@ begin
         pt := pt.next;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
-      if cnt < 2 then continue;
+      if cnt < 3 then continue;
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
@@ -1144,7 +1144,7 @@ begin
         pt := pt.next;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
-      if cnt < 2 then continue;
+      if cnt < 3 then continue;
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);

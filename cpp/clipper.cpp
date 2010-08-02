@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.0                                                             *
-* Date      :  30 July 2010                                                    *
+* Version   :  2.01                                                            *
+* Date      :  2 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -1639,7 +1639,7 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
         pt = pt->next;
         cnt++;
       } while (pt != m_PolyPts[i]);
-      if ( cnt < 2 ) continue;
+      if ( cnt < 3 ) continue;
 
       //validate the orientation of simple polygons ...
       if ( ForceAlternateOrientation() &&
