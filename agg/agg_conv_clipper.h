@@ -16,8 +16,8 @@
 //----------------------------------------------------------------------------
 // agg_conv_clipper.h
 // Author    :  Angus Johnson                                                   
-// Version   :  2.0
-// Date      :  30 July 2010
+// Version   :  2.04
+// Date      :  4 August 2010
 //----------------------------------------------------------------------------
 
 #ifndef AGG_CONV_CLIPPER_INCLUDED
@@ -33,10 +33,6 @@ namespace agg
   enum clipper_op_e { clipper_or,
     clipper_and, clipper_xor, clipper_a_minus_b, clipper_b_minus_a };
   enum clipper_PolyFillType {clipper_even_odd, clipper_non_zero};
-
-  clipper::TPolyFillType pft(clipper_PolyFillType &cpft){
-    if (cpft == clipper_even_odd) return clipper::pftEvenOdd; else return clipper::pftNonZero;
-  }
 
   template<class VSA, class VSB> class conv_clipper
   {
@@ -154,46 +150,46 @@ namespace agg
     add( m_src_b , m_poly_b );
     m_result.resize(0);
 
+    clipper::TPolyFillType pftSubj = (m_subjFillType == clipper_even_odd) ?
+      clipper::pftEvenOdd : clipper::pftNonZero;
+    clipper::TPolyFillType pftClip = (m_clipFillType == clipper_even_odd) ?
+      clipper::pftEvenOdd : clipper::pftNonZero;
+
     m_clipper.Clear();
     switch( m_operation ) {
       case clipper_or:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctUnion ,
-          m_result , pft(m_subjFillType), pft(m_clipFillType));
+        m_clipper.Execute( clipper::ctUnion , m_result , pftSubj, pftClip);
 		break;
         }
       case clipper_and:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctIntersection ,
-          m_result, pft(m_subjFillType), pft(m_clipFillType) );
+        m_clipper.Execute( clipper::ctIntersection , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_xor:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctXor ,
-          m_result, pft(m_subjFillType), pft(m_clipFillType) );
+        m_clipper.Execute( clipper::ctXor , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_a_minus_b:
         {
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
-        m_clipper.Execute( clipper::ctDifference ,
-          m_result, pft(m_subjFillType), pft(m_clipFillType) );
+        m_clipper.Execute( clipper::ctDifference , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_b_minus_a:
         {
         m_clipper.AddPolyPolygon( m_poly_b , clipper::ptSubject );
         m_clipper.AddPolyPolygon( m_poly_a , clipper::ptClip );
-        m_clipper.Execute( clipper::ctDifference ,
-          m_result, pft(m_subjFillType), pft(m_clipFillType) );
+        m_clipper.Execute( clipper::ctDifference , m_result, pftSubj, pftClip );
 		break;
         }
     }
@@ -248,9 +244,9 @@ namespace agg
   }
   //------------------------------------------------------------------------------
 
-  template<class VSA, class VSB> 
+  template<class VSA, class VSB>
   unsigned conv_clipper<VSA, VSB>::vertex(double *x, double *y)
-{ 
+{
   if(  m_status == status_move_to )
   {
     if( next_contour() )
@@ -259,26 +255,26 @@ namespace agg
       {
         m_status =status_line_to;
         return path_cmd_move_to;
-      } 
-	  else 
+      }
+	  else
 	  {
         m_status = status_stop;
-        return path_cmd_end_poly || path_flags_close;
+        return path_cmd_end_poly | path_flags_close;
       }
-    } 
+    }
 	else
       return path_cmd_stop;
-  } 
+  }
   else
   {
     if(  next_vertex( x, y ) )
     {
       return path_cmd_line_to;
-    } 
+    }
 	else
     {
       m_status = status_move_to;
-      return path_cmd_end_poly || path_flags_close;
+      return path_cmd_end_poly | path_flags_close;
     }
   }
 }
