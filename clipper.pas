@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.02                                                            *
-* Date      :  2 August 2010                                                   *
+* Version   :  2.03                                                            *
+* Date      :  3 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -85,7 +85,7 @@ type
     windDelta: integer;
     windCnt: integer;
     windCnt2: integer;  //winding count of polytype <> self.polytype
-    polyIdx: integer;
+    outIdx: integer;
     next: PEdge;
     prev: PEdge;
     nextInLML: PEdge;
@@ -394,11 +394,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Slope(const pt1, pt2: TDoublePoint; const epsilon: double): double;
+procedure SetDx(e: PEdge; const epsilon: double);
 begin
-  if abs(pt1.y - pt2.y) < epsilon then
-    result:= infinite else
-    result := (pt1.x - pt2.x)/(pt1.y - pt2.y);
+  if abs(e.ybot - e.ytop) < epsilon then
+    e.dx := infinite else
+    e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
 end;
 //------------------------------------------------------------------------------
 
@@ -420,11 +420,11 @@ end;
 
 procedure SwapPolyIndexes(edge1, edge2: PEdge);
 var
-  polyIdx: integer;
+  outIdx: integer;
 begin
-  polyIdx :=  edge1.polyIdx;
-  edge1.polyIdx := edge2.polyIdx;
-  edge2.polyIdx := polyIdx;
+  outIdx :=  edge1.outIdx;
+  edge1.outIdx := edge2.outIdx;
+  edge2.outIdx := outIdx;
 end;
 //------------------------------------------------------------------------------
 
@@ -437,7 +437,7 @@ end;
 
 function ShareSamePoly(e1, e2: PEdge): boolean;
 begin
-  result := assigned(e1) and assigned(e2) and (e1.polyIdx = e2.polyIdx);
+  result := assigned(e1) and assigned(e2) and (e1.outIdx = e2.outIdx);
 end;
 //------------------------------------------------------------------------------
 
@@ -595,86 +595,72 @@ var
 
   //----------------------------------------------------------------------
 
-  procedure InitEdge(e: PEdge; pt1, pt2: TDoublePoint);
+  procedure InitEdge(e, eNext, ePrev: PEdge; const pt: TDoublePoint);
   begin
     fillChar(e^, sizeof(TEdge), 0);
-    if (pt1.Y > pt2.Y) then
-    begin
-      e.xbot := pt1.X;
-      e.ybot := pt1.Y;
-      e.xtop := pt2.X;
-      e.ytop := pt2.Y;
-    end else
-    begin
-      e.xbot := pt2.X;
-      e.ybot := pt2.Y;
-      e.xtop := pt1.X;
-      e.ytop := pt1.Y;
-    end;
-    e.savedBot.X := pt1.X; //temporary (just until duplicates removed)
-    e.savedBot.Y := pt1.Y; //temporary (just until duplicates removed)
+    e.savedBot := pt;
+    e.xtop := eNext.savedBot.X;
+    e.ytop := eNext.savedBot.Y;
     e.polyType := polyType;
-    e.polyIdx := -1;
-    e.dx := Slope(pt1, pt2, fDupPtTolerance);
+    e.outIdx := -1;
+    e.next := eNext;
+    e.prev := ePrev;
   end;
   //----------------------------------------------------------------------
 
-  procedure ReInitEdge(e: PEdge; const pt1, pt2: TDoublePoint);
+  procedure ReInitEdge(e: PEdge);
   begin
-    //nb: preserves linkages
-    if (pt1.Y > pt2.Y) then
+    if e.savedBot.Y > e.ytop then
     begin
-      e.xbot := pt1.X;
-      e.ybot := pt1.Y;
-      e.xtop := pt2.X;
-      e.ytop := pt2.Y;
+      e.xbot := e.savedBot.X;
+      e.ybot := e.savedBot.Y;
     end else
     begin
-      e.xbot := pt2.X;
-      e.ybot := pt2.Y;
-      e.xtop := pt1.X;
-      e.ytop := pt1.Y;
+      e.xbot := e.xtop;
+      e.ybot := e.ytop;
+      e.xtop := e.savedBot.X;
+      e.ytop := e.savedBot.Y;
+      e.savedBot.X := e.xbot;
+      e.savedBot.Y := e.ybot;
     end;
-    e.savedBot := pt1; //temporary (until duplicates etc removed)
-    e.dx := Slope(pt1, pt2, fDupPtTolerance);
+    SetDx(e, fDupPtTolerance);
   end;
   //----------------------------------------------------------------------
 
   function SlopesEqualInternal(e1, e2: PEdge): boolean;
   begin
     //cross product of dy1/dx1 = dy2/dx2 ...
-    result := abs((e1.ytop-e1.ybot)*(e2.xtop-e2.xbot) -
-      (e1.xtop-e1.xbot)*(e2.ytop-e2.ybot)) < fDupPtTolerance;
+    result := abs((e1.ytop-e1.savedBot.Y)*(e2.xtop-e2.savedBot.X) -
+      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < fDupPtTolerance;
   end;
   //----------------------------------------------------------------------
 
-  function FixupIfDupOrColinear(var e: PEdge): boolean;
+  function FixupForDupsAndColinear(var e: PEdge): boolean;
   begin
-    if (e.next = e.prev) then
+    result := false;
+    while (e.next <> e.prev) and
+      (PointsEqual(e.prev.savedBot, e.savedBot, fDupPtTolerance) or
+      SlopesEqualInternal(e.prev, e)) do
     begin
-      result := false;
-    end
-    else if PointsEqual(e, fDupPtTolerance) or
-      PointsEqual(e.savedBot, e.prev.savedBot, fDupPtTolerance) or
-      SlopesEqualInternal(e.prev, e) then
-    begin
-      //fixup the previous edge because 'e' is about to come out of the loop ...
-      ReInitEdge(e.prev, e.prev.savedBot, e.Next.savedBot);
-      //now remove 'e' from the DLL loop by changing the links ...
-      e.Next.prev := e.prev;
-      e.prev.next := e.Next;
+      //prepare to remove 'e' from the loop ...
+      e.prev.xtop := e.next.savedBot.X;
+      e.prev.ytop := e.next.savedBot.Y;
       if (e = @edges[0]) then
       begin
-        e^ := e.Next^;
-        e.prev.next := e;
-        e.Next.prev := e;
+        //move the content of e.next to e, then remove e.next from the loop ...
+        e.savedBot := e.next.savedBot;
+        e.xtop := e.next.xtop;
+        e.ytop := e.next.ytop;
+        e.next.next.prev := e;
+        e.next := e.next.next;
       end else
-        e := e.prev;
+      begin
+        //remove 'e' from the loop ...
+        e.prev.next := e.next;
+        e.next.prev := e.prev;
+        e := e.prev; //ie get back into the loop
+      end;
       result := true;
-    end else
-    begin
-      result := false;
-      e := e.Next;
     end;
   end;
   //----------------------------------------------------------------------
@@ -817,30 +803,24 @@ begin
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
+  //convert 'edges' to double-linked-list and initialize some of the vars ...
+  edges[0].savedBot := polyg[0];
+  InitEdge(@edges[highI], @edges[0], @edges[highI-1], polyg[highI]);
+  for i := highI-1 downto 1 do
+    InitEdge(@edges[i], @edges[i+1], @edges[i-1], polyg[i]);
+  InitEdge(@edges[0], @edges[1], @edges[highI], polyg[0]);
 
-  //fill the edge array ...
-  InitEdge(@edges[highI], polyg[highI], polyg[0]);
-  edges[highI].prev := @edges[highI-1];
-  edges[highI].next := @edges[0];
-  InitEdge(@edges[0], polyg[0], polyg[1]);
-  edges[0].prev := @edges[highI];
-  edges[0].next := @edges[1];
-  for i := 1 to highI-1 do
-  begin
-    InitEdge(@edges[i], polyg[i], polyg[i+1]);
-    edges[i].prev := @edges[i-1];
-    edges[i].next := @edges[i+1];
-  end;
-
-  //fixup any co-linear edges or duplicate points ...
+  //fixup any duplicate points and co-linear edges ...
   e := @edges[0];
   repeat
-    while FixupIfDupOrColinear(e) do ;
-  until (e = @edges[0]) or (e.next = e.prev);
-  if (e.next <> e.prev) then
-    repeat
-      e := @edges[0];
-    until not FixupIfDupOrColinear(e);
+    FixupForDupsAndColinear(e);
+    e := e.next;
+  until (e = @edges[0]);
+  if FixupForDupsAndColinear(e) then
+  begin
+    e := e.prev;
+    FixupForDupsAndColinear(e);
+  end;
 
   //make sure we still have a valid polygon ...
   if (e.next = e.prev) then
@@ -851,13 +831,11 @@ begin
 
   fList.Add(edges);
 
-  //once duplicates etc have been removed, we can set edge savedBot to their
-  //proper values and also get the starting minima (e2) ...
+  //now properly reinitialize edges and also get the starting minima (e2) ...
   e := @edges[0];
   e2 := e;
   repeat
-    e.savedBot.X := e.xbot;
-    e.savedBot.Y := e.ybot;
+    ReInitEdge(e);
     if e.ybot > e2.ybot then e2 := e;
     e := e.next;
   until e = @edges[0];
@@ -932,7 +910,7 @@ begin
       e.xbot := e.savedBot.X;
       e.ybot := e.savedBot.Y;
       e.side := esLeft;
-      e.polyIdx := -1;
+      e.outIdx := -1;
       e := e.nextInLML;
     end;
     e := lm.rightBound;
@@ -941,7 +919,7 @@ begin
       e.xbot := e.savedBot.X;
       e.ybot := e.savedBot.Y;
       e.side := esRight;
-      e.polyIdx := -1;
+      e.outIdx := -1;
       e := e.nextInLML;
     end;
     lm := lm.nextLm;
@@ -1394,13 +1372,9 @@ begin
         InsertScanbeam(rightBound.nextInLML.ytop);
       end else
         InsertScanbeam(rightBound.ytop);
-    end;
 
-    with fLocalMinima^ do
       if IsContributing(leftBound) then
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
-
-    with fLocalMinima^ do
       if (leftBound.nextInAEL <> rightBound) then
       begin
         e := leftBound.nextInAEL;
@@ -1412,6 +1386,8 @@ begin
           e := e.nextInAEL;
         end;
       end;
+    end;
+
     PopLocalMinima;
   end;
 end;
@@ -1536,12 +1512,12 @@ begin
     IntersectEdges(e, eNext, DoublePoint(X, topY), [ipLeft, ipRight]);
     eNext := eNext.nextInAEL;
   end;
-  if (e.polyIdx < 0) and (eMaxPair.polyIdx < 0) then
+  if (e.outIdx < 0) and (eMaxPair.outIdx < 0) then
   begin
     DeleteFromAEL(e);
     DeleteFromAEL(eMaxPair);
   end
-  else if (e.polyIdx >= 0) and (eMaxPair.polyIdx >= 0) then
+  else if (e.outIdx >= 0) and (eMaxPair.outIdx >= 0) then
   begin
     IntersectEdges(e, eMaxPair, DoublePoint(X, topY));
   end
@@ -1627,7 +1603,8 @@ begin
     if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
-      if (e.xbot = horzEdge.xtop) and assigned(horzEdge.nextInLML) and
+      if (abs(e.xbot - horzEdge.xtop) < tolerance) and
+        assigned(horzEdge.nextInLML) and
         (SlopesEqual(e, horzEdge.nextInLML, fDupPtTolerance) or
         (e.dx < horzEdge.nextInLML.dx)) then
       begin
@@ -1678,8 +1655,8 @@ begin
 
   if assigned(horzEdge.nextInLML) then
   begin
-    if (horzEdge.polyIdx >= 0) then
-      AddPolyPt(horzEdge.polyIdx,
+    if (horzEdge.outIdx >= 0) then
+      AddPolyPt(horzEdge.outIdx,
         DoublePoint(horzEdge.xtop, horzEdge.ytop), horzEdge.side = esLeft);
     UpdateEdgeIntoAEL(horzEdge);
   end else
@@ -1868,7 +1845,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge1;
   begin
-    AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
+    AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1876,7 +1853,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge2;
   begin
-    AddPolyPt(e2.polyIdx, pt, e2.side = esLeft);
+    AddPolyPt(e2.outIdx, pt, e2.side = esLeft);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1884,8 +1861,8 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoBothEdges;
   begin
-    AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
-    AddPolyPt(e2.polyIdx, pt, e2.side = esLeft);
+    AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
+    AddPolyPt(e2.outIdx, pt, e2.side = esLeft);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1903,8 +1880,8 @@ begin
     (abs(e1.xtop - pt.x) < tolerance) and (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
     (abs(e2.xtop - pt.x) < tolerance) and (abs(e2.ytop - pt.y) < tolerance);
-  e1Contributing := (e1.polyidx >= 0);
-  e2contributing := (e2.polyidx >= 0);
+  e1Contributing := (e1.outIdx >= 0);
+  e2contributing := (e2.outIdx >= 0);
 
   //update winding counts ...
   if e1.polyType = e2.polyType then
@@ -1990,7 +1967,7 @@ begin
   end;
 
   if (e1stops <> e2stops) and
-    ((e1stops and (e1.polyIdx >= 0)) or (e2stops and (e2.polyIdx >= 0))) then
+    ((e1stops and (e1.outIdx >= 0)) or (e2stops and (e2.outIdx >= 0))) then
   begin
     swapsides(e1,e2);
     SwapPolyIndexes(e1, e2);
@@ -2069,7 +2046,7 @@ begin
   if not assigned(e.nextInLML) then raise exception.Create(rsUpdateEdgeIntoAEL);
   AelPrev := e.prevInAEL;
   AelNext := e.nextInAEL;
-  e.nextInLML.polyIdx := e.polyIdx;
+  e.nextInLML.outIdx := e.outIdx;
   if assigned(AelPrev) then
     AelPrev.nextInAEL := e.nextInLML else
     fActiveEdges := e.nextInLML;
@@ -2206,8 +2183,8 @@ begin
       //2. promote horizontal edges, otherwise update xbot and ybot ...
       if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
-        if (e.polyIdx >= 0) then
-          AddPolyPt(e.polyIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
+        if (e.outIdx >= 0) then
+          AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
         UpdateEdgeIntoAEL(e);
         AddHorzEdgeToSEL(e);
       end else
@@ -2229,8 +2206,8 @@ begin
   begin
     if IsIntermediate(e, topY) then
     begin
-      if (e.polyIdx >= 0) then
-        AddPolyPt(e.polyIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
+      if (e.outIdx >= 0) then
+        AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
       UpdateEdgeIntoAEL(e);
     end;
     e := e.nextInAEL;
@@ -2252,11 +2229,11 @@ end;
 
 procedure TClipper.AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
 begin
-  AddPolyPt(e1.polyIdx, pt, e1.side = esLeft);
+  AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
   if ShareSamePoly(e1, e2) then
   begin
-    e1.polyIdx := -1;
-    e2.polyIdx := -1;
+    e1.outIdx := -1;
+    e2.outIdx := -1;
   end else
     AppendPolygon(e1, e2);
 end;
@@ -2268,8 +2245,8 @@ var
   pp: PPolyPt;
   isAHole: boolean;
 begin
-  e1.polyIdx := AddPolyPt(e1.polyIdx, pt, true);
-  e2.polyIdx := e1.polyIdx;
+  e1.outIdx := AddPolyPt(e1.outIdx, pt, true);
+  e2.outIdx := e1.outIdx;
 
   if not IsHorizontal(e2) and (e1.dx > e2.dx) then
   begin
@@ -2283,12 +2260,12 @@ begin
 
   if fForceAlternateOrientation then
   begin
-    pp := PPolyPt(fPolyPtList[e1.polyIdx]);
+    pp := PPolyPt(fPolyPtList[e1.outIdx]);
     isAHole := false;
     e := fActiveEdges;
     while assigned(e) do
     begin
-      if (e.polyIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - fDupPtTolerance) then
+      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - fDupPtTolerance) then
         isAHole := not isAHole;
       e := e.nextInAEL;
     end;
@@ -2304,13 +2281,13 @@ var
   e: PEdge;
   ObsoleteIdx: integer;
 begin
-  if (e1.polyIdx < 0) or (e2.polyIdx < 0) then
+  if (e1.outIdx < 0) or (e2.outIdx < 0) then
     raise Exception.Create(rsAppendPolygon);
 
   //get the start and ends of both output polygons ...
-  p1_lft := PPolyPt(fPolyPtList[e1.polyIdx]);
+  p1_lft := PPolyPt(fPolyPtList[e1.outIdx]);
   p1_rt := p1_lft.prev;
-  p2_lft := PPolyPt(fPolyPtList[e2.polyIdx]);
+  p2_lft := PPolyPt(fPolyPtList[e2.outIdx]);
   p2_rt := p2_lft.prev;
 
   //join e2 poly onto e1 poly and delete pointers to e2 ...
@@ -2324,7 +2301,7 @@ begin
       p1_lft.prev := p2_lft;
       p1_rt.next := p2_rt;
       p2_rt.prev := p1_rt;
-      fPolyPtList[e1.polyIdx] := p2_rt;
+      fPolyPtList[e1.outIdx] := p2_rt;
     end else
     begin
       //x y z a b c
@@ -2332,7 +2309,7 @@ begin
       p1_lft.prev := p2_rt;
       p2_lft.prev := p1_rt;
       p1_rt.next := p2_lft;
-      fPolyPtList[e1.polyIdx] := p2_lft;
+      fPolyPtList[e1.outIdx] := p2_lft;
     end;
     side := esLeft;
   end else
@@ -2356,20 +2333,20 @@ begin
     side := esRight;
   end;
 
-  ObsoleteIdx := e2.polyIdx;
-  e2.polyIdx := -1;
+  ObsoleteIdx := e2.outIdx;
+  e2.outIdx := -1;
   e := fActiveEdges;
   while assigned(e) do
   begin
-    if (e.polyIdx = ObsoleteIdx) then
+    if (e.outIdx = ObsoleteIdx) then
     begin
-      e.polyIdx := e1.polyIdx;
+      e.outIdx := e1.outIdx;
       e.side := side;
       break;
     end;
     e := e.nextInAEL;
   end;
-  e1.polyIdx := -1;
+  e1.outIdx := -1;
   fPolyPtList[ObsoleteIdx] := nil;
 end;
 //------------------------------------------------------------------------------

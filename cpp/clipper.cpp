@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.02                                                            *
-* Date      :  2 August 2010                                                   *
+* Version   :  2.03                                                            *
+* Date      :  3 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -122,11 +122,10 @@ void ReversePolyPtLinks(TPolyPt &pp)
 }
 //------------------------------------------------------------------------------
 
-double Slope(TDoublePoint const &pt1,
-  TDoublePoint const &pt2, double const &epsilon)
+void SetDx(TEdge &e, double const &epsilon)
 {
-  if(  std::fabs( pt1.Y - pt2.Y ) < epsilon ) return infinite;
-  return ( pt1.X - pt2.X )/( pt1.Y - pt2.Y );
+  if(  std::fabs( e.ybot - e.ytop ) < epsilon ) e.dx = infinite;
+  else e.dx = ( e.xbot - e.xtop )/( e.ybot - e.ytop );
 }
 //------------------------------------------------------------------------------
 
@@ -254,88 +253,74 @@ bool ValidateOrientation(TPolyPt *pt)
 }
 //------------------------------------------------------------------------------
 
-void InitEdge(TEdge *e, TDoublePoint const &pt1, TDoublePoint const &pt2,
-  TPolyType polyType, double const &epsilon)
+void InitEdge(TEdge *e, TEdge *eNext, TEdge *ePrev,
+  TDoublePoint const &pt, TPolyType polyType)
 {
-  //nb: round the vertices to 6 decimal places (roundToVal == -6)
-  //to further minimize floating point errors ...
   std::memset( e, 0, sizeof( TEdge ));
-  if(  ( pt1.Y > pt2.Y ) )
-  {
-    e->xbot = pt1.X;
-    e->ybot = pt1.Y;
-    e->xtop = pt2.X;
-    e->ytop = pt2.Y;
-  } else
-  {
-    e->xbot = pt2.X;
-    e->ybot = pt2.Y;
-    e->xtop = pt1.X;
-    e->ytop = pt1.Y;
-  }
-  e->savedBot.X = pt1.X; //temporary (just until duplicates removed)
-  e->savedBot.Y = pt1.Y; //temporary (just until duplicates removed)
+  e->savedBot = pt;
+  e->xtop = eNext->savedBot.X;
+  e->ytop = eNext->savedBot.Y;
   e->polyType = polyType;
   e->outIdx = -1;
-  e->dx = Slope(pt1, pt2, epsilon);
+  e->next = eNext;
+  e->prev = ePrev;
 }
 //------------------------------------------------------------------------------
 
-void ReInitEdge(TEdge *e,
-  TDoublePoint const &pt1, TDoublePoint const &pt2, double const &epsilon)
+void ReInitEdge(TEdge *e, double const &epsilon)
 {
-  //nb: preserves linkages
-  if(  ( pt1.Y > pt2.Y ) )
+  if ( e->savedBot.Y > e->ytop )
   {
-    e->xbot = pt1.X;
-    e->ybot = pt1.Y;
-    e->xtop = pt2.X;
-    e->ytop = pt2.Y;
+    e->xbot = e->savedBot.X;
+    e->ybot = e->savedBot.Y;
   } else
   {
-    e->xbot = pt2.X;
-    e->ybot = pt2.Y;
-    e->xtop = pt1.X;
-    e->ytop = pt1.Y;
+    e->xbot = e->xtop;
+    e->ybot = e->ytop;
+    e->xtop = e->savedBot.X;
+    e->ytop = e->savedBot.Y;
+    e->savedBot.X = e->xbot;
+    e->savedBot.Y = e->ybot;
   }
-  e->savedBot = pt1; //temporary (until duplicates etc removed)
-  e->dx = Slope(pt1, pt2, epsilon);
+  SetDx( *e, epsilon );
 }
 //------------------------------------------------------------------------------
 
-bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
+
+bool SlopesEqualInternal(TEdge &e1, TEdge &e2, double const &epsilon)
 {
-  return std::fabs((e1.ytop-e1.ybot)*(e2.xtop-e2.xbot) -
-    (e1.xtop-e1.xbot)*(e2.ytop-e2.ybot)) < default_dup_pt_tolerance;
+  return std::fabs((e1.ytop-e1.savedBot.Y)*(e2.xtop-e2.savedBot.X) -
+    (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < epsilon;
 }
 //------------------------------------------------------------------------------
 
-bool FixupIfDupOrColinear( TEdge *&e, TEdge *edges, double const &epsilon)
+bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges, double const &epsilon)
 {
-  if(  ( e->next == e->prev ) ) return false;
-
-  if(  PointsEqual( *e, epsilon) ||
-    PointsEqual( e->savedBot , e->prev->savedBot, epsilon ) ||
-    SlopesEqualInternal( *e->prev , *e ) )
+  while ( e->next != e->prev &&
+    (PointsEqual(e->prev->savedBot, e->savedBot, epsilon) ||
+    SlopesEqualInternal(*e->prev, *e, epsilon)) )
   {
-    //fixup the previous edge because 'e' is about to come out of the loop ...
-    ReInitEdge( e->prev , e->prev->savedBot , e->next->savedBot, epsilon);
-    //now remove 'e' from the DLL loop by changing the links ...
-    e->next->prev = e->prev;
-    e->prev->next = e->next;
-    if(  ( e == edges ) )
+    //prepare to remove 'e' from the loop ...
+    e->prev->xtop = e->next->savedBot.X;
+    e->prev->ytop = e->next->savedBot.Y;
+    if ( e == edges )
     {
-      std::memcpy(e, e->next, sizeof(TEdge));
-      e->prev->next = e;
-      e->next->prev = e;
+      //move the content of e.next to e, then remove e.next from the loop ...
+      e->savedBot = e->next->savedBot;
+      e->xtop = e->next->xtop;
+      e->ytop = e->next->ytop;
+      e->next->next->prev = e;
+      e->next = e->next->next;
     } else
-      e = e->prev;
+    {
+      //remove 'e' from the loop ...
+      e->prev->next = e->next;
+      e->next->prev = e->prev;
+      e = e->prev; //ie get back into the loop
+    }
     return true;
-  } else
-  {
-    e = e->next;
-    return false;
   }
+  return false;
 }
 //------------------------------------------------------------------------------
 
@@ -517,49 +502,43 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   //create a new edge array ...
   TEdge *edges = new TEdge [highI +1];
   m_edges.push_back(edges);
-  //fill the edge array ...
-  InitEdge( &edges[highI], pg[highI], pg[0], polyType, m_DupPtTolerance);
 
-  edges[highI].prev = &edges[highI-1];
-  edges[highI].next = &edges[0];
-  InitEdge(&edges[0] , pg[0] , pg[1], polyType, m_DupPtTolerance);
-  edges[0].prev = &edges[highI];
-  edges[0].next = &edges[1];
-  for( i = 1 ; i < highI ; ++i )
-  {
-    InitEdge(&edges[i] , pg[i] , pg[i+1], polyType, m_DupPtTolerance);
-    edges[i].prev = &edges[i-1];
-    edges[i].next = &edges[i+1];
-  }
+  //convert 'edges' to double-linked-list and initialize some of the vars ...
+  edges[0].savedBot = pg[0];
+  InitEdge(&edges[highI], &edges[0], &edges[highI-1], pg[highI], polyType);
+  for (i = highI-1; i > 0; i--)
+    InitEdge(&edges[i], &edges[i+1], &edges[i-1], pg[i], polyType);
+  InitEdge(&edges[0], &edges[1], &edges[highI], pg[0], polyType);
 
-  //fixup any co-linear edges or duplicate points ...
-  e = &edges[0];
+  //fixup any duplicate points and co-linear edges ...
+  e = edges;
   do {
-    while( FixupIfDupOrColinear(e, &edges[0], m_DupPtTolerance) ) ;
-  } while((e != &edges[0]) && ( e->next != e->prev ));
-  if( e->next != e->prev)
-    do {
-      e = &edges[0];
-    } while(FixupIfDupOrColinear( e, &edges[0], m_DupPtTolerance ));
+    FixupForDupsAndColinear(e, edges, m_DupPtTolerance);
+    e = e->next;
+  }
+  while ( e != edges );
+  if (FixupForDupsAndColinear(e, edges, m_DupPtTolerance) )
+  {
+    e = e->prev;
+    FixupForDupsAndColinear(e, edges, m_DupPtTolerance);
+  }
 
   //make sure we still have a valid polygon ...
   if( e->next == e->prev )
   {
     m_edges.pop_back();
     delete [] edges;
-    return; //oops!!
+    return;
   }
 
-  //once duplicates etc have been removed, we can set edge savedBot to their
-  //proper values and also get the starting minima (e2) ...
-  e = &edges[0];
+  //now properly reinitialize edges and also get the starting minima (e2) ...
+  e = edges;
   e2 = e;
   do {
-    e->savedBot.X = e->xbot;
-    e->savedBot.Y = e->ybot;
+    ReInitEdge(e, m_DupPtTolerance);
     if(  e->ybot > e2->ybot ) e2 = e;
     e = e->next;
-  } while( e != &edges[0] );
+  } while( e != edges );
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
   if( (e2->prev->ybot == e2->ybot) && ( (e2->prev->xbot == e2->xbot) ||
@@ -1504,8 +1483,9 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     if((e->xbot >= horzLeft - tolerance) && (e->xbot <= horzRight + tolerance))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
-      if ((e->xbot == horzEdge->xtop ) && horzEdge->nextInLML  &&
-        (SlopesEqual(*e, *horzEdge->nextInLML, m_DupPtTolerance) ||
+      if ( std::fabs(e->xbot - horzEdge->xtop) < tolerance &&
+          horzEdge->nextInLML  &&
+          (SlopesEqual(*e, *horzEdge->nextInLML, m_DupPtTolerance) ||
             (e->dx < horzEdge->nextInLML->dx))){
           //we really have gone past the end of intermediate horz edge so quit.
           //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
