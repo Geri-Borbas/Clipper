@@ -2,7 +2,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.03                                                            *
+* Version   :  2.04                                                            *
 * Date      :  3 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *

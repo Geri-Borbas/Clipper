@@ -2,7 +2,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.03                                                            *
+* Version   :  2.04                                                            *
 * Date      :  3 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -296,7 +296,7 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2, double const &epsilon)
 
 bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges, double const &epsilon)
 {
-  while ( e->next != e->prev &&
+  if ( e->next != e->prev &&
     (PointsEqual(e->prev->savedBot, e->savedBot, epsilon) ||
     SlopesEqualInternal(*e->prev, *e, epsilon)) )
   {

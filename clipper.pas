@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.03                                                            *
+* Version   :  2.04                                                            *
 * Date      :  3 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
@@ -638,9 +638,9 @@ var
   function FixupForDupsAndColinear(var e: PEdge): boolean;
   begin
     result := false;
-    while (e.next <> e.prev) and
+    if (e.next <> e.prev) and
       (PointsEqual(e.prev.savedBot, e.savedBot, fDupPtTolerance) or
-      SlopesEqualInternal(e.prev, e)) do
+      SlopesEqualInternal(e.prev, e)) then
     begin
       //prepare to remove 'e' from the loop ...
       e.prev.xtop := e.next.savedBot.X;
