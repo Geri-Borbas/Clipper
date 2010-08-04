@@ -146,7 +146,7 @@ object MainForm: TMainForm
         Width = 145
         Height = 28
         Enabled = False
-        Max = 60
+        Max = 99
         Min = 3
         Position = 10
         TabOrder = 2
@@ -160,7 +160,7 @@ object MainForm: TMainForm
         Width = 145
         Height = 28
         Enabled = False
-        Max = 60
+        Max = 99
         Min = 3
         Position = 10
         TabOrder = 3

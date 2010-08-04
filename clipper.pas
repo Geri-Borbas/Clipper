@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.04                                                            *
-* Date      :  3 August 2010                                                   *
+* Version   :  2.06                                                            *
+* Date      :  6 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -587,11 +587,6 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: TPolyType);
-var
-  i, highI: integer;
-  edges: PEdgeArray;
-  e, e2: PEdge;
-  polyg: TArrayOfDoublePoint;
 
   //----------------------------------------------------------------------
 
@@ -635,13 +630,14 @@ var
   end;
   //----------------------------------------------------------------------
 
-  function FixupForDupsAndColinear(var e: PEdge): boolean;
+  function FixupForDupsAndColinear(var e: PEdge; const edges: PEdgeArray): boolean;
   begin
     result := false;
-    if (e.next <> e.prev) and
+    while (e.next <> e.prev) and
       (PointsEqual(e.prev.savedBot, e.savedBot, fDupPtTolerance) or
-      SlopesEqualInternal(e.prev, e)) then
+      SlopesEqualInternal(e.prev, e)) do
     begin
+      result := true;
       //prepare to remove 'e' from the loop ...
       e.prev.xtop := e.next.savedBot.X;
       e.prev.ytop := e.next.savedBot.Y;
@@ -660,7 +656,6 @@ var
         e.next.prev := e.prev;
         e := e.prev; //ie get back into the loop
       end;
-      result := true;
     end;
   end;
   //----------------------------------------------------------------------
@@ -782,6 +777,11 @@ var
   end;
   //----------------------------------------------------------------------
 
+var
+  i, highI: integer;
+  edges: PEdgeArray;
+  e, e2: PEdge;
+  polyg: TArrayOfDoublePoint;
 begin
   {AddPolygon}
 
@@ -799,7 +799,8 @@ begin
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
   i := 1;
-  while (i <= highI) and (polyg[i].Y = polyg[0].Y) do inc(i);
+  while (i <= highI) and
+    (abs(polyg[i].Y - polyg[0].Y) < fDupPtTolerance) do inc(i);
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
@@ -810,28 +811,29 @@ begin
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], polyg[i]);
   InitEdge(@edges[0], @edges[1], @edges[highI], polyg[0]);
 
-  //fixup any duplicate points and co-linear edges ...
+  //fixup by deleting any duplicate points and amalgamating co-linear edges ...
   e := @edges[0];
   repeat
-    FixupForDupsAndColinear(e);
+    FixupForDupsAndColinear(e, edges);
     e := e.next;
   until (e = @edges[0]);
-  if FixupForDupsAndColinear(e) then
+  while FixupForDupsAndColinear(e, edges) do
   begin
     e := e.prev;
-    FixupForDupsAndColinear(e);
+    if not FixupForDupsAndColinear(e, edges) then break;
+    e := @edges[0];
   end;
 
-  //make sure we still have a valid polygon ...
   if (e.next = e.prev) then
   begin
+    //this isn't a valid polygon ...
     dispose(edges);
-    exit; //oops!!
+    exit;
   end;
 
   fList.Add(edges);
 
-  //now properly reinitialize edges and also get the starting minima (e2) ...
+  //now properly re-initialize edges and also get the starting minima (e2) ...
   e := @edges[0];
   e2 := e;
   repeat

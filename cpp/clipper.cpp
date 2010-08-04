@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.04                                                            *
-* Date      :  3 August 2010                                                   *
+* Version   :  2.06                                                            *
+* Date      :  4 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -296,10 +296,12 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2, double const &epsilon)
 
 bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges, double const &epsilon)
 {
-  if ( e->next != e->prev &&
+  bool result = false;
+  while ( e->next != e->prev &&
     (PointsEqual(e->prev->savedBot, e->savedBot, epsilon) ||
     SlopesEqualInternal(*e->prev, *e, epsilon)) )
   {
+    result = true;
     //prepare to remove 'e' from the loop ...
     e->prev->xtop = e->next->savedBot.X;
     e->prev->ytop = e->next->savedBot.Y;
@@ -318,9 +320,8 @@ bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges, double const &epsilon)
       e->next->prev = e->prev;
       e = e->prev; //ie get back into the loop
     }
-    return true;
   }
-  return false;
+  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -496,8 +497,8 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
   i = 1;
-  while(  (i <= highI) && (pg[i].Y == pg[0].Y) ) i++;
-  if(  i > highI ) return;
+  while(  i <= highI && std::fabs(pg[i].Y - pg[0].Y) < m_DupPtTolerance ) i++;
+  if( i > highI ) return;
 
   //create a new edge array ...
   TEdge *edges = new TEdge [highI +1];
@@ -510,17 +511,18 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], pg[i], polyType);
   InitEdge(&edges[0], &edges[1], &edges[highI], pg[0], polyType);
 
-  //fixup any duplicate points and co-linear edges ...
+  //fixup by deleting any duplicate points and amalgamating co-linear edges ...
   e = edges;
   do {
     FixupForDupsAndColinear(e, edges, m_DupPtTolerance);
     e = e->next;
   }
   while ( e != edges );
-  if (FixupForDupsAndColinear(e, edges, m_DupPtTolerance) )
+  while  ( FixupForDupsAndColinear(e, edges, m_DupPtTolerance))
   {
     e = e->prev;
-    FixupForDupsAndColinear(e, edges, m_DupPtTolerance);
+    if ( !FixupForDupsAndColinear(e, edges, m_DupPtTolerance) ) break;
+    e = edges;
   }
 
   //make sure we still have a valid polygon ...
