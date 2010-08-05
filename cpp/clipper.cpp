@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.06                                                            *
-* Date      :  4 August 2010                                                   *
+* Version   :  2.07                                                            *
+* Date      :  6 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -333,7 +333,8 @@ void SwapX(TEdge &e)
 }
 //------------------------------------------------------------------------------
 
-TEdge *BuildBound(TEdge *e,  TEdgeSide s,  bool buildForward)
+TEdge *BuildBound(TEdge *e,  TEdgeSide s,
+  bool buildForward, double const &epsilon)
 {
   TEdge *eNext; TEdge *eNextNext;
 
@@ -358,7 +359,7 @@ TEdge *BuildBound(TEdge *e,  TEdgeSide s,  bool buildForward)
         return eNext;
       }
     }
-    else if(  e->ytop == eNext->ytop )
+    else if(  std::fabs(e->ytop - eNext->ytop) < epsilon )
     {
       e->nextInLML = 0;
       return eNext;
@@ -446,12 +447,12 @@ TEdge *ClipperBase::AddLML(TEdge *e)
   {
     newLm->leftBound = e;
     newLm->rightBound = e->next;
-    BuildBound( newLm->leftBound , esLeft , false );
+    BuildBound( newLm->leftBound , esLeft , false, m_DupPtTolerance );
     if(  IsHorizontal( *newLm->rightBound ) &&
       ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
         SwapX( *newLm->rightBound );
     InsertLocalMinima( newLm);
-    return BuildBound( newLm->rightBound , esRight , true );
+    return BuildBound( newLm->rightBound , esRight , true, m_DupPtTolerance );
   }
   else
   {
@@ -460,22 +461,22 @@ TEdge *ClipperBase::AddLML(TEdge *e)
     if(  IsHorizontal( *newLm->rightBound ) &&
       ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
         SwapX( *newLm->rightBound );
-    BuildBound( newLm->rightBound , esRight , false );
+    BuildBound( newLm->rightBound , esRight , false, m_DupPtTolerance );
     InsertLocalMinima( newLm);
-    return BuildBound( newLm->leftBound , esLeft , true );
+    return BuildBound( newLm->leftBound , esLeft , true, m_DupPtTolerance );
   }
 }
 //------------------------------------------------------------------------------
 
-TEdge *NextMin(TEdge *e)
+TEdge *NextMin(TEdge *e, double const &epsilon)
 {
-  while(  e->next->ytop >= e->ybot ) e = e->next;
-  while(  e->ytop == e->ybot ) e = e->prev;
+  while(  e->next->ytop > e->ybot - epsilon) e = e->next;
+  while(  std::fabs(e->ytop - e->ybot) < epsilon ) e = e->prev;
   return e;
 }
 //------------------------------------------------------------------------------
 
-double RoundToTolerance(double const number, double const epsilon){
+double RoundToTolerance(double const number, double const &epsilon){
   return std::floor( number/epsilon + 0.5 ) * epsilon;
 }
 //------------------------------------------------------------------------------
@@ -554,7 +555,7 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   e = e2;
   do {
     e2 = AddLML( e2 );
-    e2 = NextMin( e2 );
+    e2 = NextMin( e2, m_DupPtTolerance );
   } while( e2 != e );
 }
 //------------------------------------------------------------------------------

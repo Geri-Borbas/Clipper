@@ -3,7 +3,7 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.06                                                            *
+* Version   :  2.07                                                            *
 * Date      :  6 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
@@ -696,7 +696,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
           break;
         end;
       end
-      else if e.ytop = eNext.ytop then
+      else if abs(e.ytop - eNext.ytop) < fDupPtTolerance then
       begin
         e.nextInLML := nil;
         result := eNext;
@@ -771,8 +771,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   function NextMin(e: PEdge): PEdge;
   begin
-    while e.next.ytop >= e.ybot do e := e.next;
-    while e.ytop = e.ybot do e := e.prev;
+    while (e.next.ytop > e.ybot - fDupPtTolerance) do e := e.next;
+    while (abs(e.ytop - e.ybot) < fDupPtTolerance) do e := e.prev;
     result := e;
   end;
   //----------------------------------------------------------------------

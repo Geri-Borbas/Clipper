@@ -2,6 +2,14 @@
 Clipper Change Log
 ============================================================
 
+2.07 - 6 August 2010
+* Bugfix: Bug in BuildBound() could cause an endless loop. 
+
+2.06 - 5 August 2010
+* Bugfix: Finally nailed an obscure but elusive bug in the 
+merging of co-linear edges in the input polygons where 
+very rarely one would be missed.
+
 2.03 - 3 August 2010
 * Bugfix: A couple of minor bugs fixed.
 
