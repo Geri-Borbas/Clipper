@@ -2,7 +2,7 @@
 Clipper Change Log
 ============================================================
 
-2.07 - 6 August 2010
+2.08 - 7 August 2010
 * Bugfix: Bug in BuildBound() could cause an endless loop. 
 
 2.06 - 5 August 2010

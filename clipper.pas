@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.07                                                            *
-* Date      :  6 August 2010                                                   *
+* Version   :  2.08                                                            *
+* Date      :  7 August 2010                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -694,7 +694,9 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
           e.nextInLML := nil;
           result := eNext;
           break;
-        end;
+        end
+        else if (eNext.xbot <> e.xtop) then
+          swapX(eNext); //even swapX for horizontals at the top of a bound
       end
       else if abs(e.ytop - eNext.ytop) < fDupPtTolerance then
       begin
@@ -843,8 +845,9 @@ begin
   until e = @edges[0];
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if (e2.prev.ybot = e2.ybot) and ((e2.prev.xbot = e2.xbot) or
-    (IsHorizontal(e2) and (e2.prev.xbot = e2.xtop))) then
+  if (abs(e2.prev.ybot - e2.ybot) < fDupPtTolerance) and
+    ((abs(e2.prev.xbot - e2.xbot) < fDupPtTolerance) or
+    (IsHorizontal(e2) and (abs(e2.prev.xbot - e2.xtop) < fDupPtTolerance))) then
   begin
     e2 := e2.prev;
     if IsHorizontal(e2) then e2 := e2.prev;
@@ -1482,22 +1485,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsMaxima(e: PEdge; const Y: double): boolean;
+function IsMaxima(e: PEdge; const Y: double; const epsilon: double): boolean;
 begin
-  result := assigned(e) and (e.ytop = Y) and not assigned(e.nextInLML);
+  result := assigned(e) and (abs(e.ytop - Y) < epsilon) and not assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
-function IsIntermediate(e: PEdge; const Y: double): boolean;
+function IsIntermediate(e: PEdge; const Y: double; const epsilon: double): boolean;
 begin
-  result := (e.ytop = Y) and assigned(e.nextInLML);
+  result := (abs(e.ytop - Y) < epsilon) and assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
 function TClipper.GetMaximaPair(e: PEdge): PEdge;
 begin
   result := e.next;
-  if not IsMaxima(result, e.ytop) or (result.xtop <> e.xtop) then result := e.prev;
+  if not IsMaxima(result, e.ytop, fDupPtTolerance) or (result.xtop <> e.xtop) then
+    result := e.prev;
 end;
 //------------------------------------------------------------------------------
 
@@ -1879,9 +1883,11 @@ begin
 
   //nb: e1 always precedes e2 in AEL ...
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
-    (abs(e1.xtop - pt.x) < tolerance) and (abs(e1.ytop - pt.y) < tolerance);
+    (abs(e1.xtop - pt.x) < fDupPtTolerance) and
+    (abs(e1.ytop - pt.y) < fDupPtTolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
-    (abs(e2.xtop - pt.x) < tolerance) and (abs(e2.ytop - pt.y) < tolerance);
+    (abs(e2.xtop - pt.x) < fDupPtTolerance) and
+    (abs(e2.ytop - pt.y) < fDupPtTolerance);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
 
@@ -2172,7 +2178,8 @@ begin
   while assigned(e) do
   begin
     //1. process maxima, treating them as if they're 'bent' horizontal edges ...
-    if IsMaxima(e, topY) and not IsHorizontal(GetMaximaPair(e)) then
+    if IsMaxima(e, topY, fDupPtTolerance) and
+      not IsHorizontal(GetMaximaPair(e)) then
     begin
       //'e' might be removed from AEL, as may any following edges so ...
       ePrior := e.prevInAEL;
@@ -2183,7 +2190,7 @@ begin
     end else
     begin
       //2. promote horizontal edges, otherwise update xbot and ybot ...
-      if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
+      if IsIntermediate(e, topY, fDupPtTolerance) and IsHorizontal(e.nextInLML) then
       begin
         if (e.outIdx >= 0) then
           AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
@@ -2206,7 +2213,7 @@ begin
   e := fActiveEdges;
   while assigned(e) do
   begin
-    if IsIntermediate(e, topY) then
+    if IsIntermediate(e, topY, fDupPtTolerance) then
     begin
       if (e.outIdx >= 0) then
         AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);

@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.07                                                            *
-* Date      :  6 August 2010                                                   *
+* Version   :  2.08                                                            *
+* Date      :  7 August 2010                                                   *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -358,6 +358,7 @@ TEdge *BuildBound(TEdge *e,  TEdgeSide s,
         e->nextInLML = 0;
         return eNext;
       }
+      else if(  eNext->xbot != e->xtop ) SwapX( *eNext );
     }
     else if(  std::fabs(e->ytop - eNext->ytop) < epsilon )
     {
@@ -544,8 +545,10 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   } while( e != edges );
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if( (e2->prev->ybot == e2->ybot) && ( (e2->prev->xbot == e2->xbot) ||
-    (IsHorizontal(*e2) && (e2->prev->xbot == e2->xtop)) ) )
+  if ((std::fabs(e2->prev->ybot - e2->ybot) < m_DupPtTolerance) &&
+    ((std::fabs(e2->prev->xbot - e2->xbot) < m_DupPtTolerance) ||
+    (IsHorizontal(*e2) &&
+    (std::fabs(e2->prev->xbot - e2->xtop) < m_DupPtTolerance))))
   {
     e2 = e2->prev;
     if( IsHorizontal(*e2) ) e2 = e2->prev;
@@ -1061,11 +1064,11 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   bool e1stops, e2stops, e1Contributing, e2contributing;
 
   e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
-    ( std::fabs( e1->xtop - pt.X ) < tolerance ) &&
-    ( std::fabs( e1->ytop - pt.Y ) < tolerance );
+    ( std::fabs( e1->xtop - pt.X ) < m_DupPtTolerance ) &&
+    ( std::fabs( e1->ytop - pt.Y ) < m_DupPtTolerance );
   e2stops = !(ipRight & protects) &&  !e2->nextInLML &&
-    ( std::fabs( e2->xtop - pt.X ) < tolerance ) &&
-    ( std::fabs( e2->ytop - pt.Y ) < tolerance );
+    ( std::fabs( e2->xtop - pt.X ) < m_DupPtTolerance ) &&
+    ( std::fabs( e2->ytop - pt.Y ) < m_DupPtTolerance );
   e1Contributing = ( e1->outIdx >= 0 );
   e2contributing = ( e2->outIdx >= 0 );
 
@@ -1376,22 +1379,23 @@ bool IsMinima(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-bool IsMaxima(TEdge *e, double const &Y)
+bool IsMaxima(TEdge *e, double const &Y, double const &epsilon)
 {
-  return e  && (e->ytop == Y) &&  !e->nextInLML;
+  return e  && std::fabs(e->ytop - Y) < epsilon &&  !e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
-bool IsIntermediate(TEdge *e, double const &Y)
+bool IsIntermediate(TEdge *e, double const &Y, double const &epsilon)
 {
-  return (( e->ytop == Y ) && e->nextInLML);
+  return std::fabs( e->ytop - Y ) < epsilon && e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
-TEdge *GetMaximaPair(TEdge *e)
+TEdge *GetMaximaPair(TEdge *e, double const &epsilon)
 {
-  if( !IsMaxima(e->next, e->ytop) || (e->next->xtop != e->xtop) ) return e->prev;
-  else return e->next;
+  if( !IsMaxima(e->next, e->ytop, epsilon) || (e->next->xtop != e->xtop) )
+    return e->prev; else
+    return e->next;
 }
 //------------------------------------------------------------------------------
 
@@ -1400,7 +1404,7 @@ void Clipper::DoMaxima(TEdge *e, double const &topY)
   TEdge *eNext, *eMaxPair;
   double X;
 
-  eMaxPair = GetMaximaPair(e);
+  eMaxPair = GetMaximaPair(e, m_DupPtTolerance);
   X = e->xtop;
   eNext = e->nextInAEL;
   while( eNext != eMaxPair )
@@ -1477,7 +1481,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   }
 
   if( horzEdge->nextInLML ) eMaxPair = 0;
-  else eMaxPair = GetMaximaPair( horzEdge );
+  else eMaxPair = GetMaximaPair( horzEdge, m_DupPtTolerance );
 
   e = GetNextInAEL( horzEdge , Direction );
   while( e )
@@ -1723,7 +1727,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
   {
     //1. process all maxima ...
     //   logic behind code - maxima are treated as if 'bent' horizontal edges
-    if( IsMaxima(e, topY) &&  !IsHorizontal(*GetMaximaPair(e)) )
+    if( IsMaxima(e, topY, m_DupPtTolerance) &&
+      !IsHorizontal(*GetMaximaPair(e, m_DupPtTolerance)) )
     {
       //'e' might be removed from AEL, as may any following edges so ...
       ePrior = e->prevInAEL;
@@ -1734,7 +1739,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
     else
     {
       //2. promote horizontal edges, otherwise update xbot and ybot ...
-      if(  IsIntermediate( e , topY ) && IsHorizontal( *e->nextInLML ) )
+      if(  IsIntermediate( e , topY, m_DupPtTolerance ) &&
+        IsHorizontal( *e->nextInLML ) )
       {
         if(  ( e->outIdx >= 0 ) )
           AddPolyPt( e->outIdx , DoublePoint( e->xtop , e->ytop ) , e->side == esLeft );
@@ -1757,7 +1763,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
   e = m_ActiveEdges;
   while( e )
   {
-    if( IsIntermediate( e, topY ) )
+    if( IsIntermediate( e, topY, m_DupPtTolerance ) )
     {
       if( e->outIdx >= 0 )
         AddPolyPt( e->outIdx , DoublePoint(e->xtop, e->ytop), e->side == esLeft );
