@@ -1,5 +1,5 @@
 object MainForm: TMainForm
-  Left = 151
+  Left = 156
   Top = 122
   Width = 859
   Height = 604
@@ -25,17 +25,17 @@ object MainForm: TMainForm
     Align = alLeft
     TabOrder = 0
     object lblClipOpacity: TLabel
-      Left = 21
+      Left = 17
       Top = 468
-      Width = 108
+      Width = 118
       Height = 16
       Caption = 'Clip Opacity (255):'
       FocusControl = tbClipOpacity
     end
     object lblSubjOpacity: TLabel
-      Left = 21
+      Left = 17
       Top = 425
-      Width = 112
+      Width = 122
       Height = 16
       Caption = 'Subj &Opacity (255):'
       FocusControl = tbSubjOpacity
@@ -43,7 +43,7 @@ object MainForm: TMainForm
     object GroupBox1: TGroupBox
       Left = 13
       Top = 8
-      Width = 157
+      Width = 159
       Height = 115
       Caption = 'Clipping  Oper&ation'
       TabOrder = 0
@@ -96,11 +96,11 @@ object MainForm: TMainForm
       end
     end
     object rbStatic: TRadioButton
-      Left = 27
+      Left = 16
       Top = 129
       Width = 115
       Height = 17
-      Caption = '&Static'
+      Caption = '&Static Polygons'
       Checked = True
       TabOrder = 1
       TabStop = True
@@ -119,24 +119,24 @@ object MainForm: TMainForm
     object gbRandom: TGroupBox
       Left = 11
       Top = 184
-      Width = 157
+      Width = 159
       Height = 233
       TabOrder = 4
       object lblSubjCount: TLabel
         Left = 4
         Top = 40
-        Width = 146
+        Width = 137
         Height = 16
-        Caption = 'Random S&ubj Count (10):'
+        Caption = 'No. Subject edges: (10)'
         Enabled = False
         FocusControl = tbSubj
       end
       object lblClipCount: TLabel
         Left = 4
         Top = 87
-        Width = 142
+        Width = 115
         Height = 16
-        Caption = 'Random Cl&ip Count (10):'
+        Caption = 'No. Clip edges (10):'
         Enabled = False
         FocusControl = tbClip
       end
@@ -146,7 +146,7 @@ object MainForm: TMainForm
         Width = 145
         Height = 28
         Enabled = False
-        Max = 99
+        Max = 200
         Min = 3
         Position = 10
         TabOrder = 2
@@ -160,7 +160,7 @@ object MainForm: TMainForm
         Width = 145
         Height = 28
         Enabled = False
-        Max = 99
+        Max = 200
         Min = 3
         Position = 10
         TabOrder = 3
@@ -204,7 +204,7 @@ object MainForm: TMainForm
         Top = 14
         Width = 73
         Height = 17
-        Caption = 'EvenOdd'
+        Caption = 'E&venOdd'
         Checked = True
         Enabled = False
         TabOrder = 0
@@ -216,25 +216,25 @@ object MainForm: TMainForm
         Top = 14
         Width = 69
         Height = 17
-        Caption = 'NonZero'
+        Caption = 'Non&Zero'
         Enabled = False
         TabOrder = 1
         OnClick = rbEvenOddClick
       end
     end
     object rbRandom1: TRadioButton
-      Left = 27
+      Left = 16
       Top = 146
-      Width = 115
+      Width = 146
       Height = 17
-      Caption = '&Random 1'
+      Caption = 'Random Polygons &1'
       TabOrder = 2
       OnClick = rbStaticClick
     end
     object tbClipOpacity: TTrackBar
-      Left = 16
+      Left = 12
       Top = 485
-      Width = 148
+      Width = 158
       Height = 28
       Max = 255
       Position = 255
@@ -244,9 +244,9 @@ object MainForm: TMainForm
       OnChange = tbClipOpacityChange
     end
     object tbSubjOpacity: TTrackBar
-      Left = 16
+      Left = 12
       Top = 442
-      Width = 148
+      Width = 158
       Height = 28
       Max = 255
       Position = 255
@@ -256,11 +256,11 @@ object MainForm: TMainForm
       OnChange = tbSubjOpacityChange
     end
     object rbRandom2: TRadioButton
-      Left = 27
+      Left = 16
       Top = 164
-      Width = 115
+      Width = 146
       Height = 17
-      Caption = '&Random 2'
+      Caption = 'Random Polygons &2'
       TabOrder = 3
       OnClick = rbStaticClick
     end

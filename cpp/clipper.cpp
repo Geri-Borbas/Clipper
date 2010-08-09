@@ -2,16 +2,13 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.08                                                            *
-* Date      :  7 August 2010                                                   *
+* Version   :  2.10                                                            *
+* Date      :  10 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
 * http://www.boost.org/LICENSE_1_0.txt                                         *
-* (nb: This library was initially release under dual MPL and LGPL licenses.    *
-* This Boost License is much simpler and imposes even fewer restrictions on    *
-* the use of this code, yet it still accomplishes the desired purposes.)       *
 *                                                                              *
 * Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -28,10 +25,10 @@
 
 /*******************************************************************************
 *                                                                              *
-*  This is a translation of my Delphi clipper code and is the very first stuff *
-*  I've written in C++ (or C). My apologies if the coding style is unorthodox. *
-*  Please see the accompanying Delphi Clipper library (clipper.pas) for a more *
-*  detailed explanation of the code algorithms.                                *
+* This is a translation of my Delphi clipper code and is the very first stuff  *
+* I've written in C++ (or C). My apologies if the coding style is unorthodox.  *
+* Please see the accompanying Delphi Clipper library (clipper.pas) for a more  *
+* detailed explanation of the code algorithms.                                 *
 *                                                                              *
 *******************************************************************************/
 
@@ -51,8 +48,8 @@ static double const infinite = -3.4E+38;
 //significand of type double is 15 decimal places). However, for the vast
 //majority of uses ... tolerance = 1.0e-10 will be just fine.
 static double const tolerance = 1.0E-10;
-//default_dup_pt_tolerance: see TClipperBase.DuplicatePointTolerance()
-static double const default_dup_pt_tolerance = 1.0E-6;
+//default_precision: see TClipperBase.Precision()
+static double const default_precision = 1.0E-6;
 
 static const unsigned ipLeft = 1;
 static const unsigned ipRight = 2;
@@ -380,7 +377,7 @@ ClipperBase::ClipperBase() //constructor
   m_recycledLocMin = 0;
   m_recycledLocMinEnd = 0;
   m_edges.reserve(32);
-  m_DupPtTolerance = default_dup_pt_tolerance;
+  m_precision = default_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -390,19 +387,19 @@ ClipperBase::~ClipperBase() //destructor
 }
 //------------------------------------------------------------------------------
 
-int ClipperBase::DuplicatePointTolerance()
+int ClipperBase::Precision()
 {
-  return - int(std::log10(m_DupPtTolerance));
+  return - int(std::log10(m_precision));
 }
 //------------------------------------------------------------------------------
 
-void ClipperBase::DuplicatePointTolerance(int value)
+void ClipperBase::Precision(int value)
 {
   if (value < 0 || value > 6)
-    throw "DuplicatePointTolerance: 0 .. 6 (decimal places)";
+    throw "Precision: 0 .. 6 (decimal places)";
   if (m_edges.size() > 0)
-    throw "Clear polygons before setting DuplicatePointTolerance";
-  m_DupPtTolerance = std::pow(10,(float)-value);
+    throw "Clear polygons before setting Precision";
+  m_precision = std::pow(10,(float)-value);
 }
 //------------------------------------------------------------------------------
 
@@ -448,12 +445,12 @@ TEdge *ClipperBase::AddLML(TEdge *e)
   {
     newLm->leftBound = e;
     newLm->rightBound = e->next;
-    BuildBound( newLm->leftBound , esLeft , false, m_DupPtTolerance );
+    BuildBound( newLm->leftBound , esLeft , false, m_precision );
     if(  IsHorizontal( *newLm->rightBound ) &&
       ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
         SwapX( *newLm->rightBound );
     InsertLocalMinima( newLm);
-    return BuildBound( newLm->rightBound , esRight , true, m_DupPtTolerance );
+    return BuildBound( newLm->rightBound , esRight , true, m_precision );
   }
   else
   {
@@ -462,9 +459,9 @@ TEdge *ClipperBase::AddLML(TEdge *e)
     if(  IsHorizontal( *newLm->rightBound ) &&
       ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
         SwapX( *newLm->rightBound );
-    BuildBound( newLm->rightBound , esRight , false, m_DupPtTolerance );
+    BuildBound( newLm->rightBound , esRight , false, m_precision );
     InsertLocalMinima( newLm);
-    return BuildBound( newLm->leftBound , esLeft , true, m_DupPtTolerance );
+    return BuildBound( newLm->leftBound , esLeft , true, m_precision );
   }
 }
 //------------------------------------------------------------------------------
@@ -489,17 +486,17 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
 
   highI = pg.size() -1;
   for (i = 0; i <= highI; i++) {
-    pg[i].X = RoundToTolerance(pg[i].X, m_DupPtTolerance);
-    pg[i].Y = RoundToTolerance(pg[i].Y, m_DupPtTolerance);
+    pg[i].X = RoundToTolerance(pg[i].X, m_precision);
+    pg[i].Y = RoundToTolerance(pg[i].Y, m_precision);
   }
 
   while( (highI > 1) &&
-    PointsEqual(pg[0] , pg[highI], m_DupPtTolerance) ) highI--;
+    PointsEqual(pg[0] , pg[highI], m_precision) ) highI--;
   if(  highI < 2 ) return;
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
   i = 1;
-  while(  i <= highI && std::fabs(pg[i].Y - pg[0].Y) < m_DupPtTolerance ) i++;
+  while(  i <= highI && std::fabs(pg[i].Y - pg[0].Y) < m_precision ) i++;
   if( i > highI ) return;
 
   //create a new edge array ...
@@ -516,14 +513,14 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   //fixup by deleting any duplicate points and amalgamating co-linear edges ...
   e = edges;
   do {
-    FixupForDupsAndColinear(e, edges, m_DupPtTolerance);
+    FixupForDupsAndColinear(e, edges, m_precision);
     e = e->next;
   }
   while ( e != edges );
-  while  ( FixupForDupsAndColinear(e, edges, m_DupPtTolerance))
+  while  ( FixupForDupsAndColinear(e, edges, m_precision))
   {
     e = e->prev;
-    if ( !FixupForDupsAndColinear(e, edges, m_DupPtTolerance) ) break;
+    if ( !FixupForDupsAndColinear(e, edges, m_precision) ) break;
     e = edges;
   }
 
@@ -539,16 +536,16 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   e = edges;
   e2 = e;
   do {
-    ReInitEdge(e, m_DupPtTolerance);
+    ReInitEdge(e, m_precision);
     if(  e->ybot > e2->ybot ) e2 = e;
     e = e->next;
   } while( e != edges );
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if ((std::fabs(e2->prev->ybot - e2->ybot) < m_DupPtTolerance) &&
-    ((std::fabs(e2->prev->xbot - e2->xbot) < m_DupPtTolerance) ||
+  if ((std::fabs(e2->prev->ybot - e2->ybot) < m_precision) &&
+    ((std::fabs(e2->prev->xbot - e2->xbot) < m_precision) ||
     (IsHorizontal(*e2) &&
-    (std::fabs(e2->prev->xbot - e2->xtop) < m_DupPtTolerance))))
+    (std::fabs(e2->prev->xbot - e2->xtop) < m_precision))))
   {
     e2 = e2->prev;
     if( IsHorizontal(*e2) ) e2 = e2->prev;
@@ -558,7 +555,7 @@ void ClipperBase::AddPolygon( TPolygon &pg, TPolyType polyType)
   e = e2;
   do {
     e2 = AddLML( e2 );
-    e2 = NextMin( e2, m_DupPtTolerance );
+    e2 = NextMin( e2, m_precision );
   } while( e2 != e );
 }
 //------------------------------------------------------------------------------
@@ -669,7 +666,7 @@ Clipper::Clipper() : ClipperBase() //constructor
   m_SortedEdges = 0;
   m_IntersectNodes = 0;
   m_ExecuteLocked = false;
-  m_ForceAlternateOrientation = true;
+  m_ForceOrientation = true;
   m_PolyPts.reserve(32);
 };
 //------------------------------------------------------------------------------
@@ -854,7 +851,7 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
   {
     m_ActiveEdges = edge;
   }
-  else if( Edge2InsertsBeforeEdge1(*m_ActiveEdges, *edge, m_DupPtTolerance) )
+  else if( Edge2InsertsBeforeEdge1(*m_ActiveEdges, *edge, m_precision) )
   {
     edge->nextInAEL = m_ActiveEdges;
     m_ActiveEdges->prevInAEL = edge;
@@ -863,7 +860,7 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
   {
     e = m_ActiveEdges;
     while( e->nextInAEL  &&
-      !Edge2InsertsBeforeEdge1(*e->nextInAEL , *edge, m_DupPtTolerance) )
+      !Edge2InsertsBeforeEdge1(*e->nextInAEL , *edge, m_precision) )
       e = e->nextInAEL;
     edge->nextInAEL = e->nextInAEL;
     if( e->nextInAEL ) e->nextInAEL->prevInAEL = edge;
@@ -977,7 +974,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
   if( !m_IntersectNodes )
     m_IntersectNodes = IntersectNode;
   else if(  Process1Before2(IntersectNode ,
-    m_IntersectNodes, m_DupPtTolerance) )
+    m_IntersectNodes, m_precision) )
   {
     IntersectNode->next = m_IntersectNodes;
     m_IntersectNodes->prev = IntersectNode;
@@ -987,7 +984,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const& pt)
   {
     iNode = m_IntersectNodes;
     while( iNode->next  &&
-      Process1Before2(iNode->next, IntersectNode, m_DupPtTolerance) )
+      Process1Before2(iNode->next, IntersectNode, m_precision) )
         iNode = iNode->next;
     if( iNode->next ) iNode->next->prev = IntersectNode;
     IntersectNode->next = iNode->next;
@@ -1064,11 +1061,11 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   bool e1stops, e2stops, e1Contributing, e2contributing;
 
   e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
-    ( std::fabs( e1->xtop - pt.X ) < m_DupPtTolerance ) &&
-    ( std::fabs( e1->ytop - pt.Y ) < m_DupPtTolerance );
+    ( std::fabs( e1->xtop - pt.X ) < tolerance ) &&
+    ( std::fabs( e1->ytop - pt.Y ) < m_precision );
   e2stops = !(ipRight & protects) &&  !e2->nextInLML &&
-    ( std::fabs( e2->xtop - pt.X ) < m_DupPtTolerance ) &&
-    ( std::fabs( e2->ytop - pt.Y ) < m_DupPtTolerance );
+    ( std::fabs( e2->xtop - pt.X ) < tolerance ) &&
+    ( std::fabs( e2->ytop - pt.Y ) < m_precision );
   e1Contributing = ( e1->outIdx >= 0 );
   e2contributing = ( e2->outIdx >= 0 );
 
@@ -1404,7 +1401,7 @@ void Clipper::DoMaxima(TEdge *e, double const &topY)
   TEdge *eNext, *eMaxPair;
   double X;
 
-  eMaxPair = GetMaximaPair(e, m_DupPtTolerance);
+  eMaxPair = GetMaximaPair(e, m_precision);
   X = e->xtop;
   eNext = e->nextInAEL;
   while( eNext != eMaxPair )
@@ -1481,7 +1478,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   }
 
   if( horzEdge->nextInLML ) eMaxPair = 0;
-  else eMaxPair = GetMaximaPair( horzEdge, m_DupPtTolerance );
+  else eMaxPair = GetMaximaPair( horzEdge, m_precision );
 
   e = GetNextInAEL( horzEdge , Direction );
   while( e )
@@ -1492,7 +1489,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       //ok, so far it looks like we're still in range of the horizontal edge
       if ( std::fabs(e->xbot - horzEdge->xtop) < tolerance &&
           horzEdge->nextInLML  &&
-          (SlopesEqual(*e, *horzEdge->nextInLML, m_DupPtTolerance) ||
+          (SlopesEqual(*e, *horzEdge->nextInLML, m_precision) ||
             (e->dx < horzEdge->nextInLML->dx))){
           //we really have gone past the end of intermediate horz edge so quit.
           //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
@@ -1618,7 +1615,7 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
   for (i = 0; i < m_PolyPts.size(); i++) {
     if (m_PolyPts[i]) {
 
-      FixupSolutionColinears(m_PolyPts, i, m_DupPtTolerance);
+      FixupSolutionColinears(m_PolyPts, i, m_precision);
 
       pt = m_PolyPts[i];
       cnt = 0;
@@ -1626,14 +1623,14 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
       bool isHorizontalOnly = true;
       do {
         pt = pt->next;
-        if (isHorizontalOnly && std::fabs(pt->pt.Y - y) > m_DupPtTolerance)
+        if (isHorizontalOnly && std::fabs(pt->pt.Y - y) > m_precision)
           isHorizontalOnly = false;
         cnt++;
       } while (pt != m_PolyPts[i]);
       if ( cnt < 3  || isHorizontalOnly ) continue;
 
       //validate the orientation of simple polygons ...
-      if ( ForceAlternateOrientation() &&
+      if ( ForceOrientation() &&
         !ValidateOrientation(pt) ) ReversePolyPtLinks(*pt);
 
       polypoly[k].resize(cnt);
@@ -1649,13 +1646,13 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::ForceAlternateOrientation(){
-  return m_ForceAlternateOrientation;
+bool Clipper::ForceOrientation(){
+  return m_ForceOrientation;
 }
 //------------------------------------------------------------------------------
 
-void Clipper::ForceAlternateOrientation(bool value){
-  m_ForceAlternateOrientation = value;
+void Clipper::ForceOrientation(bool value){
+  m_ForceOrientation = value;
 }
 //------------------------------------------------------------------------------
 
@@ -1727,8 +1724,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
   {
     //1. process all maxima ...
     //   logic behind code - maxima are treated as if 'bent' horizontal edges
-    if( IsMaxima(e, topY, m_DupPtTolerance) &&
-      !IsHorizontal(*GetMaximaPair(e, m_DupPtTolerance)) )
+    if( IsMaxima(e, topY, m_precision) &&
+      !IsHorizontal(*GetMaximaPair(e, m_precision)) )
     {
       //'e' might be removed from AEL, as may any following edges so ...
       ePrior = e->prevInAEL;
@@ -1739,7 +1736,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
     else
     {
       //2. promote horizontal edges, otherwise update xbot and ybot ...
-      if(  IsIntermediate( e , topY, m_DupPtTolerance ) &&
+      if(  IsIntermediate( e , topY, m_precision ) &&
         IsHorizontal( *e->nextInLML ) )
       {
         if(  ( e->outIdx >= 0 ) )
@@ -1763,7 +1760,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( double const &topY)
   e = m_ActiveEdges;
   while( e )
   {
-    if( IsIntermediate( e, topY, m_DupPtTolerance ) )
+    if( IsIntermediate( e, topY, m_precision ) )
     {
       if( e->outIdx >= 0 )
         AddPolyPt( e->outIdx , DoublePoint(e->xtop, e->ytop), e->side == esLeft );
@@ -1815,8 +1812,8 @@ int Clipper::AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront)
   } else
   {
     pp = m_PolyPts[idx];
-    if((ToFront && PointsEqual(pt, pp->pt, m_DupPtTolerance)) ||
-      (!ToFront && PointsEqual(pt, pp->prev->pt, m_DupPtTolerance))) return idx;
+    if((ToFront && PointsEqual(pt, pp->pt, m_precision)) ||
+      (!ToFront && PointsEqual(pt, pp->prev->pt, m_precision))) return idx;
     newPolyPt = new TPolyPt;
     newPolyPt->pt = pt;
     newPolyPt->isHole = sUndefined;
@@ -1845,12 +1842,12 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt)
     e2->side = esLeft;
   }
 
-  if (m_ForceAlternateOrientation) {
+  if (m_ForceOrientation) {
     TPolyPt* pp = m_PolyPts[e1->outIdx];
     bool isAHole = false;
     TEdge* e = m_ActiveEdges;
     while (e) {
-      if (e->outIdx >= 0 && TopX(e,pp->pt.Y) < pp->pt.X - m_DupPtTolerance)
+      if (e->outIdx >= 0 && TopX(e,pp->pt.Y) < pp->pt.X - m_precision)
         isAHole = !isAHole;
       e = e->nextInAEL;
     }

@@ -125,7 +125,7 @@ begin
   m_subjFillType := subjFillType;
   m_clipFillType := clipFillType;
   clipper := TClipper.Create;
-  clipper.ForceAlternateOrientation := true;
+  clipper.ForceOrientation := true;
 
 end;
 //------------------------------------------------------------------------------

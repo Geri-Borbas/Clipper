@@ -2,16 +2,13 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.08                                                            *
-* Date      :  7 August 2010                                                   *
+* Version   :  2.10                                                            *
+* Date      :  10 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
 * http://www.boost.org/LICENSE_1_0.txt                                         *
-* (nb: This library was initially release under dual MPL and LGPL licenses.    *
-* This Boost License is much simpler and imposes even fewer restrictions on    *
-* the use of this code, yet it still accomplishes the desired purposes.)       *
 *                                                                              *
 * Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -28,10 +25,10 @@
 
 /*******************************************************************************
 *                                                                              *
-*  This is a translation of my Delphi clipper code and is the very first stuff *
-*  I've written in C++ (or C). My apologies if the coding style is unorthodox. *
-*  Please see the accompanying Delphi Clipper library (clipper.pas) for a more *
-*  detailed explanation of the code algorithms.                                *
+* This is a translation of my Delphi clipper code and is the very first stuff  *
+* I've written in C++ (or C). My apologies if the coding style is unorthodox.  *
+* Please see the accompanying Delphi Clipper library (clipper.pas) for a more  *
+* detailed explanation of the code algorithms.                                 *
 *                                                                              *
 *******************************************************************************/
 
@@ -79,7 +76,7 @@ struct TEdge {
 };
 
 struct TIntersectNode {
-	TEdge *edge1;
+  TEdge *edge1;
   TEdge *edge2;
   TDoublePoint pt;
   TIntersectNode *next;
@@ -99,10 +96,10 @@ struct TScanbeam {
 };
 
 struct TPolyPt {
-	TDoublePoint pt;
-	TPolyPt *next;
-	TPolyPt *prev;
-	TriState isHole;
+  TDoublePoint pt;
+  TPolyPt *next;
+  TPolyPt *prev;
+  TriState isHole;
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
@@ -115,7 +112,7 @@ class ClipperBase
 private:
   std::vector< TEdge * >  m_edges;
 protected:
-  double            m_DupPtTolerance;
+  double            m_precision;
   TLocalMinima      *m_localMinimaList;
   TLocalMinima      *m_recycledLocMin;
   TLocalMinima      *m_recycledLocMinEnd;
@@ -130,28 +127,28 @@ public:
   void AddPolygon(TPolygon &pg, TPolyType polyType);
   void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
   void Clear();
-  //DuplicatePointTolerance represents the number of decimal places to which
-  //input and output polygon coordinates will be rounded. Any resulting
-  //adjacent duplicate vertices will be ignored so as to prevent edges from
-  //having indeterminate slope.
+  //Precision (was DuplicatePointTolerance) represents the number of decimal
+  //places to which input and output polygon coordinates will be rounded.
+  //Any resulting adjacent duplicate vertices will be ignored so as to prevent
+  //edges from having indeterminate slope.
   //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-  //nb: DuplicatePointTolerance() can't be reset once polygons have been
-  //added to the Clipper object.
-  int DuplicatePointTolerance();
-  void DuplicatePointTolerance(int value);
+  //nb: Precision cannot be changed once polygons have been added to the
+  //Clipper object.
+  int Precision(); //GET
+  void Precision(int value); //SET
 };
 
 class Clipper : public ClipperBase
 {
 private:
-	PolyPtList        m_PolyPts;
-	TClipType         m_ClipType;
-	TScanbeam        *m_Scanbeam;
-	TEdge            *m_ActiveEdges;
-	TEdge            *m_SortedEdges;
-	TIntersectNode   *m_IntersectNodes;
-	bool              m_ExecuteLocked;
-	bool              m_ForceAlternateOrientation;
+  PolyPtList        m_PolyPts;
+  TClipType         m_ClipType;
+  TScanbeam        *m_Scanbeam;
+  TEdge            *m_ActiveEdges;
+  TEdge            *m_SortedEdges;
+  TIntersectNode   *m_IntersectNodes;
+  bool              m_ExecuteLocked;
+  bool              m_ForceOrientation;
   TPolyFillType     m_ClipFillType;
   TPolyFillType     m_SubjFillType;
   void DisposeScanbeamList();
@@ -189,7 +186,7 @@ private:
   void BuildIntersectList(double const &topY);
   void ProcessIntersectList();
   TEdge *BubbleSwap(TEdge *edge);
-	void ProcessEdgesAtTopOfScanbeam( double const &topY);
+  void ProcessEdgesAtTopOfScanbeam( double const &topY);
   void BuildResult(TPolyPolygon &polypoly);
 public:
   Clipper();
@@ -198,16 +195,15 @@ public:
     TPolyPolygon &solution,
     TPolyFillType subjFillType = pftEvenOdd,
     TPolyFillType clipFillType = pftEvenOdd);
-  //ForceAlternateOrientation() is only useful when operating on
-  //simple polygons. It ensures that simple polygons returned from
-  //Clipper.Execute() calls will have clockwise 'outer' and counter-clockwise
-  //'inner' (or 'hole') polygons. If ForceAlternateOrientation = false, then
-  //the polygons returned in the solution can have any orientation.
-  //There's no danger leaving ForceAlternateOrientation set true when operating
-  //on complex polygons, it will just cause a minor penalty in execution speed.
-  //(Default = true)
-  bool ForceAlternateOrientation();
-  void ForceAlternateOrientation(bool value);
+  //The ForceOrientation property is only useful when operating on simple
+  //polygons. It ensures that the simple polygons that result from a
+  //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
+  //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
+  //polygons returned in the solution will have undefined orientation.<br>
+  //The only disadvantage in setting ForceOrientation = true is it will result
+  //in a very minor penalty (~10%) in execution speed. (Default == true)
+  bool ForceOrientation();
+  void ForceOrientation(bool value);
 };
 
 } //clipper namespace

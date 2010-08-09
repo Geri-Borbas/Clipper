@@ -267,6 +267,8 @@ begin
   lblSubjCount.Caption := format('Random Subj Count (%d):',[tbSubj.Position]);
   lblClipCount.Caption := format('Random Clip Count (%d):',[tbClip.Position]);
   if not bNext.Enabled then exit;
+  //only update random polygons once the mouse has been released ...
+  if (GetAsyncKeyState(VK_LBUTTON) < 0) then exit;
   if rbRandom1.Checked then ShowRandomPolys1(true)
   else ShowRandomPolys2(true);
 end;
@@ -289,7 +291,7 @@ begin
 
   with clipper do
   begin
-    ForceAlternateOrientation := true; //nb this isn't really necessary here.
+    ForceOrientation := true; //nb this isn't really necessary here.
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
@@ -330,7 +332,7 @@ begin
 
   with clipper do
   begin
-    ForceAlternateOrientation := false;
+    ForceOrientation := false;
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);
@@ -378,7 +380,7 @@ begin
 
   with clipper do
   begin
-    ForceAlternateOrientation := false;
+    ForceOrientation := false;
     clear;
     AddPolyPolygon(subj, ptSubject);
     AddPolyPolygon(clip, ptClip);

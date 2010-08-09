@@ -87,7 +87,7 @@ end;
 function ClipperCreate: Pointer; export; stdcall;
 begin
   result := TClipper.Create;
-  TClipper(result).ForceAlternateOrientation := true;
+  TClipper(result).ForceOrientation := true;
 end;
 //------------------------------------------------------------------------------
 

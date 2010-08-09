@@ -71,7 +71,7 @@ namespace agg
         m_subjFillType(subjFillType),
         m_clipFillType(clipFillType)
     {
-      m_clipper.ForceAlternateOrientation(true);
+      m_clipper.ForceOrientation(true);
     }
 
     ~conv_clipper()

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.08                                                            *
-* Date      :  7 August 2010                                                   *
+* Version   :  2.10                                                            *
+* Date      :  10 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -143,8 +143,8 @@ type
     fRecycledLocMin   : PLocalMinima;
     fRecycledLocMinEnd: PLocalMinima;
     procedure DisposeLocalMinimaList;
-    function GetDuplicatePointTolerance: integer;
-    procedure SetDuplicatePointTolerance(const value: integer);
+    function GetPrecision: integer;
+    procedure SetPrecision(const value: integer);
   protected
     fDupPtTolerance: double;
     fLocalMinima      : PLocalMinima;
@@ -163,18 +163,17 @@ type
     procedure AddPolyPolygon(const polyPolygon: TArrayOfArrayOfDoublePoint; polyType: TPolyType); overload;
 
     //Clear: If multiple clipping operations are to be performed on different
-    //polygon sets, then Clear avoids the need to create new Clipper objects.
+    //polygon sets, then Clear circumvents the need to recreate Clipper objects.
     procedure Clear;
 
-    //DuplicatePointTolerance represents the number of decimal places to which
-    //input and output polygon coordinates will be rounded. Any resulting
-    //adjacent duplicate vertices will be ignored so as to prevent edges from
-    //having indeterminate slope.
+    //Precision (was DuplicatePointTolerance) represents the number of decimal
+    //places to which input and output polygon coordinates will be rounded.
+    //Any resulting adjacent duplicate vertices will be ignored so as to prevent
+    //edges from having indeterminate slope.
     //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-    //nb: DuplicatePointTolerance can't be reset once polygons have been added
-    //to the Clipper object.
-    property DuplicatePointTolerance: integer read GetDuplicatePointTolerance
-      write SetDuplicatePointTolerance;
+    //nb: Precision cannot be changed once polygons have been added to the
+    //Clipper object.
+    property Precision: integer read GetPrecision write SetPrecision;
   end;
 
   TClipper = class(TClipperBase)
@@ -186,7 +185,7 @@ type
     fSortedEdges: PEdge; //used for intersection sorts and horizontal edges
     fIntersectNodes: PIntersectNode;
     fExecuteLocked: boolean;
-    fForceAlternateOrientation: boolean;
+    fForceOrientation: boolean;
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
@@ -245,16 +244,15 @@ type
     constructor Create; override;
     destructor Destroy; override;
 
-    //The ForceAlternateOrientation property is only useful when operating on
-    //simple polygons. It ensures that simple polygons that result from
+    //The ForceOrientation property is only useful when operating on simple
+    //polygons. It ensures that the simple polygons that result from a
     //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
-    //'inner' (or 'hole') polygons.If ForceAlternateOrientation = false, then
-    //the polygons returned in the solution can have any orientation.<br>
-    //There's no danger with leaving this property set to true when operating
-    //on complex polygons, but it will cause a minor penalty in execution speed.
-    //(Default = true)
-    property ForceAlternateOrientation: boolean read
-      fForceAlternateOrientation write fForceAlternateOrientation;
+    //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
+    //polygons returned in the solution will have undefined orientation.<br>
+    //The only disadvantage in setting ForceOrientation = true is it will result
+    //in a very minor penalty (~10%) in execution speed. (Default == true)
+    property ForceOrientation: boolean read
+      fForceOrientation write fForceOrientation;
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
@@ -262,8 +260,8 @@ type
 implementation
 
 resourcestring
-  rsDupToleranceRange = 'DuplicatePointTolerance: range 0 .. 6 (decimal places)';
-  rsDupToleranceEmpty = 'Clear polygons before setting DuplicatePointTolerance';
+  rsPrecisionRange = 'Precision: range 0 .. 6 (decimal places)';
+  rsPrecisionEmpty = 'Clear polygons before setting Precision';
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
@@ -563,16 +561,16 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipperBase.GetDuplicatePointTolerance: integer;
+function TClipperBase.GetPrecision: integer;
 begin
   result := - round(log10(fDupPtTolerance));
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.SetDuplicatePointTolerance(const value: integer);
+procedure TClipperBase.SetPrecision(const value: integer);
 begin
-  if (value < 0) or (value > 6) then raise exception.Create(rsDupToleranceRange);
-  if fList.Count > 0 then raise exception.Create(rsDupToleranceEmpty);
+  if (value < 0) or (value > 6) then raise exception.Create(rsPrecisionRange);
+  if fList.Count > 0 then raise exception.Create(rsPrecisionEmpty);
   fDupPtTolerance := power(10, -value);
 end;
 //------------------------------------------------------------------------------
@@ -783,35 +781,35 @@ var
   i, highI: integer;
   edges: PEdgeArray;
   e, e2: PEdge;
-  polyg: TArrayOfDoublePoint;
+  pg: TArrayOfDoublePoint;
 begin
   {AddPolygon}
 
   highI := high(polygon);
-  setlength(polyg, highI +1);
+  setlength(pg, highI +1);
   for i := 0 to highI do
   begin
-    polyg[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
-    polyg[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
+    pg[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
+    pg[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
   end;
 
   while (highI > 1) and
-    PointsEqual(polyg[0], polyg[highI], fDupPtTolerance) do dec(highI);
+    PointsEqual(pg[0], pg[highI], fDupPtTolerance) do dec(highI);
   if highI < 2 then exit;
 
   //make sure this is a sensible polygon (ie with at least one minima) ...
   i := 1;
   while (i <= highI) and
-    (abs(polyg[i].Y - polyg[0].Y) < fDupPtTolerance) do inc(i);
+    (abs(pg[i].Y - pg[0].Y) < fDupPtTolerance) do inc(i);
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
   //convert 'edges' to double-linked-list and initialize some of the vars ...
-  edges[0].savedBot := polyg[0];
-  InitEdge(@edges[highI], @edges[0], @edges[highI-1], polyg[highI]);
+  edges[0].savedBot := pg[0];
+  InitEdge(@edges[highI], @edges[0], @edges[highI-1], pg[highI]);
   for i := highI-1 downto 1 do
-    InitEdge(@edges[i], @edges[i+1], @edges[i-1], polyg[i]);
-  InitEdge(@edges[0], @edges[1], @edges[highI], polyg[0]);
+    InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
+  InitEdge(@edges[0], @edges[1], @edges[highI], pg[0]);
 
   //fixup by deleting any duplicate points and amalgamating co-linear edges ...
   e := @edges[0];
@@ -982,7 +980,7 @@ constructor TClipper.Create;
 begin
   inherited;
   fPolyPtList := TList.Create;
-  fForceAlternateOrientation := true;
+  fForceOrientation := true;
 end;
 //------------------------------------------------------------------------------
 
@@ -1099,8 +1097,8 @@ begin
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
-      if fForceAlternateOrientation and
-        not ValidateOrientation(pt) then ReversePolyPtLinks(pt);
+      if fForceOrientation and not ValidateOrientation(pt) then
+        ReversePolyPtLinks(pt);
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
@@ -1143,8 +1141,8 @@ begin
 
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
-      if fForceAlternateOrientation and
-        not ValidateOrientation(pt) then ReversePolyPtLinks(pt);
+      if fForceOrientation and not ValidateOrientation(pt) then
+        ReversePolyPtLinks(pt);
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
@@ -1883,10 +1881,10 @@ begin
 
   //nb: e1 always precedes e2 in AEL ...
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
-    (abs(e1.xtop - pt.x) < fDupPtTolerance) and
+    (abs(e1.xtop - pt.x) < tolerance) and //nb: not fDupPtTolerance
     (abs(e1.ytop - pt.y) < fDupPtTolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
-    (abs(e2.xtop - pt.x) < fDupPtTolerance) and
+    (abs(e2.xtop - pt.x) < tolerance) and //nb: not fDupPtTolerance
     (abs(e2.ytop - pt.y) < fDupPtTolerance);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
@@ -2267,7 +2265,7 @@ begin
     e2.side := esLeft;
   end;
 
-  if fForceAlternateOrientation then
+  if fForceOrientation then
   begin
     pp := PPolyPt(fPolyPtList[e1.outIdx]);
     isAHole := false;
