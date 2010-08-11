@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.10                                                            *
-* Date      :  10 August 2010                                                  *
+* Version   :  2.11                                                            *
+* Date      :  11 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -72,15 +72,8 @@ TDoublePoint DoublePoint(double const &X, double const &Y)
 bool PointsEqual( TDoublePoint const &pt1,
   TDoublePoint const &pt2, double const &epsilon)
 {
-  return ( std::fabs( pt1.X - pt2.X ) < epsilon ) &&
-  ( std::fabs( pt1.Y - pt2.Y ) < epsilon );
-}
-//------------------------------------------------------------------------------
-
-bool PointsEqual(TEdge const &edge, double const &epsilon)
-{
-  return ( std::fabs( edge.xbot - edge.xtop ) < epsilon ) &&
-        ( std::fabs( edge.ybot - edge.ytop ) < epsilon );
+  return ( std::fabs( pt1.X - pt2.X ) < epsilon + tolerance ) &&
+  ( std::fabs( (pt1.Y - pt2.Y) ) < epsilon + tolerance );
 }
 //------------------------------------------------------------------------------
 
@@ -208,7 +201,7 @@ TDoublePoint GetUnitNormal( TDoublePoint const &pt1, TDoublePoint const &pt2)
   dy = ( pt2.Y - pt1.Y );
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
-  f = 1 *1.0/ std::hypot( dx , dy );
+  f = 1 *1.0/ /*std::*/hypot( dx , dy );
   dx = dx * f;
   dy = dy * f;
   return DoublePoint(dy, -dx);

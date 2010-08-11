@@ -3,17 +3,14 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.10                                                            *
-* Date      :  10 August 2010                                                  *
+* Version   :  2.11                                                            *
+* Date      :  11 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
 * http://www.boost.org/LICENSE_1_0.txt                                         *
-* (nb: This library was initially release under dual MPL and LGPL licenses.    *
-* This Boost License is much simpler and imposes even fewer restrictions on    *
-* the use of this code, yet it still accomplishes the desired purposes.)       *
 *                                                                              *
 * Attributions:                                                                *
 * The code in this library is an extension of Bala Vatti's clipping algorithm: *
@@ -326,14 +323,8 @@ end;
 function PointsEqual(const pt1, pt2: TDoublePoint;
   const epsilon: double): boolean; overload;
 begin
-  result := (abs(pt1.X-pt2.X) < epsilon) and (abs(pt1.Y-pt2.Y) < epsilon);
-end;
-//------------------------------------------------------------------------------
-
-function PointsEqual(edge: PEdge; const epsilon: double): boolean; overload;
-begin
-  result := (abs(edge.xbot - edge.xtop) < epsilon) and
-    (abs(edge.ybot - edge.ytop) < epsilon);
+  result := (abs(pt1.X-pt2.X) < epsilon + tolerance) and
+    (abs(pt1.Y-pt2.Y) < epsilon + tolerance);
 end;
 //------------------------------------------------------------------------------
 

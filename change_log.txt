@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.11 - 11 August 2010
+* Bugfix: Another minor bugfix. 
+
 2.10 - 10 August 2010
 * Bugfix: Fixed one bug but introduced another in ver 2.08.
 * Change: DuplicatePointTolerance() renamed Precision().
