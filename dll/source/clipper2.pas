@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.11                                                            *
-* Date      :  11 August 2010                                                  *
+* Version   :  2.12                                                            *
+* Date      :  13 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -40,7 +40,8 @@ uses
 
 const
   //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
-  infinite: double = -3.4e+38;
+  infinite       : double = -3.4e+38;
+  almost_infinite: double = -3.39e+38;
   //tolerance: ideally this value should vary depending on how big (or small)
   //the supplied polygon coordinate values are. If coordinate values are greater
   //than 1.0E+5 (ie 100,000+) then tolerance should be adjusted up (since the
@@ -140,15 +141,18 @@ type
     fRecycledLocMin   : PLocalMinima;
     fRecycledLocMinEnd: PLocalMinima;
     procedure DisposeLocalMinimaList;
-    function GetPrecision: integer;
-    procedure SetPrecision(const value: integer);
   protected
     fDupPtTolerance: double;
     fLocalMinima      : PLocalMinima;
     procedure PopLocalMinima;
     function Reset: boolean;
   public
-    constructor Create; virtual;
+    //The "precision" parameter represents the number of decimal places to which
+    //input and output polygon coordinate values will be rounded. Precision
+    //defines when adjacent vertices will be considered duplicates and hence
+    //ignored, and circumvents edges having indeterminate slope.
+    //Valid range: 0 .. 6; Default = 6 (ie round coordinates to 6 dec. places)
+    constructor Create(precision: integer); virtual;
     destructor Destroy; override;
 
     //Any number of subject and clip polygons can be added to the clipping task,
@@ -162,15 +166,6 @@ type
     //Clear: If multiple clipping operations are to be performed on different
     //polygon sets, then Clear circumvents the need to recreate Clipper objects.
     procedure Clear;
-
-    //Precision (was DuplicatePointTolerance) represents the number of decimal
-    //places to which input and output polygon coordinates will be rounded.
-    //Any resulting adjacent duplicate vertices will be ignored so as to prevent
-    //edges from having indeterminate slope.
-    //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-    //nb: Precision cannot be changed once polygons have been added to the
-    //Clipper object.
-    property Precision: integer read GetPrecision write SetPrecision;
   end;
 
   TClipper = class(TClipperBase)
@@ -238,7 +233,7 @@ type
       subjFillType: TPolyFillType = pftEvenOdd;
       clipFillType: TPolyFillType = pftEvenOdd): boolean; overload;
 
-    constructor Create; override;
+    constructor Create(precision: integer = 6); override;
     destructor Destroy; override;
 
     //The ForceOrientation property is only useful when operating on simple
@@ -257,8 +252,6 @@ type
 implementation
 
 resourcestring
-  rsPrecisionRange = 'Precision: range 0 .. 6 (decimal places)';
-  rsPrecisionEmpty = 'Clear polygons before setting Precision';
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
@@ -393,7 +386,7 @@ end;
 
 function IsHorizontal(e: PEdge): boolean;
 begin
-  result := assigned(e) and (e.dx < -3.39e+38);
+  result := assigned(e) and (e.dx < almost_infinite);
 end;
 //------------------------------------------------------------------------------
 
@@ -534,13 +527,15 @@ end;
 // TClipperBase methods ...
 //------------------------------------------------------------------------------
 
-constructor TClipperBase.Create;
+constructor TClipperBase.Create(precision: integer);
 begin
   fList := TList.Create;
   fLocalMinima       := nil;
   fRecycledLocMin    := nil;
   fRecycledLocMinEnd := nil;
-  fDupPtTolerance := default_dup_pt_tolerance;
+  if (precision <= 0) then fDupPtTolerance := 1
+  else if (precision >= 6) then fDupPtTolerance := 1e-6
+  else fDupPtTolerance := power(10, -precision);
 end;
 //------------------------------------------------------------------------------
 
@@ -549,20 +544,6 @@ begin
   Clear;
   fList.Free;
   inherited;
-end;
-//------------------------------------------------------------------------------
-
-function TClipperBase.GetPrecision: integer;
-begin
-  result := - round(log10(fDupPtTolerance));
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipperBase.SetPrecision(const value: integer);
-begin
-  if (value < 0) or (value > 6) then raise exception.Create(rsPrecisionRange);
-  if fList.Count > 0 then raise exception.Create(rsPrecisionEmpty);
-  fDupPtTolerance := power(10, -value);
 end;
 //------------------------------------------------------------------------------
 
@@ -967,9 +948,9 @@ end;
 // TClipper methods ...
 //------------------------------------------------------------------------------
 
-constructor TClipper.Create;
+constructor TClipper.Create(precision: integer = 6);
 begin
-  inherited;
+  inherited Create(precision);
   fPolyPtList := TList.Create;
   fForceOrientation := true;
 end;

@@ -2,8 +2,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.11                                                            *
-* Date      :  11 August 2010                                                  *
+* Version   :  2.12                                                            *
+* Date      :  13 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -48,7 +48,7 @@ typedef unsigned TIntersectProtects;
 typedef enum { sFalse, sTrue, sUndefined} TriState;
 
 struct TDoublePoint { double X; double Y; };
-TDoublePoint DoublePoint(double const &X, double const &Y);
+TDoublePoint DoublePoint(const double &X, const double &Y);
 typedef std::vector<TDoublePoint> TPolygon;
 typedef std::vector< TPolygon > TPolyPolygon;
 
@@ -122,20 +122,16 @@ protected:
   void PopLocalMinima();
   bool Reset();
 public:
-  ClipperBase();
+  //The "precision" parameter represents the number of decimal places to which
+  //input and output polygon coordinate values will be rounded. Precision
+  //defines when adjacent vertices will be considered duplicates and hence
+  //ignored, and circumvents edges having indeterminate slope.
+  //Valid range: 0 .. 6; Default = 6 (ie round coordinates to 6 decimal places)
+  ClipperBase(const int precision);
   virtual ~ClipperBase();
-  void AddPolygon(TPolygon &pg, TPolyType polyType);
-  void AddPolyPolygon( TPolyPolygon &ppg, TPolyType polyType);
+  void AddPolygon(const TPolygon &pg, TPolyType polyType);
+  void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
   void Clear();
-  //Precision (was DuplicatePointTolerance) represents the number of decimal
-  //places to which input and output polygon coordinates will be rounded.
-  //Any resulting adjacent duplicate vertices will be ignored so as to prevent
-  //edges from having indeterminate slope.
-  //Valid range: 0 .. 6; Default: 6 (ie round coordinates to 6 decimal places)
-  //nb: Precision cannot be changed once polygons have been added to the
-  //Clipper object.
-  int Precision(); //GET
-  void Precision(int value); //SET
 };
 
 class Clipper : public ClipperBase
@@ -156,9 +152,9 @@ private:
   void SetWindingCount(TEdge *edge);
   bool IsNonZeroFillType(TEdge *edge);
   bool InitializeScanbeam();
-  void InsertScanbeam( double const &Y);
+  void InsertScanbeam( const double &Y);
   double PopScanbeam();
-  void InsertLocalMinimaIntoAEL( double const &botY);
+  void InsertLocalMinimaIntoAEL( const double &botY);
   void InsertEdgeIntoAEL(TEdge *edge);
   void AddHorzEdgeToSEL(TEdge *edge);
   void DeleteFromSEL(TEdge *e);
@@ -166,30 +162,30 @@ private:
   void UpdateEdgeIntoAEL(TEdge *&e);
   void SwapWithNextInSEL(TEdge *edge);
   bool IsContributing(TEdge *edge);
-  bool IsTopHorz(TEdge *horzEdge, double const &XPos);
+  bool IsTopHorz(TEdge *horzEdge, const double &XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
-  void DoMaxima(TEdge *e, double const &topY);
+  void DoMaxima(TEdge *e, const double &topY);
   void ProcessHorizontals();
   void ProcessHorizontal(TEdge *horzEdge);
-  void AddLocalMaxPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
-  void AddLocalMinPoly(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
+  void AddLocalMaxPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt);
+  void AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt);
   void AppendPolygon(TEdge *e1, TEdge *e2);
-  void DoEdge1(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
-  void DoEdge2(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
-  void DoBothEdges(TEdge *edge1, TEdge *edge2, TDoublePoint const &pt);
+  void DoEdge1(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt);
+  void DoEdge2(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt);
+  void DoBothEdges(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt);
   void IntersectEdges(TEdge *e1, TEdge *e2,
-     TDoublePoint const &pt, TIntersectProtects protects);
-  int AddPolyPt(int idx, TDoublePoint const &pt, bool ToFront);
+     const TDoublePoint &pt, TIntersectProtects protects);
+  int AddPolyPt(int idx, const TDoublePoint &pt, bool ToFront);
   void DisposeAllPolyPts();
-  void ProcessIntersections( double const &topY);
-  void AddIntersectNode(TEdge *e1, TEdge *e2, TDoublePoint const &pt);
-  void BuildIntersectList(double const &topY);
+  void ProcessIntersections( const double &topY);
+  void AddIntersectNode(TEdge *e1, TEdge *e2, const TDoublePoint &pt);
+  void BuildIntersectList(const double &topY);
   void ProcessIntersectList();
   TEdge *BubbleSwap(TEdge *edge);
-  void ProcessEdgesAtTopOfScanbeam( double const &topY);
+  void ProcessEdgesAtTopOfScanbeam( const double &topY);
   void BuildResult(TPolyPolygon &polypoly);
 public:
-  Clipper();
+  Clipper(const int precision = 6);
   ~Clipper();
   bool Execute(TClipType clipType,
     TPolyPolygon &solution,
