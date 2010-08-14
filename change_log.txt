@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.2 - 14 August 2010
+* Change: Precision property removed from Clipper class.
+
 2.11 - 11 August 2010
 * Bugfix: Another minor bugfix. 
 

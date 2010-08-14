@@ -1,9 +1,8 @@
-
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.12                                                            *
-* Date      :  13 August 2010                                                  *
+* Version   :  2.2                                                             *
+* Date      :  14 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -61,9 +60,9 @@ struct TEdge {
   double tmpX;
   TPolyType polyType;
   TEdgeSide side;
-  int windDelta;
+  int windDelta; //1 or -1 depending on winding direction
   int windCnt;
-  int windCnt2;
+  int windCnt2; //winding count of the opposite polytype
   int outIdx;
   TEdge *next;
   TEdge *prev;
@@ -112,7 +111,6 @@ class ClipperBase
 private:
   std::vector< TEdge * >  m_edges;
 protected:
-  double            m_precision;
   TLocalMinima      *m_localMinimaList;
   TLocalMinima      *m_recycledLocMin;
   TLocalMinima      *m_recycledLocMinEnd;
@@ -122,12 +120,7 @@ protected:
   void PopLocalMinima();
   bool Reset();
 public:
-  //The "precision" parameter represents the number of decimal places to which
-  //input and output polygon coordinate values will be rounded. Precision
-  //defines when adjacent vertices will be considered duplicates and hence
-  //ignored, and circumvents edges having indeterminate slope.
-  //Valid range: 0 .. 6; Default = 6 (ie round coordinates to 6 decimal places)
-  ClipperBase(const int precision);
+  ClipperBase();
   virtual ~ClipperBase();
   void AddPolygon(const TPolygon &pg, TPolyType polyType);
   void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
@@ -185,7 +178,7 @@ private:
   void ProcessEdgesAtTopOfScanbeam( const double &topY);
   void BuildResult(TPolyPolygon &polypoly);
 public:
-  Clipper(const int precision = 6);
+  Clipper();
   ~Clipper();
   bool Execute(TClipType clipType,
     TPolyPolygon &solution,
@@ -204,4 +197,5 @@ public:
 
 } //clipper namespace
 #endif //clipper_hpp
+
 

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.12                                                            *
-* Date      :  13 August 2010                                                  *
+* Version   :  2.2                                                             *
+* Date      :  14 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -38,18 +38,6 @@ uses
 {$ENDIF}
   SysUtils, Classes, Math;
 
-const
-  //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
-  infinite       : double = -3.4e+38;
-  almost_infinite: double = -3.39e+38;
-  //tolerance: ideally this value should vary depending on how big (or small)
-  //the supplied polygon coordinate values are. If coordinate values are greater
-  //than 1.0E+5 (ie 100,000+) then tolerance should be adjusted up (since the
-  //significand of type double is 15 decimal places). However, for the vast
-  //majority of uses ... tolerance = 1.0e-10 will be just fine.
-  tolerance: double = 1.0e-10;
-  //default_dup_pt_tolerance: see TClipperBase.DuplicatePointTolerance property
-  default_dup_pt_tolerance: double = 1.0e-6;
 type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
@@ -80,9 +68,9 @@ type
     tmpX:  double;
     polyType: TPolyType;
     side: TEdgeSide;
-    windDelta: integer;
+    windDelta: integer; //1 or -1 depending on winding direction
     windCnt: integer;
-    windCnt2: integer;  //winding count of polytype <> self.polytype
+    windCnt2: integer;  //winding count of the opposite polytype
     outIdx: integer;
     next: PEdge;
     prev: PEdge;
@@ -129,7 +117,7 @@ type
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: TriState; //See TClipper ForceAlternateOrientation property
+    isHole: TriState; //See TClipper ForceOrientation property
   end;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
@@ -142,17 +130,11 @@ type
     fRecycledLocMinEnd: PLocalMinima;
     procedure DisposeLocalMinimaList;
   protected
-    fDupPtTolerance: double;
     fLocalMinima      : PLocalMinima;
     procedure PopLocalMinima;
     function Reset: boolean;
   public
-    //The "precision" parameter represents the number of decimal places to which
-    //input and output polygon coordinate values will be rounded. Precision
-    //defines when adjacent vertices will be considered duplicates and hence
-    //ignored, and circumvents edges having indeterminate slope.
-    //Valid range: 0 .. 6; Default = 6 (ie round coordinates to 6 dec. places)
-    constructor Create(precision: integer); virtual;
+    constructor Create; virtual;
     destructor Destroy; override;
 
     //Any number of subject and clip polygons can be added to the clipping task,
@@ -233,7 +215,7 @@ type
       subjFillType: TPolyFillType = pftEvenOdd;
       clipFillType: TPolyFillType = pftEvenOdd): boolean; overload;
 
-    constructor Create(precision: integer = 6); override;
+    constructor Create; override;
     destructor Destroy; override;
 
     //The ForceOrientation property is only useful when operating on simple
@@ -241,7 +223,7 @@ type
     //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
     //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
     //polygons returned in the solution will have undefined orientation.<br>
-    //The only disadvantage in setting ForceOrientation = true is it will result
+    //The disadvantage in setting ForceOrientation = true is it will result
     //in a very minor penalty (~10%) in execution speed. (Default == true)
     property ForceOrientation: boolean read
       fForceOrientation write fForceOrientation;
@@ -250,6 +232,22 @@ type
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
 
 implementation
+
+const
+  //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
+  infinite       : double = -3.4e+38;
+  almost_infinite: double = -3.39e+38;
+  //tolerance: is needed because vertices are floating point values and any
+  //comparison of floating point values requires a degree of tolerance. Ideally
+  //this value should vary depending on how big (or small) the supplied polygon
+  //coordinate values are. If coordinate values are greater than 1.0E+5
+  //(ie 100,000+) then tolerance should be adjusted up (since the significand
+  //of type double is 15 decimal places). However, for the vast majority
+  //of uses ... tolerance = 1.0e-10 will be just fine.
+  tolerance: double = 1.0e-10;
+  //precision: defines when adjacent vertices will be considered duplicates
+  //and hence ignored. This circumvents edges having indeterminate slope.
+  precision: double = 1.0e-6;
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
@@ -307,30 +305,30 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function RoundToTolerance(const number, epsilon: double): double;
+function RoundToTolerance(const number: double): double;
 begin
-  Result := Round(number / epsilon) * epsilon;
+  Result := Round(number / precision) * precision;
 end;
 //------------------------------------------------------------------------------
 
-function PointsEqual(const pt1, pt2: TDoublePoint;
-  const epsilon: double): boolean; overload;
+function PointsEqual(const pt1, pt2: TDoublePoint): boolean; overload;
 begin
-  result := (abs(pt1.X-pt2.X) < epsilon + tolerance) and
-    (abs(pt1.Y-pt2.Y) < epsilon + tolerance);
+  result := (abs(pt1.X-pt2.X) < precision + tolerance) and
+    (abs(pt1.Y-pt2.Y) < precision + tolerance);
 end;
 //------------------------------------------------------------------------------
 
-procedure FixupSolutionColinears(list: TList; idx: integer; const epsilon: double);
+procedure FixupSolutionColinears(list: TList; idx: integer);
 var
   pp, tmp: PPolyPt;
 begin
-	//fixup those occasional overlapping colinear edges (ie empty protrusions) ...
+	//fixup any occasional 'empty' protrusions (ie adjacent parallel edges) ...
   pp := PPolyPt(list[idx]);
   repeat
     if pp.prev = pp then exit;
+    //test for same slope ... (cross-product)
     if abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
-        (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < epsilon then
+        (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < precision then
     begin
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
@@ -376,9 +374,9 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure SetDx(e: PEdge; const epsilon: double);
+procedure SetDx(e: PEdge);
 begin
-  if abs(e.ybot - e.ytop) < epsilon then
+  if abs(e.ybot - e.ytop) < precision - tolerance then
     e.dx := infinite else
     e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
 end;
@@ -423,7 +421,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SlopesEqual(e1, e2: PEdge; const epsilon: double): boolean;
+function SlopesEqual(e1, e2: PEdge): boolean;
 begin
   if IsHorizontal(e1) then
     result := IsHorizontal(e2)
@@ -431,7 +429,7 @@ begin
     result := false
   else
     result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < epsilon;
+      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < precision;
 end;
 //---------------------------------------------------------------------------
 
@@ -527,15 +525,12 @@ end;
 // TClipperBase methods ...
 //------------------------------------------------------------------------------
 
-constructor TClipperBase.Create(precision: integer);
+constructor TClipperBase.Create;
 begin
   fList := TList.Create;
   fLocalMinima       := nil;
   fRecycledLocMin    := nil;
   fRecycledLocMinEnd := nil;
-  if (precision <= 0) then fDupPtTolerance := 1
-  else if (precision >= 6) then fDupPtTolerance := 1e-6
-  else fDupPtTolerance := power(10, -precision);
 end;
 //------------------------------------------------------------------------------
 
@@ -588,7 +583,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
       e.savedBot.X := e.xbot;
       e.savedBot.Y := e.ybot;
     end;
-    SetDx(e, fDupPtTolerance);
+    SetDx(e);
   end;
   //----------------------------------------------------------------------
 
@@ -596,7 +591,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   begin
     //cross product of dy1/dx1 = dy2/dx2 ...
     result := abs((e1.ytop-e1.savedBot.Y)*(e2.xtop-e2.savedBot.X) -
-      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < fDupPtTolerance;
+      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < precision;
   end;
   //----------------------------------------------------------------------
 
@@ -604,7 +599,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   begin
     result := false;
     while (e.next <> e.prev) and
-      (PointsEqual(e.prev.savedBot, e.savedBot, fDupPtTolerance) or
+      (PointsEqual(e.prev.savedBot, e.savedBot) or
       SlopesEqualInternal(e.prev, e)) do
     begin
       result := true;
@@ -668,7 +663,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
         else if (eNext.xbot <> e.xtop) then
           swapX(eNext); //even swapX for horizontals at the top of a bound
       end
-      else if abs(e.ytop - eNext.ytop) < fDupPtTolerance then
+      else if abs(e.ytop - eNext.ytop) < tolerance then
       begin
         e.nextInLML := nil;
         result := eNext;
@@ -743,8 +738,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   function NextMin(e: PEdge): PEdge;
   begin
-    while (e.next.ytop > e.ybot - fDupPtTolerance) do e := e.next;
-    while (abs(e.ytop - e.ybot) < fDupPtTolerance) do e := e.prev;
+    while (e.next.ytop > e.ybot - precision) do e := e.next;
+    while (abs(e.ytop - e.ybot) < precision) do e := e.prev;
     result := e;
   end;
   //----------------------------------------------------------------------
@@ -761,18 +756,16 @@ begin
   setlength(pg, highI +1);
   for i := 0 to highI do
   begin
-    pg[i].X := RoundToTolerance(polygon[i].X, fDupPtTolerance);
-    pg[i].Y := RoundToTolerance(polygon[i].Y, fDupPtTolerance);
+    pg[i].X := RoundToTolerance(polygon[i].X);
+    pg[i].Y := RoundToTolerance(polygon[i].Y);
   end;
 
-  while (highI > 1) and
-    PointsEqual(pg[0], pg[highI], fDupPtTolerance) do dec(highI);
+  while (highI > 1) and PointsEqual(pg[0], pg[highI]) do dec(highI);
   if highI < 2 then exit;
 
-  //make sure this is a sensible polygon (ie with at least one minima) ...
+  //make sure this is still a sensible polygon (ie with at least one minima) ...
   i := 1;
-  while (i <= highI) and
-    (abs(pg[i].Y - pg[0].Y) < fDupPtTolerance) do inc(i);
+  while (i <= highI) and (abs(pg[i].Y - pg[0].Y) < precision) do inc(i);
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
@@ -815,9 +808,9 @@ begin
   until e = @edges[0];
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if (abs(e2.prev.ybot - e2.ybot) < fDupPtTolerance) and
-    ((abs(e2.prev.xbot - e2.xbot) < fDupPtTolerance) or
-    (IsHorizontal(e2) and (abs(e2.prev.xbot - e2.xtop) < fDupPtTolerance))) then
+  if (abs(e2.prev.ybot - e2.ybot) < precision) and
+    ((abs(e2.prev.xbot - e2.xbot) < precision) or
+    (IsHorizontal(e2) and (abs(e2.prev.xbot - e2.xtop) < precision))) then
   begin
     e2 := e2.prev;
     if IsHorizontal(e2) then e2 := e2.prev;
@@ -948,9 +941,9 @@ end;
 // TClipper methods ...
 //------------------------------------------------------------------------------
 
-constructor TClipper.Create(precision: integer = 6);
+constructor TClipper.Create;
 begin
-  inherited Create(precision);
+  inherited Create;
   fPolyPtList := TList.Create;
   fForceOrientation := true;
 end;
@@ -1053,7 +1046,7 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
-      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+      FixupSolutionColinears(fPolyPtList, i);
 
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
@@ -1061,7 +1054,7 @@ begin
       y := pt.pt.Y;
       repeat
         pt := pt.next;
-        if isHorizontalOnly and (abs(pt.pt.Y - y) > fDupPtTolerance) then
+        if isHorizontalOnly and (abs(pt.pt.Y - y) > precision) then
           isHorizontalOnly := false;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
@@ -1097,7 +1090,7 @@ begin
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
-      FixupSolutionColinears(fPolyPtList, i, fDupPtTolerance);
+      FixupSolutionColinears(fPolyPtList, i);
 
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
@@ -1105,7 +1098,7 @@ begin
       y := pt.pt.Y;
       repeat
         pt := pt.next;
-        if isHorizontalOnly and (abs(pt.pt.Y - y) > fDupPtTolerance) then
+        if isHorizontalOnly and (abs(pt.pt.Y - y) > precision) then
           isHorizontalOnly := false;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
@@ -1272,8 +1265,10 @@ end;
 
 function TClipper.IsNonZeroFillType(edge: PEdge): boolean;
 begin
-  result := (edge.polyType = ptSubject) and (fSubjFillType = pftNonZero) or
-    (edge.polyType = ptClip) and (fClipFillType = pftNonZero);
+  case edge.polyType of
+    ptSubject: result := fSubjFillType = pftNonZero;
+    else result := fClipFillType = pftNonZero;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -1285,7 +1280,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
     if (e2.xbot - tolerance > e1.xbot) then result := false
     else if (e2.xbot + tolerance < e1.xbot) then result := true
     else if IsHorizontal(e2) then result := false
-    else if SlopesEqual(e1, e2, fDupPtTolerance) then result := false
+    else if SlopesEqual(e1, e2) then result := false
     else result := e2.dx > e1.dx;
   end;
   //----------------------------------------------------------------------
@@ -1455,22 +1450,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsMaxima(e: PEdge; const Y: double; const epsilon: double): boolean;
+function IsMaxima(e: PEdge; const Y: double): boolean;
 begin
-  result := assigned(e) and (abs(e.ytop - Y) < epsilon) and not assigned(e.nextInLML);
+  result := assigned(e) and
+    (abs(e.ytop - Y) < precision - tolerance) and not assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
-function IsIntermediate(e: PEdge; const Y: double; const epsilon: double): boolean;
+function IsIntermediate(e: PEdge; const Y: double): boolean;
 begin
-  result := (abs(e.ytop - Y) < epsilon) and assigned(e.nextInLML);
+  result := (abs(e.ytop - Y) < precision - tolerance) and assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
 function TClipper.GetMaximaPair(e: PEdge): PEdge;
 begin
   result := e.next;
-  if not IsMaxima(result, e.ytop, fDupPtTolerance) or (result.xtop <> e.xtop) then
+  if not IsMaxima(result, e.ytop) or (result.xtop <> e.xtop) then
     result := e.prev;
 end;
 //------------------------------------------------------------------------------
@@ -1580,8 +1576,7 @@ begin
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
       if (abs(e.xbot - horzEdge.xtop) < tolerance) and
-        assigned(horzEdge.nextInLML) and
-        (SlopesEqual(e, horzEdge.nextInLML, fDupPtTolerance) or
+        assigned(horzEdge.nextInLML) and (SlopesEqual(e, horzEdge.nextInLML) or
         (e.dx < horzEdge.nextInLML.dx)) then
       begin
         //we really have gone past the end of intermediate horz edge so quit.
@@ -1657,8 +1652,8 @@ begin
   begin
     result := idx;
     fp := PPolyPt(fPolyPtList[idx]);
-    if (ToFront and PointsEqual(pt, fp.pt, fDupPtTolerance)) or
-      (not ToFront and PointsEqual(pt, fp.prev.pt, fDupPtTolerance)) then exit;
+    if (ToFront and PointsEqual(pt, fp.pt)) or
+      (not ToFront and PointsEqual(pt, fp.prev.pt)) then exit;
     new(newPolyPt);
     newPolyPt.pt := pt;
     newPolyPt.isHole := sUndefined;
@@ -1691,7 +1686,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Process1Before2(Node1, Node2: PIntersectNode; const epsilon: double): boolean;
+function Process1Before2(Node1, Node2: PIntersectNode): boolean;
 
   function E1PrecedesE2inAEL(e1, e2: PEdge): boolean;
   begin
@@ -1704,9 +1699,9 @@ function Process1Before2(Node1, Node2: PIntersectNode; const epsilon: double): b
 begin
   if (abs(Node1.pt.Y - Node2.pt.Y) < tolerance) then
   begin
-    if SlopesEqual(Node1.edge1, Node2.edge1, epsilon) then
+    if SlopesEqual(Node1.edge1, Node2.edge1) then
     begin
-      if SlopesEqual(Node1.edge2, Node2.edge2, epsilon) then
+      if SlopesEqual(Node1.edge2, Node2.edge2) then
       begin
         //nb: probably overlapping co-linear segments to get here
         if Node1.edge2 = Node2.edge2 then
@@ -1733,7 +1728,7 @@ begin
   IntersectNode.prev := nil;
   if not assigned(fIntersectNodes) then
     fIntersectNodes := IntersectNode
-  else if Process1Before2(IntersectNode,fIntersectNodes,fDupPtTolerance) then
+  else if Process1Before2(IntersectNode,fIntersectNodes) then
   begin
     IntersectNode.next := fIntersectNodes;
     fIntersectNodes.prev := IntersectNode;
@@ -1742,7 +1737,7 @@ begin
   begin
     iNode := fIntersectNodes;
     while assigned(iNode.next) and
-      Process1Before2(iNode.next, IntersectNode, fDupPtTolerance) do
+      Process1Before2(iNode.next, IntersectNode) do
       iNode := iNode.next;
     if assigned(iNode.next) then iNode.next.prev := IntersectNode;
     IntersectNode.next := iNode.next;
@@ -1853,11 +1848,11 @@ begin
 
   //nb: e1 always precedes e2 in AEL ...
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
-    (abs(e1.xtop - pt.x) < tolerance) and //nb: not fDupPtTolerance
-    (abs(e1.ytop - pt.y) < fDupPtTolerance);
+    (abs(e1.xtop - pt.x) < tolerance) and //nb: not precision
+    (abs(e1.ytop - pt.y) < precision);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
-    (abs(e2.xtop - pt.x) < tolerance) and //nb: not fDupPtTolerance
-    (abs(e2.ytop - pt.y) < fDupPtTolerance);
+    (abs(e2.xtop - pt.x) < tolerance) and //nb: not precision
+    (abs(e2.ytop - pt.y) < precision);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
 
@@ -2148,8 +2143,7 @@ begin
   while assigned(e) do
   begin
     //1. process maxima, treating them as if they're 'bent' horizontal edges ...
-    if IsMaxima(e, topY, fDupPtTolerance) and
-      not IsHorizontal(GetMaximaPair(e)) then
+    if IsMaxima(e, topY) and not IsHorizontal(GetMaximaPair(e)) then
     begin
       //'e' might be removed from AEL, as may any following edges so ...
       ePrior := e.prevInAEL;
@@ -2160,7 +2154,7 @@ begin
     end else
     begin
       //2. promote horizontal edges, otherwise update xbot and ybot ...
-      if IsIntermediate(e, topY, fDupPtTolerance) and IsHorizontal(e.nextInLML) then
+      if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
         if (e.outIdx >= 0) then
           AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
@@ -2183,7 +2177,7 @@ begin
   e := fActiveEdges;
   while assigned(e) do
   begin
-    if IsIntermediate(e, topY, fDupPtTolerance) then
+    if IsIntermediate(e, topY) then
     begin
       if (e.outIdx >= 0) then
         AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
@@ -2244,7 +2238,7 @@ begin
     e := fActiveEdges;
     while assigned(e) do
     begin
-      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - fDupPtTolerance) then
+      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - precision) then
         isAHole := not isAHole;
       e := e.nextInAEL;
     end;
