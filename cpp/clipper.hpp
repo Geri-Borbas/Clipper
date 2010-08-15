@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.2                                                             *
-* Date      :  14 August 2010                                                  *
+* Version   :  2.21                                                            *
+* Date      :  15 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -58,6 +58,7 @@ struct TEdge {
   double ytop;
   double dx;
   double tmpX;
+  bool nextAtTop;
   TPolyType polyType;
   TEdgeSide side;
   int windDelta; //1 or -1 depending on winding direction

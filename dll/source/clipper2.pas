@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.2                                                             *
-* Date      :  14 August 2010                                                  *
+* Version   :  2.21                                                            *
+* Date      :  15 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -42,8 +42,9 @@ type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
   TPolyFillType = (pftEvenOdd, pftNonZero);
+
+  //used internally ...
   TEdgeSide = (esLeft, esRight);
-  TDirection = (dRightToLeft, dLeftToRight);
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
 
@@ -66,6 +67,7 @@ type
     ytop: double;
     dx  : double;
     tmpX:  double;
+    nextAtTop: boolean;
     polyType: TPolyType;
     side: TEdgeSide;
     windDelta: integer; //1 or -1 depending on winding direction
@@ -233,6 +235,9 @@ type
 
 implementation
 
+type
+  TDirection = (dRightToLeft, dLeftToRight);
+
 const
   //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
   infinite       : double = -3.4e+38;
@@ -376,7 +381,7 @@ end;
 
 procedure SetDx(e: PEdge);
 begin
-  if abs(e.ybot - e.ytop) < precision - tolerance then
+  if abs(e.ybot - e.ytop) < precision then
     e.dx := infinite else
     e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
 end;
@@ -430,13 +435,6 @@ begin
   else
     result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
       (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < precision;
-end;
-//---------------------------------------------------------------------------
-
-function NextEdgeIsAbove(edge:PEdge): boolean;
-begin
-  result := ((edge.next.xbot = edge.xtop) and (edge.next.ybot = edge.ytop)) or
-      ((edge.next.xtop = edge.xtop) and (edge.next.ytop = edge.ytop));
 end;
 //---------------------------------------------------------------------------
 
@@ -574,16 +572,34 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     begin
       e.xbot := e.savedBot.X;
       e.ybot := e.savedBot.Y;
+      e.nextAtTop := true;
     end else
     begin
+      //reverse top and bottom ...
       e.xbot := e.xtop;
       e.ybot := e.ytop;
       e.xtop := e.savedBot.X;
       e.ytop := e.savedBot.Y;
       e.savedBot.X := e.xbot;
       e.savedBot.Y := e.ybot;
+      e.nextAtTop := false;
     end;
     SetDx(e);
+
+    //finally make sure horizontal edges are *exactly* horizontal ...
+    if (e.dx < almost_infinite) and (e.ybot <> e.ytop) then
+    begin
+      if e.nextAtTop then
+      begin
+        e.next.savedBot.Y := e.ybot;
+        e.ytop := e.ybot;
+      end else
+      begin
+        e.next.savedBot.Y := e.ytop;
+        e.ybot := e.ytop;
+        e.savedBot.Y := e.ybot;
+      end;
+    end;
   end;
   //----------------------------------------------------------------------
 
@@ -738,8 +754,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   function NextMin(e: PEdge): PEdge;
   begin
-    while (e.next.ytop > e.ybot - precision) do e := e.next;
-    while (abs(e.ytop - e.ybot) < precision) do e := e.prev;
+    while (e.next.ytop > e.ybot - tolerance) do e := e.next;
+    while (abs(e.ytop - e.ybot) < tolerance) do e := e.prev;
     result := e;
   end;
   //----------------------------------------------------------------------
@@ -1195,7 +1211,7 @@ end;
 procedure TClipper.SetWindingDelta(edge: PEdge);
 begin
   if not IsNonZeroFillType(edge) then edge.windDelta := 1
-  else if NextEdgeIsAbove(edge) then edge.windDelta := 1
+  else if edge.nextAtTop then edge.windDelta := 1
   else edge.windDelta := -1;
 end;
 //------------------------------------------------------------------------------
@@ -1453,13 +1469,13 @@ end;
 function IsMaxima(e: PEdge; const Y: double): boolean;
 begin
   result := assigned(e) and
-    (abs(e.ytop - Y) < precision - tolerance) and not assigned(e.nextInLML);
+    (abs(e.ytop - Y) < tolerance) and not assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 
 function IsIntermediate(e: PEdge; const Y: double): boolean;
 begin
-  result := (abs(e.ytop - Y) < precision - tolerance) and assigned(e.nextInLML);
+  result := (abs(e.ytop - Y) < tolerance) and assigned(e.nextInLML);
 end;
 //------------------------------------------------------------------------------
 

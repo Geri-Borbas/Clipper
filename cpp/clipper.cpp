@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.2                                                             *
-* Date      :  14 August 2010                                                  *
+* Version   :  2.21                                                            *
+* Date      :  15 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -117,7 +117,7 @@ void ReversePolyPtLinks(TPolyPt &pp)
 
 void SetDx(TEdge &e)
 {
-  if(  std::fabs( e.ybot - e.ytop ) < precision - tolerance ) e.dx = infinite;
+  if(  std::fabs( e.ybot - e.ytop ) < precision) e.dx = infinite;
   else e.dx = ( e.xbot - e.xtop )/( e.ybot - e.ytop );
 }
 //------------------------------------------------------------------------------
@@ -204,7 +204,8 @@ TDoublePoint GetUnitNormal( const TDoublePoint &pt1, const TDoublePoint &pt2)
   dy = ( pt2.Y - pt1.Y );
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
-  f = 1 *1.0/ /*std::*/hypot( dx , dy );
+  f = 1 *1.0/ hypot( dx , dy );
+  //f = 1 *1.0/ std::hypot( dx , dy );
   dx = dx * f;
   dy = dy * f;
   return DoublePoint(dy, -dx);
@@ -266,16 +267,31 @@ void ReInitEdge(TEdge *e)
   {
     e->xbot = e->savedBot.X;
     e->ybot = e->savedBot.Y;
-  } else
-  {
+    e->nextAtTop = true;
+  } else {
     e->xbot = e->xtop;
     e->ybot = e->ytop;
     e->xtop = e->savedBot.X;
     e->ytop = e->savedBot.Y;
     e->savedBot.X = e->xbot;
     e->savedBot.Y = e->ybot;
+    e->nextAtTop = false;
   }
-  SetDx( *e);
+  SetDx(*e);
+
+  //finally make sure horizontal edges are *exactly* horizontal ...
+  if (e->dx < almost_infinite && e->ybot != e->ytop)
+  {
+    if (e->nextAtTop)
+    {
+      e->next->savedBot.Y = e->ybot;
+      e->ytop = e->ybot;
+    } else {
+      e->next->savedBot.Y = e->ytop;
+      e->ybot = e->ytop;
+      e->savedBot.Y = e->ybot;
+    }
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -446,8 +462,8 @@ TEdge *ClipperBase::AddLML(TEdge *e)
 
 TEdge *NextMin(TEdge *e)
 {
-  while(  e->next->ytop > e->ybot - precision) e = e->next;
-  while(  std::fabs(e->ytop - e->ybot) < precision ) e = e->prev;
+  while(  e->next->ytop > e->ybot - tolerance) e = e->next;
+  while(  std::fabs(e->ytop - e->ybot) < tolerance ) e = e->prev;
   return e;
 }
 //------------------------------------------------------------------------------
@@ -715,18 +731,10 @@ double Clipper::PopScanbeam()
 }
 //------------------------------------------------------------------------------
 
-bool NextEdgeIsAbove(TEdge *edge)
-{
-  return ((edge->next->xbot == edge->xtop) && (edge->next->ybot == edge->ytop)) ||
-      ((edge->next->xtop == edge->xtop) && (edge->next->ytop == edge->ytop));
-}
-//---------------------------------------------------------------------------
-
-
 void Clipper::SetWindingDelta(TEdge *edge)
 {
   if ( !IsNonZeroFillType(edge) ) edge->windDelta = 1;
-  else if ( NextEdgeIsAbove(edge) ) edge->windDelta = 1;
+  else if ( edge->nextAtTop ) edge->windDelta = 1;
   else edge->windDelta = -1;
 }
 //------------------------------------------------------------------------------
@@ -1354,13 +1362,13 @@ bool IsMinima(TEdge *e)
 
 bool IsMaxima(TEdge *e, const double &Y)
 {
-  return e  && std::fabs(e->ytop - Y) < precision - tolerance &&  !e->nextInLML;
+  return e  && std::fabs(e->ytop - Y) < tolerance &&  !e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
 bool IsIntermediate(TEdge *e, const double &Y)
 {
-  return std::fabs( e->ytop - Y ) < precision - tolerance && e->nextInLML;
+  return std::fabs( e->ytop - Y ) < tolerance && e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
