@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.21                                                            *
-* Date      :  15 August 2010                                                  *
+* Version   :  2.22                                                            *
+* Date      :  16 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -42,6 +42,8 @@ namespace clipper {
 typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { pftEvenOdd, pftNonZero} TPolyFillType;
+
+//used internally ...
 typedef enum { esLeft, esRight } TEdgeSide;
 typedef unsigned TIntersectProtects;
 typedef enum { sFalse, sTrue, sUndefined} TriState;

@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.21                                                            *
-* Date      :  15 August 2010                                                  *
+* Version   :  2.22                                                            *
+* Date      :  16 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -586,7 +586,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     end;
     SetDx(e);
 
-    //finally make sure horizontal edges are *exactly* horizontal ...
+    //very occasionally horizontal edges aren't *exactly* horizontal ...
     if (e.dx < almost_infinite) and (e.ybot <> e.ytop) then
     begin
       if e.nextAtTop then
@@ -822,6 +822,19 @@ begin
     if e.ybot > e2.ybot then e2 := e;
     e := e.next;
   until e = @edges[0];
+
+  //just in case e.prev was a 'wonky' horizontal fixed in ReInitEdge() ...
+  if (e.savedBot.Y <> e.ybot) then
+  begin
+    if abs(e.savedBot.Y - e.ybot) < precision + tolerance then
+      e.ybot := e.savedBot.Y
+    else
+    begin
+      e.ytop := e.savedBot.Y;
+      e.savedBot.Y := e.ybot;
+    end;
+    SetDx(e);
+  end;
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
   if (abs(e2.prev.ybot - e2.ybot) < precision) and

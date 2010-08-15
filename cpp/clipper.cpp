@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.21                                                            *
-* Date      :  15 August 2010                                                  *
+* Version   :  2.22                                                            *
+* Date      :  16 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -279,7 +279,7 @@ void ReInitEdge(TEdge *e)
   }
   SetDx(*e);
 
-  //finally make sure horizontal edges are *exactly* horizontal ...
+  //very occasionally horizontal edges aren't *exactly* horizontal ...
   if (e->dx < almost_infinite && e->ybot != e->ytop)
   {
     if (e->nextAtTop)
@@ -535,6 +535,19 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
     if(  e->ybot > e2->ybot ) e2 = e;
     e = e->next;
   } while( e != edges );
+
+  //just in case e->prev was a 'wonky' horizontal fixed in ReInitEdge() ...
+  if ( e->savedBot.Y != e->ybot )
+  {
+    if ( std::fabs(e->savedBot.Y - e->ybot) < precision + tolerance )
+      e->ybot = e->savedBot.Y;
+    else
+    {
+      e->ytop = e->savedBot.Y;
+      e->savedBot.Y = e->ybot;
+    }
+    SetDx(*e);
+  }
 
   //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
   if ((std::fabs(e2->prev->ybot - e2->ybot) < precision) &&
