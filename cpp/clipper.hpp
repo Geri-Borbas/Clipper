@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.22                                                            *
-* Date      :  16 August 2010                                                  *
+* Version   :  2.3                                                             *
+* Date      :  21 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -49,9 +49,10 @@ typedef unsigned TIntersectProtects;
 typedef enum { sFalse, sTrue, sUndefined} TriState;
 
 struct TDoublePoint { double X; double Y; };
-TDoublePoint DoublePoint(const double &X, const double &Y);
-typedef std::vector<TDoublePoint> TPolygon;
+typedef std::vector< TDoublePoint > TPolygon;
 typedef std::vector< TPolygon > TPolyPolygon;
+
+TDoublePoint DoublePoint(const double &X, const double &Y);
 
 struct TEdge {
   double xbot;
@@ -147,6 +148,7 @@ private:
   void SetWindingDelta(TEdge *edge);
   void SetWindingCount(TEdge *edge);
   bool IsNonZeroFillType(TEdge *edge);
+  bool IsNonZeroAltFillType(TEdge *edge);
   bool InitializeScanbeam();
   void InsertScanbeam( const double &Y);
   double PopScanbeam();

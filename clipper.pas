@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.22                                                            *
-* Date      :  16 August 2010                                                  *
+* Version   :  2.3                                                             *
+* Date      :  21 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -173,6 +173,7 @@ type
     procedure SetWindingDelta(edge: PEdge);
     procedure SetWindingCount(edge: PEdge);
     function IsNonZeroFillType(edge: PEdge): boolean;
+    function IsNonZeroAltFillType(edge: PEdge): boolean;
     procedure InsertLocalMinimaIntoAEL(const botY: double);
     procedure AddHorzEdgeToSEL(edge: PEdge);
     function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
@@ -326,6 +327,7 @@ end;
 procedure FixupSolutionColinears(list: TList; idx: integer);
 var
   pp, tmp: PPolyPt;
+  ptDeleted: boolean;
 begin
 	//fixup any occasional 'empty' protrusions (ie adjacent parallel edges) ...
   pp := PPolyPt(list[idx]);
@@ -345,9 +347,13 @@ begin
       end else
         pp := pp.prev;
       dispose(tmp);
+      ptDeleted := true;
     end else
+    begin
       pp := pp.next;
-  until (pp = list[idx]);
+      ptDeleted := false;
+    end;
+  until (pp = list[idx]) and not ptDeleted;
 end;
 //------------------------------------------------------------------------------
 
@@ -1271,8 +1277,7 @@ begin
   end;
 
   //update windCnt2 ...
-  if (edge.polyType = ptSubject) and (fClipFillType = pftNonZero) or
-    (edge.polyType = ptClip) and (fSubjFillType = pftNonZero) then
+  if IsNonZeroAltFillType(edge) then
   begin
     //nonZero filling ...
     while (e <> edge) do
@@ -1297,6 +1302,15 @@ begin
   case edge.polyType of
     ptSubject: result := fSubjFillType = pftNonZero;
     else result := fClipFillType = pftNonZero;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.IsNonZeroAltFillType(edge: PEdge): boolean;
+begin
+  case edge.polyType of
+    ptSubject: result := fClipFillType = pftNonZero;
+    else result := fSubjFillType = pftNonZero;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1395,7 +1409,7 @@ end;
 procedure TClipper.AddHorzEdgeToSEL(edge: PEdge);
 begin
   //SEL pointers in PEdge are reused to build a list of horizontal edges.
-  //Also, we don't need to worry about order with horizontal edge processing ...
+  //However, we don't need to worry about order with horizontal edge processing.
   if not assigned(fSortedEdges) then
   begin
     fSortedEdges := edge;

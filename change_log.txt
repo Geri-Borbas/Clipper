@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.3 - 21 August 2010
+* Update: Better clean-up of extraneous edges in solution polygons.
+
 2.22 - 11 August 2010
 * Bugfix: Further code tidy up and fix bug added in ver 2.2. 
 

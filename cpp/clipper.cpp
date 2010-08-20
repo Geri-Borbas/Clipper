@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.22                                                            *
-* Date      :  16 August 2010                                                  *
+* Version   :  2.3                                                             *
+* Date      :  21 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -792,8 +792,7 @@ void Clipper::SetWindingCount(TEdge *edge)
   }
 
   //update windCnt2 ...
-  if ( (edge->polyType == ptSubject  && m_ClipFillType == pftNonZero) ||
-    (edge->polyType == ptClip && m_SubjFillType == pftNonZero) )
+  if ( IsNonZeroAltFillType(edge) )
   {
     //nonZero filling ...
     while ( e != edge )
@@ -818,6 +817,15 @@ bool Clipper::IsNonZeroFillType(TEdge *edge)
   switch (edge->polyType) {
     case ptSubject: return m_SubjFillType == pftNonZero;
   default: return m_ClipFillType == pftNonZero;
+  }
+}
+//------------------------------------------------------------------------------
+
+bool Clipper::IsNonZeroAltFillType(TEdge *edge)
+{
+  switch (edge->polyType) {
+    case ptSubject: return m_ClipFillType == pftNonZero;
+  default: return m_SubjFillType == pftNonZero;
   }
 }
 //------------------------------------------------------------------------------
@@ -873,7 +881,7 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
 void Clipper::AddHorzEdgeToSEL(TEdge *edge)
 {
   //SEL pointers in PEdge are reused to build a list of horizontal edges.
-  //Also, we don't need to worry about order with horizontal edge processing ...
+  //However, we don't need to worry about order with horizontal edge processing.
   if( !m_SortedEdges )
   {
     m_SortedEdges = edge;
@@ -1584,6 +1592,7 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
 void FixupSolutionColinears(PolyPtList &list, int idx){
   //fixup any occasional 'empty' protrusions (ie adjacent parallel edges)
   TPolyPt* tmp;
+  bool ptDeleted;
   TPolyPt *pp = list[idx];
   do {
     if (pp->prev == pp) return;
@@ -1598,9 +1607,12 @@ void FixupSolutionColinears(PolyPtList &list, int idx){
         pp = pp->next;
       } else pp = pp->prev;
       delete tmp;
-    } else
-        pp = pp->next;
-  } while (pp != list[idx]);
+      ptDeleted = true;
+    } else {
+      pp = pp->next;
+      ptDeleted = false;
+    }
+  } while (pp != list[idx] && !ptDeleted);
 }
 //------------------------------------------------------------------------------
 
