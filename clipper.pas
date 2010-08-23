@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.3                                                             *
-* Date      :  21 August 2010                                                  *
+* Version   :  2.35                                                            *
+* Date      :  23 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -655,48 +655,6 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   end;
   //----------------------------------------------------------------------
 
-  function BuildBound(e: PEdge; s: TEdgeSide; buildForward: boolean): PEdge;
-  var
-    eNext,eNextNext: PEdge;
-  begin
-    repeat
-      e.side := s;
-      if buildForward then
-        eNext := e.next else
-        eNext := e.prev;
-      if IsHorizontal(eNext) then
-      begin
-        if buildForward then
-          eNextNext := eNext.next else
-          eNextNext := eNext.prev;
-        if (eNextNext.ytop < eNext.ytop) then
-        begin
-          //eNext is an intermediate horizontal.
-          //All horizontals have their xbot aligned with the adjoining lower edge
-          if eNext.xbot <> e.xtop then swapX(eNext);
-        end else if buildForward then
-        begin
-          //to avoid duplicating top bounds, stop if this is a
-          //horizontal edge at the top of a going forward bound ...
-          e.nextInLML := nil;
-          result := eNext;
-          break;
-        end
-        else if (eNext.xbot <> e.xtop) then
-          swapX(eNext); //even swapX for horizontals at the top of a bound
-      end
-      else if abs(e.ytop - eNext.ytop) < tolerance then
-      begin
-        e.nextInLML := nil;
-        result := eNext;
-        break;
-      end;
-      e.nextInLML := eNext;
-      e := eNext;
-    until false;
-  end;
-  //----------------------------------------------------------------------
-
   procedure InsertLocalMinima(newLm: PLocalMinima);
   var
     tmpLm: PLocalMinima;
@@ -720,56 +678,63 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   end;
   //----------------------------------------------------------------------
 
-  function AddLML(e: PEdge): PEdge;
+  function AddBoundsToLML(e: PEdge): PEdge;
   var
     newLm: PLocalMinima;
-    e2: PEdge;
   begin
+    //Starting at the top of one bound we progress to the bottom where there's
+    //a local minima. We then go to the top of the next bound. These two bounds
+    //form the left and right (or right and left) bounds of the local minima.
+    e.nextInLML := nil;
+    e := e.next;
+    repeat
+      if IsHorizontal(e) then
+      begin
+        if (e.next.ytop < e.ytop) and (e.next.xbot > e.prev.xbot) then break;
+        if (e.xtop <> e.prev.xbot) then SwapX(e);
+        e.nextInLML := e.prev;
+      end
+      else if (e.ybot = e.prev.ybot) then break
+      else e.nextInLML := e.prev;
+      e := e.next;
+    until false;
+
+    //e and e.prev are now at a local minima ...
     new(newLm);
     newLm.nextLm := nil;
-    newLm.y := e.ybot;
-    e2 := e;
-    repeat
-      e2 := e2.next;
-    until e2.ytop <> e.ybot;
-    if IsHorizontal(e) then e := e.prev;
-
-    if ((e.next <> e2) and (e.xbot < e2.xbot))
-      or ((e.next = e2) and (e.dx > e2.dx)) then
+    newLm.y := e.prev.ybot;
+    if IsHorizontal(e) then //horizontal edges never start a left bound
     begin
-      newLm.leftBound := e;
-      newLm.rightBound := e.next;
-      BuildBound(newLm.leftBound, esLeft, false);
-      with newLm^ do
-        if IsHorizontal(rightBound) and (rightBound.xbot <> leftBound.xbot) then
-          SwapX(rightBound);
-      result := BuildBound(newLm.rightBound, esRight, true);
+      if (e.xbot <> e.prev.xbot) then SwapX(e);
+      newLm.leftBound := e.prev;
+      newLm.rightBound := e;
+    end else if (e.dx < e.prev.dx) then
+    begin
+      newLm.leftBound := e.prev;
+      newLm.rightBound := e;
     end else
     begin
-      newLm.leftBound := e2;
-      newLm.rightBound := e2.prev;
-      with newLm^ do
-        if IsHorizontal(rightBound) and (rightBound.xbot <> leftBound.xbot) then
-          SwapX(rightBound);
-      BuildBound(newLm.rightBound, esRight, false);
-      result := BuildBound(newLm.leftBound, esLeft, true);
+      newLm.leftBound := e;
+      newLm.rightBound := e.prev;
     end;
+    newLm.leftBound.side := esLeft;
+    newLm.rightBound.side := esRight;
     InsertLocalMinima(newLm);
-  end;
-  //----------------------------------------------------------------------
 
-  function NextMin(e: PEdge): PEdge;
-  begin
-    while (e.next.ytop > e.ybot - tolerance) do e := e.next;
-    while (abs(e.ytop - e.ybot) < tolerance) do e := e.prev;
-    result := e;
+    repeat
+      if (e.next.ytop = e.ytop) and not IsHorizontal(e.next) then break;
+      e.nextInLML := e.next;
+      e := e.next;
+      if IsHorizontal(e) and (e.xbot <> e.prev.xtop) then SwapX(e);
+    until false;
+    result := e.next;
   end;
   //----------------------------------------------------------------------
 
 var
   i, highI: integer;
   edges: PEdgeArray;
-  e, e2: PEdge;
+  e, eHighest: PEdge;
   pg: TArrayOfDoublePoint;
 begin
   {AddPolygon}
@@ -820,12 +785,12 @@ begin
 
   fList.Add(edges);
 
-  //now properly re-initialize edges and also get the starting minima (e2) ...
+  //now properly re-initialize edges and also find 'eHighest' ...
   e := @edges[0];
-  e2 := e;
+  eHighest := e;
   repeat
     ReInitEdge(e);
-    if e.ybot > e2.ybot then e2 := e;
+    if e.ytop < eHighest.ytop then eHighest := e;
     e := e.next;
   until e = @edges[0];
 
@@ -842,20 +807,15 @@ begin
     SetDx(e);
   end;
 
-  //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if (abs(e2.prev.ybot - e2.ybot) < precision) and
-    ((abs(e2.prev.xbot - e2.xbot) < precision) or
-    (IsHorizontal(e2) and (abs(e2.prev.xbot - e2.xtop) < precision))) then
-  begin
-    e2 := e2.prev;
-    if IsHorizontal(e2) then e2 := e2.prev;
-  end;
+  //make sure eHighest is positioned so the following loop works safely ...
+  if eHighest.nextAtTop then eHighest := eHighest.next;
+  if IsHorizontal(eHighest) then eHighest := eHighest.next;
+
   //finally insert each local minima ...
-  e := e2;
+  e := eHighest;
   repeat
-    e2 := AddLML(e2);
-    e2 := NextMin(e2);
-  until (e2 = e);
+    e := AddBoundsToLML(e);
+  until (e = eHighest);
 end;
 //------------------------------------------------------------------------------
 

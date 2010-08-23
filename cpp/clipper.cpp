@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.3                                                             *
-* Date      :  21 August 2010                                                  *
+* Version   :  2.35                                                            *
+* Date      :  23 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -420,51 +420,58 @@ void ClipperBase::InsertLocalMinima(TLocalMinima *newLm)
 }
 //------------------------------------------------------------------------------
 
-TEdge *ClipperBase::AddLML(TEdge *e)
+TEdge *ClipperBase::AddBoundsToLML(TEdge *e)
 {
+  //Starting at the top of one bound we progress to the bottom where there's
+  //a local minima. We then go to the top of the next bound. These two bounds
+  //form the left and right (or right and left) bounds of the local minima.
   TLocalMinima *newLm;
-  TEdge *e2;
 
+  e->nextInLML = 0;
+  e = e->next;
+  do {
+    if ( IsHorizontal(*e) )
+    {
+      if (e->next->ytop < e->ytop && e->next->xbot > e->prev->xbot) break;
+      if (e->xtop != e->prev->xbot) SwapX( *e );
+      e->nextInLML = e->prev;
+    }
+    else if (e->ybot == e->prev->ybot) break;
+    else e->nextInLML = e->prev;
+    e = e->next;
+  } while (true);
+
+  //e and e.prev are now at a local minima ...
   newLm = new TLocalMinima;
   newLm->nextLm = 0;
-  newLm->Y = e->ybot;
-  e2 = e;
-  do {
-    e2 = e2->next;
-  } while( e2->ytop == e->ybot );
-  if(  IsHorizontal( *e ) ) e = e->prev;
+  newLm->Y = e->prev->ybot;
 
-  if(  ( ( e->next != e2 ) && ( e->xbot < e2->xbot ) )
-    || ( ( e->next == e2 ) && ( e->dx > e2->dx ) ) )
+  if ( IsHorizontal(*e) ) //horizontal edges never start a left bound
+  {
+    if (e->xbot != e->prev->xbot) SwapX(*e);
+    newLm->leftBound = e->prev;
+    newLm->rightBound = e;
+  } else if (e->dx < e->prev->dx)
+  {
+    newLm->leftBound = e->prev;
+    newLm->rightBound = e;
+  } else
   {
     newLm->leftBound = e;
-    newLm->rightBound = e->next;
-    BuildBound( newLm->leftBound , esLeft , false );
-    if(  IsHorizontal( *newLm->rightBound ) &&
-      ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
-        SwapX( *newLm->rightBound );
-    InsertLocalMinima( newLm);
-    return BuildBound( newLm->rightBound , esRight , true );
+    newLm->rightBound = e->prev;
   }
-  else
-  {
-    newLm->leftBound = e2;
-    newLm->rightBound = e2->prev;
-    if(  IsHorizontal( *newLm->rightBound ) &&
-      ( newLm->rightBound->xbot != newLm->leftBound->xbot ) )
-        SwapX( *newLm->rightBound );
-    BuildBound( newLm->rightBound , esRight , false );
-    InsertLocalMinima( newLm);
-    return BuildBound( newLm->leftBound , esLeft , true );
-  }
-}
-//------------------------------------------------------------------------------
+  newLm->leftBound->side = esLeft;
+  newLm->rightBound->side = esRight;
+  InsertLocalMinima( newLm );
 
-TEdge *NextMin(TEdge *e)
-{
-  while(  e->next->ytop > e->ybot - tolerance) e = e->next;
-  while(  std::fabs(e->ytop - e->ybot) < tolerance ) e = e->prev;
-  return e;
+  do {
+    if ( e->next->ytop == e->ytop && !IsHorizontal(*e->next) ) break;
+    e->nextInLML = e->next;
+    e = e->next;
+    if ( IsHorizontal(*e) && e->xbot != e->prev->xtop) SwapX(*e);
+  } while (true);
+
+  return e->next;
 }
 //------------------------------------------------------------------------------
 
@@ -476,7 +483,7 @@ double RoundToTolerance(const double number){
 void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
 {
   int i; int highI;
-  TEdge *e, *e2;
+  TEdge *e, *eHighest;
   TPolygon p;
 
   highI = pg.size() -1;
@@ -527,12 +534,12 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
     return;
   }
 
-  //now properly reinitialize edges and also get the starting minima (e2) ...
+  //now properly re-initialize edges and also find 'eHighest' ...
   e = edges;
-  e2 = e;
+  eHighest = e;
   do {
     ReInitEdge(e);
-    if(  e->ybot > e2->ybot ) e2 = e;
+    if(  e->ytop < eHighest->ytop ) eHighest = e;
     e = e->next;
   } while( e != edges );
 
@@ -549,21 +556,16 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
     SetDx(*e);
   }
 
-  //to avoid endless loops, make sure e2 will line up with subsequ. NextMin.
-  if ((std::fabs(e2->prev->ybot - e2->ybot) < precision) &&
-    ((std::fabs(e2->prev->xbot - e2->xbot) < precision) ||
-    (IsHorizontal(*e2) && (std::fabs(e2->prev->xbot - e2->xtop) < precision))))
-  {
-    e2 = e2->prev;
-    if( IsHorizontal(*e2) ) e2 = e2->prev;
-  }
+  //make sure eHighest is positioned so the following loop works safely ...
+  if ( eHighest->nextAtTop ) eHighest = eHighest->next;
+  if ( IsHorizontal( *eHighest) ) eHighest = eHighest->next;
 
   //finally insert each local minima ...
-  e = e2;
+  e = eHighest;
   do {
-    e2 = AddLML( e2 );
-    e2 = NextMin( e2);
-  } while( e2 != e );
+    e = AddBoundsToLML(e);
+  } while( e != eHighest );
+
 }
 //------------------------------------------------------------------------------
 

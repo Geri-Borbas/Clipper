@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.3                                                             *
-* Date      :  21 August 2010                                                  *
+* Version   :  2.35                                                            *
+* Date      :  23 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -120,7 +120,7 @@ protected:
   TLocalMinima      *m_recycledLocMinEnd;
   void DisposeLocalMinimaList();
   void InsertLocalMinima(TLocalMinima *newLm);
-  TEdge* AddLML(TEdge *e);
+  TEdge* AddBoundsToLML(TEdge *e);
   void PopLocalMinima();
   bool Reset();
 public:
