@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+2.36 - 27 August 2010
+* Bugfix: Minor bugfix. 
+
+2.35 - 23 August 2010
+* Update: Simplified some very convoluted code in AddPolygon().
+
 2.3 - 21 August 2010
 * Update: Better clean-up of extraneous edges in solution polygons.
 

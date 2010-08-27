@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.35                                                            *
-* Date      :  23 August 2010                                                  *
+* Version   :  2.36                                                            *
+* Date      :  27 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -254,6 +254,7 @@ const
   //precision: defines when adjacent vertices will be considered duplicates
   //and hence ignored. This circumvents edges having indeterminate slope.
   precision: double = 1.0e-6;
+  slope_precision: double = 1.0e-5;
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
@@ -440,7 +441,7 @@ begin
     result := false
   else
     result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < precision;
+      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
 end;
 //---------------------------------------------------------------------------
 
@@ -613,7 +614,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   begin
     //cross product of dy1/dx1 = dy2/dx2 ...
     result := abs((e1.ytop-e1.savedBot.Y)*(e2.xtop-e2.savedBot.X) -
-      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < precision;
+      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
@@ -1058,7 +1059,11 @@ begin
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
       if fForceOrientation and not ValidateOrientation(pt) then
+      begin
         ReversePolyPtLinks(pt);
+        fPolyPtList[i] := pt.next;
+        pt := pt.next;
+      end;
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
@@ -1102,7 +1107,11 @@ begin
       //optionally validate the orientation of simple polygons ...
       pt := PPolyPt(fPolyPtList[i]);
       if fForceOrientation and not ValidateOrientation(pt) then
+      begin
         ReversePolyPtLinks(pt);
+        fPolyPtList[i] := pt.next;
+        pt := pt.next;
+      end;
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
@@ -1337,7 +1346,6 @@ begin
       rightBound.windCnt := leftBound.windCnt;
       rightBound.windCnt2 := leftBound.windCnt2;
 
-      e := leftBound.nextInAEL;
       if IsHorizontal(rightBound) then
       begin
         //nb: only rightbounds can have a horizontal bottom edge
@@ -1590,8 +1598,8 @@ begin
       begin
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
-          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),[]) else
-          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),[]);
+          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot)) else
+          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot));
         exit;
       end
       else if IsHorizontal(e) and not IsMinima(e) and not (e.xbot > e.xtop) then
@@ -1805,7 +1813,7 @@ begin
     iNode := fIntersectNodes.next;
     with fIntersectNodes^ do
     begin
-      IntersectEdges(edge1, edge2, pt);
+      IntersectEdges(edge1, edge2, pt, [ipLeft,ipRight]);
       SwapPositionsInAEL(edge1, edge2);
     end;
     dispose(fIntersectNodes);
@@ -2101,7 +2109,8 @@ begin
         begin
           if (e.nextInSEL.dx > e.dx) then
           begin
-            IntersectEdges(e, e.nextInSEL, DoublePoint(e.xbot,e.ybot));
+            IntersectEdges(e, e.nextInSEL,
+              DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapWithNextInSEL(e);
           end else
@@ -2224,7 +2233,7 @@ begin
   e1.outIdx := AddPolyPt(e1.outIdx, pt, true);
   e2.outIdx := e1.outIdx;
 
-  if not IsHorizontal(e2) and (e1.dx > e2.dx) then
+  if IsHorizontal(e2) or (e1.dx > e2.dx) then
   begin
     e1.side := esLeft;
     e2.side := esRight;
