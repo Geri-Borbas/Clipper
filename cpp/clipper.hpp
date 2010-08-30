@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.36                                                            *
-* Date      :  27 August 2010                                                  *
+* Version   :  2.37                                                            *
+* Date      :  29 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -173,7 +173,7 @@ private:
   void DoBothEdges(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt);
   void IntersectEdges(TEdge *e1, TEdge *e2,
      const TDoublePoint &pt, TIntersectProtects protects);
-  int AddPolyPt(int idx, const TDoublePoint &pt, bool ToFront);
+  void AddPolyPt(TEdge *e, const TDoublePoint &pt);
   void DisposeAllPolyPts();
   void ProcessIntersections( const double &topY);
   void AddIntersectNode(TEdge *e1, TEdge *e2, const TDoublePoint &pt);
@@ -198,6 +198,17 @@ public:
   //in a very minor penalty (~10%) in execution speed. (Default == true)
   bool ForceOrientation();
   void ForceOrientation(bool value);
+};
+
+class clipperException : public std::exception
+{
+  public:
+    clipperException(const char* description = "Clipper exception")
+      throw(): std::exception(), m_description (description) {}
+    virtual ~clipperException() throw() {}
+    virtual const char* what() const throw() {return m_description.c_str();}
+  private:
+    std::string m_description;
 };
 
 } //clipper namespace

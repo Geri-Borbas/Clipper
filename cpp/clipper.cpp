@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.36                                                            *
-* Date      :  27 August 2010                                                  *
+* Version   :  2.37                                                            *
+* Date      :  29 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -60,20 +60,6 @@ static const unsigned ipLeft = 1;
 static const unsigned ipRight = 2;
 typedef enum { dRightToLeft, dLeftToRight } TDirection;
 typedef enum { itIgnore, itMax, itMin, itEdge1, itEdge2 } TIntersectType;
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-class clipperException : public std::exception
-{
-  public:
-    clipperException(const char* description = "Clipper exception")
-      throw(): std::exception(), m_description (description) {}
-    virtual ~clipperException() throw() {}
-    virtual const char* what() const throw() {return m_description.c_str();}
-  private:
-    std::string m_description;
-};
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -219,8 +205,8 @@ TDoublePoint GetUnitNormal( const TDoublePoint &pt1, const TDoublePoint &pt2)
   dy = ( pt2.Y - pt1.Y );
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
-  //f = 1 *1.0/ hypot( dx , dy );
-  f = 1 *1.0/ std::hypot( dx , dy );
+  f = 1 *1.0/ hypot( dx , dy );
+  //f = 1 *1.0/ std::hypot( dx , dy );
   dx = dx * f;
   dy = dy * f;
   return DoublePoint(dy, -dx);
@@ -923,7 +909,7 @@ void Clipper::AddHorzEdgeToSEL(TEdge *edge)
 
 void Clipper::DoEdge1(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 {
-  AddPolyPt(edge1->outIdx , pt , edge1->side == esLeft);
+  AddPolyPt(edge1, pt);
   SwapSides(*edge1, *edge2);
   SwapPolyIndexes(*edge1, *edge2);
 }
@@ -931,7 +917,7 @@ void Clipper::DoEdge1(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 
 void Clipper::DoEdge2(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 {
-  AddPolyPt(edge2->outIdx, pt, edge2->side == esLeft);
+  AddPolyPt(edge2, pt);
   SwapSides(*edge1, *edge2);
   SwapPolyIndexes(*edge1, *edge2);
 }
@@ -939,8 +925,8 @@ void Clipper::DoEdge2(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 
 void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 {
-  AddPolyPt( edge1->outIdx , pt , edge1->side == esLeft );
-  AddPolyPt( edge2->outIdx , pt , edge2->side == esLeft );
+  AddPolyPt(edge1, pt);
+  AddPolyPt(edge2, pt);
   SwapSides( *edge1 , *edge2 );
   SwapPolyIndexes( *edge1 , *edge2 );
 }
@@ -1553,8 +1539,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   if( horzEdge->nextInLML )
   {
     if( horzEdge->outIdx >= 0 )
-      AddPolyPt( horzEdge->outIdx ,
-        DoublePoint(horzEdge->xtop, horzEdge->ytop), horzEdge->side == esLeft);
+      AddPolyPt( horzEdge, DoublePoint(horzEdge->xtop, horzEdge->ytop));
     UpdateEdgeIntoAEL( horzEdge );
   }
   else DeleteFromAEL( horzEdge );
@@ -1762,8 +1747,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
       //2. promote horizontal edges, otherwise update xbot and ybot ...
       if(  IsIntermediate( e , topY ) && IsHorizontal( *e->nextInLML ) )
       {
-        if(  ( e->outIdx >= 0 ) )
-          AddPolyPt( e->outIdx , DoublePoint( e->xtop , e->ytop ) , e->side == esLeft );
+        if( e->outIdx >= 0 ) AddPolyPt(e, DoublePoint(e->xtop ,e->ytop));
         UpdateEdgeIntoAEL( e );
         AddHorzEdgeToSEL( e );
       } else
@@ -1785,8 +1769,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
   {
     if( IsIntermediate( e, topY ) )
     {
-      if( e->outIdx >= 0 )
-        AddPolyPt( e->outIdx , DoublePoint(e->xtop, e->ytop), e->side == esLeft );
+      if( e->outIdx >= 0 ) AddPolyPt(e, DoublePoint(e->xtop,e->ytop));
       UpdateEdgeIntoAEL(e);
     }
     e = e->nextInAEL;
@@ -1809,7 +1792,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
 
 void Clipper::AddLocalMaxPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 {
-  AddPolyPt( e1->outIdx , pt , e1->side == esLeft );
+  AddPolyPt( e1, pt );
   if(  EdgesShareSamePoly(*e1, *e2) )
   {
     e1->outIdx = -1;
@@ -1819,11 +1802,12 @@ void Clipper::AddLocalMaxPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 }
 //------------------------------------------------------------------------------
 
-int Clipper::AddPolyPt(int idx, const TDoublePoint &pt, bool ToFront)
+void Clipper::AddPolyPt(TEdge *e, const TDoublePoint &pt)
 {
+  bool ToFront = (e->side == esLeft);
   TPolyPt *pp, *newPolyPt;
 
-  if(  idx < 0 )
+  if(  e->outIdx < 0 )
   {
     newPolyPt = new TPolyPt;
     newPolyPt->pt = pt;
@@ -1831,12 +1815,12 @@ int Clipper::AddPolyPt(int idx, const TDoublePoint &pt, bool ToFront)
     newPolyPt->next = newPolyPt;
     newPolyPt->prev = newPolyPt;
     newPolyPt->isHole = sUndefined;
-    return m_PolyPts.size()-1;
+    e->outIdx = m_PolyPts.size()-1;
   } else
   {
-    pp = m_PolyPts[idx];
+    pp = m_PolyPts[e->outIdx];
     if((ToFront && PointsEqual(pt, pp->pt)) ||
-      (!ToFront && PointsEqual(pt, pp->prev->pt))) return idx;
+      (!ToFront && PointsEqual(pt, pp->prev->pt))) return;
     newPolyPt = new TPolyPt;
     newPolyPt->pt = pt;
     newPolyPt->isHole = sUndefined;
@@ -1844,15 +1828,14 @@ int Clipper::AddPolyPt(int idx, const TDoublePoint &pt, bool ToFront)
     newPolyPt->prev = pp->prev;
     newPolyPt->prev->next = newPolyPt;
     pp->prev = newPolyPt;
-    if (ToFront) m_PolyPts[idx] = newPolyPt;
-    return idx;
+    if (ToFront) m_PolyPts[e->outIdx] = newPolyPt;
   }
 }
 //------------------------------------------------------------------------------
 
 void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 {
-  e1->outIdx = AddPolyPt( e1->outIdx , pt , true );
+  AddPolyPt( e1, pt );
   e2->outIdx = e1->outIdx;
 
   if( !IsHorizontal( *e2 ) && ( e1->dx > e2->dx ) )

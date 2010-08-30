@@ -4,6 +4,11 @@ C++ code sample:
 
 	using namespace clipper;
 
+  //from clipper.hpp ...
+  //struct TDoublePoint {double X; double Y;};
+  //typedef std::vector<TDoublePoint> TPolygon;
+  //typedef std::vector<TPolygon> TPolyPolygon;
+
 	Clipper c;
 	TPolygon subject, clip;
 	TPolyPolygon solution;
