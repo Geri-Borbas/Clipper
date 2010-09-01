@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.37                                                            *
-* Date      :  29 August 2010                                                  *
+* Version   :  2.38                                                            *
+* Date      :  31 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -386,10 +386,17 @@ end;
 //------------------------------------------------------------------------------
 
 procedure SetDx(e: PEdge);
+var
+  dx, dy: double;
 begin
-  if abs(e.ybot - e.ytop) < precision then
-    e.dx := infinite else
-    e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
+  dx := abs(e.xbot - e.xtop);
+  dy := abs(e.ybot - e.ytop);
+  //Very short, nearly horizontal edges can cause problems by very
+  //inaccurately determining intermediate X values - see TopX().
+  //Therefore treat very short, nearly horizontal edges as horizontal too ...
+  if (dx < 0.1) and  (dy *10 < dx) then e.dx := infinite
+  else if (dy <= precision) then e.dx := infinite
+  else e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
 end;
 //------------------------------------------------------------------------------
 
@@ -2202,7 +2209,7 @@ begin
   while assigned(e) do
   begin
     if not assigned(e.nextInAEL) then break;
-    if e.nextInAEL.xbot < e.xbot - tolerance then
+    if e.nextInAEL.xbot < e.xbot - precision then
       raise Exception.Create(rsProcessEdgesAtTopOfScanbeam);
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else

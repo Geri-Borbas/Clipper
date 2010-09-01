@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.37                                                            *
-* Date      :  29 August 2010                                                  *
+* Version   :  2.38                                                            *
+* Date      :  31 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -112,8 +112,12 @@ typedef std::vector < TPolyPt * > PolyPtList;
 //polygon coordinates into edge objects that are stored in a LocalMinima list.
 class ClipperBase
 {
-private:
-  std::vector< TEdge * >  m_edges;
+public:
+  ClipperBase();
+  virtual ~ClipperBase();
+  void AddPolygon(const TPolygon &pg, TPolyType polyType);
+  void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
+  void Clear();
 protected:
   TLocalMinima      *m_localMinimaList;
   TLocalMinima      *m_recycledLocMin;
@@ -123,16 +127,28 @@ protected:
   TEdge* AddBoundsToLML(TEdge *e);
   void PopLocalMinima();
   bool Reset();
-public:
-  ClipperBase();
-  virtual ~ClipperBase();
-  void AddPolygon(const TPolygon &pg, TPolyType polyType);
-  void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
-  void Clear();
+private:
+  std::vector< TEdge * >  m_edges;
 };
 
-class Clipper : public ClipperBase
+class Clipper : public virtual ClipperBase
 {
+public:
+  Clipper();
+  ~Clipper();
+  bool Execute(TClipType clipType,
+    TPolyPolygon &solution,
+    TPolyFillType subjFillType = pftEvenOdd,
+    TPolyFillType clipFillType = pftEvenOdd);
+  //The ForceOrientation property is only useful when operating on simple
+  //polygons. It ensures that the simple polygons that result from a
+  //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
+  //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
+  //polygons returned in the solution will have undefined orientation.<br>
+  //The only disadvantage in setting ForceOrientation = true is it will result
+  //in a very minor penalty (~10%) in execution speed. (Default == true)
+  bool ForceOrientation();
+  void ForceOrientation(bool value);
 private:
   PolyPtList        m_PolyPts;
   TClipType         m_ClipType;
@@ -182,22 +198,6 @@ private:
   TEdge *BubbleSwap(TEdge *edge);
   void ProcessEdgesAtTopOfScanbeam( const double &topY);
   void BuildResult(TPolyPolygon &polypoly);
-public:
-  Clipper();
-  ~Clipper();
-  bool Execute(TClipType clipType,
-    TPolyPolygon &solution,
-    TPolyFillType subjFillType = pftEvenOdd,
-    TPolyFillType clipFillType = pftEvenOdd);
-  //The ForceOrientation property is only useful when operating on simple
-  //polygons. It ensures that the simple polygons that result from a
-  //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
-  //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
-  //polygons returned in the solution will have undefined orientation.<br>
-  //The only disadvantage in setting ForceOrientation = true is it will result
-  //in a very minor penalty (~10%) in execution speed. (Default == true)
-  bool ForceOrientation();
-  void ForceOrientation(bool value);
 };
 
 class clipperException : public std::exception

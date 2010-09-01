@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.36                                                            *
-* Date      :  27 August 2010                                                  *
+* Version   :  2.38                                                            *
+* Date      :  31 August 2010                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -123,8 +123,8 @@ type
   end;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
-  //instantiated directly. This class simply abstracts the conversion of sets of
-  //polygon coordinates into edge objects that are stored in a LocalMinima list.
+  //instantiated directly. This class simply abstracts the conversion of arrays
+  //of polygon coords into edge objects that are stored in a LocalMinima list.
   TClipperBase = class
   private
     fList             : TList;
@@ -195,8 +195,7 @@ type
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
     function IsContributing(edge: PEdge): boolean;
-    function AddPolyPt(idx: integer;
-      const pt: TDoublePoint; ToFront: boolean): integer;
+    procedure AddPolyPt(e: PEdge; const pt: TDoublePoint);
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AppendPolygon(e1, e2: PEdge);
@@ -387,10 +386,17 @@ end;
 //------------------------------------------------------------------------------
 
 procedure SetDx(e: PEdge);
+var
+  dx, dy: double;
 begin
-  if abs(e.ybot - e.ytop) < precision then
-    e.dx := infinite else
-    e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
+  dx := abs(e.xbot - e.xtop);
+  dy := abs(e.ybot - e.ytop);
+  //Very short, nearly horizontal edges can cause problems by very
+  //inaccurately determining intermediate X values - see TopX().
+  //Therefore treat very short, nearly horizontal edges as horizontal too ...
+  if (dx < 0.1) and  (dy *10 < dx) then e.dx := infinite
+  else if (dy <= precision) then e.dx := infinite
+  else e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
 end;
 //------------------------------------------------------------------------------
 
@@ -650,6 +656,9 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   procedure SwapX(e: PEdge);
   begin
+    //swap horizontal edges' top and bottom x's so they follow the natural
+    //progression of the bounds - ie so their xbots will align with the
+    //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
     e.xbot := e.xtop;
     e.xtop := e.savedBot.X;
     e.savedBot.X := e.xbot;
@@ -1638,31 +1647,30 @@ begin
   if assigned(horzEdge.nextInLML) then
   begin
     if (horzEdge.outIdx >= 0) then
-      AddPolyPt(horzEdge.outIdx,
-        DoublePoint(horzEdge.xtop, horzEdge.ytop), horzEdge.side = esLeft);
+      AddPolyPt(horzEdge, DoublePoint(horzEdge.xtop, horzEdge.ytop));
     UpdateEdgeIntoAEL(horzEdge);
   end else
     DeleteFromAEL(horzEdge);
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.AddPolyPt(idx: integer;
-  const pt: TDoublePoint; ToFront: boolean): integer;
+procedure TClipper.AddPolyPt(e: PEdge; const pt: TDoublePoint);
 var
   fp, newPolyPt: PPolyPt;
+  ToFront: boolean;
 begin
-  if idx < 0 then
+  ToFront := e.side = esLeft;
+  if e.outIdx < 0 then
   begin
     new(newPolyPt);
     newPolyPt.pt := pt;
-    result := fPolyPtList.Add(newPolyPt);
+    e.outIdx := fPolyPtList.Add(newPolyPt);
     newPolyPt.next := newPolyPt;
     newPolyPt.prev := newPolyPt;
     newPolyPt.isHole := sUndefined;
   end else
   begin
-    result := idx;
-    fp := PPolyPt(fPolyPtList[idx]);
+    fp := PPolyPt(fPolyPtList[e.outIdx]);
     if (ToFront and PointsEqual(pt, fp.pt)) or
       (not ToFront and PointsEqual(pt, fp.prev.pt)) then exit;
     new(newPolyPt);
@@ -1672,7 +1680,7 @@ begin
     newPolyPt.prev := fp.prev;
     newPolyPt.prev.next := newPolyPt;
     fp.prev := newPolyPt;
-    if ToFront then fPolyPtList[idx] := newPolyPt;
+    if ToFront then fPolyPtList[e.outIdx] := newPolyPt;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1827,7 +1835,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge1;
   begin
-    AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
+    AddPolyPt(e1, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1835,7 +1843,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge2;
   begin
-    AddPolyPt(e2.outIdx, pt, e2.side = esLeft);
+    AddPolyPt(e2, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1843,8 +1851,8 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoBothEdges;
   begin
-    AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
-    AddPolyPt(e2.outIdx, pt, e2.side = esLeft);
+    AddPolyPt(e1, pt);
+    AddPolyPt(e2, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -2168,8 +2176,7 @@ begin
       //2. promote horizontal edges, otherwise update xbot and ybot ...
       if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
-        if (e.outIdx >= 0) then
-          AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
+        if (e.outIdx >= 0) then AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
         UpdateEdgeIntoAEL(e);
         AddHorzEdgeToSEL(e);
       end else
@@ -2191,8 +2198,7 @@ begin
   begin
     if IsIntermediate(e, topY) then
     begin
-      if (e.outIdx >= 0) then
-        AddPolyPt(e.outIdx, DoublePoint(e.xtop, e.ytop), e.side = esLeft);
+      if (e.outIdx >= 0) then AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
       UpdateEdgeIntoAEL(e);
     end;
     e := e.nextInAEL;
@@ -2203,7 +2209,7 @@ begin
   while assigned(e) do
   begin
     if not assigned(e.nextInAEL) then break;
-    if e.nextInAEL.xbot < e.xbot - tolerance then
+    if e.nextInAEL.xbot < e.xbot - precision then
       raise Exception.Create(rsProcessEdgesAtTopOfScanbeam);
     if e.nextInAEL.xbot > e.xbot + tolerance then
       e := e.nextInAEL else
@@ -2214,7 +2220,7 @@ end;
 
 procedure TClipper.AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
 begin
-  AddPolyPt(e1.outIdx, pt, e1.side = esLeft);
+  AddPolyPt(e1, pt);
   if ShareSamePoly(e1, e2) then
   begin
     e1.outIdx := -1;
@@ -2230,7 +2236,7 @@ var
   pp: PPolyPt;
   isAHole: boolean;
 begin
-  e1.outIdx := AddPolyPt(e1.outIdx, pt, true);
+  AddPolyPt(e1, pt);
   e2.outIdx := e1.outIdx;
 
   if IsHorizontal(e2) or (e1.dx > e2.dx) then

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.37                                                            *
-* Date      :  29 August 2010                                                  *
+* Version   :  2.38                                                            *
+* Date      :  31 August 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -118,8 +118,13 @@ void ReversePolyPtLinks(TPolyPt &pp)
 
 void SetDx(TEdge &e)
 {
-  if(  std::fabs( e.ybot - e.ytop ) < precision) e.dx = infinite;
-  else e.dx = ( e.xbot - e.xtop )/( e.ybot - e.ytop );
+  double dx = std::fabs(e.xbot - e.xtop), dy = std::fabs(e.ybot - e.ytop);
+  //Very short, nearly horizontal edges can cause problems by very
+  //inaccurately determining intermediate X values - see TopX().
+  //Therefore treat very short, nearly horizontal edges as horizontal too ...
+  if (dx < 0.1 && dy *10 < dx) e.dx = infinite;
+  else if (dy < precision) e.dx = infinite;
+  else e.dx = (e.xbot - e.xtop)/(e.ybot - e.ytop);
 }
 //------------------------------------------------------------------------------
 
@@ -1780,7 +1785,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
   while( e )
   {
     if( !e->nextInAEL ) break;
-    if( e->nextInAEL->xbot < e->xbot - tolerance )
+    if( e->nextInAEL->xbot < e->xbot - precision )
       throw clipperException("ProcessEdgesAtTopOfScanbeam: Broken AEL order");
     if( e->nextInAEL->xbot > e->xbot + tolerance )
       e = e->nextInAEL;
