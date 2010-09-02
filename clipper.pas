@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.38                                                            *
-* Date      :  31 August 2010                                                  *
+* Version   :  2.4                                                             *
+* Date      :  2 September 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -389,14 +389,18 @@ procedure SetDx(e: PEdge);
 var
   dx, dy: double;
 begin
-  dx := abs(e.xbot - e.xtop);
-  dy := abs(e.ybot - e.ytop);
+  dx := abs(e.savedBot.X - e.next.savedBot.X);
+  dy := abs(e.savedBot.Y - e.next.savedBot.Y);
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
-  if (dx < 0.1) and  (dy *10 < dx) then e.dx := infinite
-  else if (dy <= precision) then e.dx := infinite
-  else e.dx := (e.xbot - e.xtop)/(e.ybot - e.ytop);
+  if ((dx < 0.1) and  (dy *10 < dx)) or (dy <= precision) then
+  begin
+    e.dx := infinite;
+    if (e.savedBot.Y <> e.next.savedBot.Y) then
+      e.savedBot.Y := e.next.savedBot.Y;
+  end else e.dx :=
+    (e.savedBot.X - e.next.savedBot.X)/(e.savedBot.Y - e.next.savedBot.Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -568,59 +572,50 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   procedure InitEdge(e, eNext, ePrev: PEdge; const pt: TDoublePoint);
   begin
+    //set up double-link-list linkage and initialize savedBot & dx only
     fillChar(e^, sizeof(TEdge), 0);
     e.savedBot := pt;
-    e.xtop := eNext.savedBot.X;
-    e.ytop := eNext.savedBot.Y;
-    e.polyType := polyType;
-    e.outIdx := -1;
     e.next := eNext;
     e.prev := ePrev;
+    SetDx(e);
   end;
   //----------------------------------------------------------------------
 
-  procedure ReInitEdge(e: PEdge);
+  procedure ReInitEdge(e: PEdge; const nextPt: TDoublePoint);
   begin
-    if e.savedBot.Y > e.ytop then
+    if e.savedBot.Y > nextPt.Y then
     begin
       e.xbot := e.savedBot.X;
       e.ybot := e.savedBot.Y;
+      e.xtop := nextPt.X;
+      e.ytop := nextPt.Y;
       e.nextAtTop := true;
     end else
     begin
       //reverse top and bottom ...
-      e.xbot := e.xtop;
-      e.ybot := e.ytop;
+      e.xbot := nextPt.X;
+      e.ybot := nextPt.Y;
       e.xtop := e.savedBot.X;
       e.ytop := e.savedBot.Y;
       e.savedBot.X := e.xbot;
       e.savedBot.Y := e.ybot;
       e.nextAtTop := false;
     end;
-    SetDx(e);
-
-    //very occasionally horizontal edges aren't *exactly* horizontal ...
-    if (e.dx < almost_infinite) and (e.ybot <> e.ytop) then
-    begin
-      if e.nextAtTop then
-      begin
-        e.next.savedBot.Y := e.ybot;
-        e.ytop := e.ybot;
-      end else
-      begin
-        e.next.savedBot.Y := e.ytop;
-        e.ybot := e.ytop;
-        e.savedBot.Y := e.ybot;
-      end;
-    end;
+    e.polyType := polyType;
+    e.outIdx := -1;
   end;
   //----------------------------------------------------------------------
 
   function SlopesEqualInternal(e1, e2: PEdge): boolean;
   begin
+  if IsHorizontal(e1) then result := IsHorizontal(e2)
+  else if IsHorizontal(e2) then result := false
+  else
     //cross product of dy1/dx1 = dy2/dx2 ...
-    result := abs((e1.ytop-e1.savedBot.Y)*(e2.xtop-e2.savedBot.X) -
-      (e1.xtop-e1.savedBot.X)*(e2.ytop-e2.savedBot.Y)) < slope_precision;
+    result := abs((e1.savedBot.Y - e1.next.savedBot.Y) *
+      (e2.savedBot.X - e2.next.savedBot.X) -
+      (e1.savedBot.X - e1.next.savedBot.X) *
+      (e2.savedBot.Y - e2.next.savedBot.Y)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
@@ -632,15 +627,11 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
       SlopesEqualInternal(e.prev, e)) do
     begin
       result := true;
-      //prepare to remove 'e' from the loop ...
-      e.prev.xtop := e.next.savedBot.X;
-      e.prev.ytop := e.next.savedBot.Y;
+      //remove 'e' from the double-linked-list ...
       if (e = @edges[0]) then
       begin
-        //move the content of e.next to e, then remove e.next from the loop ...
+        //move the content of e.next to e before removing e.next from DLL ...
         e.savedBot := e.next.savedBot;
-        e.xtop := e.next.xtop;
-        e.ytop := e.next.ytop;
         e.next.next.prev := e;
         e.next := e.next.next;
       end else
@@ -648,8 +639,10 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
         //remove 'e' from the loop ...
         e.prev.next := e.next;
         e.next.prev := e.prev;
-        e := e.prev; //ie get back into the loop
+        e := e.prev; //now get back into the loop
       end;
+      SetDx(e.prev);
+      SetDx(e);
     end;
   end;
   //----------------------------------------------------------------------
@@ -745,6 +738,7 @@ var
   i, highI: integer;
   edges: PEdgeArray;
   e, eHighest: PEdge;
+  nextPt: TDoublePoint;
   pg: TArrayOfDoublePoint;
 begin
   {AddPolygon}
@@ -766,7 +760,7 @@ begin
   if i > highI then exit;
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
-  //convert 'edges' to double-linked-list and initialize some of the vars ...
+  //convert 'edges' to a double-linked-list and initialize a few of the vars ...
   edges[0].savedBot := pg[0];
   InitEdge(@edges[highI], @edges[0], @edges[highI-1], pg[highI]);
   for i := highI-1 downto 1 do
@@ -796,26 +790,18 @@ begin
   fList.Add(edges);
 
   //now properly re-initialize edges and also find 'eHighest' ...
-  e := @edges[0];
+  e := edges[0].next;
   eHighest := e;
   repeat
-    ReInitEdge(e);
+    ReInitEdge(e, e.next.savedBot);
     if e.ytop < eHighest.ytop then eHighest := e;
     e := e.next;
   until e = @edges[0];
-
-  //just in case e.prev was a 'wonky' horizontal fixed in ReInitEdge() ...
-  if (e.savedBot.Y <> e.ybot) then
-  begin
-    if abs(e.savedBot.Y - e.ybot) < precision + tolerance then
-      e.ybot := e.savedBot.Y
-    else
-    begin
-      e.ytop := e.savedBot.Y;
-      e.savedBot.Y := e.ybot;
-    end;
-    SetDx(e);
-  end;
+  if e.next.nextAtTop then
+    nextPt := e.next.savedBot else
+    nextPt := DoublePoint(e.next.xtop, e.next.ytop);
+  ReInitEdge(e, nextPt);
+  if e.ytop < eHighest.ytop then eHighest := e;
 
   //make sure eHighest is positioned so the following loop works safely ...
   if eHighest.nextAtTop then eHighest := eHighest.next;
@@ -1770,6 +1756,7 @@ procedure TClipper.BuildIntersectList(const topY: double);
 var
   e, eNext: PEdge;
   pt: TDoublePoint;
+  isModified: boolean;
 begin
   //prepare for sorting ...
   e := fActiveEdges;
@@ -1788,8 +1775,10 @@ begin
 
   try
     //bubblesort ...
-    while assigned(fSortedEdges) do
+    isModified := true;
+    while isModified and assigned(fSortedEdges) do
     begin
+      isModified := false;
       e := fSortedEdges;
       while assigned(e.nextInSEL) do
       begin
@@ -1799,12 +1788,11 @@ begin
         begin
           AddIntersectNode(e, eNext, pt);
           SwapWithNextInSEL(e);
+          isModified := true;
         end else
           e := eNext;
       end;
-      if assigned(e.prevInSEL) then
-        e.prevInSEL.nextInSEL := nil else
-        break;
+      if assigned(e.prevInSEL) then e.prevInSEL.nextInSEL := nil else break;
     end;
   finally
     fSortedEdges := nil;
@@ -2076,6 +2064,7 @@ function TClipper.BubbleSwap(edge: PEdge): PEdge;
 var
   i, cnt: integer;
   e: PEdge;
+  isModified: boolean;
 begin
   cnt := 1;
   result := edge.nextInAEL;
@@ -2110,8 +2099,11 @@ begin
       //fSortedEdges now contains the sort list. Bubble sort this list,
       //processing intersections and dropping the last edge on each pass
       //until the list contains fewer than two edges.
-      while assigned(fSortedEdges) and assigned(fSortedEdges.nextInSEL) do
+      isModified := true;
+      while isModified and assigned(fSortedEdges) and
+        assigned(fSortedEdges.nextInSEL) do
       begin
+        isModified := false;
         e := fSortedEdges;
         while assigned(e.nextInSEL) do
         begin
@@ -2121,6 +2113,7 @@ begin
               DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapWithNextInSEL(e);
+            isModified := true;
           end else
             e := e.nextInSEL;
         end;

@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+2.4 - 2 September 2010
+* Bugfix: Obscure bug fixed. 
+* Update: Performance improvement (thanks to Kirill Gavrilov).
+
 2.36 - 27 August 2010
 * Bugfix: Minor bugfix. 
 
