@@ -1287,7 +1287,6 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
     if (e2.xbot - tolerance > e1.xbot) then result := false
     else if (e2.xbot + tolerance < e1.xbot) then result := true
     else if IsHorizontal(e2) then result := false
-    else if SlopesEqual(e1, e2) then result := false
     else result := e2.dx > e1.dx;
   end;
   //----------------------------------------------------------------------
@@ -1358,7 +1357,7 @@ begin
         while e <> rightBound do
         begin
           if not assigned(e) then raise exception.Create(rsMissingRightbound);
-          IntersectEdges(rightBound, e, pt);
+          IntersectEdges(e, rightBound, pt);
           e := e.nextInAEL;
         end;
       end;
@@ -1704,15 +1703,18 @@ function Process1Before2(Node1, Node2: PIntersectNode): boolean;
 begin
   if (abs(Node1.pt.Y - Node2.pt.Y) < tolerance) then
   begin
-    if SlopesEqual(Node1.edge1, Node2.edge1) then
+    if (abs(Node1.pt.X - Node2.pt.X) > precision) then
+      result := Node1.pt.X < Node2.pt.X
+    else if (Node1.edge1 = Node2.edge1) or
+      SlopesEqual(Node1.edge1, Node2.edge1) then
     begin
-      if SlopesEqual(Node1.edge2, Node2.edge2) then
-      begin
+      if Node1.edge2 = Node2.edge2 then
         //nb: probably overlapping co-linear segments to get here
-        if Node1.edge2 = Node2.edge2 then
-          result := E1PrecedesE2inAEL(Node2.edge1, Node1.edge1) else
-          result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2);
-      end else
+        result := not E1PrecedesE2inAEL(Node1.edge1, Node2.edge1)
+      else if SlopesEqual(Node1.edge2, Node2.edge2) then
+        //nb: probably overlapping co-linear segments to get here
+          result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
+      else
         result := (Node1.edge2.dx < Node2.edge2.dx)
     end else
       result := (Node1.edge1.dx < Node2.edge1.dx);
@@ -2064,7 +2066,6 @@ function TClipper.BubbleSwap(edge: PEdge): PEdge;
 var
   i, cnt: integer;
   e: PEdge;
-  isModified: boolean;
 begin
   cnt := 1;
   result := edge.nextInAEL;
@@ -2099,11 +2100,9 @@ begin
       //fSortedEdges now contains the sort list. Bubble sort this list,
       //processing intersections and dropping the last edge on each pass
       //until the list contains fewer than two edges.
-      isModified := true;
-      while isModified and assigned(fSortedEdges) and
+      while assigned(fSortedEdges) and
         assigned(fSortedEdges.nextInSEL) do
       begin
-        isModified := false;
         e := fSortedEdges;
         while assigned(e.nextInSEL) do
         begin
@@ -2113,7 +2112,6 @@ begin
               DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapWithNextInSEL(e);
-            isModified := true;
           end else
             e := e.nextInSEL;
         end;

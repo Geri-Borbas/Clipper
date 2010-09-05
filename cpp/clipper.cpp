@@ -843,7 +843,7 @@ bool Edge2InsertsBeforeEdge1(TEdge &e1, TEdge &e2)
 {
   if( e2.xbot - tolerance > e1.xbot ) return false;
   if( e2.xbot + tolerance < e1.xbot ) return true;
-  if( IsHorizontal(e2) || SlopesEqual(e1,e2) ) return false;
+  if( IsHorizontal(e2) ) return false;
   return (e2.dx > e1.dx);
 }
 //------------------------------------------------------------------------------
@@ -955,13 +955,18 @@ bool E1PrecedesE2inAEL(TEdge *e1, TEdge *e2)
 bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
 {
   if( std::fabs(Node1->pt.Y - Node2->pt.Y) < tolerance ){
-    if( SlopesEqual(*Node1->edge1, *Node2->edge1) ){
-      if( SlopesEqual(*Node1->edge2, *Node2->edge2) ){
-        if(Node1->edge2 == Node2->edge2)
-          return E1PrecedesE2inAEL(Node2->edge1, Node1->edge1); else
-          return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
-      } else return ( Node1->edge2->dx < Node2->edge2->dx );
-    } else return ( Node1->edge1->dx < Node2->edge1->dx );
+    if ( std::fabs(Node1->pt.X - Node2->pt.X) > precision )
+       return Node1->pt.X < Node2->pt.X;
+    else if( (Node1->edge1 == Node2->edge1) ||
+      SlopesEqual(*Node1->edge1, *Node2->edge1) )
+    {
+      if (Node1->edge2 == Node2->edge2)
+        return !E1PrecedesE2inAEL(Node1->edge1, Node2->edge1);
+      else if( SlopesEqual(*Node1->edge2, *Node2->edge2) )
+        return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
+      else return ( Node1->edge2->dx < Node2->edge2->dx );
+    }
+    else return ( Node1->edge1->dx < Node2->edge1->dx );
   } else return ( Node1->pt.Y > Node2->pt.Y );
 }
 //------------------------------------------------------------------------------
@@ -1305,7 +1310,7 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
       while( e != lm->rightBound )
       {
         if(!e) throw clipperException("AddLocalMinima: missing rightbound!");
-        IntersectEdges( lm->rightBound , e , pt , 0);
+        IntersectEdges( e , lm->rightBound , pt , 0);
         e = e->nextInAEL;
       }
     }
