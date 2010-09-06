@@ -394,7 +394,7 @@ begin
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
-  if ((dx < 0.1) and  (dy *10 < dx)) or (dy <= precision) then
+  if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
   begin
     e.dx := infinite;
     if (e.savedBot.Y <> e.next.savedBot.Y) then
@@ -1357,7 +1357,7 @@ begin
         while e <> rightBound do
         begin
           if not assigned(e) then raise exception.Create(rsMissingRightbound);
-          IntersectEdges(e, rightBound, pt);
+          IntersectEdges(rightBound, e, pt); //order important here
           e := e.nextInAEL;
         end;
       end;

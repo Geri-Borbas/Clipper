@@ -123,7 +123,7 @@ void SetDx(TEdge &e)
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
-  if ( (dx < 0.1 && dy *10 < dx) || dy < precision ) {
+  if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision ) {
     e.dx = infinite;
     if (e.savedBot.Y != e.next->savedBot.Y) e.savedBot.Y = e.next->savedBot.Y;
   }
@@ -1310,7 +1310,7 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
       while( e != lm->rightBound )
       {
         if(!e) throw clipperException("AddLocalMinima: missing rightbound!");
-        IntersectEdges( e , lm->rightBound , pt , 0);
+        IntersectEdges( lm->rightBound , e , pt , 0); //order important here
         e = e->nextInAEL;
       }
     }
