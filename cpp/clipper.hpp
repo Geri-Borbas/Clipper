@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.4                                                             *
-* Date      :  2 September 2010                                                *
+* Version   :  2.41                                                            *
+* Date      :  8 September 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -36,6 +36,7 @@
 #define clipper_hpp
 
 #include <vector>
+#include <string>
 
 namespace clipper {
 
