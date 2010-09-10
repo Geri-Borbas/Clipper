@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.4                                                             *
-* Date      :  2 September 2010                                                *
+* Version   :  2.5                                                             *
+* Date      :  10 September 2010                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -149,7 +149,7 @@ type
 
     //Clear: If multiple clipping operations are to be performed on different
     //polygon sets, then Clear circumvents the need to recreate Clipper objects.
-    procedure Clear;
+    procedure Clear; virtual;
   end;
 
   TClipper = class(TClipperBase)
@@ -164,6 +164,8 @@ type
     fForceOrientation: boolean;
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
+    fIntersectTolerance: double;
+    fLastComplexPoint: TDoublePoint;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -175,16 +177,19 @@ type
     function IsNonZeroFillType(edge: PEdge): boolean;
     function IsNonZeroAltFillType(edge: PEdge): boolean;
     procedure InsertLocalMinimaIntoAEL(const botY: double);
-    procedure AddHorzEdgeToSEL(edge: PEdge);
+    procedure AddEdgeToSEL(edge: PEdge);
+    procedure CopyAELToSEL;
     function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
     procedure ProcessHorizontal(horzEdge: PEdge);
     procedure ProcessHorizontals;
     procedure SwapPositionsInAEL(edge1, edge2: PEdge);
-    procedure SwapWithNextInSEL(edge: PEdge);
+    procedure SwapPositionsInSEL(edge1, edge2: PEdge);
     function BubbleSwap(edge: PEdge): PEdge;
+    function Process1Before2(Node1, Node2: PIntersectNode): boolean;
     procedure AddIntersectNode(e1, e2: PEdge; const pt: TDoublePoint);
     procedure ProcessIntersections(const topY: double);
     procedure BuildIntersectList(const topY: double);
+    function TestIntersections: boolean;
     procedure ProcessIntersectList;
     procedure IntersectEdges(e1,e2: PEdge;
       const pt: TDoublePoint; protects: TIntersectProtects = []);
@@ -201,6 +206,7 @@ type
     procedure AppendPolygon(e1, e2: PEdge);
     function ExecuteInternal(clipType: TClipType): boolean;
     procedure DisposeAllPolyPts;
+    procedure DisposeIntersectNodes;
   public
     //SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
 
@@ -220,6 +226,8 @@ type
     constructor Create; override;
     destructor Destroy; override;
 
+    procedure Clear; override;
+
     //The ForceOrientation property is only useful when operating on simple
     //polygons. It ensures that the simple polygons that result from a
     //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
@@ -229,6 +237,7 @@ type
     //in a very minor penalty (~10%) in execution speed. (Default == true)
     property ForceOrientation: boolean read
       fForceOrientation write fForceOrientation;
+    property LastErrorPoint: TDoublePoint read fLastComplexPoint;
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
@@ -250,10 +259,11 @@ const
   //of type double is 15 decimal places). However, for the vast majority
   //of uses ... tolerance = 1.0e-10 will be just fine.
   tolerance: double = 1.0e-10;
+  minimal_tolerance: double = 1.0e-14;
   //precision: defines when adjacent vertices will be considered duplicates
   //and hence ignored. This circumvents edges having indeterminate slope.
   precision: double = 1.0e-6;
-  slope_precision: double = 1.0e-5;
+  slope_precision: double = 1.0e-3;
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
@@ -261,7 +271,8 @@ resourcestring
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam: Broken AEL order';
   rsAppendPolygon = 'AppendPolygon error';
-
+  rsIntersectionKnown = 'Error at intersection: %1.6n, %1.6n';
+  rsIntersectionUnknown = 'Intersection error at an unknown location.';
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
@@ -445,13 +456,10 @@ end;
 
 function SlopesEqual(e1, e2: PEdge): boolean;
 begin
-  if IsHorizontal(e1) then
-    result := IsHorizontal(e2)
-  else if IsHorizontal(e2) then
-    result := false
-  else
-    result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
+  if IsHorizontal(e1) then result := IsHorizontal(e2)
+  else if IsHorizontal(e2) then result := false
+  else result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
+    (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < 1.0;
 end;
 //---------------------------------------------------------------------------
 
@@ -477,7 +485,7 @@ begin
     ip.Y := (b2-b1)/(edge1.dx - edge2.dx);
     ip.X := edge1.dx * ip.Y + b1;
   end;
-  result := (ip.Y > edge1.ytop + tolerance) and (ip.Y > edge2.ytop + tolerance);
+  result := (ip.Y > edge1.ytop +tolerance) and (ip.Y > edge2.ytop +tolerance);
 end;
 //------------------------------------------------------------------------------
 
@@ -608,22 +616,21 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   function SlopesEqualInternal(e1, e2: PEdge): boolean;
   begin
-  if IsHorizontal(e1) then result := IsHorizontal(e2)
-  else if IsHorizontal(e2) then result := false
-  else
-    //cross product of dy1/dx1 = dy2/dx2 ...
-    result := abs((e1.savedBot.Y - e1.next.savedBot.Y) *
-      (e2.savedBot.X - e2.next.savedBot.X) -
-      (e1.savedBot.X - e1.next.savedBot.X) *
-      (e2.savedBot.Y - e2.next.savedBot.Y)) < slope_precision;
+    if IsHorizontal(e1) then result := IsHorizontal(e2)
+    else if IsHorizontal(e2) then result := false
+    else
+      //cross product of dy1/dx1 = dy2/dx2 ...
+      result := abs((e1.savedBot.Y - e1.next.savedBot.Y) *
+        (e2.savedBot.X - e2.next.savedBot.X) -
+        (e1.savedBot.X - e1.next.savedBot.X) *
+        (e2.savedBot.Y - e2.next.savedBot.Y)) < 1.0;
   end;
   //----------------------------------------------------------------------
 
   function FixupForDupsAndColinear(var e: PEdge; const edges: PEdgeArray): boolean;
   begin
     result := false;
-    while (e.next <> e.prev) and
-      (PointsEqual(e.prev.savedBot, e.savedBot) or
+    while (e.next <> e.prev) and (PointsEqual(e.prev.savedBot, e.savedBot) or
       SlopesEqualInternal(e.prev, e)) do
     begin
       result := true;
@@ -945,6 +952,13 @@ begin
   DisposeScanbeamList;
   fPolyPtList.Free;
   inherited;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.Clear;
+begin
+  inherited;
+  fLastComplexPoint := DoublePoint(0,0);
 end;
 //------------------------------------------------------------------------------
 
@@ -1343,7 +1357,7 @@ begin
       if IsHorizontal(rightBound) then
       begin
         //nb: only rightbounds can have a horizontal bottom edge
-        AddHorzEdgeToSEL(rightBound);
+        AddEdgeToSEL(rightBound);
         InsertScanbeam(rightBound.nextInLML.ytop);
       end else
         InsertScanbeam(rightBound.ytop);
@@ -1368,7 +1382,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddHorzEdgeToSEL(edge: PEdge);
+procedure TClipper.AddEdgeToSEL(edge: PEdge);
 begin
   //SEL pointers in PEdge are reused to build a list of horizontal edges.
   //However, we don't need to worry about order with horizontal edge processing.
@@ -1383,6 +1397,26 @@ begin
     edge.prevInSEL := nil;
     fSortedEdges.prevInSEL := edge;
     fSortedEdges := edge;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.CopyAELToSEL;
+var
+  e: PEdge;
+begin
+  e := fActiveEdges;
+  fSortedEdges := e;
+  if not assigned(fActiveEdges) then exit;
+
+  fSortedEdges.prevInSEL := nil;
+  e := e.nextInAEL;
+  while assigned(e) do
+  begin
+    e.prevInSEL := e.prevInAEL;
+    e.prevInSEL.nextInSEL := e;
+    e.nextInSEL := nil;
+    e := e.nextInAEL;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1430,6 +1464,49 @@ begin
   end;
   if not assigned(edge1.prevInAEL) then fActiveEdges := edge1
   else if not assigned(edge2.prevInAEL) then fActiveEdges := edge2;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.SwapPositionsInSEL(edge1, edge2: PEdge);
+var
+  prev,next: PEdge;
+begin
+  if edge1.nextInSEL = edge2 then
+  begin
+    next    := edge2.nextInSEL;
+    if assigned(next) then next.prevInSEL := edge1;
+    prev    := edge1.prevInSEL;
+    if assigned(prev) then prev.nextInSEL := edge2;
+    edge2.prevInSEL := prev;
+    edge2.nextInSEL := edge1;
+    edge1.prevInSEL := edge2;
+    edge1.nextInSEL := next;
+  end
+  else if edge2.nextInSEL = edge1 then
+  begin
+    next    := edge1.nextInSEL;
+    if assigned(next) then next.prevInSEL := edge2;
+    prev    := edge2.prevInSEL;
+    if assigned(prev) then prev.nextInSEL := edge1;
+    edge1.prevInSEL := prev;
+    edge1.nextInSEL := edge2;
+    edge2.prevInSEL := edge1;
+    edge2.nextInSEL := next;
+  end else
+  begin
+    next    := edge1.nextInSEL;
+    prev    := edge1.prevInSEL;
+    edge1.nextInSEL := edge2.nextInSEL;
+    if assigned(edge1.nextInSEL) then edge1.nextInSEL.prevInSEL := edge1;
+    edge1.prevInSEL := edge2.prevInSEL;
+    if assigned(edge1.prevInSEL) then edge1.prevInSEL.nextInSEL := edge1;
+    edge2.nextInSEL := next;
+    if assigned(edge2.nextInSEL) then edge2.nextInSEL.prevInSEL := edge2;
+    edge2.prevInSEL := prev;
+    if assigned(edge2.prevInSEL) then edge2.prevInSEL.nextInSEL := edge2;
+  end;
+  if not assigned(edge1.prevInSEL) then fSortedEdges := edge1
+  else if not assigned(edge2.prevInSEL) then fSortedEdges := edge2;
 end;
 //------------------------------------------------------------------------------
 
@@ -1577,7 +1654,7 @@ begin
   while assigned(e) do
   begin
     eNext := GetNextInAEL(e, Direction);
-    if (e.xbot >= horzLeft - tolerance) and (e.xbot <= horzRight + tolerance) then
+    if (e.xbot >= horzLeft -tolerance) and (e.xbot <= horzRight +tolerance) then
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
       if (abs(e.xbot - horzEdge.xtop) < tolerance) and
@@ -1671,26 +1748,52 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.ProcessIntersections(const topY: double);
-var
-  iNode: PIntersectNode;
 begin
   if not assigned(fActiveEdges) then exit;
   try
+    fIntersectTolerance := tolerance;
     BuildIntersectList(topY);
+    if not assigned(fIntersectNodes) then exit;
+    //repeat BuildIntersectList (twice if necessary) to adjust tolerance ...
+    if not TestIntersections then
+    begin
+      fIntersectTolerance := slope_precision;
+      DisposeIntersectNodes;
+      BuildIntersectList(topY);
+      if not TestIntersections then
+      begin
+        fIntersectTolerance := minimal_tolerance;
+        DisposeIntersectNodes;
+        BuildIntersectList(topY);
+        if not TestIntersections then
+          if (fLastComplexPoint.X <> 0) then
+            raise Exception.CreateFmt(rsIntersectionKnown,
+              [fLastComplexPoint.X, fLastComplexPoint.Y]) else
+            raise Exception.Create(rsIntersectionUnknown);
+      end;
+    end;
     ProcessIntersectList;
   finally
     //if there's been an error, clean up the mess ...
-    while assigned(fIntersectNodes) do
-    begin
-      iNode := fIntersectNodes.next;
-      dispose(fIntersectNodes);
-      fIntersectNodes := iNode;
-    end;
+    DisposeIntersectNodes;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function Process1Before2(Node1, Node2: PIntersectNode): boolean;
+procedure TClipper.DisposeIntersectNodes;
+var
+  iNode: PIntersectNode;
+begin
+  while assigned(fIntersectNodes) do
+  begin
+    iNode := fIntersectNodes.next;
+    dispose(fIntersectNodes);
+    fIntersectNodes := iNode;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.Process1Before2(Node1, Node2: PIntersectNode): boolean;
 
   function E1PrecedesE2inAEL(e1, e2: PEdge): boolean;
   begin
@@ -1701,25 +1804,47 @@ function Process1Before2(Node1, Node2: PIntersectNode): boolean;
   end;
 
 begin
-  if (abs(Node1.pt.Y - Node2.pt.Y) < tolerance) then
+  if (abs(Node1.pt.Y - Node2.pt.Y) < fIntersectTolerance) then
   begin
     if (abs(Node1.pt.X - Node2.pt.X) > precision) then
-      result := Node1.pt.X < Node2.pt.X
-    else if (Node1.edge1 = Node2.edge1) or
+    begin
+      result := Node1.pt.X < Node2.pt.X;
+      exit;
+    end;
+    //a complex intersection (with more than 2 edges intersecting) ...
+    fLastComplexPoint := Node1.pt;
+    if (Node1.edge1 = Node2.edge1) or
       SlopesEqual(Node1.edge1, Node2.edge1) then
     begin
-      if Node1.edge2 = Node2.edge2 then
-        //nb: probably overlapping co-linear segments to get here
+      if Node1.edge2 = Node2.edge2 then //co-linear segments
         result := not E1PrecedesE2inAEL(Node1.edge1, Node2.edge1)
-      else if SlopesEqual(Node1.edge2, Node2.edge2) then
-        //nb: probably overlapping co-linear segments to get here
-          result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
+      else if SlopesEqual(Node1.edge2, Node2.edge2) then //co-linear segments
+        result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
+      else if //check if minima **
+        ((abs(Node1.edge2.savedBot.Y - Node1.pt.Y) < slope_precision) or
+        (abs(Node2.edge2.savedBot.Y - Node2.pt.Y) < slope_precision)) and
+        ((Node1.edge2.next = Node2.edge2) or (Node1.edge2.prev = Node2.edge2)) then
+      begin
+        if Node1.edge1.dx < 0 then
+          result := Node1.edge2.dx > Node2.edge2.dx else
+          result := Node1.edge2.dx < Node2.edge2.dx;
+      end else if (Node1.edge2.dx - Node2.edge2.dx) < precision then
+        result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
       else
-        result := (Node1.edge2.dx < Node2.edge2.dx)
-    end else
+        result := (Node1.edge2.dx < Node2.edge2.dx);
+
+    end else if (Node1.edge2 = Node2.edge2) and //check if maxima ***
+      ((abs(Node1.edge1.ytop - Node1.pt.Y) < slope_precision) or
+      (abs(Node2.edge1.ytop - Node2.pt.Y) < slope_precision)) then
+        result := (Node1.edge1.dx > Node2.edge1.dx)
+    else
       result := (Node1.edge1.dx < Node2.edge1.dx);
   end else
     result := (Node1.pt.Y > Node2.pt.Y);
+  //**a minima that very slightly overlaps an edge can appear like
+  //a complex intersection but it's not. (Minima can't have parallel edges.)
+  //***a maxima that very slightly overlaps an edge can appear like
+  //a complex intersection but it's not. (Maxima can't have parallel edges.)
 end;
 //------------------------------------------------------------------------------
 
@@ -1735,7 +1860,7 @@ begin
   IntersectNode.prev := nil;
   if not assigned(fIntersectNodes) then
     fIntersectNodes := IntersectNode
-  else if Process1Before2(IntersectNode,fIntersectNodes) then
+  else if Process1Before2(IntersectNode, fIntersectNodes) then
   begin
     IntersectNode.next := fIntersectNodes;
     fIntersectNodes.prev := IntersectNode;
@@ -1774,7 +1899,8 @@ begin
     e.tmpX := TopX(e, topY);
     e := e.nextInAEL;
   end;
-
+  
+  fLastComplexPoint := DoublePoint(0,0);
   try
     //bubblesort ...
     isModified := true;
@@ -1789,12 +1915,45 @@ begin
           IntersectPoint(e, eNext, pt) then
         begin
           AddIntersectNode(e, eNext, pt);
-          SwapWithNextInSEL(e);
+          SwapPositionsInSEL(e, eNext);
           isModified := true;
         end else
           e := eNext;
       end;
       if assigned(e.prevInSEL) then e.prevInSEL.nextInSEL := nil else break;
+    end;
+  finally
+    fSortedEdges := nil;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.TestIntersections: boolean;
+var
+  e: PEdge;
+  iNode: PIntersectNode;
+begin
+  result := true;
+  if not assigned(fIntersectNodes) then exit;
+  try
+    //do the test sort using SEL ...
+    CopyAELToSEL;
+    iNode := fIntersectNodes;
+    while assigned(iNode) do
+    begin
+      SwapPositionsInSEL(iNode.edge1, iNode.edge2);
+      iNode := iNode.next;
+    end;
+    //now check that tmpXs are in the right order ...
+    e := fSortedEdges;
+    while assigned(e.nextInSEL) do
+    begin
+      if e.nextInSEL.tmpX < e.tmpX - precision then
+      begin
+        result := false;
+        exit;
+      end;
+      e := e.nextInSEL;
     end;
   finally
     fSortedEdges := nil;
@@ -2045,23 +2204,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.SwapWithNextInSEL(edge: PEdge);
-var
-  prev, next, nextNext: PEdge;
-begin
-  prev := edge.prevInSEL;
-  next := edge.nextInSEL;
-  nextNext := next.nextInSEL;
-  if assigned(prev) then prev.nextInSEL := next;
-  if assigned(nextNext) then nextNext.prevInSEL := edge;
-  edge.nextInSEL := nextNext;
-  edge.prevInSEL := next;
-  next.nextInSEL := edge;
-  next.prevInSEL := prev;
-  if edge = fSortedEdges then fSortedEdges := next;
-end;
-//------------------------------------------------------------------------------
-
 function TClipper.BubbleSwap(edge: PEdge): PEdge;
 var
   i, cnt: integer;
@@ -2111,7 +2253,7 @@ begin
             IntersectEdges(e, e.nextInSEL,
               DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
-            SwapWithNextInSEL(e);
+            SwapPositionsInSEL(e, e.nextInSEL);
           end else
             e := e.nextInSEL;
         end;
@@ -2169,7 +2311,7 @@ begin
       begin
         if (e.outIdx >= 0) then AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
         UpdateEdgeIntoAEL(e);
-        AddHorzEdgeToSEL(e);
+        AddEdgeToSEL(e);
       end else
       begin
         //this just simplifies horizontal processing ...
