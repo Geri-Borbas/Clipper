@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.41                                                            *
-* Date      :  8 September 2010                                                *
+* Version   :  2.5                                                             *
+* Date      :  10 September 2010                                               *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -118,7 +118,7 @@ public:
   virtual ~ClipperBase();
   void AddPolygon(const TPolygon &pg, TPolyType polyType);
   void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
-  void Clear();
+  virtual void Clear();
 protected:
   TLocalMinima      *m_localMinimaList;
   TLocalMinima      *m_recycledLocMin;
@@ -150,6 +150,8 @@ public:
   //in a very minor penalty (~10%) in execution speed. (Default == true)
   bool ForceOrientation();
   void ForceOrientation(bool value);
+  void Clear();
+  TDoublePoint GetLastErrorPoint() {return m_LastComplexPoint;}
 private:
   PolyPtList        m_PolyPts;
   TClipType         m_ClipType;
@@ -161,6 +163,8 @@ private:
   bool              m_ForceOrientation;
   TPolyFillType     m_ClipFillType;
   TPolyFillType     m_SubjFillType;
+  double            m_IntersectTolerance;
+  TDoublePoint      m_LastComplexPoint;
   void DisposeScanbeamList();
   void SetWindingDelta(TEdge *edge);
   void SetWindingCount(TEdge *edge);
@@ -171,11 +175,14 @@ private:
   double PopScanbeam();
   void InsertLocalMinimaIntoAEL( const double &botY);
   void InsertEdgeIntoAEL(TEdge *edge);
-  void AddHorzEdgeToSEL(TEdge *edge);
+  void AddEdgeToSEL(TEdge *edge);
+  void CopyAELToSEL();
   void DeleteFromSEL(TEdge *e);
   void DeleteFromAEL(TEdge *e);
   void UpdateEdgeIntoAEL(TEdge *&e);
-  void SwapWithNextInSEL(TEdge *edge);
+  void SwapPositionsInSEL(TEdge *edge1, TEdge *edge2);
+  bool Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2);
+  bool TestIntersections();
   bool IsContributing(TEdge *edge);
   bool IsTopHorz(TEdge *horzEdge, const double &XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
@@ -199,6 +206,7 @@ private:
   TEdge *BubbleSwap(TEdge *edge);
   void ProcessEdgesAtTopOfScanbeam( const double &topY);
   void BuildResult(TPolyPolygon &polypoly);
+  void DisposeIntersectNodes();
 };
 
 class clipperException : public std::exception
