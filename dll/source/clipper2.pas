@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.5                                                             *
-* Date      :  10 September 2010                                               *
+* Version   :  2.52                                                            *
+* Date      :  18 September 2010                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -96,8 +96,6 @@ type
     prev: PIntersectNode;
   end;
 
-  TIntersectType = (itIgnore, itMax, itMin, itEdge1, itEdge2);
-
   PLocalMinima = ^TLocalMinima;
   TLocalMinima = record
     y: double;
@@ -128,13 +126,13 @@ type
   TClipperBase = class
   private
     fList             : TList;
-    fRecycledLocMin   : PLocalMinima;
-    fRecycledLocMinEnd: PLocalMinima;
+    fLocalMinima      : PLocalMinima;
+    fCurrentLM        : PLocalMinima;
     procedure DisposeLocalMinimaList;
   protected
-    fLocalMinima      : PLocalMinima;
     procedure PopLocalMinima;
     function Reset: boolean;
+    property CurrentLM: PLocalMinima read fCurrentLM;
   public
     constructor Create; virtual;
     destructor Destroy; override;
@@ -165,7 +163,6 @@ type
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
-    fLastComplexPoint: TDoublePoint;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -237,7 +234,6 @@ type
     //in a very minor penalty (~10%) in execution speed. (Default == true)
     property ForceOrientation: boolean read
       fForceOrientation write fForceOrientation;
-    property LastErrorPoint: TDoublePoint read fLastComplexPoint;
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
@@ -271,8 +267,7 @@ resourcestring
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam: Broken AEL order';
   rsAppendPolygon = 'AppendPolygon error';
-  rsIntersectionKnown = 'Error at intersection: %1.6n, %1.6n';
-  rsIntersectionUnknown = 'Intersection error at an unknown location.';
+  rsIntersection = 'Intersection error';
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
@@ -459,7 +454,7 @@ begin
   if IsHorizontal(e1) then result := IsHorizontal(e2)
   else if IsHorizontal(e2) then result := false
   else result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-    (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < 1.0;
+    (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
 end;
 //---------------------------------------------------------------------------
 
@@ -551,9 +546,8 @@ end;
 constructor TClipperBase.Create;
 begin
   fList := TList.Create;
-  fLocalMinima       := nil;
-  fRecycledLocMin    := nil;
-  fRecycledLocMinEnd := nil;
+  fLocalMinima  := nil;
+  fCurrentLM    := nil;
 end;
 //------------------------------------------------------------------------------
 
@@ -623,7 +617,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
       result := abs((e1.savedBot.Y - e1.next.savedBot.Y) *
         (e2.savedBot.X - e2.next.savedBot.X) -
         (e1.savedBot.X - e1.next.savedBot.X) *
-        (e2.savedBot.Y - e2.next.savedBot.Y)) < 1.0;
+        (e2.savedBot.Y - e2.next.savedBot.Y)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
@@ -858,11 +852,7 @@ var
 begin
   //Reset() allows various clipping operations to be executed
   //multiple times on the same polygon sets. (Protected method.)
-
-  while assigned(fLocalMinima) do PopLocalMinima;
-  if assigned(fRecycledLocMin) then fLocalMinima := fRecycledLocMin;
-  fRecycledLocMin := nil;
-  fRecycledLocMinEnd := nil;
+  fCurrentLM := fLocalMinima;
   result := assigned(fLocalMinima);
   if not result then exit; //ie nothing to process
 
@@ -894,25 +884,9 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipperBase.PopLocalMinima;
-var
-  tmpLm: PLocalMinima;
 begin
-  if not assigned(fLocalMinima) then
-    exit
-  else if not assigned(fRecycledLocMin) then
-  begin
-    fRecycledLocMinEnd := fLocalMinima;
-    fRecycledLocMin := fLocalMinima;
-    fLocalMinima := fLocalMinima.nextLm;
-    fRecycledLocMin.nextLm := nil;
-  end else
-  begin
-    tmpLm := fLocalMinima.nextLm;
-    fLocalMinima.nextLm := nil;
-    fRecycledLocMinEnd.nextLm := fLocalMinima;
-    fRecycledLocMinEnd := fLocalMinima;
-    fLocalMinima := tmpLm;
-  end;
+  if not assigned(fCurrentLM) then exit;
+  fCurrentLM := fCurrentLM.nextLm;
 end;
 //------------------------------------------------------------------------------
 
@@ -926,13 +900,7 @@ begin
     Dispose(fLocalMinima);
     fLocalMinima := tmpLm;
   end;
-  while assigned(fRecycledLocMin) do
-  begin
-    tmpLm := fRecycledLocMin.nextLm;
-    Dispose(fRecycledLocMin);
-    fRecycledLocMin := tmpLm;
-  end;
-  fRecycledLocMinEnd := nil;
+  fCurrentLM := nil;
 end;
 
 //------------------------------------------------------------------------------
@@ -958,7 +926,6 @@ end;
 procedure TClipper.Clear;
 begin
   inherited;
-  fLastComplexPoint := DoublePoint(0,0);
 end;
 //------------------------------------------------------------------------------
 
@@ -1153,10 +1120,10 @@ var
   lm: PLocalMinima;
 begin
   DisposeScanbeamList;
-  result := Reset; //returns false when no polygons to process
+  result := Reset; //returns false when there are no polygons to process
   if not result then exit;
   //add all the local minima into a fresh fScanbeam list ...
-  lm := fLocalMinima;
+  lm := CurrentLM;
   while assigned(lm) do
   begin
     InsertScanbeam(lm.y);
@@ -1337,14 +1304,14 @@ var
   pt: TDoublePoint;
 begin
   {InsertLocalMinimaIntoAEL}
-  while assigned(fLocalMinima) and (fLocalMinima.y = botY) do
+  while assigned(CurrentLM) and (CurrentLM.y = botY) do
   begin
-    InsertEdgeIntoAEL(fLocalMinima.leftBound);
-    InsertScanbeam(fLocalMinima.leftBound.ytop);
-    InsertEdgeIntoAEL(fLocalMinima.rightBound);
+    InsertEdgeIntoAEL(CurrentLM.leftBound);
+    InsertScanbeam(CurrentLM.leftBound.ytop);
+    InsertEdgeIntoAEL(CurrentLM.rightBound);
 
     //set edge winding states ...
-    with fLocalMinima^ do
+    with CurrentLM^ do
     begin
       SetWindingDelta(leftBound);
       if IsNonZeroFillType(leftBound) then
@@ -1754,22 +1721,20 @@ begin
     fIntersectTolerance := tolerance;
     BuildIntersectList(topY);
     if not assigned(fIntersectNodes) then exit;
-    //repeat BuildIntersectList (twice if necessary) to adjust tolerance ...
+    //Test the pending intersections for errors and, if any are found, redo
+    //BuildIntersectList (twice if necessary) with adjusted tolerances ...
     if not TestIntersections then
     begin
-      fIntersectTolerance := slope_precision;
+      fIntersectTolerance := minimal_tolerance;
       DisposeIntersectNodes;
       BuildIntersectList(topY);
       if not TestIntersections then
       begin
-        fIntersectTolerance := minimal_tolerance;
+        fIntersectTolerance := slope_precision;
         DisposeIntersectNodes;
         BuildIntersectList(topY);
         if not TestIntersections then
-          if (fLastComplexPoint.X <> 0) then
-            raise Exception.CreateFmt(rsIntersectionKnown,
-              [fLastComplexPoint.X, fLastComplexPoint.Y]) else
-            raise Exception.Create(rsIntersectionUnknown);
+          raise Exception.Create(rsIntersection);
       end;
     end;
     ProcessIntersectList;
@@ -1812,13 +1777,14 @@ begin
       exit;
     end;
     //a complex intersection (with more than 2 edges intersecting) ...
-    fLastComplexPoint := Node1.pt;
     if (Node1.edge1 = Node2.edge1) or
       SlopesEqual(Node1.edge1, Node2.edge1) then
     begin
-      if Node1.edge2 = Node2.edge2 then //co-linear segments
+      if Node1.edge2 = Node2.edge2 then
+        //(N1.E1 & N2.E1 are co-linear) and (N1.E2 == N2.E2)  ...
         result := not E1PrecedesE2inAEL(Node1.edge1, Node2.edge1)
-      else if SlopesEqual(Node1.edge2, Node2.edge2) then //co-linear segments
+      else if SlopesEqual(Node1.edge2, Node2.edge2) then
+        //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
       else if //check if minima **
         ((abs(Node1.edge2.savedBot.Y - Node1.pt.Y) < slope_precision) or
@@ -1899,8 +1865,7 @@ begin
     e.tmpX := TopX(e, topY);
     e := e.nextInAEL;
   end;
-  
-  fLastComplexPoint := DoublePoint(0,0);
+
   try
     //bubblesort ...
     isModified := true;

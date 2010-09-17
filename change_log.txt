@@ -2,6 +2,14 @@
 Clipper Change Log
 ============================================================
 
+2.52 - 18 September 2010
+* Update: Minor code tidy. 
+
+2.5 - 10 September 2010
+* Update: Variable tolerance (epsilon) implemented to further 
+          address issues of 'robustness' that are inherent to 
+          floating point calulations.
+
 2.4 - 2 September 2010
 * Bugfix: Obscure bug fixed. 
 * Update: Performance improvement (thanks to Kirill Gavrilov).

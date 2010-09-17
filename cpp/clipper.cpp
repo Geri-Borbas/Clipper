@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.5                                                             *
-* Date      :  10 September 2010                                               *
+* Version   :  2.52                                                            *
+* Date      :  18 September 2010                                               *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -60,7 +60,6 @@ static double const slope_precision = 1.0E-3;
 static const unsigned ipLeft = 1;
 static const unsigned ipRight = 2;
 typedef enum { dRightToLeft, dLeftToRight } TDirection;
-typedef enum { itIgnore, itMax, itMin, itEdge1, itEdge2 } TIntersectType;
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -171,7 +170,7 @@ bool SlopesEqual(TEdge &e1, TEdge &e2)
   if (IsHorizontal(e1)) return IsHorizontal(e2);
   if (IsHorizontal(e2)) return false;
   return std::fabs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < 1.0;
+      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -285,7 +284,7 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
   return std::fabs((e1.savedBot.Y - e1.next->savedBot.Y) *
       (e2.savedBot.X - e2.next->savedBot.X) -
       (e1.savedBot.X - e1.next->savedBot.X) *
-      (e2.savedBot.Y - e2.next->savedBot.Y)) < 1.0;
+      (e2.savedBot.Y - e2.next->savedBot.Y)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -372,8 +371,7 @@ TEdge *BuildBound(TEdge *e,  TEdgeSide s, bool buildForward)
 ClipperBase::ClipperBase() //constructor
 {
   m_localMinimaList = 0;
-  m_recycledLocMin = 0;
-  m_recycledLocMinEnd = 0;
+  m_CurrentLM = 0;
   m_edges.reserve(32);
 }
 //------------------------------------------------------------------------------
@@ -560,11 +558,8 @@ void ClipperBase::Clear()
 
 bool ClipperBase::Reset()
 {
-  while( m_localMinimaList ) PopLocalMinima();
-  if( m_recycledLocMin ) m_localMinimaList = m_recycledLocMin;
-  m_recycledLocMin = 0;
-  m_recycledLocMinEnd = 0;
-  if( !m_localMinimaList ) return false; //ie nothing to process
+  m_CurrentLM = m_localMinimaList;
+  if( !m_CurrentLM ) return false; //ie nothing to process
 
   //reset all edges ...
   TLocalMinima* lm = m_localMinimaList;
@@ -596,21 +591,8 @@ bool ClipperBase::Reset()
 
 void ClipperBase::PopLocalMinima()
 {
-  if( ! m_localMinimaList ) return;
-  else if( ! m_recycledLocMin )
-  {
-    m_recycledLocMinEnd = m_localMinimaList;
-    m_recycledLocMin = m_localMinimaList;
-    m_localMinimaList = m_localMinimaList->nextLm;
-    m_recycledLocMin->nextLm = 0;
-  } else
-  {
-    TLocalMinima* tmpLm = m_localMinimaList->nextLm;
-    m_localMinimaList->nextLm = 0;
-    m_recycledLocMinEnd->nextLm = m_localMinimaList;
-    m_recycledLocMinEnd = m_localMinimaList;
-    m_localMinimaList = tmpLm;
-  }
+  if( ! m_CurrentLM ) return;
+  m_CurrentLM = m_CurrentLM->nextLm;
 }
 //------------------------------------------------------------------------------
 
@@ -622,13 +604,7 @@ void ClipperBase::DisposeLocalMinimaList()
     delete m_localMinimaList;
     m_localMinimaList = tmpLm;
   }
-  while( m_recycledLocMin )
-  {
-    TLocalMinima* tmpLm = m_recycledLocMin->nextLm;
-    delete m_recycledLocMin;
-    m_recycledLocMin = tmpLm;
-  }
-  m_recycledLocMinEnd = 0;
+  m_CurrentLM = 0;
 }
 
 //------------------------------------------------------------------------------
@@ -654,13 +630,6 @@ Clipper::~Clipper() //destructor
 };
 //------------------------------------------------------------------------------
 
-void Clipper::Clear()
-{
-  ClipperBase::Clear();
-  m_LastComplexPoint = DoublePoint(0,0);
-}
-//------------------------------------------------------------------------------
-
 void Clipper::DisposeScanbeamList()
 {
   while ( m_Scanbeam ) {
@@ -676,7 +645,7 @@ bool Clipper::InitializeScanbeam()
   DisposeScanbeamList();
   if(  !Reset() ) return false;
   //add all the local minima into a fresh fScanbeam list ...
-  TLocalMinima* lm = m_localMinimaList;
+  TLocalMinima* lm = m_CurrentLM;
   while( lm )
   {
   InsertScanbeam( lm->Y );
@@ -847,34 +816,34 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge)
 
 void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
 {
-  while(  m_localMinimaList  && ( m_localMinimaList->Y == botY ) )
+  while(  m_CurrentLM  && ( m_CurrentLM->Y == botY ) )
   {
-    InsertEdgeIntoAEL( m_localMinimaList->leftBound );
-    InsertScanbeam( m_localMinimaList->leftBound->ytop );
-    InsertEdgeIntoAEL( m_localMinimaList->rightBound );
+    InsertEdgeIntoAEL( m_CurrentLM->leftBound );
+    InsertScanbeam( m_CurrentLM->leftBound->ytop );
+    InsertEdgeIntoAEL( m_CurrentLM->rightBound );
 
-    SetWindingDelta( m_localMinimaList->leftBound );
-    if ( IsNonZeroFillType(m_localMinimaList->leftBound) )
-      m_localMinimaList->rightBound->windDelta =
-        -m_localMinimaList->leftBound->windDelta; else
-      m_localMinimaList->rightBound->windDelta = 1;
+    SetWindingDelta( m_CurrentLM->leftBound );
+    if ( IsNonZeroFillType(m_CurrentLM->leftBound) )
+      m_CurrentLM->rightBound->windDelta =
+        -m_CurrentLM->leftBound->windDelta; else
+      m_CurrentLM->rightBound->windDelta = 1;
 
-    SetWindingCount( m_localMinimaList->leftBound );
-    m_localMinimaList->rightBound->windCnt =
-      m_localMinimaList->leftBound->windCnt;
-    m_localMinimaList->rightBound->windCnt2 =
-      m_localMinimaList->leftBound->windCnt2;
+    SetWindingCount( m_CurrentLM->leftBound );
+    m_CurrentLM->rightBound->windCnt =
+      m_CurrentLM->leftBound->windCnt;
+    m_CurrentLM->rightBound->windCnt2 =
+      m_CurrentLM->leftBound->windCnt2;
 
-    if(  IsHorizontal( *m_localMinimaList->rightBound ) )
+    if(  IsHorizontal( *m_CurrentLM->rightBound ) )
     {
       //nb: only rightbounds can have a horizontal bottom edge
-      AddEdgeToSEL( m_localMinimaList->rightBound );
-      InsertScanbeam( m_localMinimaList->rightBound->nextInLML->ytop );
+      AddEdgeToSEL( m_CurrentLM->rightBound );
+      InsertScanbeam( m_CurrentLM->rightBound->nextInLML->ytop );
     }
     else
-      InsertScanbeam( m_localMinimaList->rightBound->ytop );
+      InsertScanbeam( m_CurrentLM->rightBound->ytop );
 
-    TLocalMinima* lm = m_localMinimaList;
+    TLocalMinima* lm = m_CurrentLM;
     if( IsContributing(lm->leftBound) )
       AddLocalMinPoly( lm->leftBound,
         lm->rightBound, DoublePoint( lm->leftBound->xbot , lm->Y ) );
@@ -1231,15 +1200,19 @@ void Clipper::ProcessIntersections( const double &topY)
     m_IntersectTolerance = tolerance;
     BuildIntersectList( topY );
     if (!m_IntersectNodes) return;
-    //repeat BuildIntersectList (twice if necessary) to adjust tolerance ...
+    //Test pending intersections for errors and, if any are found, redo
+    //BuildIntersectList (twice if necessary) with adjusted tolerances.
+    //While this adds ~2% extra to processing time, I believe this is justified
+    //by further halving of the algorithm's failure rate, though admittedly
+    //failures were already extremely rare ...
     if ( !TestIntersections() )
     {
-      m_IntersectTolerance = slope_precision;
+      m_IntersectTolerance = minimal_tolerance;
       DisposeIntersectNodes();
       BuildIntersectList( topY );
       if ( !TestIntersections() )
       {
-        m_IntersectTolerance = minimal_tolerance;
+        m_IntersectTolerance = slope_precision;
         DisposeIntersectNodes();
         BuildIntersectList( topY );
         if (!TestIntersections()) throw clipperException("Intersection error");
@@ -1283,12 +1256,13 @@ bool Clipper::Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
     if ( std::fabs(Node1->pt.X - Node2->pt.X) > precision )
       return Node1->pt.X < Node2->pt.X;
     //a complex intersection (with more than 2 edges intersecting) ...
-    m_LastComplexPoint = Node1->pt;
     if ( Node1->edge1 == Node2->edge1  || SlopesEqual(*Node1->edge1, *Node2->edge1) )
     {
-      if (Node1->edge2 == Node2->edge2 ) //co-linear segments
+      if (Node1->edge2 == Node2->edge2 )
+        //(N1.E1 & N2.E1 are co-linear) and (N1.E2 == N2.E2)  ...
         return !E1PrecedesE2inAEL(Node1->edge1, Node2->edge1);
-      else if ( SlopesEqual(*Node1->edge2, *Node2->edge2) ) //co-linear segments
+      else if ( SlopesEqual(*Node1->edge2, *Node2->edge2) )
+        //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
       else if //check if minima **
         ( (std::fabs(Node1->edge2->savedBot.Y - Node1->pt.Y) < slope_precision  ||
@@ -1365,7 +1339,6 @@ void Clipper::BuildIntersectList( const double &topY)
   }
 
   //bubblesort ...
-  m_LastComplexPoint = DoublePoint(0,0);
   bool isModified = true;
   while( isModified && m_SortedEdges )
   {

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.5                                                             *
-* Date      :  10 September 2010                                               *
+* Version   :  2.52                                                            *
+* Date      :  18 September 2010                                               *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -120,15 +120,14 @@ public:
   void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
   virtual void Clear();
 protected:
-  TLocalMinima      *m_localMinimaList;
-  TLocalMinima      *m_recycledLocMin;
-  TLocalMinima      *m_recycledLocMinEnd;
   void DisposeLocalMinimaList();
   void InsertLocalMinima(TLocalMinima *newLm);
   TEdge* AddBoundsToLML(TEdge *e);
   void PopLocalMinima();
   bool Reset();
+  TLocalMinima      *m_CurrentLM;
 private:
+  TLocalMinima      *m_localMinimaList;
   std::vector< TEdge * >  m_edges;
 };
 
@@ -150,8 +149,6 @@ public:
   //in a very minor penalty (~10%) in execution speed. (Default == true)
   bool ForceOrientation();
   void ForceOrientation(bool value);
-  void Clear();
-  TDoublePoint GetLastErrorPoint() {return m_LastComplexPoint;}
 private:
   PolyPtList        m_PolyPts;
   TClipType         m_ClipType;
@@ -164,7 +161,6 @@ private:
   TPolyFillType     m_ClipFillType;
   TPolyFillType     m_SubjFillType;
   double            m_IntersectTolerance;
-  TDoublePoint      m_LastComplexPoint;
   void DisposeScanbeamList();
   void SetWindingDelta(TEdge *edge);
   void SetWindingCount(TEdge *edge);
