@@ -80,6 +80,14 @@ bool PointsEqual( const TDoublePoint &pt1, const TDoublePoint &pt2)
 }
 //------------------------------------------------------------------------------
 
+bool PointsEqual( const double &pt1x, const double &pt1y,
+  const double &pt2x, const double &pt2y)
+{
+  return ( std::fabs( pt1x - pt2x ) < precision + tolerance ) &&
+  ( std::fabs( (pt1y - pt2y) ) < precision + tolerance );
+}
+//------------------------------------------------------------------------------
+
 void DisposePolyPts(TPolyPt *&pp)
 {
   if (pp == 0) return;
@@ -116,17 +124,17 @@ void ReversePolyPtLinks(TPolyPt &pp)
 
 void SetDx(TEdge &e)
 {
-  double dx = std::fabs(e.savedBot.X - e.next->savedBot.X);
-  double dy = std::fabs(e.savedBot.Y - e.next->savedBot.Y);
+  double dx = std::fabs(e.x - e.next->x);
+  double dy = std::fabs(e.y - e.next->y);
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision ) {
     e.dx = infinite;
-    if (e.savedBot.Y != e.next->savedBot.Y) e.savedBot.Y = e.next->savedBot.Y;
+    if (e.y != e.next->y) e.y = e.next->y;
   }
   else e.dx =
-    (e.savedBot.X - e.next->savedBot.X)/(e.savedBot.Y - e.next->savedBot.Y);
+    (e.x - e.next->x)/(e.y - e.next->y);
 }
 //------------------------------------------------------------------------------
 
@@ -155,7 +163,7 @@ void SwapPolyIndexes(TEdge &edge1, TEdge &edge2)
 double TopX(TEdge *edge, const double &currentY)
 {
   if(  currentY == edge->ytop ) return edge->xtop;
-  return edge->savedBot.X + edge->dx *( currentY - edge->savedBot.Y );
+  return edge->x + edge->dx *( currentY - edge->y );
 }
 //------------------------------------------------------------------------------
 
@@ -169,8 +177,8 @@ bool SlopesEqual(TEdge &e1, TEdge &e2)
 {
   if (IsHorizontal(e1)) return IsHorizontal(e2);
   if (IsHorizontal(e2)) return false;
-  return std::fabs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-      (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
+  return std::fabs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
+      (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -179,19 +187,19 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2, TDoublePoint &ip)
   double b1, b2;
   if(  edge1.dx == 0 )
   {
-    ip.X = edge1.savedBot.X;
-    b2 = edge2.savedBot.Y - edge2.savedBot.X/edge2.dx;
+    ip.X = edge1.x;
+    b2 = edge2.y - edge2.x/edge2.dx;
     ip.Y = ip.X/edge2.dx + b2;
   }
   else if(  edge2.dx == 0 )
   {
-    ip.X = edge2.savedBot.X;
-    b1 = edge1.savedBot.Y - edge1.savedBot.X/edge1.dx;
+    ip.X = edge2.x;
+    b1 = edge1.y - edge1.x/edge1.dx;
     ip.Y = ip.X/edge1.dx + b1;
   } else
   {
-    b1 = edge1.savedBot.X - edge1.savedBot.Y *edge1.dx;
-    b2 = edge2.savedBot.X - edge2.savedBot.Y *edge2.dx;
+    b1 = edge1.x - edge1.y *edge1.dx;
+    b2 = edge2.x - edge2.y *edge2.dx;
     ip.Y = (b2-b1)/(edge1.dx - edge2.dx);
     ip.X = edge1.dx * ip.Y + b1;
   }
@@ -247,29 +255,31 @@ bool ValidateOrientation(TPolyPt *pt)
 void InitEdge(TEdge *e, TEdge *eNext, TEdge *ePrev, const TDoublePoint &pt)
 {
   std::memset( e, 0, sizeof( TEdge ));
-  e->savedBot = pt;
+  e->x = pt.X;
+  e->y = pt.Y;
   e->next = eNext;
   e->prev = ePrev;
   SetDx(*e);
 }
 //------------------------------------------------------------------------------
 
-void ReInitEdge(TEdge *e, const TDoublePoint &nextPt, TPolyType polyType)
+void ReInitEdge(TEdge *e, const double &nextX,
+  const double &nextY, TPolyType polyType)
 {
-  if ( e->savedBot.Y > nextPt.Y )
+  if ( e->y > nextY )
   {
-    e->xbot = e->savedBot.X;
-    e->ybot = e->savedBot.Y;
-    e->xtop = nextPt.X;
-    e->ytop = nextPt.Y;
+    e->xbot = e->x;
+    e->ybot = e->y;
+    e->xtop = nextX;
+    e->ytop = nextY;
     e->nextAtTop = true;
   } else {
-    e->xbot = nextPt.X;
-    e->ybot = nextPt.Y;
-    e->xtop = e->savedBot.X;
-    e->ytop = e->savedBot.Y;
-    e->savedBot.X = e->xbot;
-    e->savedBot.Y = e->ybot;
+    e->xbot = nextX;
+    e->ybot = nextY;
+    e->xtop = e->x;
+    e->ytop = e->y;
+    e->x = e->xbot;
+    e->y = e->ybot;
     e->nextAtTop = false;
   }
   e->polyType = polyType;
@@ -281,10 +291,10 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
 {
   if (IsHorizontal(e1)) return IsHorizontal(e2);
   if (IsHorizontal(e2)) return false;
-  return std::fabs((e1.savedBot.Y - e1.next->savedBot.Y) *
-      (e2.savedBot.X - e2.next->savedBot.X) -
-      (e1.savedBot.X - e1.next->savedBot.X) *
-      (e2.savedBot.Y - e2.next->savedBot.Y)) < slope_precision;
+  return std::fabs((e1.y - e1.next->y) *
+      (e2.x - e2.next->x) -
+      (e1.x - e1.next->x) *
+      (e2.y - e2.next->y)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -292,7 +302,7 @@ bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges)
 {
   bool result = false;
   while ( e->next != e->prev &&
-    (PointsEqual(e->prev->savedBot, e->savedBot) ||
+    (PointsEqual(e->prev->x, e->prev->y, e->x, e->y) ||
     SlopesEqualInternal(*e->prev, *e)) )
   {
     result = true;
@@ -300,7 +310,8 @@ bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges)
     if ( e == edges )
     {
       //move the content of e.next to e before removing e.next from DLL ...
-      e->savedBot = e->next->savedBot;
+      e->x = e->next->x;
+      e->y = e->next->y;
       e->next->next->prev = e;
       e->next = e->next->next;
     } else
@@ -323,8 +334,8 @@ void SwapX(TEdge &e)
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
   e.xbot = e.xtop;
-  e.xtop = e.savedBot.X;
-  e.savedBot.X = e.xbot;
+  e.xtop = e.x;
+  e.x = e.xbot;
   e.nextAtTop = !e.nextAtTop; //but really redundant for horizontals
 }
 //------------------------------------------------------------------------------
@@ -414,6 +425,9 @@ TEdge *ClipperBase::AddBoundsToLML(TEdge *e)
   {
     if ( IsHorizontal(*e) )
     {
+      //nb: proceed through horizontals when approaching from their right,
+      //    but break on horizontal minima if approaching from their left.
+      //    This ensures 'local minima' are always on the left of horizontals.
       if (e->next->ytop < e->ytop && e->next->xbot > e->prev->xbot) break;
       if (e->xtop != e->prev->xbot) SwapX( *e );
       e->nextInLML = e->prev;
@@ -457,10 +471,15 @@ TEdge *ClipperBase::AddBoundsToLML(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-double RoundToTolerance(const double number){
-  return (number >= 0.0) ?
-    (std::floor( number/precision + 0.5 ) * precision):
-    (std::ceil ( number/precision + 0.5 ) * precision);
+TDoublePoint RoundToTolerance(const TDoublePoint &pt){
+  TDoublePoint result;
+  result.X = (pt.X >= 0.0) ?
+    (std::floor( pt.X/precision + 0.5 ) * precision):
+    (std::ceil ( pt.X/precision + 0.5 ) * precision);
+  result.Y = (pt.Y >= 0.0) ?
+    (std::floor( pt.Y/precision + 0.5 ) * precision):
+    (std::ceil ( pt.Y/precision + 0.5 ) * precision);
+  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -468,10 +487,7 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
 {
   int highI = pg.size() -1;
   TPolygon p(highI + 1);
-  for (int i = 0; i <= highI; ++i) {
-    p[i].X = RoundToTolerance(pg[i].X);
-    p[i].Y = RoundToTolerance(pg[i].Y);
-  }
+  for (int i = 0; i <= highI; ++i) p[i] = RoundToTolerance(pg[i]);
   while( (highI > 1) && PointsEqual(p[0] , p[highI]) ) highI--;
   if(  highI < 2 ) return;
 
@@ -485,7 +501,8 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   m_edges.push_back(edges);
 
   //convert 'edges' to a double-linked-list and initialize a few of the vars ...
-  edges[0].savedBot = p[0];
+  edges[0].x = p[0].X;
+  edges[0].y = p[0].Y;
   InitEdge(&edges[highI], &edges[0], &edges[highI-1], p[highI]);
   for (i = highI-1; i > 0; --i)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], p[i]);
@@ -517,15 +534,15 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   e = edges->next;
   TEdge* eHighest = e;
   do {
-    ReInitEdge(e, e->next->savedBot, polyType);
+    ReInitEdge(e, e->next->x, e->next->y, polyType);
     if(  e->ytop < eHighest->ytop ) eHighest = e;
     e = e->next;
   } while( e != edges );
 
   TDoublePoint nextPt;
-  if ( e->next->nextAtTop ) nextPt = e->next->savedBot;
-  else nextPt = DoublePoint(e->next->xtop, e->next->ytop);
-  ReInitEdge(e, nextPt, polyType);
+  if ( e->next->nextAtTop )
+    ReInitEdge(e, e->next->x, e->next->y, polyType); else
+    ReInitEdge(e, e->next->xtop, e->next->ytop, polyType);
   if ( e->ytop < eHighest->ytop ) eHighest = e;
 
   //make sure eHighest is positioned so the following loop works safely ...
@@ -568,8 +585,8 @@ bool ClipperBase::Reset()
     TEdge* e = lm->leftBound;
     while( e )
     {
-      e->xbot = e->savedBot.X;
-      e->ybot = e->savedBot.Y;
+      e->xbot = e->x;
+      e->ybot = e->y;
       e->side = esLeft;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -577,8 +594,8 @@ bool ClipperBase::Reset()
     e = lm->rightBound;
     while( e )
     {
-      e->xbot = e->savedBot.X;
-      e->ybot = e->savedBot.Y;
+      e->xbot = e->x;
+      e->ybot = e->y;
       e->side = esRight;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -1265,8 +1282,8 @@ bool Clipper::Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
         //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
       else if //check if minima **
-        ( (std::fabs(Node1->edge2->savedBot.Y - Node1->pt.Y) < slope_precision  ||
-        std::fabs(Node2->edge2->savedBot.Y - Node2->pt.Y) < slope_precision ) &&
+        ( (std::fabs(Node1->edge2->y - Node1->pt.Y) < slope_precision  ||
+        std::fabs(Node2->edge2->y - Node2->pt.Y) < slope_precision ) &&
         (Node1->edge2->next == Node2->edge2 || Node1->edge2->prev == Node2->edge2) )
       {
         if ( Node1->edge1->dx < 0 ) return Node1->edge2->dx > Node2->edge2->dx;

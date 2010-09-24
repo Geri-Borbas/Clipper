@@ -56,6 +56,8 @@ typedef std::vector< TPolygon > TPolyPolygon;
 TDoublePoint DoublePoint(const double &X, const double &Y);
 
 struct TEdge {
+  double x;
+  double y;
   double xbot;
   double ybot;
   double xtop;
@@ -76,7 +78,6 @@ struct TEdge {
   TEdge *prevInAEL;
   TEdge *nextInSEL;
   TEdge *prevInSEL;
-  TDoublePoint savedBot;
 };
 
 struct TIntersectNode {

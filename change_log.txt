@@ -2,7 +2,9 @@
 Clipper Change Log
 ============================================================
 
-2.52 - 18 September 2010
+2.52 - 24 September 2010
+* Revert: Tolerance in SlopesEqual() function reverted as some 
+          users found the sub-pixel 'smoothing' unacceptable.
 * Update: Minor code tidy. 
 
 2.5 - 10 September 2010
