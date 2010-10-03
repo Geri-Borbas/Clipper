@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.52                                                            *
-* Date      :  18 September 2010                                               *
+* Version   :  2.53                                                            *
+* Date      :  4 October 2010                                                  *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -407,7 +407,7 @@ void ClipperBase::InsertLocalMinima(TLocalMinima *newLm)
   {
     TLocalMinima* tmpLm = m_localMinimaList;
     while( tmpLm->nextLm  && ( newLm->Y < tmpLm->nextLm->Y ) )
-    tmpLm = tmpLm->nextLm;
+      tmpLm = tmpLm->nextLm;
     newLm->nextLm = tmpLm->nextLm;
     tmpLm->nextLm = newLm;
   }
@@ -1680,7 +1680,7 @@ void FixupSolutionColinears(PolyPtList &list, int idx){
       pp = pp->next;
       ptDeleted = false;
     }
-  } while (pp != list[idx] && !ptDeleted);
+  } while (ptDeleted || pp != list[idx]);
 }
 //------------------------------------------------------------------------------
 
@@ -1870,7 +1870,7 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
   AddPolyPt( e1, pt );
   e2->outIdx = e1->outIdx;
 
-  if( !IsHorizontal( *e2 ) && ( e1->dx > e2->dx ) )
+  if( IsHorizontal( *e2 ) || ( e1->dx > e2->dx ) )
   {
     e1->side = esLeft;
     e2->side = esRight;
