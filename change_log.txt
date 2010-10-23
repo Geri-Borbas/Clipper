@@ -2,6 +2,13 @@
 Clipper Change Log
 ============================================================
 
+2.6 - 23 October 2010
+* Bugfix: A couple of obscure bugs fixed.
+
+2.522 - 15 October 2010
+* Added C# translation (thanks to Olivier Lejeune) and 
+  a link to Ruby bindings (thanks to Mike Owens).
+
 2.521 - 8 October 2010
 * Bugfix: Minor bug in the cleaning up of empty polygon 
           results (affected C++ code only).

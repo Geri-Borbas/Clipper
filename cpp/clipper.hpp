@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.53                                                            *
-* Date      :  4 October 2010                                                  *
+* Version   :  2.6                                                             *
+* Date      :  20 October 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -44,16 +44,20 @@ typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
 typedef enum { ptSubject, ptClip } TPolyType;
 typedef enum { pftEvenOdd, pftNonZero} TPolyFillType;
 
-//used internally ...
-typedef enum { esLeft, esRight } TEdgeSide;
-typedef unsigned TIntersectProtects;
-typedef enum { sFalse, sTrue, sUndefined} TriState;
-
 struct TDoublePoint { double X; double Y; };
+struct TDoubleRect { double left; double top; double right; double bottom; };
 typedef std::vector< TDoublePoint > TPolygon;
 typedef std::vector< TPolygon > TPolyPolygon;
 
 TDoublePoint DoublePoint(const double &X, const double &Y);
+TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta);
+double PolygonArea(const TPolygon &poly);
+TDoubleRect GetBounds(const TPolygon &poly);
+
+//used internally ...
+typedef enum { esLeft, esRight } TEdgeSide;
+typedef unsigned TIntersectProtects;
+typedef enum { sFalse, sTrue, sPending, sUndefined} THoleState;
 
 struct TEdge {
   double x;
@@ -104,7 +108,7 @@ struct TPolyPt {
   TDoublePoint pt;
   TPolyPt *next;
   TPolyPt *prev;
-  TriState isHole;
+  THoleState isHole;
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
@@ -120,6 +124,7 @@ public:
   void AddPolygon(const TPolygon &pg, TPolyType polyType);
   void AddPolyPolygon( const TPolyPolygon &ppg, TPolyType polyType);
   virtual void Clear();
+  TDoubleRect GetBounds();
 protected:
   void DisposeLocalMinimaList();
   void InsertLocalMinima(TLocalMinima *newLm);
@@ -138,16 +143,15 @@ public:
   Clipper();
   ~Clipper();
   bool Execute(TClipType clipType,
-    TPolyPolygon &solution,
-    TPolyFillType subjFillType = pftEvenOdd,
-    TPolyFillType clipFillType = pftEvenOdd);
-  //The ForceOrientation property is only useful when operating on simple
-  //polygons. It ensures that the simple polygons that result from a
+  TPolyPolygon &solution,
+  TPolyFillType subjFillType = pftEvenOdd,
+  TPolyFillType clipFillType = pftEvenOdd);
+  //The ForceOrientation property ensures that polygons that result from a
   //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
   //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
   //polygons returned in the solution will have undefined orientation.<br>
-  //The only disadvantage in setting ForceOrientation = true is it will result
-  //in a very minor penalty (~10%) in execution speed. (Default == true)
+  //Setting ForceOrientation = true results in a minor penalty (~10%) in
+  //execution speed. (Default == true)
   bool ForceOrientation();
   void ForceOrientation(bool value);
 private:
@@ -162,6 +166,8 @@ private:
   TPolyFillType     m_ClipFillType;
   TPolyFillType     m_SubjFillType;
   double            m_IntersectTolerance;
+  bool              m_HoleStatesPending;
+  void UpdateHoleStates();
   void DisposeScanbeamList();
   void SetWindingDelta(TEdge *edge);
   void SetWindingCount(TEdge *edge);
