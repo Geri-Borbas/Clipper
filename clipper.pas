@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  2.6                                                             *
-* Date      :  22 October 2010                                                 *
+* Date      :  24 October 2010                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -239,10 +239,8 @@ type
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
-
-  //PolygonArea()
-  //1. this function is only useful for polygons that don't self-intersect.
-  //2. negative results indicate polygons with counter-clockwise orientations.
+  //PolygonArea is only useful when polygons don't self-intersect. Negative
+  //results indicate polygons with counter-clockwise orientations.
   function PolygonArea(const poly: TArrayOfFloatPoint): double; overload;
   function PolygonArea(const poly: TArrayOfDoublePoint): double; overload;
   function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
@@ -457,8 +455,9 @@ var
   r: TFloatRect;
   c: TClipper;
 begin
-  //a positive delta will offset each polygon edge towards its left, and
-  //a negative delta will offset each polygon edge towards its right.
+  //a positive delta will offset each polygon edge towards its left -
+  //therefore polygons orientated clockwise will expand. Negative deltas
+  //will offset polygon edge towards their right.
 
   //USE THIS FUNCTION WITH CAUTION. VERY OCCASIONALLY HOLES AREN'T PROPERLY
   //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: work-in-progress.)
@@ -492,9 +491,10 @@ begin
     result[j][highI*2+1].X := pts[j][highI].X -delta *normals[0].X;
     result[j][highI*2+1].Y := pts[j][highI].Y -delta *normals[0].Y;
 
-    //round any angles > 180 deg ...
-    if (normals[highI].X*normals[0].Y -
-      normals[0].X*normals[highI].Y) *delta < -0.1 then
+    //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
+    //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
+    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta < 0) and
+      ((normals[0].X*normals[highI].X+normals[0].Y*normals[highI].Y) < 0.985) then
     begin
       a1 := ArcTan2(normals[highI].Y, normals[highI].X);
       a2 := ArcTan2(normals[0].Y, normals[0].X);
@@ -504,8 +504,8 @@ begin
       result[j] := InsertPoints(result[j],arc,highI*2+1);
     end;
     for i := highI downto 1 do
-      if (normals[i-1].X*normals[i].Y -
-        normals[i].X*normals[i-1].Y) *delta < -0.1 then
+      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta < 0) and
+         ((normals[i].X*normals[i-1].X+normals[i].Y*normals[i-1].Y) < 0.985) then
       begin
         a1 := ArcTan2(normals[i-1].Y, normals[i-1].X);
         a2 := ArcTan2(normals[i].Y, normals[i].X);
@@ -526,6 +526,7 @@ begin
     end else
     begin
       r := c.GetBounds;
+      //reuse the 'arc' variable as an outer clipping rectangle
       setlength(arc, 4);
       arc[0] := DoublePoint(r.left-10, r.top-10);
       arc[1] := DoublePoint(r.right+10, r.top-10);
@@ -533,7 +534,7 @@ begin
       arc[3] := DoublePoint(r.left-10, r.bottom+10);
       c.AddPolygon(arc, ptSubject);
       c.Execute(ctUnion, result, pftNonZero, pftNonZero);
-      //finally delete the outer frame ...
+      //delete the outer rectangle ...
       highI := high(result);
       for i := 1 to highI do result[i-1] := result[i];
       setlength(result, highI);

@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  2.6                                                             *
-* Date      :  22 October 2010                                                 *
+* Date      :  24 October 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -171,8 +171,10 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
     result[j][len*2 -1].X = pts[j][len-1].X - delta *normals[0].X;
     result[j][len*2 -1].Y = pts[j][len-1].Y - delta *normals[0].Y;
 
-    //round any convex corners ...
-    if ((normals[len-1].X *normals[0].Y - normals[0].X *normals[len-1].Y) *delta < 0)
+    //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
+    //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
+    if ((normals[len-1].X *normals[0].Y - normals[0].X *normals[len-1].Y) *delta < 0 &&
+    (normals[0].X *normals[len-1].X + normals[0].Y *normals[len-1].Y) < 0.985)
     {
       double a1 = atan2(normals[len-1].Y, normals[len-1].X);
       double a2 = atan2(normals[0].Y, normals[0].X);
@@ -183,7 +185,8 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
       result[j].insert(it, arc.begin(), arc.end());
     }
     for (int i = len-1; i > 0; --i)
-      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta < 0)
+      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta < 0 &&
+      (normals[i].X*normals[i-1].X + normals[i].Y*normals[i-1].Y) < 0.985)
       {
         double a1 = atan2(normals[i-1].Y, normals[i-1].X);
         double a2 = atan2(normals[i].Y, normals[i].X);

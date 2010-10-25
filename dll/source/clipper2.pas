@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.52                                                            *
-* Date      :  18 September 2010                                               *
+* Version   :  2.6                                                             *
+* Date      :  24 October 2010                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -53,6 +53,7 @@ type
   TFloatPoint = record X, Y: TFloat; end;
   TArrayOfFloatPoint = array of TFloatPoint;
   TArrayOfArrayOfFloatPoint = array of TArrayOfFloatPoint;
+  TFloatRect = record left, top, right, bottom: TFloat; end;
 {$ENDIF}
   PDoublePoint = ^TDoublePoint;
   TDoublePoint = record X, Y: double; end;
@@ -61,6 +62,8 @@ type
 
   PEdge = ^TEdge;
   TEdge = record
+    x: double;
+    y: double;
     xbot: double;
     ybot: double;
     xtop: double;
@@ -81,7 +84,6 @@ type
     prevInAEL: PEdge;
     nextInSEL: PEdge;
     prevInSEL: PEdge;
-    savedBot: TDoublePoint;
   end;
 
   PEdgeArray = ^TEdgeArray;
@@ -110,14 +112,14 @@ type
     nextSb: PScanbeam;
   end;
 
-  TriState = (sFalse, sTrue, sUndefined);
+  THoleState = (sFalse, sTrue, sPending, sUndefined);
 
   PPolyPt = ^TPolyPt;
   TPolyPt = record
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: TriState; //See TClipper ForceOrientation property
+    isHole: THoleState; //See TClipper ForceOrientation property
   end;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
@@ -148,6 +150,7 @@ type
     //Clear: If multiple clipping operations are to be performed on different
     //polygon sets, then Clear circumvents the need to recreate Clipper objects.
     procedure Clear; virtual;
+    function GetBounds: TFloatRect;
   end;
 
   TClipper = class(TClipperBase)
@@ -163,6 +166,7 @@ type
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
+    fHoleStatesPending: boolean;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -174,6 +178,7 @@ type
     function IsNonZeroFillType(edge: PEdge): boolean;
     function IsNonZeroAltFillType(edge: PEdge): boolean;
     procedure InsertLocalMinimaIntoAEL(const botY: double);
+    procedure UpdateHoleStates;
     procedure AddEdgeToSEL(edge: PEdge);
     procedure CopyAELToSEL;
     function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
@@ -223,20 +228,28 @@ type
     constructor Create; override;
     destructor Destroy; override;
 
-    procedure Clear; override;
-
-    //The ForceOrientation property is only useful when operating on simple
-    //polygons. It ensures that the simple polygons that result from a
+    //The ForceOrientation property ensures that polygons that result from a
     //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
     //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
     //polygons returned in the solution will have undefined orientation.<br>
-    //The disadvantage in setting ForceOrientation = true is it will result
-    //in a very minor penalty (~10%) in execution speed. (Default == true)
+    //Setting ForceOrientation = true results in a minor penalty (~10%) in
+    //execution speed. (Default == true)
     property ForceOrientation: boolean read
       fForceOrientation write fForceOrientation;
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
+  //PolygonArea is only useful when polygons don't self-intersect. Negative
+  //results indicate polygons with counter-clockwise orientations.
+  function PolygonArea(const poly: TArrayOfFloatPoint): double; overload;
+  function PolygonArea(const poly: TArrayOfDoublePoint): double; overload;
+  function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
+    const delta: double): TArrayOfArrayOfDoublePoint; overload;
+  function OffsetPolygons(const pts: TArrayOfArrayOfFloatPoint;
+    const delta: double): TArrayOfArrayOfFloatPoint; overload;
+
+  function MakeArrayOfDoublePoint(const a: TArrayOfFloatPoint): TArrayOfDoublePoint; overload;
+  function MakeArrayOfFloatPoint(const a: TArrayOfDoublePoint): TArrayOfFloatPoint; overload;
 
 implementation
 
@@ -244,7 +257,7 @@ type
   TDirection = (dRightToLeft, dLeftToRight);
 
 const
-  //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
+  //infinite: used to define inverse slope (dx/dy) of horizontal edges
   infinite       : double = -3.4e+38;
   almost_infinite: double = -3.39e+38;
   //tolerance: is needed because vertices are floating point values and any
@@ -260,14 +273,16 @@ const
   //and hence ignored. This circumvents edges having indeterminate slope.
   precision: double = 1.0e-6;
   slope_precision: double = 1.0e-3;
-
+  nullRect: TFloatRect =(left:0;top:0;right:0;bottom:0);
+  
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
-  rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam: Broken AEL order';
+  rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam error';
   rsAppendPolygon = 'AppendPolygon error';
   rsIntersection = 'Intersection error';
+
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
@@ -279,6 +294,274 @@ begin
 end;
 //------------------------------------------------------------------------------
 {$ENDIF}
+
+function PolygonArea(const poly: TArrayOfFloatPoint): double;
+var
+  i, highI: integer;
+begin
+  result := 0;
+  highI := high(poly);
+  if highI < 2 then exit;
+  for i :=0 to highI -1 do
+    result := result + (poly[i].X +poly[i+1].X) *(poly[i].Y -poly[i+1].Y);
+  result := result + (poly[highI].X +poly[0].X) *(poly[highI].Y -poly[0].Y);
+  result := result / 2;
+end;
+//------------------------------------------------------------------------------
+
+function PolygonArea(const poly: TArrayOfDoublePoint): double;
+var
+  i, highI: integer;
+begin
+  result := 0;
+  highI := high(poly);
+  if highI < 2 then exit;
+  for i :=0 to highI -1 do
+    result := result + (poly[i].X +poly[i+1].X) *(poly[i].Y -poly[i+1].Y);
+  result := result + (poly[highI].X +poly[0].X) *(poly[highI].Y -poly[0].Y);
+  result := result / 2;
+end;
+//------------------------------------------------------------------------------
+
+function GetUnitNormal(const pt1, pt2: TDoublePoint): TDoublePoint;
+var
+  dx, dy, f: single;
+begin
+  dx := (pt2.X - pt1.X);
+  dy := (pt2.Y - pt1.Y);
+
+  if (dx = 0) and (dy = 0) then
+  begin
+    result := DoublePoint(0,0);
+  end else
+  begin
+    f := 1 / Hypot(dx, dy);
+    dx := dx * f;
+    dy := dy * f;
+  end;
+  Result.X := dy;
+  Result.Y := -dx;
+end;
+//------------------------------------------------------------------------------
+
+procedure SinCos(const Theta, Radius : TFloat; out Sin, Cos: double);
+var
+  S, C: Extended;
+begin
+  Math.SinCos(Theta, S, C);
+  Sin := S * Radius;
+  Cos := C * Radius;
+end;
+//------------------------------------------------------------------------------
+
+function BuildArc(const pt: TDoublePoint;
+  a1, a2, r: single): TArrayOfDoublePoint; overload;
+const
+  MINSTEPS = 6;
+var
+  I, N: Integer;
+  a, da, dx, dy: double;
+  Steps: Integer;
+begin
+  Steps := Max(MINSTEPS, Round(Sqrt(Abs(r)) * Abs(a2 - a1)));
+  SetLength(Result, Steps);
+  N := Steps - 1;
+  da := (a2 - a1) / N;
+  a := a1;
+  for I := 0 to N do
+  begin
+    SinCos(a, r, dy, dx);
+    Result[I].X := pt.X + dx;
+    Result[I].Y := pt.Y + dy;
+    a := a + da;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function MakeArrayOfDoublePoint(const a: TArrayOfFloatPoint): TArrayOfDoublePoint;
+var
+  i, len: integer;
+begin
+  len := length(a);
+  setlength(result, len);
+  for i := 0 to len -1 do
+  begin
+    result[i].X := a[i].X;
+    result[i].Y := a[i].Y;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function MakeArrayOfFloatPoint(const a: TArrayOfDoublePoint): TArrayOfFloatPoint;
+var
+  i, len: integer;
+begin
+  len := length(a);
+  setlength(result, len);
+  for i := 0 to len -1 do
+  begin
+    result[i].X := a[i].X;
+    result[i].Y := a[i].Y;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function GetBounds(const pts: TArrayOfDoublePoint): TFloatRect;
+var
+  i: integer;
+begin
+  if not assigned(pts) then
+    result := nullRect
+  else
+  begin
+    result.Left := pts[0].X; result.Top := pts[0].Y;
+    result.Right := pts[0].X; result.Bottom := pts[0].Y;
+    for i := 1 to high(pts) do
+    begin
+      if pts[i].X < result.Left then result.Left := pts[i].X
+      else if pts[i].X > result.Right then result.Right := pts[i].X;
+      if pts[i].Y < result.Top then result.Top := pts[i].Y
+      else if pts[i].Y > result.Bottom then result.Bottom := pts[i].Y;
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function InsertPoints(const existingPts, newPts:
+  TArrayOfDoublePoint; position: integer): TArrayOfDoublePoint; overload;
+var
+  lenE, lenN: integer;
+begin
+  result := existingPts;
+  lenE := length(existingPts);
+  lenN := length(newPts);
+  if lenN = 0 then exit;
+  if position < 0 then position := 0
+  else if position > lenE then position := lenE;
+  setlength(result, lenE + lenN);
+  Move(result[position],
+    result[position+lenN],(lenE-position)*sizeof(TDoublePoint));
+  Move(newPts[0], result[position], lenN*sizeof(TDoublePoint));
+end;
+//------------------------------------------------------------------------------
+
+function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
+  const delta: double): TArrayOfArrayOfDoublePoint;
+var
+  j, i, highI: integer;
+  normals: TArrayOfDoublePoint;
+  a1,a2: double;
+  arc: TArrayOfDoublePoint;
+  r: TFloatRect;
+  c: TClipper;
+begin
+  //a positive delta will offset each polygon edge towards its left -
+  //therefore polygons orientated clockwise will expand. Negative deltas
+  //will offset polygon edge towards their right.
+
+  //USE THIS FUNCTION WITH CAUTION. VERY OCCASIONALLY HOLES AREN'T PROPERLY
+  //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: work-in-progress.)
+
+  setLength(result, length(pts));
+  for j := 0 to high(pts) do
+  begin
+    highI := high(pts[j]);
+    if highI < 0 then continue;
+    setLength(normals, highI+1);
+    normals[0] := GetUnitNormal(pts[j][highI], pts[j][0]);
+    for i := 1 to highI do
+      normals[i] := GetUnitNormal(pts[j][i-1], pts[j][i]);
+
+    //to minimize artefacts when shrinking, strip out polygons where
+    //abs(delta) is larger than half its diameter ...
+    if (delta < 0) then with GetBounds(pts[j]) do
+      if (-delta*2 > (right - left)) or (-delta*2 > (bottom - top)) then
+        highI := 0;
+
+    setLength(result[j], (highI+1)*2);
+    for i := 0 to highI-1 do
+    begin
+      result[j][i*2].X := pts[j][i].X -delta *normals[i].X;
+      result[j][i*2].Y := pts[j][i].Y -delta *normals[i].Y;
+      result[j][i*2+1].X := pts[j][i].X -delta *normals[i+1].X;
+      result[j][i*2+1].Y := pts[j][i].Y -delta *normals[i+1].Y;
+    end;
+    result[j][highI*2].X := pts[j][highI].X -delta *normals[highI].X;
+    result[j][highI*2].Y := pts[j][highI].Y -delta *normals[highI].Y;
+    result[j][highI*2+1].X := pts[j][highI].X -delta *normals[0].X;
+    result[j][highI*2+1].Y := pts[j][highI].Y -delta *normals[0].Y;
+
+    //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
+    //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
+    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta < 0) and
+      ((normals[0].X*normals[highI].X+normals[0].Y*normals[highI].Y) < 0.985) then
+    begin
+      a1 := ArcTan2(normals[highI].Y, normals[highI].X);
+      a2 := ArcTan2(normals[0].Y, normals[0].X);
+      if (delta < 0) and (a2 < a1) then a2 := a2 + pi*2
+      else if (delta > 0) and (a2 > a1) then a2 := a2 - pi*2;
+      arc := BuildArc(pts[j][highI],a1,a2,-delta);
+      result[j] := InsertPoints(result[j],arc,highI*2+1);
+    end;
+    for i := highI downto 1 do
+      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta < 0) and
+         ((normals[i].X*normals[i-1].X+normals[i].Y*normals[i-1].Y) < 0.985) then
+      begin
+        a1 := ArcTan2(normals[i-1].Y, normals[i-1].X);
+        a2 := ArcTan2(normals[i].Y, normals[i].X);
+        if (delta < 0) and (a2 < a1) then a2 := a2 + pi*2
+        else if (delta > 0) and (a2 > a1) then a2 := a2 - pi*2;
+        arc := BuildArc(pts[j][i-1],a1,a2,-delta);
+        result[j] := InsertPoints(result[j],arc,(i-1)*2+1);
+      end;
+  end;
+
+  //finally, clean up untidy corners ...
+  c := TClipper.Create;
+  try
+    c.AddPolyPolygon(result, ptSubject);
+    if delta > 0 then
+    begin
+      c.Execute(ctUnion, result, pftNonZero, pftNonZero);
+    end else
+    begin
+      r := c.GetBounds;
+      //reuse the 'arc' variable as an outer clipping rectangle
+      setlength(arc, 4);
+      arc[0] := DoublePoint(r.left-10, r.top-10);
+      arc[1] := DoublePoint(r.right+10, r.top-10);
+      arc[2] := DoublePoint(r.right+10, r.bottom+10);
+      arc[3] := DoublePoint(r.left-10, r.bottom+10);
+      c.AddPolygon(arc, ptSubject);
+      c.Execute(ctUnion, result, pftNonZero, pftNonZero);
+      //delete the outer rectangle ...
+      highI := high(result);
+      for i := 1 to highI do result[i-1] := result[i];
+      setlength(result, highI);
+    end;
+  finally
+    c.free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function OffsetPolygons(const pts: TArrayOfArrayOfFloatPoint;
+  const delta: double): TArrayOfArrayOfFloatPoint;
+var
+  i, len: integer;
+  dblPts: TArrayOfArrayOfDoublePoint;
+begin
+  len := length(pts);
+  setlength(dblPts, len);
+  for i := 0 to len -1 do
+    dblPts[i] := MakeArrayOfDoublePoint(pts[i]);
+  dblPts := OffsetPolygons(dblPts, delta);
+  len := length(dblPts);
+  setlength(result, len);
+  for i := 0 to len -1 do
+    Result[i] := MakeArrayOfFloatPoint(dblPts[i]);
+end;
+//------------------------------------------------------------------------------
 
 function DoublePoint(const X, Y: double): TDoublePoint;
 begin
@@ -317,9 +600,10 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function RoundToTolerance(const number: double): double;
+function RoundToTolerance(const pt: TDoublePoint): TDoublePoint;
 begin
-  Result := Round(number / precision) * precision;
+  Result.X := Round(pt.X / precision) * precision;
+  Result.Y := Round(pt.Y / precision) * precision;
 end;
 //------------------------------------------------------------------------------
 
@@ -327,6 +611,13 @@ function PointsEqual(const pt1, pt2: TDoublePoint): boolean; overload;
 begin
   result := (abs(pt1.X-pt2.X) < precision + tolerance) and
     (abs(pt1.Y-pt2.Y) < precision + tolerance);
+end;
+//------------------------------------------------------------------------------
+
+function PointsEqual(const pt1x, pt1y, pt2x, pt2y: double): boolean; overload;
+begin
+  result := (abs(pt1x-pt2x) < precision + tolerance) and
+    (abs(pt1y-pt2y) < precision + tolerance);
 end;
 //------------------------------------------------------------------------------
 
@@ -395,18 +686,18 @@ procedure SetDx(e: PEdge);
 var
   dx, dy: double;
 begin
-  dx := abs(e.savedBot.X - e.next.savedBot.X);
-  dy := abs(e.savedBot.Y - e.next.savedBot.Y);
+  dx := abs(e.x - e.next.x);
+  dy := abs(e.y - e.next.y);
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
   begin
     e.dx := infinite;
-    if (e.savedBot.Y <> e.next.savedBot.Y) then
-      e.savedBot.Y := e.next.savedBot.Y;
+    if (e.y <> e.next.y) then
+      e.y := e.next.y;
   end else e.dx :=
-    (e.savedBot.X - e.next.savedBot.X)/(e.savedBot.Y - e.next.savedBot.Y);
+    (e.x - e.next.x)/(e.y - e.next.y);
 end;
 //------------------------------------------------------------------------------
 
@@ -439,7 +730,7 @@ end;
 function TopX(edge: PEdge; const currentY: double): double;
 begin
   if currentY = edge.ytop then result := edge.xtop
-  else result := edge.savedBot.X + edge.dx*(currentY - edge.savedBot.Y);
+  else result := edge.x + edge.dx*(currentY - edge.y);
 end;
 //------------------------------------------------------------------------------
 
@@ -453,8 +744,8 @@ function SlopesEqual(e1, e2: PEdge): boolean;
 begin
   if IsHorizontal(e1) then result := IsHorizontal(e2)
   else if IsHorizontal(e2) then result := false
-  else result := abs((e1.ytop - e1.savedBot.Y)*(e2.xtop - e2.savedBot.X) -
-    (e1.xtop - e1.savedBot.X)*(e2.ytop - e2.savedBot.Y)) < slope_precision;
+  else result := abs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
+    (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
 end;
 //---------------------------------------------------------------------------
 
@@ -462,21 +753,26 @@ function IntersectPoint(edge1, edge2: PEdge; out ip: TDoublePoint): boolean;
 var
   b1,b2: double;
 begin
+  if (edge1.dx = edge2.dx) then
+  begin
+    result := false;
+    exit;
+  end;
   if edge1.dx = 0 then
   begin
-    ip.X := edge1.savedBot.X;
-    with edge2^ do b2 := savedBot.Y - savedBot.X/dx;
+    ip.X := edge1.x;
+    with edge2^ do b2 := y - x/dx;
     ip.Y := ip.X/edge2.dx + b2;
   end
   else if edge2.dx = 0 then
   begin
-    ip.X := edge2.savedBot.X;
-    with edge1^ do b1 := savedBot.Y - savedBot.X/dx;
+    ip.X := edge2.x;
+    with edge1^ do b1 := y - x/dx;
     ip.Y := ip.X/edge1.dx + b1;
   end else
   begin
-    with edge1^ do b1 := savedBot.X - savedBot.Y *dx;
-    with edge2^ do b2 := savedBot.X - savedBot.Y *dx;
+    with edge1^ do b1 := x - y *dx;
+    with edge2^ do b2 := x - y *dx;
     ip.Y := (b2-b1)/(edge1.dx - edge2.dx);
     ip.X := edge1.dx * ip.Y + b1;
   end;
@@ -484,36 +780,30 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetUnitNormal(const pt1, pt2: TDoublePoint): TDoublePoint;
+function IsClockwise(pt: PPolyPt): boolean;
 var
-  dx, dy, f: single;
+  area: double;
+  startPt: PPolyPt;
 begin
-  dx := (pt2.X - pt1.X);
-  dy := (pt2.Y - pt1.Y);
-
-  if (dx = 0) and (dy = 0) then
-  begin
-    result := DoublePoint(0,0);
-  end else
-  begin
-    f := 1 / Hypot(dx, dy);
-    dx := dx * f;
-    dy := dy * f;
-  end;
-  Result.X := dy;
-  Result.Y := -dx;
+  area := 0;
+  startPt := pt;
+  repeat
+    area := area + (pt.pt.X +pt.next.pt.X) * (pt.pt.Y -pt.next.pt.Y);
+    pt := pt.next;
+  until pt = startPt;
+  //area := area /2;
+  result := area >= 0;
 end;
 //------------------------------------------------------------------------------
 
 function ValidateOrientation(pt: PPolyPt): boolean;
 var
-  ptStart, bottomPt, ptPrev, ptNext: PPolyPt;
-  N1, N2: TDoublePoint;
-  IsClockwise: boolean;
+  ptStart, bottomPt: PPolyPt;
 begin
-  //compares the orientation (clockwise vs counter-clockwise) of a *simple*
-  //polygon with its hole status (ie test whether an inner or outer polygon).
-  //nb: complex polygons have indeterminate orientations.
+  //check that orientation matches the hole status ...
+
+  //first, find the hole state of the bottom-most point (because
+  //the hole state of other points is not reliable) ...
   bottomPt := pt;
   ptStart := pt;
   pt := pt.next;
@@ -525,18 +815,19 @@ begin
     pt := pt.next;
   end;
 
-  ptPrev := bottomPt.prev;
-  ptNext := bottomPt.next;
-  N1 := GetUnitNormal(ptPrev.pt, bottomPt.pt);
-  N2 := GetUnitNormal(bottomPt.pt, ptNext.pt);
-  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
-  IsClockwise := (N1.X * N2.Y - N2.X * N1.Y) > 0; //ie angle > 180deg.
+//  alternative method to derive orientation (may be marginally quicker)
+//  ptPrev := bottomPt.prev;
+//  ptNext := bottomPt.next;
+//  N1 := GetUnitNormal(ptPrev.pt, bottomPt.pt);
+//  N2 := GetUnitNormal(bottomPt.pt, ptNext.pt);
+//  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
+//  IsClockwise := (N1.X * N2.Y - N2.X * N1.Y) > 0; //ie angle > 180deg.
 
   while (bottomPt.isHole = sUndefined) and
     (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
   while (bottomPt.isHole = sUndefined) and
     (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
-  result := IsClockwise <> (bottomPt.isHole = sTrue);
+  result := IsClockwise(pt) <> (bottomPt.isHole = sTrue);
 end;
 
 //------------------------------------------------------------------------------
@@ -576,31 +867,32 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   begin
     //set up double-link-list linkage and initialize savedBot & dx only
     fillChar(e^, sizeof(TEdge), 0);
-    e.savedBot := pt;
+    e.x := pt.X;
+    e.y := pt.Y;
     e.next := eNext;
     e.prev := ePrev;
     SetDx(e);
   end;
   //----------------------------------------------------------------------
 
-  procedure ReInitEdge(e: PEdge; const nextPt: TDoublePoint);
+  procedure ReInitEdge(e: PEdge; const nextX, nextY: double);
   begin
-    if e.savedBot.Y > nextPt.Y then
+    if e.y > nextY then
     begin
-      e.xbot := e.savedBot.X;
-      e.ybot := e.savedBot.Y;
-      e.xtop := nextPt.X;
-      e.ytop := nextPt.Y;
+      e.xbot := e.x;
+      e.ybot := e.y;
+      e.xtop := nextX;
+      e.ytop := nextY;
       e.nextAtTop := true;
     end else
     begin
       //reverse top and bottom ...
-      e.xbot := nextPt.X;
-      e.ybot := nextPt.Y;
-      e.xtop := e.savedBot.X;
-      e.ytop := e.savedBot.Y;
-      e.savedBot.X := e.xbot;
-      e.savedBot.Y := e.ybot;
+      e.xbot := nextX;
+      e.ybot := nextY;
+      e.xtop := e.x;
+      e.ytop := e.y;
+      e.x := e.xbot;
+      e.y := e.ybot;
       e.nextAtTop := false;
     end;
     e.polyType := polyType;
@@ -614,17 +906,17 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     else if IsHorizontal(e2) then result := false
     else
       //cross product of dy1/dx1 = dy2/dx2 ...
-      result := abs((e1.savedBot.Y - e1.next.savedBot.Y) *
-        (e2.savedBot.X - e2.next.savedBot.X) -
-        (e1.savedBot.X - e1.next.savedBot.X) *
-        (e2.savedBot.Y - e2.next.savedBot.Y)) < slope_precision;
+      result := abs((e1.y - e1.next.y) *
+        (e2.x - e2.next.x) -
+        (e1.x - e1.next.x) *
+        (e2.y - e2.next.y)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
   function FixupForDupsAndColinear(var e: PEdge; const edges: PEdgeArray): boolean;
   begin
     result := false;
-    while (e.next <> e.prev) and (PointsEqual(e.prev.savedBot, e.savedBot) or
+    while (e.next <> e.prev) and (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) or
       SlopesEqualInternal(e.prev, e)) do
     begin
       result := true;
@@ -632,7 +924,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
       if (e = @edges[0]) then
       begin
         //move the content of e.next to e before removing e.next from DLL ...
-        e.savedBot := e.next.savedBot;
+        e.x := e.next.x;
+        e.y := e.next.y;
         e.next.next.prev := e;
         e.next := e.next.next;
       end else
@@ -654,8 +947,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     //progression of the bounds - ie so their xbots will align with the
     //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
     e.xbot := e.xtop;
-    e.xtop := e.savedBot.X;
-    e.savedBot.X := e.xbot;
+    e.xtop := e.x;
+    e.x := e.xbot;
   end;
   //----------------------------------------------------------------------
 
@@ -694,6 +987,9 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     repeat
       if IsHorizontal(e) then
       begin
+        //nb: proceed through horizontals when approaching from their right,
+        //    but break on horizontal minima if approaching from their left.
+        //    This ensures 'local minima' are always on the left of horizontals.
         if (e.next.ytop < e.ytop) and (e.next.xbot > e.prev.xbot) then break;
         if (e.xtop <> e.prev.xbot) then SwapX(e);
         e.nextInLML := e.prev;
@@ -739,18 +1035,13 @@ var
   i, highI: integer;
   edges: PEdgeArray;
   e, eHighest: PEdge;
-  nextPt: TDoublePoint;
   pg: TArrayOfDoublePoint;
 begin
   {AddPolygon}
 
   highI := high(polygon);
   setlength(pg, highI +1);
-  for i := 0 to highI do
-  begin
-    pg[i].X := RoundToTolerance(polygon[i].X);
-    pg[i].Y := RoundToTolerance(polygon[i].Y);
-  end;
+  for i := 0 to highI do pg[i] := RoundToTolerance(polygon[i]);
 
   while (highI > 1) and PointsEqual(pg[0], pg[highI]) do dec(highI);
   if highI < 2 then exit;
@@ -762,7 +1053,8 @@ begin
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
   //convert 'edges' to a double-linked-list and initialize a few of the vars ...
-  edges[0].savedBot := pg[0];
+  edges[0].x := pg[0].X;
+  edges[0].y := pg[0].Y;
   InitEdge(@edges[highI], @edges[0], @edges[highI-1], pg[highI]);
   for i := highI-1 downto 1 do
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
@@ -794,14 +1086,13 @@ begin
   e := edges[0].next;
   eHighest := e;
   repeat
-    ReInitEdge(e, e.next.savedBot);
+    ReInitEdge(e, e.next.x, e.next.y);
     if e.ytop < eHighest.ytop then eHighest := e;
     e := e.next;
   until e = @edges[0];
   if e.next.nextAtTop then
-    nextPt := e.next.savedBot else
-    nextPt := DoublePoint(e.next.xtop, e.next.ytop);
-  ReInitEdge(e, nextPt);
+    ReInitEdge(e, e.next.x, e.next.y) else
+    ReInitEdge(e, e.next.xtop, e.next.ytop);
   if e.ytop < eHighest.ytop then eHighest := e;
 
   //make sure eHighest is positioned so the following loop works safely ...
@@ -845,6 +1136,48 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function TClipperBase.GetBounds: TFloatRect;
+var
+  e: PEdge;
+  lm: PLocalMinima;
+begin
+  lm := fLocalMinima;
+  if not assigned(lm) then
+  begin
+    result := nullRect;
+    exit;
+  end;
+  result.Left := -infinite;
+  result.Top := -infinite;
+  result.Right := infinite;
+  result.Bottom := infinite;
+  while assigned(lm) do
+  begin
+    if lm.leftBound.y > result.Bottom then result.Bottom := lm.leftBound.y;
+    e := lm.leftBound;
+    while assigned(e.nextInLML) do
+    begin
+      if e.x < result.Left then result.Left := e.x;
+      e := e.nextInLML;
+    end;
+    if e.x < result.Left then result.Left := e.x
+    else if e.xtop < result.Left then result.Left := e.xtop;
+    if e.ytop < result.Top then result.Top := e.ytop;
+
+    e := lm.rightBound;
+    while assigned(e.nextInLML) do
+    begin
+      if e.x > result.Right then result.Right := e.x;
+      e := e.nextInLML;
+    end;
+    if e.x > result.Right then result.Right := e.x;
+    if e.xtop > result.Right then result.Right := e.xtop;
+
+    lm := lm.nextLm;
+  end;
+end;
+//------------------------------------------------------------------------------
+
 function TClipperBase.Reset: boolean;
 var
   e: PEdge;
@@ -863,8 +1196,8 @@ begin
     e := lm.leftBound;
     while assigned(e) do
     begin
-      e.xbot := e.savedBot.X;
-      e.ybot := e.savedBot.Y;
+      e.xbot := e.x;
+      e.ybot := e.y;
       e.side := esLeft;
       e.outIdx := -1;
       e := e.nextInLML;
@@ -872,8 +1205,8 @@ begin
     e := lm.rightBound;
     while assigned(e) do
     begin
-      e.xbot := e.savedBot.X;
-      e.ybot := e.savedBot.Y;
+      e.xbot := e.x;
+      e.ybot := e.y;
       e.side := esRight;
       e.outIdx := -1;
       e := e.nextInLML;
@@ -919,12 +1252,6 @@ destructor TClipper.Destroy;
 begin
   DisposeScanbeamList;
   fPolyPtList.Free;
-  inherited;
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipper.Clear;
-begin
   inherited;
 end;
 //------------------------------------------------------------------------------
@@ -990,13 +1317,18 @@ begin
     fActiveEdges := nil;
     fSortedEdges := nil;
     fClipType := clipType;
+    fHoleStatesPending := false;
     yBot := PopScanbeam;
     repeat
       InsertLocalMinimaIntoAEL(yBot);
+      if fHoleStatesPending then UpdateHoleStates;
       ProcessHorizontals;
+      if fHoleStatesPending then UpdateHoleStates;
       yTop := PopScanbeam;
       ProcessIntersections(yTop);
+      if fHoleStatesPending then UpdateHoleStates;
       ProcessEdgesAtTopOfScanbeam(yTop);
+      if fHoleStatesPending then UpdateHoleStates;
       yBot := yTop;
     until not assigned(fScanbeam);
     result := true;
@@ -1349,6 +1681,36 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipper.UpdateHoleStates;
+var
+  isAHole: boolean;
+  e, e2: PEdge;
+begin
+  //unfortunately this needs to be done in batches after the current operation
+  //in ExecuteInternal has finished. If hole states are calculated at the time
+  //new output polygons are started, we occasionally get the wrong state.
+  fHoleStatesPending := false;
+  e := fActiveEdges;
+  while assigned(e) do
+  begin
+    if (e.outIdx >= 0) and
+      (PPolyPt(fPolyPtList[e.outIdx]).isHole = sPending) then
+    begin
+      isAHole := false;
+      e2 := fActiveEdges;
+      while e2 <> e do
+      begin
+        if (e2.outIdx >= 0) then isAHole := not isAHole;
+        e2 := e2.nextInAEL;
+      end;
+      with PPolyPt(fPolyPtList[e.outIdx])^ do
+        if isAHole then isHole := sTrue else isHole := sFalse;
+    end;
+    e := e.nextInAEL;
+  end;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.AddEdgeToSEL(edge: PEdge);
 begin
   //SEL pointers in PEdge are reused to build a list of horizontal edges.
@@ -1679,7 +2041,13 @@ begin
       AddPolyPt(horzEdge, DoublePoint(horzEdge.xtop, horzEdge.ytop));
     UpdateEdgeIntoAEL(horzEdge);
   end else
+  begin
+    if horzEdge.outIdx >= 0 then
+      IntersectEdges(horzEdge, eMaxPair,
+        DoublePoint(horzEdge.xtop, horzEdge.ybot), [ipLeft,ipRight]);
+    DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -1734,6 +2102,8 @@ begin
         DisposeIntersectNodes;
         BuildIntersectList(topY);
         if not TestIntersections then
+          //try eliminating near duplicate points in the input polygons
+          //eg by adjusting precision ... to say 0.1;
           raise Exception.Create(rsIntersection);
       end;
     end;
@@ -1787,8 +2157,8 @@ begin
         //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
       else if //check if minima **
-        ((abs(Node1.edge2.savedBot.Y - Node1.pt.Y) < slope_precision) or
-        (abs(Node2.edge2.savedBot.Y - Node2.pt.Y) < slope_precision)) and
+        ((abs(Node1.edge2.y - Node1.pt.Y) < slope_precision) or
+        (abs(Node2.edge2.y - Node2.pt.Y) < slope_precision)) and
         ((Node1.edge2.next = Node2.edge2) or (Node1.edge2.prev = Node2.edge2)) then
       begin
         if Node1.edge1.dx < 0 then
@@ -2304,6 +2674,8 @@ begin
 
   //5. Process (non-horizontal) intersections at the top of the scanbeam ...
   e := fActiveEdges;
+  if assigned(e) and (e.nextInAEL = nil) then
+    raise Exception.Create(rsProcessEdgesAtTopOfScanbeam);
   while assigned(e) do
   begin
     if not assigned(e.nextInAEL) then break;
@@ -2330,9 +2702,7 @@ end;
 
 procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
 var
-  e: PEdge;
   pp: PPolyPt;
-  isAHole: boolean;
 begin
   AddPolyPt(e1, pt);
   e2.outIdx := e1.outIdx;
@@ -2350,15 +2720,8 @@ begin
   if fForceOrientation then
   begin
     pp := PPolyPt(fPolyPtList[e1.outIdx]);
-    isAHole := false;
-    e := fActiveEdges;
-    while assigned(e) do
-    begin
-      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - precision) then
-        isAHole := not isAHole;
-      e := e.nextInAEL;
-    end;
-    if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
+    pp.isHole := sPending;
+    fHoleStatesPending := true;
   end;
 end;
 //------------------------------------------------------------------------------

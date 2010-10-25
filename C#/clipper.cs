@@ -39,6 +39,10 @@ namespace Clipper
     {
         public double X { get; set; }
         public double Y { get; set; }
+        public TDoublePoint(double _X = 0, double _Y = 0)
+        {
+            X = _X; Y = _Y;
+        }
     };
 
     public class TDoubleRect
@@ -47,6 +51,10 @@ namespace Clipper
         public double top { get; set; }
         public double right { get; set; }
         public double bottom { get; set; }
+        public TDoubleRect(double _left = 0, double _top = 0, double _right = 0, double _bottom = 0)
+        {
+            left = _left; top = _top; right = _right; bottom = _bottom;
+        }
     };
 
     internal class TEdge
@@ -106,7 +114,7 @@ namespace Clipper
         internal THoleState isHole;
     };
 
-    public class ClipperBase
+    public class TClipperBase
     {
 
         //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
@@ -133,8 +141,6 @@ namespace Clipper
         internal TLocalMinima m_localMinimaList;
         internal TLocalMinima m_CurrentLM;
         internal List<TEdge> m_edges = new List<TEdge>();
-
-        TDoubleRect nullRect = new TDoubleRect {left = 0, top = 0, right = 0, bottom = 0};
 
         internal static bool PointsEqual(TDoublePoint pt1, TDoublePoint pt2)
         {
@@ -381,13 +387,13 @@ namespace Clipper
             } while (true);
         }
 
-        internal ClipperBase() //constructor
+        public TClipperBase() //constructor
         {
             m_localMinimaList = null;
             m_CurrentLM = null;
         }
 
-        ~ClipperBase() //destructor
+        ~TClipperBase() //destructor
         {
             Clear();
         }
@@ -642,23 +648,12 @@ namespace Clipper
             m_CurrentLM = null; 
         }
 
-        internal static TDoublePoint DoublePoint(double _X, double _Y)
-        {
-            return new TDoublePoint { X = _X, Y = _Y };
-        }
-
         protected TDoubleRect GetBounds()
         {
-            TDoubleRect result = new TDoubleRect();
             TLocalMinima lm = m_localMinimaList;
-            if (lm == null)
-            {
-                return nullRect;
-            }
-            result.left = -infinite;
-            result.top = -infinite;
-            result.right = infinite;
-            result.bottom = infinite;
+            if (lm == null) return new TDoubleRect(0, 0, 0, 0);
+            
+            TDoubleRect result = new TDoubleRect(-infinite, -infinite, infinite, infinite);
             while (lm != null)
             {
                 if (lm.leftBound.y > result.bottom) result.bottom = lm.leftBound.y;
@@ -688,8 +683,125 @@ namespace Clipper
 
     }
 
-    public class Clipper : ClipperBase
+    public class TClipper : TClipperBase
     {
+
+        public static TDoubleRect GetBounds(TPolygon poly)
+        {
+            if (poly.Count == 0) return new TDoubleRect(0, 0, 0, 0);
+            
+            TDoubleRect result = new TDoubleRect(poly[0].X, poly[0].Y, poly[0].X, poly[0].Y);
+            for (int i = 1; i < poly.Count; ++i)
+            {
+                if (poly[i].X < result.left) result.left = poly[i].X;
+                else if (poly[i].X > result.right) result.right = poly[i].X;
+                if (poly[i].Y < result.top) result.top = poly[i].Y;
+                else if (poly[i].Y > result.bottom) result.bottom = poly[i].Y;
+            }
+            return result;
+        }
+
+        public static double PolygonArea(TPolygon poly)
+        {
+            int highI = poly.Count - 1;
+            if (highI < 2) return 0;
+            double result = 0;
+            for (int i = 0; i < highI; ++i)
+                result += (poly[i].X + poly[i + 1].X) * (poly[i].Y - poly[i + 1].Y);
+            result += (poly[highI].X + poly[0].X) * (poly[highI].Y - poly[0].Y);
+            result = result / 2;
+            return result;
+        }
+
+        public static TPolyPolygon OffsetPolygons(TPolyPolygon pts, double delta)
+        {
+            //a positive delta will offset each polygon edge towards its left, and
+            //a negative delta will offset each polygon edge towards its right.
+
+            //USE THIS FUNCTION WITH CAUTION. VERY OCCASIONALLY HOLES AREN'T PROPERLY
+            //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: work-in-progress.)
+
+            TPolyPolygon result = new TPolyPolygon();
+            result.Capacity = pts.Count;
+            for (int j = 0; j < pts.Count; ++j)
+            {
+                result.Add(new TPolygon());
+                int len = pts[j].Count;
+                result[j].Capacity = len * 2;
+                if (len == 0) continue;
+
+                TPolygon normals = new TPolygon();
+                normals.Capacity = len;
+                normals.Add(GetUnitNormal(pts[j][len - 1], pts[j][0]));
+                for (int i = 1; i < len; ++i)
+                    normals.Add(GetUnitNormal(pts[j][i - 1], pts[j][i]));
+
+                //to minimize artefacts when shrinking, strip out polygons where
+                //abs(delta) is larger than half its diameter ...
+                if (delta < 0)
+                {
+                    TDoubleRect rec = GetBounds(pts[j]);
+                    if (-delta * 2 > (rec.right - rec.left) || -delta * 2 > (rec.bottom - rec.top)) len = 1;
+                }
+
+                for (int i = 0; i < len - 1; ++i)
+                {
+                    result[j].Add(new TDoublePoint(pts[j][i].X - delta * normals[i].X,
+                          pts[j][i].Y - delta * normals[i].Y));
+                    result[j].Add(new TDoublePoint(pts[j][i].X - delta * normals[i + 1].X,
+                          pts[j][i].Y - delta * normals[i + 1].Y));
+                }
+                result[j].Add(new TDoublePoint(pts[j][len - 1].X - delta * normals[len - 1].X,
+                        pts[j][len - 1].Y - delta * normals[len - 1].Y));
+                result[j].Add(new TDoublePoint(pts[j][len - 1].X - delta * normals[0].X,
+                        pts[j][len - 1].Y - delta * normals[0].Y));
+
+                //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
+                //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
+                if ((normals[len - 1].X * normals[0].Y - normals[0].X * normals[len - 1].Y) * delta < 0 &&
+                  (normals[0].X * normals[len - 1].X + normals[0].Y * normals[len - 1].Y) < 0.985)
+                {
+                    double a1 = Math.Atan2(normals[len - 1].Y, normals[len - 1].X);
+                    double a2 = Math.Atan2(normals[0].Y, normals[0].X);
+                    if (delta < 0 && a2 < a1) a2 = a2 + Math.PI * 2;
+                    else if (delta > 0 && a2 > a1) a2 = a2 - Math.PI * 2;
+                    TPolygon arc = BuildArc(pts[j][len - 1], a1, a2, -delta);
+                    result[j].InsertRange(len * 2 - 1, arc);
+                }
+                for (int i = len - 1; i > 0; --i)
+                    if ((normals[i - 1].X * normals[i].Y - normals[i].X * normals[i - 1].Y) * delta < 0 &&
+                    (normals[i].X * normals[i - 1].X + normals[i].Y * normals[i - 1].Y) < 0.985)
+                    {
+                        double a1 = Math.Atan2(normals[i - 1].Y, normals[i - 1].X);
+                        double a2 = Math.Atan2(normals[i].Y, normals[i].X);
+                        if (delta < 0 && a2 < a1) a2 = a2 + Math.PI * 2;
+                        else if (delta > 0 && a2 > a1) a2 = a2 - Math.PI * 2;
+                        TPolygon arc = BuildArc(pts[j][i - 1], a1, a2, -delta);
+                        result[j].InsertRange((i - 1) * 2 + 1, arc);
+                    }
+            }
+
+            //finally, clean up untidy corners ...
+            TClipper c = new TClipper();
+            c.AddPolyPolygon(result, TPolyType.ptSubject);
+            if (delta > 0)
+                c.Execute(TClipType.ctUnion, result, TPolyFillType.pftNonZero, TPolyFillType.pftNonZero);
+            else
+            {
+                TDoubleRect r = c.GetBounds();
+                TPolygon outer = new TPolygon();
+                outer.Capacity = 4;
+                outer.Add(new TDoublePoint(r.left - 10, r.top - 10));
+                outer.Add(new TDoublePoint(r.right + 10, r.top - 10));
+                outer.Add(new TDoublePoint(r.right + 10, r.bottom + 10));
+                outer.Add(new TDoublePoint(r.left - 10, r.bottom + 10));
+                c.AddPolygon(outer, TPolyType.ptSubject);
+                c.Execute(TClipType.ctUnion, result, TPolyFillType.pftNonZero, TPolyFillType.pftNonZero);
+                result.RemoveAt(0);
+            }
+            return result;
+        }
+
         PolyPtList m_PolyPts;
         TClipType m_ClipType;
         TScanbeam m_Scanbeam;
@@ -703,7 +815,7 @@ namespace Clipper
         double m_IntersectTolerance;
         bool m_HoleStatesPending;
 
-        public Clipper()
+        public TClipper()
         {
             m_Scanbeam = null;
             m_ActiveEdges = null;
@@ -741,30 +853,18 @@ namespace Clipper
             base.AddPolyPolygon(ppg, polyType);
         }
 
-        public static double PolygonArea(TPolygon poly)
-        {
-            int highI = poly.Count - 1;
-            if (highI < 2) return 0;
-            double result = 0;
-            for (int i = 0; i < highI; ++i)
-                result += (poly[i].X + poly[i + 1].X) * (poly[i].Y - poly[i + 1].Y);
-            result += (poly[highI].X + poly[0].X) * (poly[highI].Y - poly[0].Y);
-            result = result / 2;
-            return result;
-        }
-
         private static TDoublePoint GetUnitNormal(TDoublePoint pt1, TDoublePoint pt2)
         {
             double dx = (pt2.X - pt1.X);
             double dy = (pt2.Y - pt1.Y);
             if ((dx == 0) && (dy == 0))
-                return DoublePoint(0, 0);
+                return new TDoublePoint(0, 0);
 
             //double f = 1 *1.0/ hypot( dx , dy );
             double f = 1 * 1.0 / Math.Sqrt(dx * dx + dy * dy);
             dx = dx * f;
             dy = dy * f;
-            return DoublePoint(dy, -dx);
+            return new TDoublePoint(dy, -dx);
         }
 
         internal static bool ValidateOrientation(TPolyPt pt)
@@ -790,92 +890,6 @@ namespace Clipper
             return (IsClockwise(pt) != (bottomPt.isHole == THoleState.sTrue));
         }
 
-        public static TPolyPolygon OffsetPolygons(TPolyPolygon pts, double delta)
-        {
-            //a positive delta will offset each polygon edge towards its left, and
-            //a negative delta will offset each polygon edge towards its right.
-
-            //USE THIS FUNCTION WITH CAUTION. VERY OCCASIONALLY HOLES AREN'T PROPERLY
-            //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: work-in-progress.)
-
-            TPolyPolygon result = new TPolyPolygon();
-            result.Capacity = pts.Count;
-            for (int j = 0; j < pts.Count; ++j)
-            {
-                result.Add(new TPolygon());
-                int len = pts[j].Count;
-                result[j].Capacity = len * 2;
-                if (len == 0) continue;
-
-                TPolygon normals = new TPolygon();
-                normals.Capacity = len;
-                normals.Add(GetUnitNormal(pts[j][len - 1], pts[j][0]));
-                for (int i = 1; i < len; ++i)
-                    normals.Add(GetUnitNormal(pts[j][i - 1], pts[j][i]));
-
-                //to minimize artefacts when shrinking, strip out polygons where
-                //abs(delta) is larger than half its diameter ...
-                if (delta < 0)
-                {
-                    TDoubleRect rec = GetBounds(pts[j]);
-                    if (-delta * 2 > (rec.right - rec.left) || -delta * 2 > (rec.bottom - rec.top)) len = 1;
-                }
-
-                for (int i = 0; i < len - 1; ++i)
-                {
-                    result[j].Add(DoublePoint(pts[j][i].X - delta * normals[i].X,
-                          pts[j][i].Y - delta * normals[i].Y));
-                    result[j].Add(DoublePoint(pts[j][i].X - delta * normals[i + 1].X,
-                          pts[j][i].Y - delta * normals[i + 1].Y));
-                }
-                result[j].Add(DoublePoint(pts[j][len - 1].X - delta * normals[len - 1].X,
-                        pts[j][len - 1].Y - delta * normals[len - 1].Y));
-                result[j].Add(DoublePoint(pts[j][len - 1].X - delta * normals[0].X,
-                        pts[j][len - 1].Y - delta * normals[0].Y));
-
-                //round any convex corners ...
-                if ((normals[len - 1].X * normals[0].Y - normals[0].X * normals[len - 1].Y) * delta < 0)
-                {
-                    double a1 = Math.Atan2(normals[len - 1].Y, normals[len - 1].X);
-                    double a2 = Math.Atan2(normals[0].Y, normals[0].X);
-                    if (delta < 0 && a2 < a1) a2 = a2 + Math.PI * 2;
-                    else if (delta > 0 && a2 > a1) a2 = a2 - Math.PI * 2;
-                    TPolygon arc = BuildArc(pts[j][len - 1], a1, a2, -delta);
-                    result[j].InsertRange(len * 2 - 1, arc);
-                }
-                for (int i = len - 1; i > 0; --i)
-                    if ((normals[i - 1].X * normals[i].Y - normals[i].X * normals[i - 1].Y) * delta < 0)
-                    {
-                        double a1 = Math.Atan2(normals[i - 1].Y, normals[i - 1].X);
-                        double a2 = Math.Atan2(normals[i].Y, normals[i].X);
-                        if (delta < 0 && a2 < a1) a2 = a2 + Math.PI * 2;
-                        else if (delta > 0 && a2 > a1) a2 = a2 - Math.PI * 2;
-                        TPolygon arc = BuildArc(pts[j][i - 1], a1, a2, -delta);
-                        result[j].InsertRange((i - 1) * 2 + 1, arc);
-                    }
-            }
-
-            //finally, clean up untidy corners ...
-            Clipper c = new Clipper();
-            c.AddPolyPolygon(result, TPolyType.ptSubject);
-            if (delta > 0)
-                c.Execute(TClipType.ctUnion, result, TPolyFillType.pftNonZero, TPolyFillType.pftNonZero);
-            else
-            {
-                TDoubleRect r = c. GetBounds();
-                TPolygon outer = new TPolygon();
-                outer.Capacity = 4;
-                outer.Add(DoublePoint(r.left - 10, r.top - 10));
-                outer.Add(DoublePoint(r.right + 10, r.top - 10));
-                outer.Add(DoublePoint(r.right + 10, r.bottom + 10));
-                outer.Add(DoublePoint(r.left - 10, r.bottom + 10));
-                c.AddPolygon(outer, TPolyType.ptSubject);
-                c.Execute(TClipType.ctUnion, result, TPolyFillType.pftNonZero, TPolyFillType.pftNonZero);
-                result.RemoveAt(0);
-            }
-            return result;
-        }
-
         private static TPolygon BuildArc(TDoublePoint pt, double a1, double a2, double r)
         {
             int steps = (int)Math.Max(6, Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1));
@@ -888,26 +902,8 @@ namespace Clipper
             {
                 double dy = Math.Sin(a) * r;
                 double dx = Math.Cos(a) * r;
-                result.Add(DoublePoint(pt.X + dx, pt.Y + dy));
+                result.Add(new TDoublePoint(pt.X + dx, pt.Y + dy));
                 a = a + da;
-            }
-            return result;
-        }
-
-        public static TDoubleRect GetBounds(TPolygon poly)
-        {
-            if (poly.Count == 0)
-            {
-                TDoubleRect rec = new TDoubleRect { left = 0, top = 0, right = 0, bottom = 0 };
-                return rec;
-            }
-            TDoubleRect result = new TDoubleRect { left = poly[0].X, top = poly[0].Y, right = poly[0].X, bottom = poly[0].Y };
-            for (int i = 1; i < poly.Count; ++i)
-            {
-                if (poly[i].X < result.left) result.left = poly[i].X;
-                else if (poly[i].X > result.right) result.right = poly[i].X;
-                if (poly[i].Y < result.top) result.top = poly[i].Y;
-                else if (poly[i].Y > result.bottom) result.bottom = poly[i].Y;
             }
             return result;
         }
@@ -1169,12 +1165,12 @@ namespace Clipper
 
                 TLocalMinima lm = m_CurrentLM;
                 if (IsContributing(lm.leftBound))
-                    AddLocalMinPoly(lm.leftBound, lm.rightBound, DoublePoint(lm.leftBound.xbot, lm.Y));
+                    AddLocalMinPoly(lm.leftBound, lm.rightBound, new TDoublePoint(lm.leftBound.xbot, lm.Y));
 
                 if (lm.leftBound.nextInAEL != lm.rightBound)
                 {
                     TEdge e = lm.leftBound.nextInAEL;
-                    TDoublePoint pt = DoublePoint(lm.leftBound.xbot, lm.leftBound.ybot);
+                    TDoublePoint pt = new TDoublePoint(lm.leftBound.xbot, lm.leftBound.ybot);
                     while (e != lm.rightBound)
                     {
                         if (e == null) 
@@ -1383,7 +1379,7 @@ namespace Clipper
             TEdge eNext = e.nextInAEL;
             while (eNext != eMaxPair)
             {
-                IntersectEdges(e, eNext, DoublePoint(X, topY), ipLeft | ipRight);
+                IntersectEdges(e, eNext, new TDoublePoint(X, topY), ipLeft | ipRight);
                 eNext = eNext.nextInAEL;
             }
             if ((e.outIdx < 0) && (eMaxPair.outIdx < 0))
@@ -1393,7 +1389,7 @@ namespace Clipper
             }
             else if ((e.outIdx >= 0) && (eMaxPair.outIdx >= 0))
             {
-                IntersectEdges(e, eMaxPair, DoublePoint(X, topY), 0);
+                IntersectEdges(e, eMaxPair, new TDoublePoint(X, topY), 0);
             }
             else 
                 throw new clipperException("DoMaxima error");
@@ -1465,28 +1461,28 @@ namespace Clipper
                     {
                         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
                         if (Direction == TDirection.dLeftToRight)
-                            IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot), 0);
+                            IntersectEdges(horzEdge, e, new TDoublePoint(e.xbot, horzEdge.ybot), 0);
                         else
-                            IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot), 0);
+                            IntersectEdges(e, horzEdge, new TDoublePoint(e.xbot, horzEdge.ybot), 0);
                         return;
                     }
                     else if (IsHorizontal(e) && !IsMinima(e) && !(e.xbot > e.xtop))
                     {
                         if (Direction == TDirection.dLeftToRight)
-                            IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
+                            IntersectEdges(horzEdge, e, new TDoublePoint(e.xbot, horzEdge.ybot),
                               (IsTopHorz(horzEdge, e.xbot)) ? ipLeft : ipLeft | ipRight);
                         else
-                            IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
+                            IntersectEdges(e, horzEdge, new TDoublePoint(e.xbot, horzEdge.ybot),
                               (IsTopHorz(horzEdge, e.xbot)) ? ipRight : ipLeft | ipRight);
                     }
                     else if (Direction == TDirection.dLeftToRight)
                     {
-                        IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
+                        IntersectEdges(horzEdge, e, new TDoublePoint(e.xbot, horzEdge.ybot),
                           (IsTopHorz(horzEdge, e.xbot)) ? ipLeft : ipLeft | ipRight);
                     }
                     else
                     {
-                        IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
+                        IntersectEdges(e, horzEdge, new TDoublePoint(e.xbot, horzEdge.ybot),
                           (IsTopHorz(horzEdge, e.xbot)) ? ipRight : ipLeft | ipRight);
                     }
                     SwapPositionsInAEL(horzEdge, e);
@@ -1503,14 +1499,14 @@ namespace Clipper
             if (horzEdge.nextInLML != null)
             {
                 if (horzEdge.outIdx >= 0)
-                    AddPolyPt(horzEdge, DoublePoint(horzEdge.xtop, horzEdge.ytop));
+                    AddPolyPt(horzEdge, new TDoublePoint(horzEdge.xtop, horzEdge.ytop));
                 UpdateEdgeIntoAEL(ref horzEdge);
             }
             else
             {
                 if (horzEdge.outIdx >= 0)
                     IntersectEdges(horzEdge, eMaxPair,
-                      DoublePoint(horzEdge.xtop, horzEdge.ybot), ipLeft | ipRight);
+                      new TDoublePoint(horzEdge.xtop, horzEdge.ybot), ipLeft | ipRight);
                 DeleteFromAEL(eMaxPair);
                 DeleteFromAEL(horzEdge);
             }
@@ -2139,7 +2135,7 @@ namespace Clipper
                         {
                             if (e.nextInSEL.dx > e.dx)
                             {
-                                IntersectEdges(e, e.nextInSEL, DoublePoint(e.xbot, e.ybot), (ipLeft | ipRight));
+                                IntersectEdges(e, e.nextInSEL, new TDoublePoint(e.xbot, e.ybot), (ipLeft | ipRight));
                                 SwapPositionsInAEL(e, e.nextInSEL);
                                 SwapPositionsInSEL(e, e.nextInSEL);
                             }
@@ -2181,8 +2177,8 @@ namespace Clipper
                     //2. promote horizontal edges, otherwise update xbot and ybot ...
                     if (IsIntermediate(e, topY) && IsHorizontal(e.nextInLML))
                     {
-                        if (e.outIdx >= 0) 
-                            AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
+                        if (e.outIdx >= 0)
+                            AddPolyPt(e, new TDoublePoint(e.xtop, e.ytop));
                         UpdateEdgeIntoAEL(ref e);
                         AddEdgeToSEL(e);
                     }
@@ -2205,8 +2201,8 @@ namespace Clipper
             {
                 if (IsIntermediate(e, topY))
                 {
-                    if (e.outIdx >= 0) 
-                        AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
+                    if (e.outIdx >= 0)
+                        AddPolyPt(e, new TDoublePoint(e.xtop, e.ytop));
                     UpdateEdgeIntoAEL(ref e);
                 }
                 e = e.nextInAEL;

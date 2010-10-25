@@ -2,8 +2,15 @@
 Clipper Change Log
 ============================================================
 
+2.63 - 25 October 2010
+* Update: Minor tweaks to C# translation including the 
+          renaming of the Clipper class to TClipper to avoid 
+          ambiguity with the Clipper namespace.
+
 2.6 - 23 October 2010
 * Bugfix: A couple of obscure bugs fixed.
+* Added : OffsetPolygon function (but still a work-in-progress). 
+* Added : C# demo.
 
 2.522 - 15 October 2010
 * Added C# translation (thanks to Olivier Lejeune) and 
@@ -121,13 +128,12 @@ very rarely one would be missed.
 
 1.2e - 21 May 2010
 * Added ForceAlternateOrientation property to TClipper class.
-  This property is only useful when operating on 'simple' 
-  polygons. It ensures that the result of the TClipper
-  Execute method will be (simple) polygons with clockwise  
-  'outer' and counter-clockwise 'inner' (or 'hole') polygons. 
-  Note: there is no danger in enabling this property when 
-  operating on complex polygons. The only downside is a 
-  very minor penalty in execution speed. (Default = true)
+  This property is useful when operating on simple polygons
+  as it ensures that the clipping operation will return
+  outer polygons with clockwise orientation and inner 
+  (or 'hole') polygons with counter-clockwise orientation. 
+  Disabling this property will result in a minor boost 
+  (ie ~10%) in execution speed. (Default = true)
 * Minor code tidy up.
 
 1.2c - 17 May 2010
