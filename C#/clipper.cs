@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.6                                                             *
-* Date      :  22 October 2010                                                 *
+* Version   :  2.71                                                            *
+* Date      :  26 October 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -13,7 +13,8 @@
 
 /*******************************************************************************
 *                                                                              *
-* C# translation kindly provided by Olivier Lejeune <Olivier.Lejeune@2020.net> *
+* Initial C# translation was kindly provided by                                *
+* Olivier Lejeune <Olivier.Lejeune@2020.net>                                   *
 *                                                                              *
 *******************************************************************************/
 
@@ -32,7 +33,7 @@ namespace Clipper
 
     //used internally ...
     enum TEdgeSide { esLeft, esRight };
-    enum THoleState { sFalse, sTrue, sPending, sUndefined };
+    enum TTriState { sFalse, sTrue, sUndefined };
     enum TDirection { dRightToLeft, dLeftToRight };
 
     public class TDoublePoint
@@ -111,7 +112,7 @@ namespace Clipper
         internal TDoublePoint pt;
         internal TPolyPt next;
         internal TPolyPt prev;
-        internal THoleState isHole;
+        internal TTriState isHole;
     };
 
     public class TClipperBase
@@ -813,7 +814,6 @@ namespace Clipper
         TPolyFillType m_ClipFillType;
         TPolyFillType m_SubjFillType;
         double m_IntersectTolerance;
-        bool m_HoleStatesPending;
 
         public TClipper()
         {
@@ -883,11 +883,11 @@ namespace Clipper
                 pt = pt.next;
             }
 
-            while (bottomPt.isHole == THoleState.sUndefined && bottomPt.next.pt.Y >= bottomPt.pt.Y)
+            while (bottomPt.isHole == TTriState.sUndefined && bottomPt.next.pt.Y >= bottomPt.pt.Y)
                 bottomPt = bottomPt.next;
-            while (bottomPt.isHole == THoleState.sUndefined && bottomPt.prev.pt.Y >= bottomPt.pt.Y)
+            while (bottomPt.isHole == TTriState.sUndefined && bottomPt.prev.pt.Y >= bottomPt.pt.Y)
                 bottomPt = bottomPt.prev;
-            return (IsClockwise(pt) != (bottomPt.isHole == THoleState.sTrue));
+            return (IsClockwise(pt) != (bottomPt.isHole == TTriState.sTrue));
         }
 
         private static TPolygon BuildArc(TDoublePoint pt, double a1, double a2, double r)
@@ -966,34 +966,6 @@ namespace Clipper
             TScanbeam sb2 = m_Scanbeam;
             m_Scanbeam = m_Scanbeam.nextSb;
             return Y;
-        }
-
-        private void UpdateHoleStates()
-        {
-            //unfortunately this needs to be done in batches after the current operation
-            //in ExecuteInternal has finished. If hole states are calculated at the time
-            //new output polygons are started, we occasionally get the wrong state.
-            m_HoleStatesPending = false;
-            TEdge e = m_ActiveEdges;
-            while (e != null)
-            {
-                if (e.outIdx >= 0 && m_PolyPts[e.outIdx].isHole == THoleState.sPending)
-                {
-                    bool isAHole = false;
-                    TEdge e2 = m_ActiveEdges;
-                    while (e2 != e)
-                    {
-                        if (e2.outIdx >= 0) isAHole = !isAHole;
-                        e2 = e2.nextInAEL;
-                    }
-
-                    if (isAHole)
-                        m_PolyPts[e.outIdx].isHole = THoleState.sTrue;
-                    else
-                        m_PolyPts[e.outIdx].isHole = THoleState.sFalse;
-                }
-                e = e.nextInAEL;
-            }
         }
 
         private void SetWindingDelta(TEdge edge)
@@ -1522,7 +1494,7 @@ namespace Clipper
                 m_PolyPts.Add(newPolyPt);
                 newPolyPt.next = newPolyPt;
                 newPolyPt.prev = newPolyPt;
-                newPolyPt.isHole = THoleState.sUndefined;
+                newPolyPt.isHole = TTriState.sUndefined;
                 e.outIdx = m_PolyPts.Count - 1;
             }
             else
@@ -1532,7 +1504,7 @@ namespace Clipper
                   (!ToFront && PointsEqual(pt, pp.prev.pt))) return;
                 TPolyPt newPolyPt = new TPolyPt();
                 newPolyPt.pt = pt;
-                newPolyPt.isHole = THoleState.sUndefined;
+                newPolyPt.isHole = TTriState.sUndefined;
                 newPolyPt.next = pp;
                 newPolyPt.prev = pp.prev;
                 newPolyPt.prev.next = newPolyPt;
@@ -1982,20 +1954,15 @@ namespace Clipper
                 m_ActiveEdges = null;
                 m_SortedEdges = null;
                 m_ClipType = clipType;
-                m_HoleStatesPending = false;
 
                 double ybot = PopScanbeam();
                 do
                 {
                     InsertLocalMinimaIntoAEL(ybot);
-                    if (m_HoleStatesPending) UpdateHoleStates();
                     ProcessHorizontals();
-                    if (m_HoleStatesPending) UpdateHoleStates();
                     double ytop = PopScanbeam();
                     ProcessIntersections(ytop);
-                    if (m_HoleStatesPending) UpdateHoleStates();
                     ProcessEdgesAtTopOfScanbeam(ytop);
-                    if (m_HoleStatesPending) UpdateHoleStates();
                     ybot = ytop;
                 } while (m_Scanbeam != null);
 
@@ -2239,7 +2206,6 @@ namespace Clipper
         private void AddLocalMinPoly(TEdge e1, TEdge e2, TDoublePoint pt)
         {
             AddPolyPt(e1, pt);
-            e2.outIdx = e1.outIdx;
 
             if (IsHorizontal(e2) || (e1.dx > e2.dx))
             {
@@ -2256,9 +2222,17 @@ namespace Clipper
             if (m_ForceOrientation)
             {
                 TPolyPt pp = m_PolyPts[e1.outIdx];
-                pp.isHole = THoleState.sPending;
-                m_HoleStatesPending = true;
+                bool isAHole = false;
+                TEdge e = m_ActiveEdges;
+                while (e != null)
+                {
+                    if (e.outIdx >= 0 && TopX(e, pp.pt.Y) < pp.pt.X - precision)
+                        isAHole = !isAHole;
+                    e = e.nextInAEL;
+                }
+                if (isAHole) pp.isHole = TTriState.sTrue; else pp.isHole = TTriState.sFalse;
             }
+            e2.outIdx = e1.outIdx;
         }
 
         private void AppendPolygon(TEdge e1, TEdge e2)

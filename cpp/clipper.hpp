@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.6                                                             *
+* Version   :  2.71                                                            *
 * Date      :  26 October 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
@@ -57,7 +57,7 @@ TDoubleRect GetBounds(const TPolygon &poly);
 //used internally ...
 typedef enum { esLeft, esRight } TEdgeSide;
 typedef unsigned TIntersectProtects;
-typedef enum { sFalse, sTrue, sPending, sUndefined} THoleState;
+typedef enum { sFalse, sTrue, sUndefined} TTriState;
 
 struct TEdge {
   double x;
@@ -108,7 +108,7 @@ struct TPolyPt {
   TDoublePoint pt;
   TPolyPt *next;
   TPolyPt *prev;
-  THoleState isHole;
+  TTriState isHole;
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
@@ -166,7 +166,6 @@ private:
   TPolyFillType     m_ClipFillType;
   TPolyFillType     m_SubjFillType;
   double            m_IntersectTolerance;
-  bool              m_HoleStatesPending;
   void UpdateHoleStates();
   void DisposeScanbeamList();
   void SetWindingDelta(TEdge *edge);

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.6                                                             *
-* Date      :  24 October 2010                                                 *
+* Version   :  2.71                                                            *
+* Date      :  26 October 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -1839,19 +1839,14 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
     m_ActiveEdges = 0;
     m_SortedEdges = 0;
     m_ClipType = clipType;
-    m_HoleStatesPending = false;
 
     double ybot = PopScanbeam();
     do {
       InsertLocalMinimaIntoAEL( ybot );
-      if (m_HoleStatesPending) UpdateHoleStates();
       ProcessHorizontals();
-      if (m_HoleStatesPending) UpdateHoleStates();
       double ytop = PopScanbeam();
       ProcessIntersections( ytop );
-      if (m_HoleStatesPending) UpdateHoleStates();
       ProcessEdgesAtTopOfScanbeam( ytop );
-      if (m_HoleStatesPending) UpdateHoleStates();
       ybot = ytop;
     } while( m_Scanbeam );
 
@@ -1867,34 +1862,6 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
   DisposeAllPolyPts();
   m_ExecuteLocked = false;
   return false;
-}
-//------------------------------------------------------------------------------
-
-void Clipper::UpdateHoleStates()
-{
-  //unfortunately this needs to be done in batches after the current operation
-  //in ExecuteInternal has finished. If hole states are calculated at the time
-  //new output polygons are started, we occasionally get the wrong state.
-  m_HoleStatesPending = false;
-  TEdge* e = m_ActiveEdges;
-  while (e)
-  {
-    if (e->outIdx >= 0 && m_PolyPts[e->outIdx]->isHole == sPending)
-    {
-      bool isAHole = false;
-      TEdge* e2 = m_ActiveEdges;
-      while (e2 != e)
-      {
-        if (e2->outIdx >= 0) isAHole = !isAHole;
-        e2 = e2->nextInAEL;
-      }
-
-      if (isAHole)
-        m_PolyPts[e->outIdx]->isHole = sTrue; else
-        m_PolyPts[e->outIdx]->isHole = sFalse;
-    }
-    e = e->nextInAEL;
-  }
 }
 //------------------------------------------------------------------------------
 
@@ -2110,7 +2077,6 @@ void Clipper::AddLocalMaxPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 {
   AddPolyPt( e1, pt );
-  e2->outIdx = e1->outIdx;
 
   if( IsHorizontal( *e2 ) || ( e1->dx > e2->dx ) )
   {
@@ -2124,9 +2090,16 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 
   if (m_ForceOrientation) {
     TPolyPt* pp = m_PolyPts[e1->outIdx];
-    pp->isHole = sPending;
-    m_HoleStatesPending = true;
+    bool isAHole = false;
+    TEdge* e = m_ActiveEdges;
+    while (e) {
+      if (e->outIdx >= 0 && TopX(e,pp->pt.Y) < pp->pt.X - precision)
+        isAHole = !isAHole;
+      e = e->nextInAEL;
+    }
+    if (isAHole) pp->isHole = sTrue; else pp->isHole = sFalse;
   }
+  e2->outIdx = e1->outIdx;
 }
 //------------------------------------------------------------------------------
 

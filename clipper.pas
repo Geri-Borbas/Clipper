@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.6                                                             *
+* Version   :  2.71                                                            *
 * Date      :  24 October 2010                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
@@ -112,14 +112,14 @@ type
     nextSb: PScanbeam;
   end;
 
-  THoleState = (sFalse, sTrue, sPending, sUndefined);
+  TTriState = (sFalse, sTrue, sUndefined);
 
   PPolyPt = ^TPolyPt;
   TPolyPt = record
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: THoleState; //See TClipper ForceOrientation property
+    isHole: TTriState; //See TClipper ForceOrientation property
   end;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
@@ -166,7 +166,6 @@ type
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
-    fHoleStatesPending: boolean;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -178,7 +177,6 @@ type
     function IsNonZeroFillType(edge: PEdge): boolean;
     function IsNonZeroAltFillType(edge: PEdge): boolean;
     procedure InsertLocalMinimaIntoAEL(const botY: double);
-    procedure UpdateHoleStates;
     procedure AddEdgeToSEL(edge: PEdge);
     procedure CopyAELToSEL;
     function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
@@ -247,6 +245,10 @@ type
     const delta: double): TArrayOfArrayOfDoublePoint; overload;
   function OffsetPolygons(const pts: TArrayOfArrayOfFloatPoint;
     const delta: double): TArrayOfArrayOfFloatPoint; overload;
+  function TranslatePolygons(const pts: TArrayOfArrayOfDoublePoint;
+    const deltaX, deltaY: double): TArrayOfArrayOfDoublePoint; overload;
+  function TranslatePolygons(const pts: TArrayOfArrayOfFloatPoint;
+    const deltaX, deltaY: double): TArrayOfArrayOfFloatPoint; overload;
 
   function MakeArrayOfDoublePoint(const a: TArrayOfFloatPoint): TArrayOfDoublePoint; overload;
   function MakeArrayOfFloatPoint(const a: TArrayOfDoublePoint): TArrayOfFloatPoint; overload;
@@ -442,6 +444,42 @@ begin
   Move(result[position],
     result[position+lenN],(lenE-position)*sizeof(TDoublePoint));
   Move(newPts[0], result[position], lenN*sizeof(TDoublePoint));
+end;
+//------------------------------------------------------------------------------
+
+function TranslatePolygons(const pts: TArrayOfArrayOfDoublePoint;
+  const deltaX, deltaY: double): TArrayOfArrayOfDoublePoint;
+var
+  i,j: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    setlength(result[i], length(pts[i]));
+    for j := 0 to high(pts[i]) do
+    begin
+      result[i][j].X := pts[i][j].X + deltaX;
+      result[i][j].Y := pts[i][j].Y + deltaY;
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TranslatePolygons(const pts: TArrayOfArrayOfFloatPoint;
+  const deltaX, deltaY: double): TArrayOfArrayOfFloatPoint;
+var
+  i,j: integer;
+begin
+  setlength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    setlength(result[i], length(pts[i]));
+    for j := 0 to high(pts[i]) do
+    begin
+      result[i][j].X := pts[i][j].X + deltaX;
+      result[i][j].Y := pts[i][j].Y + deltaY;
+    end;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -815,7 +853,7 @@ begin
     pt := pt.next;
   end;
 
-//  alternative method to derive orientation (may be marginally quicker)
+//  //alternative method to derive orientation (may be marginally quicker)
 //  ptPrev := bottomPt.prev;
 //  ptNext := bottomPt.next;
 //  N1 := GetUnitNormal(ptPrev.pt, bottomPt.pt);
@@ -1317,18 +1355,13 @@ begin
     fActiveEdges := nil;
     fSortedEdges := nil;
     fClipType := clipType;
-    fHoleStatesPending := false;
     yBot := PopScanbeam;
     repeat
       InsertLocalMinimaIntoAEL(yBot);
-      if fHoleStatesPending then UpdateHoleStates;
       ProcessHorizontals;
-      if fHoleStatesPending then UpdateHoleStates;
       yTop := PopScanbeam;
       ProcessIntersections(yTop);
-      if fHoleStatesPending then UpdateHoleStates;
       ProcessEdgesAtTopOfScanbeam(yTop);
-      if fHoleStatesPending then UpdateHoleStates;
       yBot := yTop;
     until not assigned(fScanbeam);
     result := true;
@@ -1677,36 +1710,6 @@ begin
     end;
 
     PopLocalMinima;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipper.UpdateHoleStates;
-var
-  isAHole: boolean;
-  e, e2: PEdge;
-begin
-  //unfortunately this needs to be done in batches after the current operation
-  //in ExecuteInternal has finished. If hole states are calculated at the time
-  //new output polygons are started, we occasionally get the wrong state.
-  fHoleStatesPending := false;
-  e := fActiveEdges;
-  while assigned(e) do
-  begin
-    if (e.outIdx >= 0) and
-      (PPolyPt(fPolyPtList[e.outIdx]).isHole = sPending) then
-    begin
-      isAHole := false;
-      e2 := fActiveEdges;
-      while e2 <> e do
-      begin
-        if (e2.outIdx >= 0) then isAHole := not isAHole;
-        e2 := e2.nextInAEL;
-      end;
-      with PPolyPt(fPolyPtList[e.outIdx])^ do
-        if isAHole then isHole := sTrue else isHole := sFalse;
-    end;
-    e := e.nextInAEL;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2703,9 +2706,10 @@ end;
 procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
 var
   pp: PPolyPt;
+  e: PEdge;
+  isAHole: boolean;
 begin
   AddPolyPt(e1, pt);
-  e2.outIdx := e1.outIdx;
 
   if IsHorizontal(e2) or (e1.dx > e2.dx) then
   begin
@@ -2720,9 +2724,17 @@ begin
   if fForceOrientation then
   begin
     pp := PPolyPt(fPolyPtList[e1.outIdx]);
-    pp.isHole := sPending;
-    fHoleStatesPending := true;
+    isAHole := false;
+    e := fActiveEdges;
+    while assigned(e) do
+    begin
+      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - precision) then
+        isAHole := not isAHole;
+      e := e.nextInAEL;
+    end;
+    if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
   end;
+  e2.outIdx := e1.outIdx;
 end;
 //------------------------------------------------------------------------------
 

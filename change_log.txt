@@ -2,15 +2,14 @@
 Clipper Change Log
 ============================================================
 
-2.63 - 25 October 2010
-* Update: Minor tweaks to C# translation including the 
-          renaming of the Clipper class to TClipper to avoid 
-          ambiguity with the Clipper namespace.
+2.71 - 26 October 2010
+* Bugfix: Finally fixed a bug (affecting NonZero filling) 
+  that was introduced in ver 2.6.
+* Updated: C# demo
 
 2.6 - 23 October 2010
-* Bugfix: A couple of obscure bugs fixed.
-* Added : OffsetPolygon function (but still a work-in-progress). 
-* Added : C# demo.
+* Added:  C# demo (with full Visual C# 2010 source code).
+* Added:  OffsetPolygon function (but still a work-in-progress). 
 
 2.522 - 15 October 2010
 * Added C# translation (thanks to Olivier Lejeune) and 
