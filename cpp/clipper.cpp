@@ -1371,15 +1371,6 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     if((e->xbot >= horzLeft - tolerance) && (e->xbot <= horzRight + tolerance))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
-//      if ( fabs(e->xbot - horzEdge->xtop) < tolerance &&
-//          horzEdge->nextInLML  &&
-//          (SlopesEqual(*e, *horzEdge->nextInLML) ||
-//            (e->dx < horzEdge->nextInLML->dx))){
-//          //we really have gone past the end of intermediate horz edge so quit.
-//          //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
-//          break;
-//      }
-
       if ( fabs(e->xbot - horzEdge->xtop) < tolerance && horzEdge->nextInLML)
       {
         if ( SlopesEqual(*e, *horzEdge->nextInLML) )
@@ -1941,6 +1932,7 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
 
     //build the return polygons ...
     BuildResult(solution);
+    m_Joins.clear();
     DisposeAllPolyPts();
     m_ExecuteLocked = false;
     return true;
