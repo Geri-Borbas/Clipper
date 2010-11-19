@@ -1,13 +1,25 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.71                                                            *
-* Date      :  26 October 2010                                                 *
+* Version   :  2.8                                                             *
+* Date      :  19 November 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
 * http://www.boost.org/LICENSE_1_0.txt                                         *
+*                                                                              *
+* Attributions:                                                                *
+* The code in this library is an extension of Bala Vatti's clipping algorithm: *
+* "A generic solution to polygon clipping"                                     *
+* Communications of the ACM, Vol 35, Issue 7 (July 1992) pp 56-63.             *
+* http://portal.acm.org/citation.cfm?id=129906                                 *
+*                                                                              *
+* Computer graphics and geometric modeling: implementation and algorithms      *
+* By Max K. Agoston                                                            *
+* Springer; 1 edition (January 4, 2005)                                        *
+* Pages 98 - 106.                                                              *
+* http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************/
 
@@ -25,6 +37,7 @@ namespace Clipper
 {
     using TPolygon = List<TDoublePoint>;
     using PolyPtList = List<TPolyPt>;
+    using PolyPtRecList = List<TPolyPtRec>;
     using TPolyPolygon = List<List<TDoublePoint>>;
 
     public enum TClipType { ctIntersection, ctUnion, ctDifference, ctXor };
@@ -115,6 +128,17 @@ namespace Clipper
         internal TTriState isHole;
     };
 
+    internal class TPolyPtRec
+    {
+        internal TPolyPt ppt1;
+        internal int idx1;
+        internal TPolyPt ppt2;
+        internal int idx2;
+    }
+
+    //------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------
+
     public class TClipperBase
     {
 
@@ -147,11 +171,13 @@ namespace Clipper
         {
             return (Math.Abs(pt1.X - pt2.X) < precision + tolerance && Math.Abs(pt1.Y - pt2.Y) < precision + tolerance);
         }
+        //------------------------------------------------------------------------------
 
         protected internal static bool PointsEqual(double pt1x, double pt1y, double pt2x, double pt2y)
         {
             return (Math.Abs(pt1x - pt2x) < precision + tolerance && Math.Abs(pt1y - pt2y) < precision + tolerance);
         }
+        //------------------------------------------------------------------------------
 
         internal static void DisposePolyPts(TPolyPt pp)
         {
@@ -166,6 +192,7 @@ namespace Clipper
                 tmpPp = null;
             }
         }
+        //------------------------------------------------------------------------------
 
         internal static void ReversePolyPtLinks(TPolyPt pp)
         {
@@ -180,6 +207,7 @@ namespace Clipper
                 pp1 = pp2;
             } while (pp1 != pp);
         }
+        //------------------------------------------------------------------------------
 
         private static void SetDx(TEdge e)
         {
@@ -197,11 +225,13 @@ namespace Clipper
             else 
                 e.dx = (e.x - e.next.x) / (e.y - e.next.y);
         }
+        //------------------------------------------------------------------------------
 
         internal static bool IsHorizontal(TEdge e)
         {
             return (e != null) && (e.dx < almost_infinite);
         }
+        //------------------------------------------------------------------------------
 
         internal static void SwapSides(TEdge edge1, TEdge edge2)
         {
@@ -209,6 +239,7 @@ namespace Clipper
             edge1.side = edge2.side;
             edge2.side = side;
         }
+        //------------------------------------------------------------------------------
 
         internal static void SwapPolyIndexes(TEdge edge1, TEdge edge2)
         {
@@ -216,6 +247,7 @@ namespace Clipper
             edge1.outIdx = edge2.outIdx;
             edge2.outIdx = outIdx;
         }
+        //------------------------------------------------------------------------------
 
         internal static double TopX(TEdge edge, double currentY)
         {
@@ -223,11 +255,13 @@ namespace Clipper
                 return edge.xtop;
             return edge.x + edge.dx * (currentY - edge.y);
         }
+        //------------------------------------------------------------------------------
 
         internal static bool EdgesShareSamePoly(TEdge e1, TEdge e2)
         {
             return (e1 != null) && (e2 != null) && (e1.outIdx == e2.outIdx);
         }
+        //------------------------------------------------------------------------------
 
         internal static bool SlopesEqual(TEdge e1, TEdge e2)
         {
@@ -237,6 +271,7 @@ namespace Clipper
                 return false;
             return Math.Abs((e1.ytop - e1.y) * (e2.xtop - e2.x) - (e1.xtop - e1.x) * (e2.ytop - e2.y)) < slope_precision;
         }
+        //------------------------------------------------------------------------------
 
         internal static bool IntersectPoint(TEdge edge1, TEdge edge2, TDoublePoint ip)
         {
@@ -262,6 +297,7 @@ namespace Clipper
             }
             return (ip.Y > edge1.ytop + tolerance) && (ip.Y > edge2.ytop + tolerance);
         }
+        //------------------------------------------------------------------------------
 
         private static void InitEdge(TEdge e, TEdge eNext, TEdge ePrev, TDoublePoint pt)
         {
@@ -271,6 +307,7 @@ namespace Clipper
             e.prev = ePrev;
             SetDx(e);
         }
+        //------------------------------------------------------------------------------
 
         private static void ReInitEdge(TEdge e, double nextX, double nextY, TPolyType polyType)
         {
@@ -295,6 +332,7 @@ namespace Clipper
             e.polyType = polyType;
             e.outIdx = -1;
         }
+        //------------------------------------------------------------------------------
 
         internal static bool SlopesEqualInternal(TEdge e1, TEdge e2)
         {
@@ -332,6 +370,7 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
 
         private static void SwapX(TEdge e)
         {
@@ -387,17 +426,20 @@ namespace Clipper
                 e = eNext;
             } while (true);
         }
+        //------------------------------------------------------------------------------
 
         public TClipperBase() //constructor
         {
             m_localMinimaList = null;
             m_CurrentLM = null;
         }
+        //------------------------------------------------------------------------------
 
         ~TClipperBase() //destructor
         {
             Clear();
         }
+        //------------------------------------------------------------------------------
 
         void InsertLocalMinima(TLocalMinima newLm)
         {
@@ -417,6 +459,7 @@ namespace Clipper
                 tmpLm.nextLm = newLm;
             }
         }
+        //------------------------------------------------------------------------------
         
         TEdge AddBoundsToLML(TEdge e)
         {
@@ -479,6 +522,7 @@ namespace Clipper
             }
             return e.next;
         }
+        //------------------------------------------------------------------------------
 
         private static TDoublePoint RoundToTolerance(TDoublePoint pt)
         {
@@ -491,6 +535,7 @@ namespace Clipper
               (Math.Ceiling(pt.Y / precision + 0.5) * precision);
             return result;
         }
+        //------------------------------------------------------------------------------
 
         public virtual void AddPolygon(TPolygon pg, TPolyType polyType)
         {
@@ -585,18 +630,21 @@ namespace Clipper
             } while (e != eHighest);
 
         }
+        //------------------------------------------------------------------------------
 
         public virtual void AddPolyPolygon(TPolyPolygon ppg, TPolyType polyType)
         {
             for (int i = 0; i < ppg.Count; ++i)
                 AddPolygon(ppg[i], polyType);
         }
+        //------------------------------------------------------------------------------
     
         public void Clear()
         {
             DisposeLocalMinimaList();
             m_edges.Clear();
         }
+        //------------------------------------------------------------------------------
 
         internal bool Reset()
         {
@@ -630,6 +678,7 @@ namespace Clipper
             }
             return true;
         }
+        //------------------------------------------------------------------------------
         
         protected internal void PopLocalMinima()
         {
@@ -637,6 +686,7 @@ namespace Clipper
                 return;
             m_CurrentLM = m_CurrentLM.nextLm;
         }
+        //------------------------------------------------------------------------------
         
         void DisposeLocalMinimaList()
         {
@@ -648,6 +698,7 @@ namespace Clipper
             }
             m_CurrentLM = null; 
         }
+        //------------------------------------------------------------------------------
 
         protected TDoubleRect GetBounds()
         {
@@ -681,8 +732,11 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
 
     }
+    //------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------
 
     public class TClipper : TClipperBase
     {
@@ -701,6 +755,7 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
 
         public static double PolygonArea(TPolygon poly)
         {
@@ -713,6 +768,7 @@ namespace Clipper
             result = result / 2;
             return result;
         }
+        //------------------------------------------------------------------------------
 
         public static TPolyPolygon OffsetPolygons(TPolyPolygon pts, double delta)
         {
@@ -731,20 +787,28 @@ namespace Clipper
                 result[j].Capacity = len * 2;
                 if (len == 0) continue;
 
+
+                //to minimize artefacts strip out polygons where
+                //delta is larger than half the polygon diameter ...
+                if (delta < 0 && PolygonArea(pts[j]) > 0)
+                {
+                    TDoubleRect rec = GetBounds(pts[j]);
+                    if (-delta * 2 > (rec.right - rec.left) ||
+                        -delta * 2 > (rec.bottom - rec.top)) len = 1;
+                }
+                else if (delta > 0 && PolygonArea(pts[j]) < 0)
+                {
+                    TDoubleRect rec = GetBounds(pts[j]);
+                    if (delta * 2 > (rec.right - rec.left) ||
+                        delta * 2 > (rec.bottom - rec.top)) len = 1;
+                }
+
+
                 TPolygon normals = new TPolygon();
                 normals.Capacity = len;
                 normals.Add(GetUnitNormal(pts[j][len - 1], pts[j][0]));
                 for (int i = 1; i < len; ++i)
                     normals.Add(GetUnitNormal(pts[j][i - 1], pts[j][i]));
-
-                //to minimize artefacts when shrinking, strip out polygons where
-                //abs(delta) is larger than half its diameter ...
-                if (delta < 0)
-                {
-                    TDoubleRect rec = GetBounds(pts[j]);
-                    if (-delta * 2 > (rec.right - rec.left) || -delta * 2 > (rec.bottom - rec.top)) len = 1;
-                }
-
                 for (int i = 0; i < len - 1; ++i)
                 {
                     result[j].Add(new TDoublePoint(pts[j][i].X - delta * normals[i].X,
@@ -759,7 +823,8 @@ namespace Clipper
 
                 //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
                 //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-                if ((normals[len - 1].X * normals[0].Y - normals[0].X * normals[len - 1].Y) * delta < 0 &&
+                if (len > 1 && 
+                  (normals[len - 1].X * normals[0].Y - normals[0].X * normals[len - 1].Y) * delta < 0 &&
                   (normals[0].X * normals[len - 1].X + normals[0].Y * normals[len - 1].Y) < 0.985)
                 {
                     double a1 = Math.Atan2(normals[len - 1].Y, normals[len - 1].X);
@@ -802,8 +867,23 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
+
+        public static bool IsClockwise(TPolygon poly)
+        {
+          int highI = poly.Count -1;
+          if (highI < 2) return false;
+          double area = poly[highI].X * poly[0].Y - poly[0].X * poly[highI].Y;
+          for (int i = 0; i <= highI; ++i)
+            area += poly[i].X * poly[i+1].Y - poly[i+1].X * poly[i].Y;
+          //area := area/2;
+          return area > 0; //ie reverse of normal formula because Y axis inverted
+        }
+        //------------------------------------------------------------------------------
+        //------------------------------------------------------------------------------
 
         PolyPtList m_PolyPts;
+        PolyPtRecList m_Joins;
         TClipType m_ClipType;
         TScanbeam m_Scanbeam;
         TEdge m_ActiveEdges;
@@ -815,6 +895,8 @@ namespace Clipper
         TPolyFillType m_SubjFillType;
         double m_IntersectTolerance;
 
+        //------------------------------------------------------------------------------
+
         public TClipper()
         {
             m_Scanbeam = null;
@@ -824,7 +906,9 @@ namespace Clipper
             m_ExecuteLocked = false;
             m_ForceOrientation = true;
             m_PolyPts = new PolyPtList();
+            m_Joins = new PolyPtRecList();
         }
+        //------------------------------------------------------------------------------
         
         internal void DisposeAllPolyPts()
         {
@@ -832,8 +916,9 @@ namespace Clipper
                 DisposePolyPts(m_PolyPts[i]);
             m_PolyPts.Clear();
         }
-        
-        void DisposeScanbeamList()
+        //------------------------------------------------------------------------------
+
+        internal void DisposeScanbeamList()
         {
             while (m_Scanbeam != null)
             {
@@ -842,16 +927,19 @@ namespace Clipper
                 m_Scanbeam = sb2;
             }
         }
+        //------------------------------------------------------------------------------
         
         public override void AddPolygon(TPolygon pg, TPolyType polyType)
         {
             base.AddPolygon(pg, polyType);
         }
+        //------------------------------------------------------------------------------
         
         public override void AddPolyPolygon(TPolyPolygon ppg, TPolyType polyType)
         {
             base.AddPolyPolygon(ppg, polyType);
         }
+        //------------------------------------------------------------------------------
 
         private static TDoublePoint GetUnitNormal(TDoublePoint pt1, TDoublePoint pt2)
         {
@@ -866,6 +954,7 @@ namespace Clipper
             dy = dy * f;
             return new TDoublePoint(dy, -dx);
         }
+        //------------------------------------------------------------------------------
 
         internal static bool ValidateOrientation(TPolyPt pt)
         {
@@ -889,6 +978,7 @@ namespace Clipper
                 bottomPt = bottomPt.prev;
             return (IsClockwise(pt) != (bottomPt.isHole == TTriState.sTrue));
         }
+        //------------------------------------------------------------------------------
 
         private static TPolygon BuildArc(TDoublePoint pt, double a1, double a2, double r)
         {
@@ -907,6 +997,7 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
 
         private static bool IsClockwise(TPolyPt pt)
         {
@@ -921,6 +1012,7 @@ namespace Clipper
             //area = area /2;
             return area >= 0;
         }
+        //------------------------------------------------------------------------------
 
         private bool InitializeScanbeam()
         {
@@ -937,6 +1029,7 @@ namespace Clipper
             }
             return true;
         }
+        //------------------------------------------------------------------------------
 
         private void InsertScanbeam(double Y)
         {
@@ -959,6 +1052,7 @@ namespace Clipper
                 sb2.nextSb = newSb;
             }
         }
+        //------------------------------------------------------------------------------
 
         private double PopScanbeam()
         {
@@ -967,6 +1061,7 @@ namespace Clipper
             m_Scanbeam = m_Scanbeam.nextSb;
             return Y;
         }
+        //------------------------------------------------------------------------------
 
         private void SetWindingDelta(TEdge edge)
         {
@@ -977,6 +1072,7 @@ namespace Clipper
             else 
                 edge.windDelta = -1;
         }
+        //------------------------------------------------------------------------------
 
         private void SetWindingCount(TEdge edge)
         {
@@ -1045,6 +1141,7 @@ namespace Clipper
                 }
             }
         }
+        //------------------------------------------------------------------------------
 
         private bool IsNonZeroFillType(TEdge edge)
         {
@@ -1056,6 +1153,7 @@ namespace Clipper
                     return m_ClipFillType == TPolyFillType.pftNonZero;
             }
         }
+        //------------------------------------------------------------------------------
 
         private bool IsNonZeroAltFillType(TEdge edge)
         {
@@ -1067,6 +1165,7 @@ namespace Clipper
                     return m_SubjFillType == TPolyFillType.pftNonZero;
             }
         }
+        //------------------------------------------------------------------------------
 
         private static bool Edge2InsertsBeforeEdge1(TEdge e1, TEdge e2)
         {
@@ -1076,8 +1175,10 @@ namespace Clipper
                 return true;
             if (IsHorizontal(e2)) 
                 return false;
-            return (e2.dx > e1.dx);
+            return (e2.dx >= e1.dx);
         }
+        //------------------------------------------------------------------------------
+
         private void InsertEdgeIntoAEL(TEdge edge)
         {
             edge.prevInAEL = null;
@@ -1104,6 +1205,7 @@ namespace Clipper
                 e.nextInAEL = edge;
             }
         }
+        //------------------------------------------------------------------------------
 
         private void InsertLocalMinimaIntoAEL(double botY)
         {
@@ -1139,6 +1241,35 @@ namespace Clipper
                 if (IsContributing(lm.leftBound))
                     AddLocalMinPoly(lm.leftBound, lm.rightBound, new TDoublePoint(lm.leftBound.xbot, lm.Y));
 
+                //flag polygons that share colinear edges ready to be joined later ...
+                if (lm.leftBound.outIdx >= 0 && lm.leftBound.prevInAEL != null &&
+                  lm.leftBound.prevInAEL.outIdx >= 0 &&
+                  Math.Abs(lm.leftBound.prevInAEL.xbot - lm.leftBound.x) < tolerance &&
+                  SlopesEqual(lm.leftBound, lm.leftBound.prevInAEL))
+                {
+                    TDoublePoint pt = new TDoublePoint(lm.leftBound.x, lm.leftBound.y);
+                    TPolyPtRec polyPtRec = new TPolyPtRec();
+                    polyPtRec.ppt1 = AddPolyPt(lm.leftBound, pt);
+                    polyPtRec.idx1 = lm.leftBound.outIdx;
+                    polyPtRec.ppt2 = AddPolyPt(lm.leftBound.prevInAEL, pt);
+                    polyPtRec.idx2 = lm.leftBound.prevInAEL.outIdx;
+                    m_Joins.Add(polyPtRec);
+                }
+                if (lm.rightBound.outIdx >= 0 &&
+                  lm.rightBound.prevInAEL != null &&
+                  lm.rightBound.prevInAEL.outIdx >= 0 &&
+                  Math.Abs(lm.rightBound.prevInAEL.xbot - lm.rightBound.x) < tolerance &&
+                  SlopesEqual(lm.rightBound, lm.rightBound.prevInAEL))
+                {
+                    TDoublePoint pt = new TDoublePoint(lm.rightBound.x, lm.rightBound.y);
+                    TPolyPtRec polyPtRec = new TPolyPtRec();
+                    polyPtRec.ppt1 = AddPolyPt(lm.rightBound, pt);
+                    polyPtRec.idx1 = lm.rightBound.outIdx;
+                    polyPtRec.ppt2 = AddPolyPt(lm.rightBound.prevInAEL, pt);
+                    polyPtRec.idx2 = lm.rightBound.prevInAEL.outIdx;
+                    m_Joins.Add(polyPtRec);
+                }
+
                 if (lm.leftBound.nextInAEL != lm.rightBound)
                 {
                     TEdge e = lm.leftBound.nextInAEL;
@@ -1155,6 +1286,7 @@ namespace Clipper
                 PopLocalMinima();
             }
         }
+        //------------------------------------------------------------------------------
 
         private void AddEdgeToSEL(TEdge edge)
         {
@@ -1174,6 +1306,7 @@ namespace Clipper
                 m_SortedEdges = edge;
             }
         }
+        //------------------------------------------------------------------------------
         
         private void CopyAELToSEL()
         {
@@ -1191,6 +1324,7 @@ namespace Clipper
                 e = e.nextInAEL;
             }
         }
+        //------------------------------------------------------------------------------
 
         private void SwapPositionsInAEL(TEdge edge1, TEdge edge2)
         {
@@ -1248,6 +1382,7 @@ namespace Clipper
             else if (edge2.prevInAEL == null)
                 m_ActiveEdges = edge2;
         }
+        //------------------------------------------------------------------------------
         
         private void SwapPositionsInSEL(TEdge edge1, TEdge edge2)
         {
@@ -1305,6 +1440,7 @@ namespace Clipper
             else if (edge2.prevInSEL == null)
                 m_SortedEdges = edge2;
         }
+        //------------------------------------------------------------------------------
 
         private TEdge GetNextInAEL(TEdge e, TDirection Direction)
         {
@@ -1313,6 +1449,7 @@ namespace Clipper
             else
                 return e.prevInAEL;
         }
+        //------------------------------------------------------------------------------
 
         private TEdge GetPrevInAEL(TEdge e, TDirection Direction)
         {
@@ -1320,21 +1457,25 @@ namespace Clipper
                 return e.prevInAEL;
             else return e.nextInAEL;
         }
+        //------------------------------------------------------------------------------
 
         private bool IsMinima(TEdge e)
         {
             return e != null && (e.prev.nextInLML != e) && (e.next.nextInLML != e);
         }
+        //------------------------------------------------------------------------------
 
         private bool IsMaxima(TEdge e, double Y)
         {
             return e != null && Math.Abs(e.ytop - Y) < tolerance && e.nextInLML == null;
         }
+        //------------------------------------------------------------------------------
 
         private bool IsIntermediate(TEdge e, double Y)
         {
             return Math.Abs(e.ytop - Y) < tolerance && e.nextInLML != null;
         }
+        //------------------------------------------------------------------------------
 
         private TEdge GetMaximaPair(TEdge e)
         {
@@ -1343,6 +1484,7 @@ namespace Clipper
             else
                 return e.next;
         }
+        //------------------------------------------------------------------------------
 
         private void DoMaxima(TEdge e, double topY)
         {
@@ -1366,6 +1508,7 @@ namespace Clipper
             else 
                 throw new clipperException("DoMaxima error");
         }
+        //------------------------------------------------------------------------------
 
         private void ProcessHorizontals()
         {
@@ -1377,6 +1520,7 @@ namespace Clipper
                 horzEdge = m_SortedEdges;
             }
         }
+        //------------------------------------------------------------------------------
 
         private bool IsTopHorz(TEdge horzEdge, double XPos)
         {
@@ -1389,6 +1533,7 @@ namespace Clipper
             }
             return true;
         }
+        //------------------------------------------------------------------------------
 
         private void ProcessHorizontal(TEdge horzEdge)
         {
@@ -1421,15 +1566,28 @@ namespace Clipper
                 if ((e.xbot >= horzLeft - tolerance) && (e.xbot <= horzRight + tolerance))
                 {
                     //ok, so far it looks like we're still in range of the horizontal edge
-                    if (Math.Abs(e.xbot - horzEdge.xtop) < tolerance &&
-                        horzEdge.nextInLML != null &&
-                        (SlopesEqual(e, horzEdge.nextInLML) || (e.dx < horzEdge.nextInLML.dx)))
+                    if (Math.Abs(e.xbot - horzEdge.xtop) < tolerance && horzEdge.nextInLML != null)
                     {
-                        //we really have gone past the end of intermediate horz edge so quit.
-                        //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
-                        break;
+                        if (SlopesEqual(e, horzEdge.nextInLML))
+                        {
+                            //we've got 2 colinear edges at the end of the horz. line ...
+                            if (horzEdge.outIdx >= 0 && e.outIdx >= 0)
+                            {
+                                TDoublePoint pt = new TDoublePoint(horzEdge.xtop, horzEdge.ytop);
+                                TPolyPtRec polyPtRec = new TPolyPtRec();
+                                polyPtRec.ppt1 = AddPolyPt(horzEdge, pt);
+                                polyPtRec.idx1 = horzEdge.outIdx;
+                                polyPtRec.ppt2 = AddPolyPt(e, pt);
+                                polyPtRec.idx2 = e.outIdx;
+                                m_Joins.Add(polyPtRec);                            
+                            }
+                            break; //we've reached the end of the horizontal line
+                        }
+                        else if (e.dx < horzEdge.nextInLML.dx)
+                            break; //we've reached the end of the horizontal line
                     }
-                    else if (e == eMaxPair)
+                        
+                    if (e == eMaxPair)
                     {
                         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
                         if (Direction == TDirection.dLeftToRight)
@@ -1484,7 +1642,7 @@ namespace Clipper
             }
         }
 
-        private void AddPolyPt(TEdge e, TDoublePoint pt)
+        private TPolyPt AddPolyPt(TEdge e, TDoublePoint pt)
         {
             bool ToFront = (e.side == TEdgeSide.esLeft);
             if (e.outIdx < 0)
@@ -1496,12 +1654,13 @@ namespace Clipper
                 newPolyPt.prev = newPolyPt;
                 newPolyPt.isHole = TTriState.sUndefined;
                 e.outIdx = m_PolyPts.Count - 1;
+                return newPolyPt;
             }
             else
             {
                 TPolyPt pp = m_PolyPts[e.outIdx];
-                if ((ToFront && PointsEqual(pt, pp.pt)) ||
-                  (!ToFront && PointsEqual(pt, pp.prev.pt))) return;
+                if (ToFront && PointsEqual(pt, pp.pt)) return pp;
+                if (!ToFront && PointsEqual(pt, pp.prev.pt)) return pp.prev;
                 TPolyPt newPolyPt = new TPolyPt();
                 newPolyPt.pt = pt;
                 newPolyPt.isHole = TTriState.sUndefined;
@@ -1510,8 +1669,10 @@ namespace Clipper
                 newPolyPt.prev.next = newPolyPt;
                 pp.prev = newPolyPt;
                 if (ToFront) m_PolyPts[e.outIdx] = newPolyPt;
+                return newPolyPt;
             }
         }
+        //------------------------------------------------------------------------------
 
         private void ProcessIntersections(double topY)
         {
@@ -1549,6 +1710,7 @@ namespace Clipper
             throw new clipperException("ProcessIntersections error");
           }
         }
+        //------------------------------------------------------------------------------
 
         private void DisposeIntersectNodes()
         {
@@ -1559,6 +1721,7 @@ namespace Clipper
                 m_IntersectNodes = iNode;
             }
         }
+        //------------------------------------------------------------------------------
 
         private bool E1PrecedesE2inAEL(TEdge e1, TEdge e2)
         {
@@ -1571,6 +1734,7 @@ namespace Clipper
             }
             return false;
         }
+        //------------------------------------------------------------------------------
 
         private bool Process1Before2(TIntersectNode Node1, TIntersectNode Node2)
         {
@@ -1615,6 +1779,7 @@ namespace Clipper
             //***a maxima that very slightly overlaps an edge can appear like
             //a complex intersection but it's not. (Maxima can't have parallel edges.)
         }
+        //------------------------------------------------------------------------------
         
         private void AddIntersectNode(TEdge e1, TEdge e2, TDoublePoint pt)
         {
@@ -1639,6 +1804,7 @@ namespace Clipper
                 iNode.next = IntersectNode;
             }
         }
+        //------------------------------------------------------------------------------
 
         private void BuildIntersectList(double topY)
         {
@@ -1682,6 +1848,7 @@ namespace Clipper
             }
             m_SortedEdges = null;
         }
+        //------------------------------------------------------------------------------
         
         private bool TestIntersections()
         {
@@ -1705,6 +1872,7 @@ namespace Clipper
             m_SortedEdges = null;
             return true;
         }
+        //------------------------------------------------------------------------------
 
         private void ProcessIntersectList()
         {
@@ -1726,6 +1894,7 @@ namespace Clipper
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
+        //------------------------------------------------------------------------------
 
         void DoEdge2(TEdge edge1, TEdge edge2, TDoublePoint pt)
         {
@@ -1733,6 +1902,7 @@ namespace Clipper
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
+        //------------------------------------------------------------------------------
 
         private void DoBothEdges(TEdge edge1, TEdge edge2, TDoublePoint pt)
         {
@@ -1741,6 +1911,7 @@ namespace Clipper
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
+        //------------------------------------------------------------------------------
 
         private void IntersectEdges(TEdge e1, TEdge e2, TDoublePoint pt, int protects)
         {
@@ -1865,6 +2036,7 @@ namespace Clipper
             if (e1stops) DeleteFromAEL(e1);
             if (e2stops) DeleteFromAEL(e2);
         }
+        //------------------------------------------------------------------------------
 
         private void DeleteFromAEL(TEdge e)
         {
@@ -1880,6 +2052,7 @@ namespace Clipper
             e.nextInAEL = null;
             e.prevInAEL = null;
         }
+        //------------------------------------------------------------------------------
 
         private void DeleteFromSEL(TEdge e)
         {
@@ -1895,6 +2068,7 @@ namespace Clipper
             e.nextInSEL = null;
             e.prevInSEL = null;
         }
+        //------------------------------------------------------------------------------
 
         private void UpdateEdgeIntoAEL(ref TEdge e)
         {
@@ -1916,8 +2090,24 @@ namespace Clipper
             e.prevInAEL = AelPrev;
             e.nextInAEL = AelNext;
             if (!IsHorizontal(e))
+            {
                 InsertScanbeam(e.ytop);
+
+                //if output polygons share an edge, they'll need joining later ...
+                if (e.outIdx >= 0 && AelPrev != null && AelPrev.outIdx >= 0 &&
+                  Math.Abs(AelPrev.xbot - e.x) < tolerance && SlopesEqual(e, AelPrev))
+                {
+                    TDoublePoint pt = new TDoublePoint(e.x, e.y);
+                    TPolyPtRec polyPtRec = new TPolyPtRec();
+                    polyPtRec.ppt1 = AddPolyPt(AelPrev, pt);
+                    polyPtRec.idx1 = AelPrev.outIdx;
+                    polyPtRec.ppt2 = AddPolyPt(e, pt);
+                    polyPtRec.idx2 = e.outIdx;
+                    m_Joins.Add(polyPtRec);                            
+                }
+            }
         }
+        //------------------------------------------------------------------------------
         
         private bool IsContributing(TEdge edge)
         {
@@ -1939,6 +2129,7 @@ namespace Clipper
                     return Math.Abs(edge.windCnt) == 1;
             }
         }
+        //------------------------------------------------------------------------------
 
         public bool Execute(TClipType clipType, TPolyPolygon solution, TPolyFillType subjFillType, TPolyFillType clipFillType)
         {
@@ -1954,6 +2145,7 @@ namespace Clipper
                 m_ActiveEdges = null;
                 m_SortedEdges = null;
                 m_ClipType = clipType;
+                m_Joins.Clear();
 
                 double ybot = PopScanbeam();
                 do
@@ -1968,6 +2160,7 @@ namespace Clipper
 
                 //build the return polygons ...
                 BuildResult(solution);
+                m_Joins.Clear();
                 DisposeAllPolyPts();
                 m_ExecuteLocked = false;
                 return true;
@@ -1980,11 +2173,13 @@ namespace Clipper
             m_ExecuteLocked = false;
             return false;
         }
+        //------------------------------------------------------------------------------
 
         private void FixupSolutionColinears(PolyPtList list, int idx)
         {
             //fixup any occasional 'empty' protrusions (ie adjacent parallel edges)
             bool ptDeleted;
+            bool firstPass = true;
             TPolyPt pp = list[idx];
             do
             {
@@ -2009,13 +2204,17 @@ namespace Clipper
                     pp = pp.next;
                     ptDeleted = false;
                 }
+                if (!firstPass) break;
+                if (pp == list[idx] && !ptDeleted) firstPass = false;
             } while (ptDeleted || pp != list[idx]);
         }
+        //------------------------------------------------------------------------------
 
         private void BuildResult(TPolyPolygon polypoly)
         {
             int k = 0;
 
+            JoinCommonEdges();
             for (int i = 0; i < m_PolyPts.Count; ++i)
             {
                 if (m_PolyPts[i] != null)
@@ -2052,16 +2251,19 @@ namespace Clipper
                 }
             }
         }
+        //------------------------------------------------------------------------------
 
         private bool ForceOrientation()
         {
             return m_ForceOrientation;
         }
+        //------------------------------------------------------------------------------
 
         private void ForceOrientation(bool value)
         {
             m_ForceOrientation = value;
         }
+        //------------------------------------------------------------------------------
 
         private TEdge BubbleSwap(TEdge edge)
         {
@@ -2121,6 +2323,7 @@ namespace Clipper
             }
             return result;
         }
+        //------------------------------------------------------------------------------
 
         private void ProcessEdgesAtTopOfScanbeam(double topY)
         {
@@ -2144,10 +2347,37 @@ namespace Clipper
                     //2. promote horizontal edges, otherwise update xbot and ybot ...
                     if (IsIntermediate(e, topY) && IsHorizontal(e.nextInLML))
                     {
-                        if (e.outIdx >= 0)
-                            AddPolyPt(e, new TDoublePoint(e.xtop, e.ytop));
-                        UpdateEdgeIntoAEL(ref e);
-                        AddEdgeToSEL(e);
+                        if (e.outIdx >= 0) AddPolyPt(e, new TDoublePoint(e.xtop, e.ytop));
+
+                        //very rarely an edge just below a horizontal edge in a contour
+                        //intersects with another edge at the very top of a scanbeam.
+                        //If this happens that intersection must be managed first ...
+                        if (e.prevInAEL != null && e.prevInAEL.xbot > e.xtop + tolerance)
+                        {
+                            IntersectEdges(e.prevInAEL, e, new TDoublePoint(e.prevInAEL.xbot,
+                              e.prevInAEL.ybot), (ipLeft | ipRight));
+                            SwapPositionsInAEL(e.prevInAEL, e);
+                            UpdateEdgeIntoAEL(ref e);
+                            AddEdgeToSEL(e);
+                            e = e.nextInAEL;
+                            UpdateEdgeIntoAEL(ref e);
+                            AddEdgeToSEL(e);
+                        }
+                        else if (e.nextInAEL != null && e.xtop > TopX(e.nextInAEL, topY) + tolerance)
+                        {
+                            e.nextInAEL.xbot = TopX(e.nextInAEL, topY);
+                            e.nextInAEL.ybot = topY;
+                            IntersectEdges(e, e.nextInAEL, new TDoublePoint(e.nextInAEL.xbot,
+                              e.nextInAEL.ybot), (ipLeft | ipRight));
+                            SwapPositionsInAEL(e, e.nextInAEL);
+                            UpdateEdgeIntoAEL(ref e);
+                            AddEdgeToSEL(e);
+                        }
+                        else
+                        {
+                            UpdateEdgeIntoAEL(ref e);
+                            AddEdgeToSEL(e);
+                        }
                     }
                     else
                     {
@@ -2191,6 +2421,7 @@ namespace Clipper
                     e = BubbleSwap(e);
             }
         }
+        //------------------------------------------------------------------------------
 
         private void AddLocalMaxPoly(TEdge e1, TEdge e2, TDoublePoint pt)
         {
@@ -2234,6 +2465,7 @@ namespace Clipper
             }
             e2.outIdx = e1.outIdx;
         }
+        //------------------------------------------------------------------------------
 
         private void AppendPolygon(TEdge e1, TEdge e2)
         {
@@ -2310,7 +2542,107 @@ namespace Clipper
             e1.outIdx = -1;
             m_PolyPts[ObsoleteIdx] = null;
         }
+        //------------------------------------------------------------------------------
+
+        private bool SlopesEqual(TDoublePoint pt1a, TDoublePoint pt1b,
+          TDoublePoint pt2a, TDoublePoint pt2b)
+        {
+          return Math.Abs((pt1b.Y - pt1a.Y) * (pt2b.X - pt2a.X) -
+            (pt1b.X - pt1a.X) * (pt2b.Y - pt2a.Y)) < slope_precision;
+        }
+        //------------------------------------------------------------------------------
+
+        private TPolyPt InsertPolyPt(TPolyPt afterPolyPt, TDoublePoint pt)
+        {
+          TPolyPt polyPt = new TPolyPt();
+          polyPt.pt = pt;
+          polyPt.prev = afterPolyPt;
+          polyPt.next = afterPolyPt.next;
+          afterPolyPt.next.prev = polyPt;
+          afterPolyPt.next = polyPt;
+          polyPt.isHole = TTriState.sUndefined;
+          return polyPt;
+        }
+        //------------------------------------------------------------------------------
+
+        void JoinCommonEdges()
+        {
+          for (int i = 0; i < m_Joins.Count; ++i)
+          {
+            //check that the lines haven't already been joined ...
+            if ( m_PolyPts[m_Joins[i].idx1] == null || m_PolyPts[m_Joins[i].idx2] == null) continue;
+
+            TPolyPt p1 = m_Joins[i].ppt1;
+            TPolyPt p2 = m_Joins[i].ppt2;
+
+            if (m_Joins[i].idx1 == m_Joins[i].idx2)
+            {
+              if (p2 == p1) continue;
+              TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
+              TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
+              pp1.prev = p2;
+              p2.next = pp1;
+              p1.next = pp2;
+              pp2.prev = p1;
+              m_PolyPts[m_Joins[i].idx1] = null;
+              m_PolyPts.Add(p1);
+              m_PolyPts.Add(p2);
+              continue;
+            }
+
+            if (p1.next.pt.Y <= p1.pt.Y && p2.next.pt.Y <= p2.pt.Y &&
+              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt))
+            {
+              TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
+              TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
+              ReversePolyPtLinks( p2 );
+              pp1.prev = pp2;
+              pp2.next = pp1;
+              p1.next = p2;
+              p2.prev = p1;
+            }
+            else if (p1.next.pt.Y <= p1.pt.Y && p2.prev.pt.Y <= p2.pt.Y &&
+              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt))
+            {
+              TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
+              TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
+              p1.next = p2;
+              p2.prev = p1;
+              pp2.next = pp1;
+              pp1.prev = pp2;
+            }
+            else if (p1.prev.pt.Y <= p1.pt.Y && p2.next.pt.Y <= p2.pt.Y &&
+              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt))
+            {
+              TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
+              TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
+              pp1.next = pp2;
+              pp2.prev = pp1;
+              p1.prev = p2;
+              p2.next = p1;
+            }
+            else if (p1.prev.pt.Y <= p1.pt.Y && p2.prev.pt.Y <= p2.pt.Y &&
+              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt))
+            {
+              TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
+              TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
+              ReversePolyPtLinks(p2);
+              p1.prev = p2;
+              p2.next = p1;
+              pp1.next = pp2;
+              pp2.prev = pp1;
+            }
+            else
+              continue;
+
+            m_PolyPts[m_Joins[i].idx2] = null;
+          }
+        }
+        //------------------------------------------------------------------------------
     }
+    //------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------
+    
     class clipperException : Exception
     {
         private string m_description;
@@ -2321,6 +2653,7 @@ namespace Clipper
             throw new Exception(m_description);
         }
     }
+    //------------------------------------------------------------------------------
 }
 
  
