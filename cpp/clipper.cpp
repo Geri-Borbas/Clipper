@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.71                                                            *
-* Date      :  26 October 2010                                                 *
+* Version   :  2.8                                                             *
+* Date      :  19 November 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -18,6 +18,7 @@
 * Computer graphics and geometric modeling: implementation and algorithms      *
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
+* Pages 98 - 106.                                                              *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
 *******************************************************************************/
@@ -136,7 +137,7 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
   //a negative delta will offset each polygon edge towards its right.
 
   //USE THIS FUNCTION WITH CAUTION. VERY OCCASIONALLY HOLES AREN'T PROPERLY
-  //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: work-in-progress.)
+  //HANDLED. THEY MAY BE MISSING OR THE WRONG SIZE. (ie: a work-in-progress.)
 
   TPolyPolygon result(pts.size());
   for (int j = 0; j < int(pts.size()); ++j)
@@ -145,19 +146,25 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
     result[j].resize(len*2);
     if (len == 0) continue;
 
+    //to minimize artefacts strip out polygons where
+    //delta is larger than half the polygon diameter ...
+    if (delta < 0 && PolygonArea(pts[j]) > 0)
+    {
+        TDoubleRect rec = GetBounds(pts[j]);
+        if (-delta * 2 > (rec.right - rec.left) ||
+            -delta * 2 > (rec.bottom - rec.top)) len = 1;
+    }
+    else if (delta > 0 && PolygonArea(pts[j]) < 0)
+    {
+        TDoubleRect rec = GetBounds(pts[j]);
+        if (delta * 2 > (rec.right - rec.left) ||
+            delta * 2 > (rec.bottom - rec.top)) len = 1;
+    }
+
     TPolygon normals(len);
     normals[0] = GetUnitNormal(pts[j][len-1], pts[j][0]);
     for (int i = 1; i < len; ++i)
       normals[i] = GetUnitNormal(pts[j][i-1], pts[j][i]);
-
-    //to minimize artefacts when shrinking, strip out polygons where
-    //abs(delta) is larger than half its diameter ...
-    if (delta < 0)
-    {
-      TDoubleRect rec = GetBounds(pts[j]);
-      if (-delta*2 > (rec.right-rec.left) || -delta*2 > (rec.bottom-rec.top))
-        len = 1;
-    }
 
     for (int i = 0; i < len-1; ++i)
     {
@@ -217,6 +224,18 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
     result.erase(it);
   }
   return result;
+}
+//------------------------------------------------------------------------------
+
+bool IsClockwise(const TPolygon &poly)
+{
+  int highI = poly.size() -1;
+  if (highI < 2) return false;
+  double area = poly[highI].X * poly[0].Y - poly[0].X * poly[highI].Y;
+  for (int i = 0; i <= highI; ++i)
+    area += poly[i].X * poly[i+1].Y - poly[i+1].X * poly[i].Y;
+  //area := area/2;
+  return area > 0; //ie reverse of normal formula because Y axis inverted
 }
 //------------------------------------------------------------------------------
 
@@ -1062,6 +1081,35 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
       AddLocalMinPoly( lm->leftBound,
         lm->rightBound, DoublePoint( lm->leftBound->xbot , lm->Y ) );
 
+    //flag polygons that share colinear edges ready to be joined later ...
+    if (lm->leftBound->outIdx >= 0 && lm->leftBound->prevInAEL &&
+      lm->leftBound->prevInAEL->outIdx >= 0 &&
+      fabs(lm->leftBound->prevInAEL->xbot - lm->leftBound->x) < tolerance &&
+      SlopesEqual(*lm->leftBound, *lm->leftBound->prevInAEL))
+    {
+      TDoublePoint pt = DoublePoint(lm->leftBound->x,lm->leftBound->y);
+      int i = m_Joins.size();
+      m_Joins.resize(i+1);
+      m_Joins[i].ppt1 = AddPolyPt(lm->leftBound, pt);
+      m_Joins[i].idx1 = lm->leftBound->outIdx;
+      m_Joins[i].ppt2 = AddPolyPt(lm->leftBound->prevInAEL, pt);
+      m_Joins[i].idx2 = lm->leftBound->prevInAEL->outIdx;
+    }
+    if (lm->rightBound->outIdx >= 0 && lm->rightBound->prevInAEL &&
+      lm->rightBound->prevInAEL->outIdx >= 0 &&
+      fabs(lm->rightBound->prevInAEL->xbot - lm->rightBound->x) < tolerance &&
+      SlopesEqual(*lm->rightBound, *lm->rightBound->prevInAEL))
+    {
+      TDoublePoint pt = DoublePoint(lm->rightBound->x,lm->rightBound->y);
+      int i = m_Joins.size();
+      m_Joins.resize(i+1);
+      m_Joins[i].ppt1 = AddPolyPt(lm->rightBound, pt);
+      m_Joins[i].idx1 = lm->rightBound->outIdx;
+      m_Joins[i].ppt2 = AddPolyPt(lm->rightBound->prevInAEL, pt);
+      m_Joins[i].idx2 = lm->rightBound->prevInAEL->outIdx;
+    }
+
+
     if( lm->leftBound->nextInAEL != lm->rightBound )
     {
       TEdge* e = lm->leftBound->nextInAEL;
@@ -1323,15 +1371,37 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     if((e->xbot >= horzLeft - tolerance) && (e->xbot <= horzRight + tolerance))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
-      if ( fabs(e->xbot - horzEdge->xtop) < tolerance &&
-          horzEdge->nextInLML  &&
-          (SlopesEqual(*e, *horzEdge->nextInLML) ||
-            (e->dx < horzEdge->nextInLML->dx))){
-          //we really have gone past the end of intermediate horz edge so quit.
-          //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
-          break;
+//      if ( fabs(e->xbot - horzEdge->xtop) < tolerance &&
+//          horzEdge->nextInLML  &&
+//          (SlopesEqual(*e, *horzEdge->nextInLML) ||
+//            (e->dx < horzEdge->nextInLML->dx))){
+//          //we really have gone past the end of intermediate horz edge so quit.
+//          //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
+//          break;
+//      }
+
+      if ( fabs(e->xbot - horzEdge->xtop) < tolerance && horzEdge->nextInLML)
+      {
+        if ( SlopesEqual(*e, *horzEdge->nextInLML) )
+        {
+          //we've got 2 colinear edges at the end of the horz. line ...
+          if (horzEdge->outIdx >= 0 && e->outIdx >= 0)
+          {
+            int i = m_Joins.size();
+            m_Joins.resize(i+1);
+            TDoublePoint pt = DoublePoint(horzEdge->xtop, horzEdge->ytop);
+            m_Joins[i].ppt1 = AddPolyPt(horzEdge, pt);
+            m_Joins[i].idx1 = horzEdge->outIdx;
+            m_Joins[i].ppt2 = AddPolyPt(e, pt);
+            m_Joins[i].idx2 = e->outIdx;
+          }
+          break; //we've reached the end of the horizontal line
+        }
+        else if (e->dx < horzEdge->nextInLML->dx)
+          break; //we've reached the end of the horizontal line
       }
-      else if( e == eMaxPair )
+
+      if( e == eMaxPair )
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if (Direction == dLeftToRight)
@@ -1385,7 +1455,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::AddPolyPt(TEdge *e, const TDoublePoint &pt)
+TPolyPt* Clipper::AddPolyPt(TEdge *e, const TDoublePoint &pt)
 {
   bool ToFront = (e->side == esLeft);
   if(  e->outIdx < 0 )
@@ -1397,11 +1467,12 @@ void Clipper::AddPolyPt(TEdge *e, const TDoublePoint &pt)
     newPolyPt->prev = newPolyPt;
     newPolyPt->isHole = sUndefined;
     e->outIdx = m_PolyPts.size()-1;
+    return newPolyPt;
   } else
   {
     TPolyPt* pp = m_PolyPts[e->outIdx];
-    if((ToFront && PointsEqual(pt, pp->pt)) ||
-      (!ToFront && PointsEqual(pt, pp->prev->pt))) return;
+    if (ToFront && PointsEqual(pt, pp->pt)) return pp;
+    if (!ToFront && PointsEqual(pt, pp->prev->pt)) return pp->prev;
     TPolyPt* newPolyPt = new TPolyPt;
     newPolyPt->pt = pt;
     newPolyPt->isHole = sUndefined;
@@ -1410,6 +1481,7 @@ void Clipper::AddPolyPt(TEdge *e, const TDoublePoint &pt)
     newPolyPt->prev->next = newPolyPt;
     pp->prev = newPolyPt;
     if (ToFront) m_PolyPts[e->outIdx] = newPolyPt;
+    return newPolyPt;
   }
 }
 //------------------------------------------------------------------------------
@@ -1803,7 +1875,23 @@ void Clipper::UpdateEdgeIntoAEL(TEdge *&e)
   e = e->nextInLML;
   e->prevInAEL = AelPrev;
   e->nextInAEL = AelNext;
-  if( !IsHorizontal(*e) ) InsertScanbeam( e->ytop );
+  if( !IsHorizontal(*e) )
+  {
+    InsertScanbeam( e->ytop );
+
+    //if output polygons share an edge, they'll need joining later ...
+    if (e->outIdx >= 0 && AelPrev && AelPrev->outIdx >= 0 &&
+      fabs(AelPrev->xbot - e->x) < tolerance && SlopesEqual(*e, *AelPrev))
+    {
+      int i = m_Joins.size();
+      m_Joins.resize(i+1);
+      TDoublePoint pt = DoublePoint(e->x, e->y);
+      m_Joins[i].ppt1 = AddPolyPt(AelPrev, pt);
+      m_Joins[i].idx1 = AelPrev->outIdx;
+      m_Joins[i].ppt2 = AddPolyPt(e, pt);
+      m_Joins[i].idx2 = e->outIdx;
+    }
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -1839,6 +1927,7 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
     m_ActiveEdges = 0;
     m_SortedEdges = 0;
     m_ClipType = clipType;
+    m_Joins.clear();
 
     double ybot = PopScanbeam();
     do {
@@ -1868,6 +1957,7 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
 void FixupSolutionColinears(PolyPtList &list, int idx){
   //fixup any occasional 'empty' protrusions (ie adjacent parallel edges)
   bool ptDeleted;
+  bool firstPass = true;
   TPolyPt *pp = list[idx];
   do {
     if (pp->prev == pp) return;
@@ -1887,12 +1977,15 @@ void FixupSolutionColinears(PolyPtList &list, int idx){
       pp = pp->next;
       ptDeleted = false;
     }
+    if (!firstPass) break;
+    if (pp == list[idx] && !ptDeleted) firstPass = false;
   } while (ptDeleted || pp != list[idx]);
 }
 //------------------------------------------------------------------------------
 
 void Clipper::BuildResult(TPolyPolygon &polypoly){
   unsigned k = 0;
+  JoinCommonEdges();
   polypoly.resize(m_PolyPts.size());
   for (unsigned i = 0; i < m_PolyPts.size(); ++i) {
     if (m_PolyPts[i]) {
@@ -2018,8 +2111,34 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
       if(  IsIntermediate( e , topY ) && IsHorizontal( *e->nextInLML ) )
       {
         if( e->outIdx >= 0 ) AddPolyPt(e, DoublePoint(e->xtop ,e->ytop));
-        UpdateEdgeIntoAEL( e );
-        AddEdgeToSEL( e );
+        //very rarely an edge just below a horizontal edge in a contour
+        //intersects with another edge at the very top of a scanbeam.
+        //If this happens that intersection must be managed first ...
+        if ( e->prevInAEL && e->prevInAEL->xbot > e->xtop + tolerance )
+        {
+          IntersectEdges(e->prevInAEL, e, DoublePoint(e->prevInAEL->xbot,
+            e->prevInAEL->ybot), (ipLeft | ipRight));
+          SwapPositionsInAEL(e->prevInAEL, e);
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+          e = e->nextInAEL;
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        }
+        else if (e->nextInAEL && e->xtop > TopX(e->nextInAEL, topY) + tolerance)
+        {
+          e->nextInAEL->xbot = TopX(e->nextInAEL, topY);
+          e->nextInAEL->ybot = topY;
+          IntersectEdges(e, e->nextInAEL, DoublePoint(e->nextInAEL->xbot,
+            e->nextInAEL->ybot), (ipLeft| ipRight));
+          SwapPositionsInAEL(e, e->nextInAEL);
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        } else
+        {
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        }
       } else
       {
         //this just simplifies horizontal processing ...
@@ -2174,6 +2293,103 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
   }
   e1->outIdx = -1;
   m_PolyPts[ObsoleteIdx] = 0;
+}
+//------------------------------------------------------------------------------
+
+bool SlopesEqual(const TDoublePoint& pt1a, const TDoublePoint& pt1b,
+  const TDoublePoint& pt2a, const TDoublePoint& pt2b)
+{
+  return fabs((pt1b.Y - pt1a.Y) * (pt2b.X - pt2a.X) -
+    (pt1b.X - pt1a.X) * (pt2b.Y - pt2a.Y)) < slope_precision;
+}
+//------------------------------------------------------------------------------
+
+TPolyPt* InsertPolyPt(TPolyPt* afterPolyPt, const TDoublePoint& pt)
+{
+  TPolyPt* polyPt = new TPolyPt;
+  polyPt->pt = pt;
+  polyPt->prev = afterPolyPt;
+  polyPt->next = afterPolyPt->next;
+  afterPolyPt->next->prev = polyPt;
+  afterPolyPt->next = polyPt;
+  polyPt->isHole = sUndefined;
+  return polyPt;
+}
+//------------------------------------------------------------------------------
+
+
+void Clipper::JoinCommonEdges()
+{
+  for (unsigned i = 0; i < m_Joins.size(); ++i)
+  {
+    //check that the lines haven't already been joined ...
+    if ( !m_PolyPts[m_Joins[i].idx1] || !m_PolyPts[m_Joins[i].idx2] ) continue;
+
+    TPolyPt* p1 = m_Joins[i].ppt1;
+    TPolyPt* p2 = m_Joins[i].ppt2;
+
+    if (m_Joins[i].idx1 == m_Joins[i].idx2)
+    {
+      if (p2 == p1) continue;
+      TPolyPt* pp1 = InsertPolyPt(p1, p1->pt);
+      TPolyPt* pp2 = InsertPolyPt(p2, p2->pt);
+      pp1->prev = p2;
+      p2->next = pp1;
+      p1->next = pp2;
+      pp2->prev = p1;
+      m_PolyPts[m_Joins[i].idx1] = 0;
+      m_PolyPts.push_back(p1);
+      m_PolyPts.push_back(p2);
+      continue;
+    }
+
+    if (p1->next->pt.Y <= p1->pt.Y && p2->next->pt.Y <= p2->pt.Y &&
+      SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->next->pt))
+    {
+      TPolyPt* pp1 = InsertPolyPt(p1, p1->pt);
+      TPolyPt* pp2 = InsertPolyPt(p2, p2->pt);
+      ReversePolyPtLinks( *p2 );
+      pp1->prev = pp2;
+      pp2->next = pp1;
+      p1->next = p2;
+      p2->prev = p1;
+    }
+    else if (p1->next->pt.Y <= p1->pt.Y && p2->prev->pt.Y <= p2->pt.Y &&
+      SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->prev->pt))
+    {
+      TPolyPt* pp1 = InsertPolyPt(p1, p1->pt);
+      TPolyPt* pp2 = InsertPolyPt(p2->prev, p2->pt);
+      p1->next = p2;
+      p2->prev = p1;
+      pp2->next = pp1;
+      pp1->prev = pp2;
+    }
+    else if (p1->prev->pt.Y <= p1->pt.Y && p2->next->pt.Y <= p2->pt.Y &&
+      SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->next->pt))
+    {
+      TPolyPt* pp1 = InsertPolyPt(p1->prev, p1->pt);
+      TPolyPt* pp2 = InsertPolyPt(p2, p2->pt);
+      pp1->next = pp2;
+      pp2->prev = pp1;
+      p1->prev = p2;
+      p2->next = p1;
+    }
+    else if (p1->prev->pt.Y <= p1->pt.Y && p2->prev->pt.Y <= p2->pt.Y &&
+      SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->prev->pt))
+    {
+      TPolyPt* pp1 = InsertPolyPt(p1->prev, p1->pt);
+      TPolyPt* pp2 = InsertPolyPt(p2->prev, p2->pt);
+      ReversePolyPtLinks(*p2);
+      p1->prev = p2;
+      p2->next = p1;
+      pp1->next = pp2;
+      pp2->prev = pp1;
+    }
+    else
+      continue;
+
+    m_PolyPts[m_Joins[i].idx2] = 0;
+  }
 }
 //------------------------------------------------------------------------------
 
