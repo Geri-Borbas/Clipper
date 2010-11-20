@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.71                                                            *
-* Date      :  24 October 2010                                                 *
+* Version   :  2.8                                                             *
+* Date      :  19 November 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -122,6 +122,14 @@ type
     isHole: TTriState; //See TClipper ForceOrientation property
   end;
 
+  TJoinRec = record
+    ppt1: PPolyPt;
+    idx1: integer;
+    ppt2: PPolyPt;
+    idx2: integer;
+  end;
+  TArrayOfJoinRec = array of TJoinRec;
+
   //TClipperBase is the ancestor to the TClipper class. It should not be
   //instantiated directly. This class simply abstracts the conversion of arrays
   //of polygon coords into edge objects that are stored in a LocalMinima list.
@@ -166,6 +174,7 @@ type
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
+    fJoins: TArrayOfJoinRec;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -200,15 +209,17 @@ type
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
     function IsContributing(edge: PEdge): boolean;
-    procedure AddPolyPt(e: PEdge; const pt: TDoublePoint);
+    function AddPolyPt(e: PEdge; const pt: TDoublePoint): PPolyPt;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AppendPolygon(e1, e2: PEdge);
     function ExecuteInternal(clipType: TClipType): boolean;
     procedure DisposeAllPolyPts;
     procedure DisposeIntersectNodes;
+    procedure JoinCommonEdges;
   public
     SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
+
 
     //The Execute() method performs the specified clipping task on previously
     //assigned subject and clip polygons. This method can be called multiple
@@ -250,6 +261,8 @@ type
   function TranslatePolygons(const pts: TArrayOfArrayOfFloatPoint;
     const deltaX, deltaY: double): TArrayOfArrayOfFloatPoint; overload;
 
+  function IsClockwise(const pts: TArrayOfDoublePoint): boolean; overload;
+  
   function MakeArrayOfDoublePoint(const a: TArrayOfFloatPoint): TArrayOfDoublePoint; overload;
   function MakeArrayOfFloatPoint(const a: TArrayOfDoublePoint): TArrayOfFloatPoint; overload;
 
@@ -483,6 +496,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function IsClockwise(const pts: TArrayOfDoublePoint): boolean; overload;
+var
+  i, highI: integer;
+  area: double;
+begin
+  result := true;
+  highI := high(pts);
+  if highI < 2 then exit;
+  //or ...(x2-x1)(y2+y1)
+  area := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
+  for i := 0 to highI-1 do
+    area := area + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
+  //area := area/2;
+  result := area > 0; //ie reverse of normal formula because Y axis inverted
+end;
+//------------------------------------------------------------------------------
+
 function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
   const delta: double): TArrayOfArrayOfDoublePoint;
 var
@@ -662,11 +692,13 @@ end;
 procedure FixupSolutionColinears(list: TList; idx: integer);
 var
   pp, tmp: PPolyPt;
-  ptDeleted: boolean;
+  ptDeleted, firstPass: boolean;
 begin
 	//fixup any occasional 'empty' protrusions (ie adjacent parallel edges) ...
+  firstPass := true;
   pp := PPolyPt(list[idx]);
-  repeat
+  while true do
+  begin
     if pp.prev = pp then exit;
     //test for same slope ... (cross-product)
     if abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
@@ -688,7 +720,10 @@ begin
       pp := pp.next;
       ptDeleted := false;
     end;
-  until (pp = list[idx]) and not ptDeleted;
+    if not firstPass then break;
+    if (pp = list[idx]) and not ptDeleted then
+      firstPass := false;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -818,7 +853,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsClockwise(pt: PPolyPt): boolean;
+function IsClockwise(pt: PPolyPt): boolean; overload;
 var
   area: double;
   startPt: PPolyPt;
@@ -826,11 +861,12 @@ begin
   area := 0;
   startPt := pt;
   repeat
-    area := area + (pt.pt.X +pt.next.pt.X) * (pt.pt.Y -pt.next.pt.Y);
+    //or ...(x2-x1)(y2+y1)
+    area := area + (pt.pt.X * pt.next.pt.Y) - (pt.next.pt.X * pt.pt.Y);
     pt := pt.next;
   until pt = startPt;
   //area := area /2;
-  result := area >= 0;
+  result := area > 0; //ie reverse of normal formula because Y axis inverted
 end;
 //------------------------------------------------------------------------------
 
@@ -1301,15 +1337,18 @@ function TClipper.Execute(clipType: TClipType;
 begin
   result := false;
   if fExecuteLocked then exit;
-  try
+  try try
     fExecuteLocked := true;
     fSubjFillType := subjFillType;
     fClipFillType := clipFillType;
     result := ExecuteInternal(clipType);
     if result then solution := ResultAsFloatPointArray;
   finally
-    DisposeAllPolyPts;
     fExecuteLocked := false;
+    DisposeAllPolyPts;
+  end;
+  except
+    result := false;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1321,15 +1360,18 @@ function TClipper.Execute(clipType: TClipType;
 begin
   result := false;
   if fExecuteLocked then exit;
-  try
+  try try
     fExecuteLocked := true;
     fSubjFillType := subjFillType;
     fClipFillType := clipFillType;
     result := ExecuteInternal(clipType);
     if result then solution := ResultAsDoublePointArray;
   finally
-    DisposeAllPolyPts;
     fExecuteLocked := false;
+    DisposeAllPolyPts;
+  end;
+  except
+    result := false;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1354,6 +1396,7 @@ begin
     if not InitializeScanbeam then exit;
     fActiveEdges := nil;
     fSortedEdges := nil;
+    fJoins := nil;
     fClipType := clipType;
     yBot := PopScanbeam;
     repeat
@@ -1379,6 +1422,7 @@ var
   isHorizontalOnly: boolean;
 begin
   k := 0;
+  JoinCommonEdges;
   setLength(result, fPolyPtList.Count);
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
@@ -1427,6 +1471,7 @@ var
   isHorizontalOnly: boolean;
 begin
   k := 0;
+  JoinCommonEdges;
   setLength(result, fPolyPtList.Count);
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
@@ -1665,6 +1710,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
   //----------------------------------------------------------------------
 
 var
+  i: integer;
   e: PEdge;
   pt: TDoublePoint;
 begin
@@ -1696,6 +1742,37 @@ begin
 
       if IsContributing(leftBound) then
         AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
+
+      //flag polygons that share colinear edges ready to be joined later ...
+      if (leftBound.outIdx >= 0) and
+        assigned(leftBound.prevInAEL) and
+        (leftBound.prevInAEL.outIdx >= 0) and
+        (abs(leftBound.prevInAEL.xbot - leftBound.x) < tolerance) and
+        SlopesEqual(leftBound, leftBound.prevInAEL) then
+      begin
+        pt := DoublePoint(leftBound.x,leftBound.y);
+        i := length(fJoins);
+        setlength(fJoins, i+1);
+        fJoins[i].ppt1 := AddPolyPt(leftBound, pt);
+        fJoins[i].idx1 := leftBound.outIdx;
+        fJoins[i].ppt2 := AddPolyPt(leftBound.prevInAEL, pt);
+        fJoins[i].idx2 := leftBound.prevInAEL.outIdx;
+      end;
+      if (rightBound.outIdx >= 0) and
+        assigned(rightBound.prevInAEL) and
+        (rightBound.prevInAEL.outIdx >= 0) and
+        (abs(rightBound.prevInAEL.xbot - rightBound.x) < tolerance) and
+        SlopesEqual(rightBound, rightBound.prevInAEL) then
+      begin
+        pt := DoublePoint(rightBound.x,rightBound.y);
+        i := length(fJoins);
+        setlength(fJoins, i+1);
+        fJoins[i].ppt1 := AddPolyPt(rightBound, pt);
+        fJoins[i].idx1 := rightBound.outIdx;
+        fJoins[i].ppt2 := AddPolyPt(rightBound.prevInAEL, pt);
+        fJoins[i].idx2 := rightBound.prevInAEL.outIdx;
+      end;
+
       if (leftBound.nextInAEL <> rightBound) then
       begin
         e := leftBound.nextInAEL;
@@ -1942,9 +2019,11 @@ end;
 
 procedure TClipper.ProcessHorizontal(horzEdge: PEdge);
 var
+  i: integer;
   e, eNext, eMaxPair: PEdge;
   horzLeft, horzRight: double;
   Direction: TDirection;
+  pt: TDoublePoint;
 const
   ProtectLeft: array[boolean] of TIntersectProtects = ([ipRight], [ipLeft,ipRight]);
   ProtectRight: array[boolean] of TIntersectProtects = ([ipLeft], [ipLeft,ipRight]);
@@ -1989,15 +2068,32 @@ begin
     if (e.xbot >= horzLeft -tolerance) and (e.xbot <= horzRight +tolerance) then
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
+
       if (abs(e.xbot - horzEdge.xtop) < tolerance) and
-        assigned(horzEdge.nextInLML) and (SlopesEqual(e, horzEdge.nextInLML) or
-        (e.dx < horzEdge.nextInLML.dx)) then
+        assigned(horzEdge.nextInLML) then
       begin
-        //we really have gone past the end of intermediate horz edge so quit.
+        if SlopesEqual(e, horzEdge.nextInLML) then
+        begin
+          //we've got 2 colinear edges at the end of the horz. line ...
+          if (horzEdge.outIdx >= 0) and (e.outIdx >= 0) then
+          begin
+            i := length(fJoins);
+            setlength(fJoins, i+1);
+            pt := DoublePoint(horzEdge.xtop,horzEdge.ytop);
+            fJoins[i].ppt1 := AddPolyPt(horzEdge, pt);
+            fJoins[i].idx1 := horzEdge.outIdx;
+            fJoins[i].ppt2 := AddPolyPt(e, pt);
+            fJoins[i].idx2 := e.outIdx;
+          end;
+          break; //we've reached the end of the horizontal line
+        end
+        else if (e.dx < horzEdge.nextInLML.dx) then
+        //we really have got to the end of the intermediate horz edge so quit.
         //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
-        break;
-      end
-      else if (e = eMaxPair) then
+          break;
+      end;
+
+      if (e = eMaxPair) then
       begin
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
@@ -2054,33 +2150,36 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddPolyPt(e: PEdge; const pt: TDoublePoint);
+function TClipper.AddPolyPt(e: PEdge; const pt: TDoublePoint): PPolyPt;
 var
-  fp, newPolyPt: PPolyPt;
+  fp: PPolyPt;
   ToFront: boolean;
 begin
   ToFront := e.side = esLeft;
   if e.outIdx < 0 then
   begin
-    new(newPolyPt);
-    newPolyPt.pt := pt;
-    e.outIdx := fPolyPtList.Add(newPolyPt);
-    newPolyPt.next := newPolyPt;
-    newPolyPt.prev := newPolyPt;
-    newPolyPt.isHole := sUndefined;
+    new(result);
+    result.pt := pt;
+    e.outIdx := fPolyPtList.Add(result);
+    result.next := result;
+    result.prev := result;
+    result.isHole := sUndefined;
   end else
   begin
+    result := nil;
     fp := PPolyPt(fPolyPtList[e.outIdx]);
-    if (ToFront and PointsEqual(pt, fp.pt)) or
-      (not ToFront and PointsEqual(pt, fp.prev.pt)) then exit;
-    new(newPolyPt);
-    newPolyPt.pt := pt;
-    newPolyPt.isHole := sUndefined;
-    newPolyPt.next := fp;
-    newPolyPt.prev := fp.prev;
-    newPolyPt.prev.next := newPolyPt;
-    fp.prev := newPolyPt;
-    if ToFront then fPolyPtList[e.outIdx] := newPolyPt;
+    if (ToFront and PointsEqual(pt, fp.pt)) then result := fp
+    else if not ToFront and PointsEqual(pt, fp.prev.pt) then result := fp.prev;
+    if assigned(result) then exit;
+
+    new(result);
+    result.pt := pt;
+    result.isHole := sUndefined;
+    result.next := fp;
+    result.prev := fp.prev;
+    result.prev.next := result;
+    fp.prev := result;
+    if ToFront then fPolyPtList[e.outIdx] := result;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2520,6 +2619,8 @@ end;
 
 procedure TClipper.UpdateEdgeIntoAEL(var e: PEdge);
 var
+  i: integer;
+  pt: TDoublePoint;
   AelPrev, AelNext: PEdge;
 begin
   if not assigned(e.nextInLML) then raise exception.Create(rsUpdateEdgeIntoAEL);
@@ -2538,7 +2639,23 @@ begin
   e := e.nextInLML;
   e.prevInAEL := AelPrev;
   e.nextInAEL := AelNext;
-  if not IsHorizontal(e) then InsertScanbeam(e.ytop);
+  if not IsHorizontal(e) then
+  begin
+    InsertScanbeam(e.ytop);
+
+    //if output polygons share an edge, they'll need joining later ...
+    if (e.outIdx >= 0) and assigned(AelPrev) and (AelPrev.outIdx >= 0) and
+      (abs(AelPrev.xbot - e.x) < tolerance) and SlopesEqual(e, AelPrev) then
+    begin
+      i := length(fJoins);
+      setlength(fJoins, i+1);
+      pt := DoublePoint(e.x,e.y);
+      fJoins[i].ppt1 := AddPolyPt(AelPrev, pt);
+      fJoins[i].idx1 := AelPrev.outIdx;
+      fJoins[i].ppt2 := AddPolyPt(e, pt);
+      fJoins[i].idx2 := e.outIdx;
+    end;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -2648,8 +2765,35 @@ begin
       if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
         if (e.outIdx >= 0) then AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
-        UpdateEdgeIntoAEL(e);
-        AddEdgeToSEL(e);
+        //very rarely an edge just below a horizontal edge in a contour
+        //intersects with another edge at the very top of a scanbeam.
+        //If this happens that intersection must be managed first ...
+        if assigned(e.prevInAEL) and (e.prevInAEL.xbot > e.xtop + tolerance) then
+        begin
+          IntersectEdges(e.prevInAEL, e,
+            DoublePoint(e.prevInAEL.xbot,e.prevInAEL.ybot), [ipLeft,ipRight]);
+          SwapPositionsInAEL(e.prevInAEL, e);
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+          e := e.nextInAEL;
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        end
+        else if assigned(e.nextInAEL) and
+          (e.xtop > topX(e.nextInAEL, topY) + tolerance) then
+        begin
+          e.nextInAEL.xbot := TopX(e.nextInAEL, topY);
+          e.nextInAEL.ybot := topY;
+          IntersectEdges(e, e.nextInAEL,
+            DoublePoint(e.nextInAEL.xbot,e.nextInAEL.ybot), [ipLeft,ipRight]);
+          SwapPositionsInAEL(e, e.nextInAEL);
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        end else
+        begin
+          UpdateEdgeIntoAEL(e);
+          AddEdgeToSEL(e);
+        end;
       end else
       begin
         //this just simplifies horizontal processing ...
@@ -2812,6 +2956,103 @@ begin
   end;
   e1.outIdx := -1;
   fPolyPtList[ObsoleteIdx] := nil;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.JoinCommonEdges;
+var
+  i: integer;
+  p1, p2, pp1, pp2: PPolyPt;
+
+  function SlopesEqual(const pt1a, pt1b, pt2a, pt2b: TDoublePoint): boolean;
+  begin
+    result := abs((pt1b.Y - pt1a.Y)*(pt2b.X - pt2a.X) -
+      (pt1b.X - pt1a.X)*(pt2b.Y - pt2a.Y)) < slope_precision;
+  end;
+
+  function insertPolyPt(afterPolyPt: PPolyPt; pt: TDoublePoint): PPolyPt;
+  begin
+    new(result);
+    result.pt := pt;
+    result.prev := afterPolyPt;
+    result.next := afterPolyPt.next;
+    afterPolyPt.next.prev := result;
+    afterPolyPt.next := Result;
+    result.isHole := sUndefined;
+  end;
+
+begin
+  for i := 0 to high(fJoins) do
+  begin
+    //check that the lines haven't already been joined ...
+    if not assigned(fPolyPtList[fJoins[i].idx1]) or
+      not assigned(fPolyPtList[fJoins[i].idx2]) then continue;
+
+    p1 := fJoins[i].ppt1;
+    p2 := fJoins[i].ppt2;
+
+    if fJoins[i].idx1 = fJoins[i].idx2 then
+    begin
+      if p2 = p1 then continue;
+      pp1 := insertPolyPt(p1, p1.pt);
+      pp2 := insertPolyPt(p2, p2.pt);
+      pp1.prev := p2;
+      p2.next := pp1;
+      p1.next := pp2;
+      pp2.prev := p1;
+      fPolyPtList[fJoins[i].idx1] := nil;
+      fPolyPtList.Add(p1);
+      fPolyPtList.Add(p2);
+      continue;
+    end;
+
+    if (p1.next.pt.Y <= p1.pt.Y) and (p2.next.pt.Y <= p2.pt.Y) and
+      SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt) then
+    begin
+      pp1 := insertPolyPt(p1, p1.pt);
+      pp2 := insertPolyPt(p2, p2.pt);
+      ReversePolyPtLinks(p2);
+      pp1.prev := pp2;
+      pp2.next := pp1;
+      p1.next := p2;
+      p2.prev := p1;
+    end
+    else if (p1.next.pt.Y <= p1.pt.Y) and (p2.prev.pt.Y <= p2.pt.Y) and
+      SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt) then
+    begin
+      pp1 := insertPolyPt(p1, p1.pt);
+      pp2 := insertPolyPt(p2.prev, p2.pt);
+      p1.next := p2;
+      p2.prev := p1;
+      pp2.next := pp1;
+      pp1.prev := pp2;
+    end
+    else if (p1.prev.pt.Y <= p1.pt.Y) and (p2.next.pt.Y <= p2.pt.Y) and
+      SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt) then
+    begin
+      pp1 := insertPolyPt(p1.prev, p1.pt);
+      pp2 := insertPolyPt(p2, p2.pt);
+      pp1.next := pp2;
+      pp2.prev := pp1;
+      p1.prev := p2;
+      p2.next := p1;
+    end
+    else if (p1.prev.pt.Y <= p1.pt.Y) and (p2.prev.pt.Y <= p2.pt.Y) and
+      SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt) then
+    begin
+      pp1 := insertPolyPt(p1.prev, p1.pt);
+      pp2 := insertPolyPt(p2.prev, p2.pt);
+      ReversePolyPtLinks(p2);
+      p1.prev := p2;
+      p2.next := p1;
+      pp1.next := pp2;
+      pp2.prev := pp1;
+    end
+    else
+      continue;
+
+    fPolyPtList[fJoins[i].idx2] := nil;
+  end;
 end;
 //------------------------------------------------------------------------------
 

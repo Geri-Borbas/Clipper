@@ -2,6 +2,16 @@
 Clipper Change Log
 ============================================================
 
+2.8 - 20 November 2010
+* Updated: Output polygons which previously shared a common 
+  edge are now merged. 
+* Changed: The orientation of outer polygons is now clockwise 
+  when the display's Y axis is positive downwards (as is 
+  typical for most Windows applications). Inner polygons 
+  (holes) have the opposite orientation.
+* Added: Support module for Cairo Graphics Library (with demo). 
+* Updated: C# and C++ demos.
+
 2.71 - 26 October 2010
 * Bugfix: Finally fixed a bug (affecting NonZero filling) 
   that was introduced in ver 2.6.

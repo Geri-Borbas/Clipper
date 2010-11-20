@@ -168,38 +168,38 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
 
     for (int i = 0; i < len-1; ++i)
     {
-      result[j][i*2].X = pts[j][i].X - delta *normals[i].X;
-      result[j][i*2].Y = pts[j][i].Y - delta *normals[i].Y;
-      result[j][i*2+1].X = pts[j][i].X - delta *normals[i+1].X;
-      result[j][i*2+1].Y = pts[j][i].Y - delta *normals[i+1].Y;
+      result[j][i*2].X = pts[j][i].X + delta *normals[i].X;
+      result[j][i*2].Y = pts[j][i].Y + delta *normals[i].Y;
+      result[j][i*2+1].X = pts[j][i].X + delta *normals[i+1].X;
+      result[j][i*2+1].Y = pts[j][i].Y + delta *normals[i+1].Y;
     }
-    result[j][len*2 -2].X = pts[j][len-1].X - delta *normals[len-1].X;
-    result[j][len*2 -2].Y = pts[j][len-1].Y - delta *normals[len-1].Y;
-    result[j][len*2 -1].X = pts[j][len-1].X - delta *normals[0].X;
-    result[j][len*2 -1].Y = pts[j][len-1].Y - delta *normals[0].Y;
+    result[j][len*2 -2].X = pts[j][len-1].X + delta *normals[len-1].X;
+    result[j][len*2 -2].Y = pts[j][len-1].Y + delta *normals[len-1].Y;
+    result[j][len*2 -1].X = pts[j][len-1].X + delta *normals[0].X;
+    result[j][len*2 -1].Y = pts[j][len-1].Y + delta *normals[0].Y;
 
     //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
     //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-    if ((normals[len-1].X *normals[0].Y - normals[0].X *normals[len-1].Y) *delta < 0 &&
+    if ((normals[len-1].X *normals[0].Y - normals[0].X *normals[len-1].Y) *delta > 0 &&
     (normals[0].X *normals[len-1].X + normals[0].Y *normals[len-1].Y) < 0.985)
     {
       double a1 = atan2(normals[len-1].Y, normals[len-1].X);
       double a2 = atan2(normals[0].Y, normals[0].X);
-      if (delta < 0 && a2 < a1) a2 = a2 + pi*2;
-      else if (delta > 0 && a2 > a1) a2 = a2 - pi*2;
-      TPolygon arc = BuildArc(pts[j][len-1], a1, a2, -delta);
+      if (delta > 0 && a2 < a1) a2 = a2 + pi*2;
+      else if (delta < 0 && a2 > a1) a2 = a2 - pi*2;
+      TPolygon arc = BuildArc(pts[j][len-1], a1, a2, delta);
       TPolygon::iterator it = result[j].begin() +len*2-1;
       result[j].insert(it, arc.begin(), arc.end());
     }
     for (int i = len-1; i > 0; --i)
-      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta < 0 &&
+      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta > 0 &&
       (normals[i].X*normals[i-1].X + normals[i].Y*normals[i-1].Y) < 0.985)
       {
         double a1 = atan2(normals[i-1].Y, normals[i-1].X);
         double a2 = atan2(normals[i].Y, normals[i].X);
-        if (delta < 0 && a2 < a1) a2 = a2 + pi*2;
-        else if (delta > 0 && a2 > a1) a2 = a2 - pi*2;
-        TPolygon arc = BuildArc(pts[j][i-1], a1, a2, -delta);
+        if (delta > 0 && a2 < a1) a2 = a2 + pi*2;
+        else if (delta < 0 && a2 > a1) a2 = a2 - pi*2;
+        TPolygon arc = BuildArc(pts[j][i-1], a1, a2, delta);
         TPolygon::iterator it = result[j].begin() +(i-1)*2+1;
         result[j].insert(it, arc.begin(), arc.end());
       }
@@ -214,10 +214,10 @@ TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta)
   {
     TDoubleRect r = c.GetBounds();
     TPolygon outer(4);
-    outer[0] = DoublePoint(r.left-10, r.top-10);
-    outer[1] = DoublePoint(r.right+10, r.top-10);
-    outer[2] = DoublePoint(r.right+10, r.bottom+10);
-    outer[3] = DoublePoint(r.left-10, r.bottom+10);
+    outer[0] = DoublePoint(r.left-10, r.bottom+10);
+    outer[1] = DoublePoint(r.right+10, r.bottom+10);
+    outer[2] = DoublePoint(r.right+10, r.top-10);
+    outer[3] = DoublePoint(r.left-10, r.top-10);
     c.AddPolygon(outer, ptSubject);
     c.Execute(ctUnion, result, pftNonZero, pftNonZero);
     TPolyPolygon::iterator it = result.begin();
@@ -390,12 +390,12 @@ bool IsClockwise(TPolyPt *pt)
   TPolyPt* startPt = pt;
   do
   {
-    area = area + (pt->pt.X + pt->next->pt.X) * (pt->pt.Y - pt->next->pt.Y);
+    area = area + (pt->pt.X * pt->next->pt.Y) - (pt->next->pt.X * pt->pt.Y);
     pt = pt->next;
   }
   while (pt != startPt);
   //area = area /2;
-  return area >= 0;
+  return area > 0; //ie reverse of normal formula because Y axis inverted
 }
 //------------------------------------------------------------------------------
 
@@ -420,7 +420,7 @@ bool ValidateOrientation(TPolyPt *pt)
     bottomPt->next->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->next;
   while (bottomPt->isHole == sUndefined &&
     bottomPt->prev->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->prev;
-  return (IsClockwise(pt) != (bottomPt->isHole == sTrue));
+  return (IsClockwise(pt) == (bottomPt->isHole == sFalse));
 }
 //------------------------------------------------------------------------------
 

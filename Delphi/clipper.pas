@@ -122,13 +122,13 @@ type
     isHole: TTriState; //See TClipper ForceOrientation property
   end;
 
-  TPolyPtRec = record
+  TJoinRec = record
     ppt1: PPolyPt;
     idx1: integer;
     ppt2: PPolyPt;
     idx2: integer;
   end;
-  TArrayOfPolyPtRec = array of TPolyPtRec;
+  TArrayOfJoinRec = array of TJoinRec;
 
   //TClipperBase is the ancestor to the TClipper class. It should not be
   //instantiated directly. This class simply abstracts the conversion of arrays
@@ -174,7 +174,7 @@ type
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
-    fJoins: TArrayOfPolyPtRec;
+    fJoins: TArrayOfJoinRec;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -519,7 +519,7 @@ var
   j, i, highI: integer;
   normals: TArrayOfDoublePoint;
   a1,a2: double;
-  arc: TArrayOfDoublePoint;
+  arc, outer: TArrayOfDoublePoint;
   r: TFloatRect;
   c: TClipper;
 begin
@@ -549,37 +549,37 @@ begin
     setLength(result[j], (highI+1)*2);
     for i := 0 to highI-1 do
     begin
-      result[j][i*2].X := pts[j][i].X -delta *normals[i].X;
-      result[j][i*2].Y := pts[j][i].Y -delta *normals[i].Y;
-      result[j][i*2+1].X := pts[j][i].X -delta *normals[i+1].X;
-      result[j][i*2+1].Y := pts[j][i].Y -delta *normals[i+1].Y;
+      result[j][i*2].X := pts[j][i].X +delta *normals[i].X;
+      result[j][i*2].Y := pts[j][i].Y +delta *normals[i].Y;
+      result[j][i*2+1].X := pts[j][i].X +delta *normals[i+1].X;
+      result[j][i*2+1].Y := pts[j][i].Y +delta *normals[i+1].Y;
     end;
-    result[j][highI*2].X := pts[j][highI].X -delta *normals[highI].X;
-    result[j][highI*2].Y := pts[j][highI].Y -delta *normals[highI].Y;
-    result[j][highI*2+1].X := pts[j][highI].X -delta *normals[0].X;
-    result[j][highI*2+1].Y := pts[j][highI].Y -delta *normals[0].Y;
+    result[j][highI*2].X := pts[j][highI].X +delta *normals[highI].X;
+    result[j][highI*2].Y := pts[j][highI].Y +delta *normals[highI].Y;
+    result[j][highI*2+1].X := pts[j][highI].X +delta *normals[0].X;
+    result[j][highI*2+1].Y := pts[j][highI].Y +delta *normals[0].Y;
 
     //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
     //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta < 0) and
+    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta > 0) and
       ((normals[0].X*normals[highI].X+normals[0].Y*normals[highI].Y) < 0.985) then
     begin
       a1 := ArcTan2(normals[highI].Y, normals[highI].X);
       a2 := ArcTan2(normals[0].Y, normals[0].X);
-      if (delta < 0) and (a2 < a1) then a2 := a2 + pi*2
-      else if (delta > 0) and (a2 > a1) then a2 := a2 - pi*2;
-      arc := BuildArc(pts[j][highI],a1,a2,-delta);
+      if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
+      else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
+      arc := BuildArc(pts[j][highI],a1,a2,delta);
       result[j] := InsertPoints(result[j],arc,highI*2+1);
     end;
     for i := highI downto 1 do
-      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta < 0) and
+      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta > 0) and
          ((normals[i].X*normals[i-1].X+normals[i].Y*normals[i-1].Y) < 0.985) then
       begin
         a1 := ArcTan2(normals[i-1].Y, normals[i-1].X);
         a2 := ArcTan2(normals[i].Y, normals[i].X);
-        if (delta < 0) and (a2 < a1) then a2 := a2 + pi*2
-        else if (delta > 0) and (a2 > a1) then a2 := a2 - pi*2;
-        arc := BuildArc(pts[j][i-1],a1,a2,-delta);
+        if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
+        else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
+        arc := BuildArc(pts[j][i-1],a1,a2,delta);
         result[j] := InsertPoints(result[j],arc,(i-1)*2+1);
       end;
   end;
@@ -594,13 +594,12 @@ begin
     end else
     begin
       r := c.GetBounds;
-      //reuse the 'arc' variable as an outer clipping rectangle
-      setlength(arc, 4);
-      arc[0] := DoublePoint(r.left-10, r.top-10);
-      arc[1] := DoublePoint(r.right+10, r.top-10);
-      arc[2] := DoublePoint(r.right+10, r.bottom+10);
-      arc[3] := DoublePoint(r.left-10, r.bottom+10);
-      c.AddPolygon(arc, ptSubject);
+      setlength(outer, 4);
+      outer[0] := DoublePoint(r.left-10, r.bottom+10);
+      outer[1] := DoublePoint(r.right+10, r.bottom+10);
+      outer[2] := DoublePoint(r.right+10, r.top-10);
+      outer[3] := DoublePoint(r.left-10, r.top-10);
+      c.AddPolygon(outer, ptSubject);
       c.Execute(ctUnion, result, pftNonZero, pftNonZero);
       //delete the outer rectangle ...
       highI := high(result);
@@ -901,7 +900,7 @@ begin
     (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
   while (bottomPt.isHole = sUndefined) and
     (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
-  result := IsClockwise(pt) <> (bottomPt.isHole = sTrue);
+  result := IsClockwise(pt) = (bottomPt.isHole = sFalse);
 end;
 
 //------------------------------------------------------------------------------

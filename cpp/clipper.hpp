@@ -113,7 +113,7 @@ struct TPolyPt {
   TTriState isHole;
 };
 
-struct TPolyPtRec {
+struct TJoinRec {
     TPolyPt* ppt1;
     int idx1;
     TPolyPt* ppt2;
@@ -121,7 +121,7 @@ struct TPolyPtRec {
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
-typedef std::vector < TPolyPtRec > PolyPtRecList;
+typedef std::vector < TJoinRec > JoinList;
 
 //ClipperBase is the ancestor to the Clipper class. It should not be
 //instantiated directly. This class simply abstracts the conversion of sets of
@@ -166,7 +166,7 @@ public:
   void ForceOrientation(bool value);
 private:
   PolyPtList        m_PolyPts;
-  PolyPtRecList     m_Joins;
+  JoinList          m_Joins;
   TClipType         m_ClipType;
   TScanbeam        *m_Scanbeam;
   TEdge            *m_ActiveEdges;
