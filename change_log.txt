@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+2.85 - 26 November 2010
+* Bugfix: Output polygons with shared horizontal edges were 
+  not being merged into a single polygon. 
+
 2.8 - 20 November 2010
 * Updated: Output polygons which previously shared a common 
   edge are now merged. 

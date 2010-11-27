@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.8                                                             *
-* Date      :  19 November 2010                                                *
+* Version   :  2.85                                                            *
+* Date      :  26 November 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -175,6 +175,7 @@ type
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
     fJoins: TArrayOfJoinRec;
+    fCurrentHorizontals: TArrayOfJoinRec;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -209,6 +210,7 @@ type
     procedure UpdateEdgeIntoAEL(var e: PEdge);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: double);
     function IsContributing(edge: PEdge): boolean;
+    function InsertPolyPtBetween(const pt: TDoublePoint; pp1, pp2: PPolyPt): PPolyPt;
     function AddPolyPt(e: PEdge; const pt: TDoublePoint): PPolyPt;
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TDoublePoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
@@ -216,6 +218,7 @@ type
     function ExecuteInternal(clipType: TClipType): boolean;
     procedure DisposeAllPolyPts;
     procedure DisposeIntersectNodes;
+    procedure FixupJoins(oldIdx, newIdx: integer);
     procedure JoinCommonEdges;
   public
     //SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
@@ -297,6 +300,7 @@ resourcestring
   rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam error';
   rsAppendPolygon = 'AppendPolygon error';
   rsIntersection = 'Intersection error';
+  rsInsertPolyPt = 'InsertPolyPtBetween error';
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -703,6 +707,8 @@ begin
     if abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
         (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < precision then
     begin
+      if (pp.isHole <> sUndefined) and (pp.next.isHole = sUndefined) then
+        pp.next.isHole := pp.isHole;
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
       tmp := pp;
@@ -773,11 +779,18 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsHorizontal(e: PEdge): boolean;
+function IsHorizontal(e: PEdge): boolean; overload;
 begin
   result := assigned(e) and (e.dx < almost_infinite);
 end;
 //------------------------------------------------------------------------------
+
+function IsHorizontal(pp1, pp2: PPolyPt): boolean; overload;
+begin
+  result := (abs(pp1.pt.X - pp2.pt.X) > precision) and
+    (abs(pp1.pt.Y - pp2.pt.Y) < precision);
+end;
+//----------------------------------------------------------------------
 
 procedure SwapSides(edge1, edge2: PEdge);
 var
@@ -900,7 +913,7 @@ begin
     (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
   while (bottomPt.isHole = sUndefined) and
     (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
-  result := IsClockwise(pt) = (bottomPt.isHole = sFalse);
+  result := IsClockwise(pt) = (bottomPt.isHole <> sTrue);
 end;
 
 //------------------------------------------------------------------------------
@@ -1396,6 +1409,7 @@ begin
     fActiveEdges := nil;
     fSortedEdges := nil;
     fJoins := nil;
+    fCurrentHorizontals := nil;
     fClipType := clipType;
     yBot := PopScanbeam;
     repeat
@@ -1669,17 +1683,24 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
+function IsBetween(const val, startrange, endrange: double): boolean;
+begin
+  result := (abs(val - startrange) < tolerance) or
+    (abs(val - endrange) < tolerance) or
+      (val - startrange > 0) = (endrange - val > 0);
+end;
+//------------------------------------------------------------------------------
 
-  //----------------------------------------------------------------------
-  function Edge2InsertsBeforeEdge1(e1,e2: PEdge): boolean;
-  begin
-    if (e2.xbot - tolerance > e1.xbot) then result := false
-    else if (e2.xbot + tolerance < e1.xbot) then result := true
-    else if IsHorizontal(e2) then result := false
-    else result := e2.dx > e1.dx;
-  end;
-  //----------------------------------------------------------------------
+function Edge2InsertsBeforeEdge1(e1,e2: PEdge): boolean;
+begin
+  if (e2.xbot - tolerance > e1.xbot) then result := false
+  else if (e2.xbot + tolerance < e1.xbot) then result := true
+  else if IsHorizontal(e2) then result := false
+  else result := e2.dx > e1.dx;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
 
   procedure InsertEdgeIntoAEL(edge: PEdge);
   var
@@ -1709,7 +1730,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
   //----------------------------------------------------------------------
 
 var
-  i: integer;
+  i,j: integer;
   e: PEdge;
   pt: TDoublePoint;
 begin
@@ -1770,6 +1791,45 @@ begin
         fJoins[i].idx1 := rightBound.outIdx;
         fJoins[i].ppt2 := AddPolyPt(rightBound.prevInAEL, pt);
         fJoins[i].idx2 := rightBound.prevInAEL.outIdx;
+      end else if (rightBound.outIdx >= 0) and IsHorizontal(rightBound) then
+      begin
+        //check for overlap with fCurrentHorizontals
+        for i := 0 to high(fCurrentHorizontals) do
+          with fCurrentHorizontals[i] do
+          begin
+            if not assigned(fPolyPtList[idx1]) then continue
+            else if IsBetween(ppt1.pt.X, rightBound.x, rightBound.xtop) then
+            begin
+              j := length(fJoins);
+              setlength(fJoins, j+1);
+              fJoins[j].ppt1 := ppt1;
+              fJoins[j].idx1 := idx1;
+              fJoins[j].ppt2 := AddPolyPt(rightBound, ppt1.pt);
+              fJoins[j].idx2 := rightBound.outIdx;
+            end
+            else if IsHorizontal(ppt1.next, ppt1) and
+              IsBetween(rightBound.x, ppt1.pt.X, ppt1.next.pt.X) then
+            begin
+              pt := DoublePoint(rightBound.x,rightBound.y);
+              j := length(fJoins);
+              setlength(fJoins, j+1);
+              fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.next);
+              fJoins[j].idx1 := idx1;
+              fJoins[j].ppt2 := AddPolyPt(rightBound, pt);
+              fJoins[j].idx2 := rightBound.outIdx;
+            end
+            else if IsHorizontal(ppt1.prev, ppt1) and
+              IsBetween(rightBound.x, ppt1.pt.X, ppt1.prev.pt.X) then
+            begin
+              pt := DoublePoint(rightBound.x,rightBound.y);
+              j := length(fJoins);
+              setlength(fJoins, j+1);
+              fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.prev);
+              fJoins[j].idx1 := idx1;
+              fJoins[j].ppt2 := AddPolyPt(rightBound, pt);
+              fJoins[j].idx2 := rightBound.outIdx;
+            end;
+          end;
       end;
 
       if (leftBound.nextInAEL <> rightBound) then
@@ -1787,6 +1847,7 @@ begin
 
     PopLocalMinima;
   end;
+  fCurrentHorizontals := nil;
 end;
 //------------------------------------------------------------------------------
 
@@ -2146,6 +2207,29 @@ begin
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
   end;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.InsertPolyPtBetween(const pt: TDoublePoint; pp1, pp2: PPolyPt): PPolyPt;
+begin
+  new(result);
+  result.pt := pt;
+  result.isHole := sUndefined;
+  if pp2 = pp1.next then
+  begin
+    result.next := pp2;
+    result.prev := pp1;
+    pp1.next := result;
+    pp2.prev := result;
+  end else if pp1 = pp2.next then
+  begin
+    result.next := pp1;
+    result.prev := pp2;
+    pp2.next := result;
+    pp1.prev := result;
+  end else
+    raise exception.Create(rsInsertPolyPt);
+
 end;
 //------------------------------------------------------------------------------
 
@@ -2723,7 +2807,9 @@ end;
 
 procedure TClipper.ProcessEdgesAtTopOfScanbeam(const topY: double);
 var
+  i: integer;
   e, ePrior: PEdge;
+  pp: PPolyPt;
 begin
 (*******************************************************************************
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
@@ -2749,7 +2835,8 @@ begin
   e := fActiveEdges;
   while assigned(e) do
   begin
-    //1. process maxima, treating them as if they're 'bent' horizontal edges ...
+    //1. process maxima, treating them as if they're 'bent' horizontal edges,
+    //   but exclude maxima with horizontal edges. nb: e can't be a horizontal.
     if IsMaxima(e, topY) and not IsHorizontal(GetMaximaPair(e)) then
     begin
       //'e' might be removed from AEL, as may any following edges so ...
@@ -2763,7 +2850,17 @@ begin
       //2. promote horizontal edges, otherwise update xbot and ybot ...
       if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
-        if (e.outIdx >= 0) then AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
+        if (e.outIdx >= 0) then
+        begin
+          pp := AddPolyPt(e, DoublePoint(e.xtop, e.ytop));
+
+          //add the polyPt to a list that later checks for overlaps with
+          //contributing horizontal minima since they'll need joining.
+          i := length(fCurrentHorizontals);
+          setlength(fCurrentHorizontals, i+1);
+          fCurrentHorizontals[i].ppt1 := pp;
+          fCurrentHorizontals[i].idx1 := e.outIdx;
+        end;
         //very rarely an edge just below a horizontal edge in a contour
         //intersects with another edge at the very top of a scanbeam.
         //If this happens that intersection must be managed first ...
@@ -2958,6 +3055,16 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipper.FixupJoins(oldIdx, newIdx: integer);
+var
+  i: integer;
+begin
+  for i := 0 to high(fJoins) do
+    if (fJoins[i].idx1 = oldIdx) then fJoins[i].idx1 := newIdx
+    else if (fJoins[i].idx2 = oldIdx) then fJoins[i].idx2 := newIdx;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.JoinCommonEdges;
 var
   i: integer;
@@ -2993,6 +3100,8 @@ begin
     if fJoins[i].idx1 = fJoins[i].idx2 then
     begin
       if p2 = p1 then continue;
+      //if there are overlapping colinear edges in the same output polygon
+      //then the output polygon should be split into 2 polygons ...
       pp1 := insertPolyPt(p1, p1.pt);
       pp2 := insertPolyPt(p2, p2.pt);
       pp1.prev := p2;
@@ -3005,7 +3114,7 @@ begin
       continue;
     end;
 
-    if (p1.next.pt.Y <= p1.pt.Y) and (p2.next.pt.Y <= p2.pt.Y) and
+    if (p1.next.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt) then
     begin
       pp1 := insertPolyPt(p1, p1.pt);
@@ -3036,7 +3145,7 @@ begin
       p1.prev := p2;
       p2.next := p1;
     end
-    else if (p1.prev.pt.Y <= p1.pt.Y) and (p2.prev.pt.Y <= p2.pt.Y) and
+    else if (p1.prev.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt) then
     begin
       pp1 := insertPolyPt(p1.prev, p1.pt);
@@ -3049,8 +3158,8 @@ begin
     end
     else
       continue;
-
     fPolyPtList[fJoins[i].idx2] := nil;
+    FixupJoins(fJoins[i].idx2, fJoins[i].idx1);
   end;
 end;
 //------------------------------------------------------------------------------

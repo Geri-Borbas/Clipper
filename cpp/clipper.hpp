@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.8                                                             *
-* Date      :  19 November 2010                                                *
+* Version   :  2.85                                                            *
+* Date      :  26 November 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -161,12 +161,13 @@ public:
   //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
   //polygons returned in the solution will have undefined orientation.<br>
   //Setting ForceOrientation = true results in a minor penalty (~10%) in
-  //execution speed. (Default == true)
+  //execution speed. (Default == true) ***DEPRICATED***
   bool ForceOrientation();
   void ForceOrientation(bool value);
 private:
   PolyPtList        m_PolyPts;
   JoinList          m_Joins;
+  JoinList          m_CurrentHorizontals;
   TClipType         m_ClipType;
   TScanbeam        *m_Scanbeam;
   TEdge            *m_ActiveEdges;
@@ -211,6 +212,7 @@ private:
   void IntersectEdges(TEdge *e1, TEdge *e2,
      const TDoublePoint &pt, TIntersectProtects protects);
   TPolyPt* AddPolyPt(TEdge *e, const TDoublePoint &pt);
+  TPolyPt* InsertPolyPtBetween(const TDoublePoint &pt, TPolyPt* pp1, TPolyPt* pp2);
   void DisposeAllPolyPts();
   void ProcessIntersections( const double &topY);
   void AddIntersectNode(TEdge *e1, TEdge *e2, const TDoublePoint &pt);
@@ -220,6 +222,7 @@ private:
   void ProcessEdgesAtTopOfScanbeam( const double &topY);
   void BuildResult(TPolyPolygon &polypoly);
   void DisposeIntersectNodes();
+  void FixupJoins(int oldIdx, int newIdx);
   void JoinCommonEdges();
 };
 
