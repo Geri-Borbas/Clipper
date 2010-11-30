@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.85                                                            *
-* Date      :  26 November 2010                                                *
+* Version   :  2.86                                                            *
+* Date      :  30 November 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -1687,7 +1687,7 @@ function IsBetween(const val, startrange, endrange: double): boolean;
 begin
   result := (abs(val - startrange) < tolerance) or
     (abs(val - endrange) < tolerance) or
-      (val - startrange > 0) = (endrange - val > 0);
+      ((val - startrange > 0) = (endrange - val > 0));
 end;
 //------------------------------------------------------------------------------
 
@@ -1733,6 +1733,7 @@ var
   i,j: integer;
   e: PEdge;
   pt: TDoublePoint;
+  lb, rb: PEdge;
 begin
   {InsertLocalMinimaIntoAEL}
   while assigned(CurrentLM) and (CurrentLM.y = botY) do
@@ -1741,107 +1742,105 @@ begin
     InsertScanbeam(CurrentLM.leftBound.ytop);
     InsertEdgeIntoAEL(CurrentLM.rightBound);
 
+    lb := CurrentLM.leftBound;
+    rb := CurrentLM.rightBound;
+
     //set edge winding states ...
-    with CurrentLM^ do
+    SetWindingDelta(lb);
+    if IsNonZeroFillType(lb) then
+      rb.windDelta := -lb.windDelta else
+      rb.windDelta := 1;
+    SetWindingCount(lb);
+    rb.windCnt := lb.windCnt;
+    rb.windCnt2 := lb.windCnt2;
+
+    if IsHorizontal(rb) then
     begin
-      SetWindingDelta(leftBound);
-      if IsNonZeroFillType(leftBound) then
-        rightBound.windDelta := -leftBound.windDelta else
-        rightBound.windDelta := 1;
-      SetWindingCount(leftBound);
-      rightBound.windCnt := leftBound.windCnt;
-      rightBound.windCnt2 := leftBound.windCnt2;
+      //nb: only rbs can have a horizontal bottom edge
+      AddEdgeToSEL(rb);
+      InsertScanbeam(rb.nextInLML.ytop);
+    end else
+      InsertScanbeam(rb.ytop);
 
-      if IsHorizontal(rightBound) then
-      begin
-        //nb: only rightbounds can have a horizontal bottom edge
-        AddEdgeToSEL(rightBound);
-        InsertScanbeam(rightBound.nextInLML.ytop);
-      end else
-        InsertScanbeam(rightBound.ytop);
+    if IsContributing(lb) then
+      AddLocalMinPoly(lb, rb, DoublePoint(lb.xbot, CurrentLM.y));
 
-      if IsContributing(leftBound) then
-        AddLocalMinPoly(leftBound, rightBound, DoublePoint(leftBound.xbot, y));
-
-      //flag polygons that share colinear edges ready to be joined later ...
-      if (leftBound.outIdx >= 0) and
-        assigned(leftBound.prevInAEL) and
-        (leftBound.prevInAEL.outIdx >= 0) and
-        (abs(leftBound.prevInAEL.xbot - leftBound.x) < tolerance) and
-        SlopesEqual(leftBound, leftBound.prevInAEL) then
-      begin
-        pt := DoublePoint(leftBound.x,leftBound.y);
-        i := length(fJoins);
-        setlength(fJoins, i+1);
-        fJoins[i].ppt1 := AddPolyPt(leftBound, pt);
-        fJoins[i].idx1 := leftBound.outIdx;
-        fJoins[i].ppt2 := AddPolyPt(leftBound.prevInAEL, pt);
-        fJoins[i].idx2 := leftBound.prevInAEL.outIdx;
-      end;
-      if (rightBound.outIdx >= 0) and
-        assigned(rightBound.prevInAEL) and
-        (rightBound.prevInAEL.outIdx >= 0) and
-        (abs(rightBound.prevInAEL.xbot - rightBound.x) < tolerance) and
-        SlopesEqual(rightBound, rightBound.prevInAEL) then
-      begin
-        pt := DoublePoint(rightBound.x,rightBound.y);
-        i := length(fJoins);
-        setlength(fJoins, i+1);
-        fJoins[i].ppt1 := AddPolyPt(rightBound, pt);
-        fJoins[i].idx1 := rightBound.outIdx;
-        fJoins[i].ppt2 := AddPolyPt(rightBound.prevInAEL, pt);
-        fJoins[i].idx2 := rightBound.prevInAEL.outIdx;
-      end else if (rightBound.outIdx >= 0) and IsHorizontal(rightBound) then
-      begin
-        //check for overlap with fCurrentHorizontals
-        for i := 0 to high(fCurrentHorizontals) do
-          with fCurrentHorizontals[i] do
-          begin
-            if not assigned(fPolyPtList[idx1]) then continue
-            else if IsBetween(ppt1.pt.X, rightBound.x, rightBound.xtop) then
-            begin
-              j := length(fJoins);
-              setlength(fJoins, j+1);
-              fJoins[j].ppt1 := ppt1;
-              fJoins[j].idx1 := idx1;
-              fJoins[j].ppt2 := AddPolyPt(rightBound, ppt1.pt);
-              fJoins[j].idx2 := rightBound.outIdx;
-            end
-            else if IsHorizontal(ppt1.next, ppt1) and
-              IsBetween(rightBound.x, ppt1.pt.X, ppt1.next.pt.X) then
-            begin
-              pt := DoublePoint(rightBound.x,rightBound.y);
-              j := length(fJoins);
-              setlength(fJoins, j+1);
-              fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.next);
-              fJoins[j].idx1 := idx1;
-              fJoins[j].ppt2 := AddPolyPt(rightBound, pt);
-              fJoins[j].idx2 := rightBound.outIdx;
-            end
-            else if IsHorizontal(ppt1.prev, ppt1) and
-              IsBetween(rightBound.x, ppt1.pt.X, ppt1.prev.pt.X) then
-            begin
-              pt := DoublePoint(rightBound.x,rightBound.y);
-              j := length(fJoins);
-              setlength(fJoins, j+1);
-              fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.prev);
-              fJoins[j].idx1 := idx1;
-              fJoins[j].ppt2 := AddPolyPt(rightBound, pt);
-              fJoins[j].idx2 := rightBound.outIdx;
-            end;
-          end;
-      end;
-
-      if (leftBound.nextInAEL <> rightBound) then
-      begin
-        e := leftBound.nextInAEL;
-        pt := DoublePoint(leftBound.xbot,leftBound.ybot);
-        while e <> rightBound do
+    //flag polygons that share colinear edges ready to be joined later ...
+    if (lb.outIdx >= 0) and assigned(lb.prevInAEL) and
+      (lb.prevInAEL.outIdx >= 0) and
+      (abs(lb.prevInAEL.xbot - lb.x) < tolerance) and
+      SlopesEqual(lb, lb.prevInAEL) then
+    begin
+      pt := DoublePoint(lb.x,lb.y);
+      i := length(fJoins);
+      setlength(fJoins, i+1);
+      fJoins[i].ppt1 := AddPolyPt(lb, pt);
+      fJoins[i].idx1 := lb.outIdx;
+      fJoins[i].ppt2 := AddPolyPt(lb.prevInAEL, pt);
+      fJoins[i].idx2 := lb.prevInAEL.outIdx;
+    end;
+    if (rb.outIdx >= 0) and
+      assigned(rb.prevInAEL) and (rb.prevInAEL.outIdx >= 0) and
+      (abs(rb.prevInAEL.xbot - rb.x) < tolerance) and
+      SlopesEqual(rb, rb.prevInAEL) then
+    begin
+      pt := DoublePoint(rb.x,rb.y);
+      i := length(fJoins);
+      setlength(fJoins, i+1);
+      fJoins[i].ppt1 := AddPolyPt(rb, pt);
+      fJoins[i].idx1 := rb.outIdx;
+      fJoins[i].ppt2 := AddPolyPt(rb.prevInAEL, pt);
+      fJoins[i].idx2 := rb.prevInAEL.outIdx;
+    end else if (rb.outIdx >= 0) and IsHorizontal(rb) then
+    begin
+      //check for overlap with fCurrentHorizontals
+      for i := 0 to high(fCurrentHorizontals) do
+        with fCurrentHorizontals[i] do
         begin
-          if not assigned(e) then raise exception.Create(rsMissingRightbound);
-          IntersectEdges(rightBound, e, pt); //order important here
-          e := e.nextInAEL;
+          if not assigned(fPolyPtList[idx1]) then continue
+          else if IsBetween(ppt1.pt.X, rb.x, rb.xtop) then
+          begin
+            j := length(fJoins);
+            setlength(fJoins, j+1);
+            fJoins[j].ppt1 := ppt1;
+            fJoins[j].idx1 := idx1;
+            fJoins[j].ppt2 := AddPolyPt(rb, ppt1.pt);
+            fJoins[j].idx2 := rb.outIdx;
+          end
+          else if IsHorizontal(fCurrentHorizontals[i].ppt1^.next, ppt1) and
+            IsBetween(rb.x, ppt1.pt.X, fCurrentHorizontals[i].ppt1.next^.pt.X) then
+          begin
+            pt := DoublePoint(rb.x,rb.y);
+            j := length(fJoins);
+            setlength(fJoins, j+1);
+            fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.next);
+            fJoins[j].idx1 := idx1;
+            fJoins[j].ppt2 := AddPolyPt(rb, pt);
+            fJoins[j].idx2 := rb.outIdx;
+          end
+          else if IsHorizontal(ppt1.prev, ppt1) and
+            IsBetween(rb.x, ppt1.pt.X, fCurrentHorizontals[i].ppt1.prev^.pt.X) then
+          begin
+            pt := DoublePoint(rb.x,rb.y);
+            j := length(fJoins);
+            setlength(fJoins, j+1);
+            fJoins[j].ppt1 := InsertPolyPtBetween(pt, ppt1, ppt1.prev);
+            fJoins[j].idx1 := idx1;
+            fJoins[j].ppt2 := AddPolyPt(rb, pt);
+            fJoins[j].idx2 := rb.outIdx;
+          end;
         end;
+    end;
+
+    if (lb.nextInAEL <> rb) then
+    begin
+      e := lb.nextInAEL;
+      pt := DoublePoint(lb.xbot,lb.ybot);
+      while e <> rb do
+      begin
+        if not assigned(e) then raise exception.Create(rsMissingRightbound);
+        IntersectEdges(rb, e, pt); //order important here
+        e := e.nextInAEL;
       end;
     end;
 
@@ -3099,7 +3098,7 @@ begin
 
     if fJoins[i].idx1 = fJoins[i].idx2 then
     begin
-      if p2 = p1 then continue;
+      if p1 = p2 then continue;
       //if there are overlapping colinear edges in the same output polygon
       //then the output polygon should be split into 2 polygons ...
       pp1 := insertPolyPt(p1, p1.pt);
