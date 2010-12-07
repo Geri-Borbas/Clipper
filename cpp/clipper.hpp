@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.85                                                            *
-* Date      :  26 November 2010                                                *
+* Version   :  2.9                                                             *
+* Date      :  7 December 2010                                                 *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -41,9 +41,9 @@
 
 namespace clipper {
 
-typedef enum { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
-typedef enum { ptSubject, ptClip } TPolyType;
-typedef enum { pftEvenOdd, pftNonZero} TPolyFillType;
+typedef enum _ClipType { ctIntersection, ctUnion, ctDifference, ctXor } TClipType;
+typedef enum _PolyType { ptSubject, ptClip } TPolyType;
+typedef enum _PolyFillType { pftEvenOdd, pftNonZero} TPolyFillType;
 
 struct TDoublePoint { double X; double Y; };
 struct TDoubleRect { double left; double top; double right; double bottom; };
@@ -52,14 +52,15 @@ typedef std::vector< TPolygon > TPolyPolygon;
 
 TDoublePoint DoublePoint(const double &X, const double &Y);
 TPolyPolygon OffsetPolygons(const TPolyPolygon &pts, const double &delta);
-double PolygonArea(const TPolygon &poly);
+double Area(const TPolygon &poly);
 TDoubleRect GetBounds(const TPolygon &poly);
 bool IsClockwise(const TPolygon &poly);
 
 //used internally ...
-typedef enum { esLeft, esRight } TEdgeSide;
-typedef unsigned TIntersectProtects;
-typedef enum { sFalse, sTrue, sUndefined} TTriState;
+typedef enum _EdgeSide { esLeft, esRight } TEdgeSide;
+typedef enum _IntersectProtects { ipNone = 0,
+  ipLeft = 1, ipRight = 2, ipBoth = 3 } TIntersectProtects;
+typedef enum _TriState { sFalse, sTrue, sUndefined} TTriState;
 
 struct TEdge {
   double x;
@@ -114,10 +115,12 @@ struct TPolyPt {
 };
 
 struct TJoinRec {
-    TPolyPt* ppt1;
+    TDoublePoint pt;
     int idx1;
-    TPolyPt* ppt2;
-    int idx2;
+    union {
+      int idx2;
+      TPolyPt* outPPt; //horiz joins only
+    };
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
@@ -223,7 +226,8 @@ private:
   void BuildResult(TPolyPolygon &polypoly);
   void DisposeIntersectNodes();
   void FixupJoins(int oldIdx, int newIdx);
-  void JoinCommonEdges();
+  void MergePolysWithCommonEdges();
+  void FixupJoins(int joinIdx);
 };
 
 class clipperException : public std::exception
