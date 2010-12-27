@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.9                                                             *
-* Date      :  7 December 2010                                                 *
+* Version   :  2.95                                                            *
+* Date      :  27 December 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -125,9 +125,8 @@ type
   TJoinRec = record
     pt  : TDoublePoint;
     idx1: integer;
-    case boolean of
-      true: (idx2: integer);
-      false: (outPPt: PPolyPt); //horiz joins only
+    idx2: integer;
+    outPPt: PPolyPt;    //horizontal joins only
   end;
 
   TArrayOfJoinRec = array of TJoinRec;
@@ -949,29 +948,20 @@ function ValidateOrientation(pt: PPolyPt): boolean;
 var
   ptStart, bottomPt: PPolyPt;
 begin
-  //check that orientation matches the hole status ...
-
-  //first, find the hole state of the bottom-most point (because
-  //the hole state of other points is not reliable) ...
+  //first, find the hole state of the bottom-most point
+  //(because the hole state of other points may not be reliable) ...
   bottomPt := pt;
   ptStart := pt;
   pt := pt.next;
   while (pt <> ptStart) do
   begin
     if (pt.pt.Y > bottomPt.pt.Y) or
-      ((pt.pt.Y = bottomPt.pt.Y) and (pt.pt.X > bottomPt.pt.X)) then
+      ((pt.pt.Y = bottomPt.pt.Y) and (pt.isHole <> sUndefined)) then
         bottomPt := pt;
     pt := pt.next;
   end;
 
-//  //alternative method to derive orientation (may be marginally quicker)
-//  ptPrev := bottomPt.prev;
-//  ptNext := bottomPt.next;
-//  N1 := GetUnitNormal(ptPrev.pt, bottomPt.pt);
-//  N2 := GetUnitNormal(bottomPt.pt, ptNext.pt);
-//  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
-//  IsClockwise := (N1.X * N2.Y - N2.X * N1.Y) > 0; //ie angle > 180deg.
-
+  //check that orientation matches the hole status ...
   while (bottomPt.isHole = sUndefined) and
     (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
   while (bottomPt.isHole = sUndefined) and
@@ -1808,7 +1798,7 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: double);
 var
   i,j, hIdx: integer;
   e: PEdge;
-  pt, hPt: TDoublePoint;
+  pt, hPt, hPt2: TDoublePoint;
   lb, rb: PEdge;
   p, p2: PPolyPt;
 begin
@@ -1862,13 +1852,14 @@ begin
       for i := 0 to high(fCurrentHorizontals) do
       begin
         hIdx := fCurrentHorizontals[i].idx1;
-        hPt := fCurrentHorizontals[i].pt;
+        hPt := fCurrentHorizontals[i].outPPt.pt;
+        hPt2 := fCurrentHorizontals[i].pt;
         p := fCurrentHorizontals[i].outPPt;
-        if IsHorizontal(p, p.prev) then p2 := p.prev
-        else if IsHorizontal(p, p.next) then p2 := p.next
+        if IsHorizontal(p, p.prev) and (p.prev.pt.X = hPt2.X) then p2 := p.prev
+        else if IsHorizontal(p, p.next) and (p.next.pt.X = hPt2.X) then p2 := p.next
         else continue;
 
-        if HorizOverlap(p.pt.X, p2.pt.X, rb.x, rb.xtop) then
+        if HorizOverlap(hPt.X, hPt2.X, rb.x, rb.xtop) then
         begin
           AddPolyPt(rb, hPt);
           j := length(fJoins);
@@ -1877,12 +1868,13 @@ begin
           fJoins[j].idx2 := rb.outIdx;
           fJoins[j].pt := hPt;
         end
-        else if HorizOverlap(rb.x, rb.xtop, hPt.X, p2.pt.X) then
+        else if HorizOverlap(rb.x, rb.xtop, hPt.X, hPt2.X) then
         begin
           pt := DoublePoint(rb.x,rb.y);
           j := length(fJoins);
           setlength(fJoins, j+1);
-          InsertPolyPtBetween(pt, p, p2);
+          if not PointsEqual(pt, p.pt) and not PointsEqual(pt, p2.pt) then
+            InsertPolyPtBetween(pt, p, p2);
           fJoins[j].idx1 := hIdx;
           fJoins[j].idx2 := rb.outIdx;
           fJoins[j].pt := pt;
@@ -1897,7 +1889,9 @@ begin
       while e <> rb do
       begin
         if not assigned(e) then raise exception.Create(rsMissingRightbound);
-        IntersectEdges(rb, e, pt); //order important here
+        //nb: For calculating winding counts etc, IntersectEdges() assumes
+        //that param1 will be to the right of param2 ABOVE the intersection ...
+        IntersectEdges(rb, e, pt);
         e := e.nextInAEL;
       end;
     end;
@@ -2208,7 +2202,7 @@ begin
         end
         else if (e.dx < horzEdge.nextInLML.dx) then
         //we really have got to the end of the intermediate horz edge so quit.
-        //nb: More -ve slopes follow more +ve slopes *above* the horizontal.
+        //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
           break;
       end;
 
@@ -2288,7 +2282,6 @@ begin
     pp1.prev := result;
   end else
     raise exception.Create(rsInsertPolyPt);
-
 end;
 //------------------------------------------------------------------------------
 
@@ -2593,7 +2586,9 @@ var
 begin
   {IntersectEdges}
 
-  //nb: e1 always precedes e2 in AEL ...
+  //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
+  //e2 in AEL except when e1 is being inserted at the intersection point ...
+
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
     (abs(e1.xtop - pt.x) < tolerance) and //nb: not precision
     (abs(e1.ytop - pt.y) < precision);
@@ -2603,7 +2598,8 @@ begin
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
 
-  //update winding counts ...
+  //update winding counts...
+  //assumes that e1 will be to the right of e2 ABOVE the intersection
   if e1.polyType = e2.polyType then
   begin
     if IsNonZeroFillType(e1) then
@@ -2848,7 +2844,7 @@ begin
         begin
           if (e.nextInSEL.dx > e.dx) then
           begin
-            IntersectEdges(e, e.nextInSEL,
+            IntersectEdges(e, e.nextInSEL, //param order important here
               DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapPositionsInSEL(e, e.nextInSEL);
@@ -2919,7 +2915,8 @@ begin
           i := length(fCurrentHorizontals);
           setlength(fCurrentHorizontals, i+1);
           fCurrentHorizontals[i].idx1 := e.outIdx;
-          fCurrentHorizontals[i].pt := pp.pt;
+          with e.nextInLML^ do
+            fCurrentHorizontals[i].pt := DoublePoint(xtop,ytop);
           fCurrentHorizontals[i].outPPt := pp;
         end;
         //very rarely an edge just below a horizontal edge in a contour
@@ -3009,6 +3006,7 @@ var
   pp: PPolyPt;
   e: PEdge;
   isAHole: boolean;
+  eX: double;
 begin
   AddPolyPt(e1, pt);
 
@@ -3029,8 +3027,17 @@ begin
     e := fActiveEdges;
     while assigned(e) do
     begin
-      if (e.outIdx >= 0) and (TopX(e,pp.pt.Y) < pp.pt.X - precision) then
-        isAHole := not isAHole;
+      if (e = e1) or (e.outIdx < 0) then
+        //do nothing
+      else if IsHorizontal(e) and (e.x < e1.x) then
+        isAHole := not isAHole
+      else
+      begin
+        eX := TopX(e, pp.pt.Y);
+        if (eX < pp.pt.X - tolerance) or
+          ((abs(eX - pp.pt.X) < tolerance) and (e.dx >= e1.dx)) then
+            isAHole := not isAHole;
+      end;
       e := e.nextInAEL;
     end;
     if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
@@ -3044,11 +3051,8 @@ var
   p1_lft, p1_rt, p2_lft, p2_rt: PPolyPt;
   side: TEdgeSide;
   e: PEdge;
-  ObsoleteIdx: integer;
+  i, OKIdx, ObsoleteIdx: integer;
 begin
-  if (e1.outIdx < 0) or (e2.outIdx < 0) then
-    raise Exception.Create(rsAppendPolygon);
-
   //get the start and ends of both output polygons ...
   p1_lft := PPolyPt(fPolyPtList[e1.outIdx]);
   p1_rt := p1_lft.prev;
@@ -3098,21 +3102,34 @@ begin
     side := esRight;
   end;
 
+  OKIdx := e1.outIdx;
   ObsoleteIdx := e2.outIdx;
+  fPolyPtList[ObsoleteIdx] := nil;
+
+  for i := 0 to high(fJoins) do
+  begin
+    if fJoins[i].idx1 = ObsoleteIdx then fJoins[i].idx1 := OKIdx;
+    if fJoins[i].idx2 = ObsoleteIdx then fJoins[i].idx2 := OKIdx;
+  end;
+  for i := 0 to high(fCurrentHorizontals) do
+    if fCurrentHorizontals[i].idx1 = ObsoleteIdx then
+      fCurrentHorizontals[i].idx1 := OKIdx;
+
+  e1.outIdx := -1; //nb: safe because we only get here via AddLocalMaxPoly
   e2.outIdx := -1;
+
   e := fActiveEdges;
   while assigned(e) do
   begin
     if (e.outIdx = ObsoleteIdx) then
     begin
-      e.outIdx := e1.outIdx;
+      e.outIdx := OKIdx;
       e.side := side;
       break;
     end;
     e := e.nextInAEL;
   end;
-  e1.outIdx := -1;
-  fPolyPtList[ObsoleteIdx] := nil;
+
 end;
 //------------------------------------------------------------------------------
 
@@ -3145,17 +3162,18 @@ var
     oldIdx := fJoins[joinIdx].idx2;
     newIdx := fJoins[joinIdx].idx1;
     for i := joinIdx+1 to high(fJoins) do
-      if (fJoins[i].idx1 = oldIdx) then fJoins[i].idx1 := newIdx
-      else if (fJoins[i].idx2 = oldIdx) then fJoins[i].idx2 := newIdx;
+    begin
+      if (fJoins[i].idx1 = oldIdx) then fJoins[i].idx1 := newIdx;
+      if (fJoins[i].idx2 = oldIdx) then fJoins[i].idx2 := newIdx;
+    end;
   end;
 
 begin
   for i := 0 to high(fJoins) do
   begin
-
     //It's problematic merging overlapping edges in the same output polygon.
-    //While creating 2 polygons from one is straightforward, one of the
-    //polygons may become a hole and determining hole state here is difficult.
+    //While creating 2 polygons from one would be straightforward,
+    //FixupJoins() would no longer work safely ...
     if fJoins[i].idx1 = fJoins[i].idx2 then continue;
 
     p1 := fPolyPtList[fJoins[i].idx1];
@@ -3169,7 +3187,10 @@ begin
     if not PtInPoly(fJoins[i].pt, p1) or
       not PtInPoly(fJoins[i].pt, p2) then continue;
 
-    if (p1.next.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y) and
+    //nb: p1.pt == p2.pt;
+
+    if (((p1.next.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
+      ((p1.next.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt) then
     begin
       pp1 := insertPolyPt(p1, p1.pt);
@@ -3180,7 +3201,8 @@ begin
       p1.next := p2;
       p2.prev := p1;
     end
-    else if (p1.next.pt.Y <= p1.pt.Y) and (p2.prev.pt.Y <= p2.pt.Y) and
+    else if ((p1.next.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
+      ((p1.next.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y)) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt) then
     begin
       pp1 := insertPolyPt(p1, p1.pt);
@@ -3190,7 +3212,8 @@ begin
       pp2.next := pp1;
       pp1.prev := pp2;
     end
-    else if (p1.prev.pt.Y <= p1.pt.Y) and (p2.next.pt.Y <= p2.pt.Y) and
+    else if (((p1.prev.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
+      ((p1.prev.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt) then
     begin
       pp1 := insertPolyPt(p1.prev, p1.pt);
@@ -3200,7 +3223,8 @@ begin
       p1.prev := p2;
       p2.next := p1;
     end
-    else if (p1.prev.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y) and
+    else if (((p1.prev.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
+      ((p1.prev.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt) then
     begin
       pp1 := insertPolyPt(p1.prev, p1.pt);
@@ -3214,8 +3238,8 @@ begin
     else
       continue;
 
-    //When polygons are joined, one polygon is effectively deleted. The joins
-    //referencing the 'deleted' polygon must now reference the merged polygon.
+    //When polygons are joined, pointers referencing a 'deleted' polygon
+    //must point to the merged polygon ...
     fPolyPtList[fJoins[i].idx2] := nil;
     FixupJoins(i);
   end;

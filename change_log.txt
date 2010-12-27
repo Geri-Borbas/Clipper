@@ -2,12 +2,17 @@
 Clipper Change Log
 ============================================================
 
+2.95 - 27 December 2010
+* Updated: Further improved merging of output polygons 
+  that share common edges. 
+* Bugfix: Fixed obscure orientation bug in output polygons.
+
 2.9 - 7 December 2010
-* Bugfix: Significantly improved merging of output polygons 
+* Updated: Significantly improved merging of output polygons 
   that share common edges. 
 
 2.85 - 26 November 2010
-* Bugfix: Output polygons with shared horizontal edges were 
+* Updated: Output polygons with shared horizontal edges were 
   not being merged into a single polygon. 
 
 2.8 - 20 November 2010

@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.9                                                             *
-* Date      :  7 December 2010                                                 *
+* Version   :  2.95                                                            *
+* Date      :  27 December 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -929,20 +929,20 @@ namespace Clipper
 
         internal static bool ValidateOrientation(TPolyPt pt)
         {
-            //compares the orientation (clockwise vs counter-clockwise) of a *simple*
-            //polygon with its hole status (ie test whether an inner or outer polygon).
-            //nb: complex polygons have indeterminate orientations.
+            //first, find the hole state of the bottom-most point
+            //(because the hole state of other points may not be reliable) ...
             TPolyPt bottomPt = pt;
             TPolyPt ptStart = pt;
             pt = pt.next;
             while ((pt != ptStart))
             {
-                if ((pt.pt.Y > bottomPt.pt.Y) ||
-                  ((pt.pt.Y == bottomPt.pt.Y) && (pt.pt.X > bottomPt.pt.X)))
+                if (pt.pt.Y > bottomPt.pt.Y ||
+                  (pt.pt.Y == bottomPt.pt.Y && pt.isHole != TTriState.sUndefined))
                     bottomPt = pt;
                 pt = pt.next;
             }
 
+            //check that orientation matches the hole status ...
             while (bottomPt.isHole == TTriState.sUndefined && bottomPt.next.pt.Y >= bottomPt.pt.Y)
                 bottomPt = bottomPt.next;
             while (bottomPt.isHole == TTriState.sUndefined && bottomPt.prev.pt.Y >= bottomPt.pt.Y)
@@ -1254,15 +1254,16 @@ namespace Clipper
                     for (int i = 0; i < m_CurrentHorizontals.Count; ++i)
                     {
                         int hIdx = m_CurrentHorizontals[i].idx1;
-                        TDoublePoint hPt = m_CurrentHorizontals[i].pt;
+                        TDoublePoint hPt = m_CurrentHorizontals[i].outPPt.pt;
+                        TDoublePoint hPt2 = m_CurrentHorizontals[i].pt;
                         TPolyPt p = m_CurrentHorizontals[i].outPPt;
 
                         TPolyPt p2;
-                        if (IsHorizontal(p, p.prev)) p2 = p.prev;
-                        else if (IsHorizontal(p, p.next)) p2 = p.next;
+                        if (IsHorizontal(p, p.prev) && (p.prev.pt.X == hPt2.X)) p2 = p.prev;
+                        else if (IsHorizontal(p, p.next) && (p.next.pt.X == hPt2.X)) p2 = p.next;
                         else continue;
 
-                        if (HorizOverlap(p.pt.X, p2.pt.X, lm.rightBound.x, lm.rightBound.xtop))
+                        if (HorizOverlap(hPt.X, p2.pt.X, lm.rightBound.x, lm.rightBound.xtop))
                         {
                             AddPolyPt(lm.rightBound, hPt);
                             TJoinRec polyPtRec = new TJoinRec();
@@ -1271,11 +1272,12 @@ namespace Clipper
                             polyPtRec.pt = hPt;
                             m_Joins.Add(polyPtRec);
                         }
-                        else if (HorizOverlap(lm.rightBound.x, lm.rightBound.xtop, hPt.X, p2.pt.X))
+                        else if (HorizOverlap(lm.rightBound.x, lm.rightBound.xtop, hPt.X, hPt2.X))
                         {
                             TDoublePoint pt = new TDoublePoint(lm.rightBound.x, lm.rightBound.y);
                             TJoinRec polyPtRec = new TJoinRec();
-                            InsertPolyPtBetween(pt, p, p2);
+                            if (!PointsEqual(pt, p.pt) && !PointsEqual(pt, p2.pt))
+                                InsertPolyPtBetween(pt, p, p2);
                             polyPtRec.idx1 = hIdx;
                             polyPtRec.idx2 = lm.rightBound.outIdx;
                             polyPtRec.pt = pt;
@@ -1291,8 +1293,10 @@ namespace Clipper
                     TDoublePoint pt = new TDoublePoint(lm.leftBound.xbot, lm.leftBound.ybot);
                     while (e != lm.rightBound)
                     {
-                        if (e == null) 
-                            throw new clipperException("AddLocalMinima: missing rightbound!");
+                        if (e == null)
+                            throw new clipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
+                        //nb: For calculating winding counts etc, IntersectEdges() assumes
+                        //that param1 will be to the right of param2 ABOVE the intersection ...
                         TEdge edgeRef = lm.rightBound;
                         IntersectEdges(edgeRef, e, pt, 0); //order important here
                         e = e.nextInAEL;
@@ -1966,6 +1970,9 @@ namespace Clipper
 
         private void IntersectEdges(TEdge e1, TEdge e2, TDoublePoint pt, TProtects protects)
         {
+            //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
+            //e2 in AEL except when e1 is being inserted at the intersection point ...
+
             bool e1stops = (TProtects.ipLeft & protects) == 0 && e1.nextInLML == null &&
               (Math.Abs(e1.xtop - pt.X) < tolerance) && //nb: not precision
               (Math.Abs(e1.ytop - pt.Y) < precision);
@@ -1975,7 +1982,8 @@ namespace Clipper
             bool e1Contributing = (e1.outIdx >= 0);
             bool e2contributing = (e2.outIdx >= 0);
 
-            //update winding counts ...
+            //update winding counts...
+            //assumes that e1 will be to the right of e2 ABOVE the intersection
             if (e1.polyType == e2.polyType)
             {
                 if (IsNonZeroFillType(e1))
@@ -2385,7 +2393,7 @@ namespace Clipper
                         {
                             if (e.nextInSEL.dx > e.dx)
                             {
-                                IntersectEdges(e, e.nextInSEL, 
+                                IntersectEdges(e, e.nextInSEL,  //param order important here
                                     new TDoublePoint(e.xbot, e.ybot), TProtects.ipBoth);
                                 SwapPositionsInAEL(e, e.nextInSEL);
                                 SwapPositionsInSEL(e, e.nextInSEL);
@@ -2436,7 +2444,7 @@ namespace Clipper
                             //contributing horizontal minima since they'll need joining...
                             TJoinRec ch = new TJoinRec();
                             ch.idx1 = e.outIdx;
-                            ch.pt = pp.pt;
+                            ch.pt = new TDoublePoint(e.nextInLML.xtop, e.nextInLML.ytop);
                             ch.outPPt = pp;
                             m_CurrentHorizontals.Add(ch);
                         }
@@ -2549,11 +2557,16 @@ namespace Clipper
                 TEdge e = m_ActiveEdges;
                 while (e != null)
                 {
-                    if (e.outIdx >= 0 && e != e1 &&
-                        ((IsHorizontal(e) && e.x < pp.pt.X - precision) ||
-                        TopX(e,pp.pt.Y) < pp.pt.X - precision)) 
+                  if ( e.outIdx < 0 || e == e1 ) ; //ie do nothing
+                  else if ( IsHorizontal( e ) && e.x < e1.x ) isAHole = !isAHole;
+                  else 
+                  {
+                    double eX = TopX(e,pp.pt.Y);
+                    if ( eX < pp.pt.X - precision || 
+                        (Math.Abs(eX - pp.pt.X) < tolerance  && e.dx >= e1.dx) )
                             isAHole = !isAHole;
-                    e = e.nextInAEL;
+                  }
+                  e = e.nextInAEL;
                 }
                 if (isAHole) pp.isHole = TTriState.sTrue; else pp.isHole = TTriState.sFalse;
             }
@@ -2563,9 +2576,6 @@ namespace Clipper
 
         private void AppendPolygon(TEdge e1, TEdge e2)
         {
-            if ((e1.outIdx < 0) || (e2.outIdx < 0))
-                throw new clipperException("AppendPolygon error");
-
             //get the start and ends of both output polygons ...
             TPolyPt p1_lft = m_PolyPts[e1.outIdx];
             TPolyPt p1_rt = p1_lft.prev;
@@ -2619,22 +2629,32 @@ namespace Clipper
                 side = TEdgeSide.esRight;
             }
 
+            int OKIdx = e1.outIdx;
             int ObsoleteIdx = e2.outIdx;
+            m_PolyPts[ObsoleteIdx] = null;
+
+            for (int i = 0; i < m_Joins.Count; ++i)
+            {
+                if (m_Joins[i].idx1 == ObsoleteIdx) m_Joins[i].idx1 = OKIdx;
+                if (m_Joins[i].idx2 == ObsoleteIdx) m_Joins[i].idx2 = OKIdx;
+            }
+            for (int i = 0; i < m_CurrentHorizontals.Count; ++i)
+                if (m_CurrentHorizontals[i].idx1 == ObsoleteIdx)
+                    m_CurrentHorizontals[i].idx1 = OKIdx;
+
+            e1.outIdx = -1;
             e2.outIdx = -1;
             TEdge e = m_ActiveEdges;
             while (e != null)
             {
-                if (e.
-                outIdx == ObsoleteIdx)
+                if (e.outIdx == ObsoleteIdx)
                 {
-                    e.outIdx = e1.outIdx;
+                    e.outIdx = OKIdx;
                     e.side = side;
                     break;
                 }
                 e = e.nextInAEL;
             }
-            e1.outIdx = -1;
-            m_PolyPts[ObsoleteIdx] = null;
         }
         //------------------------------------------------------------------------------
 
@@ -2686,10 +2706,9 @@ namespace Clipper
         {
           for (int i = 0; i < m_Joins.Count; ++i)
           {
-
             //It's problematic merging overlapping edges in the same output polygon.
-            //While creating 2 polygons from one is straightforward, one of the
-            //polygons may become a hole and determining hole state here is difficult.
+            //While creating 2 polygons from one would be straightforward,
+            //FixupJoins() would no longer work safely ...
             if (m_Joins[i].idx1 == m_Joins[i].idx2) continue;
 
             TPolyPt p1 = m_PolyPts[m_Joins[i].idx1];
@@ -2702,8 +2721,11 @@ namespace Clipper
 
             if (!PtInPoly(m_Joins[i].pt, ref p1) || !PtInPoly(m_Joins[i].pt, ref p2)) continue;
 
-            if (p1.next.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y &&
-              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt))
+            //nb: p1.pt == p2.pt;
+
+            if (((p1.next.pt.X > p1.pt.X && p2.next.pt.X > p2.pt.X) || 
+                (p1.next.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
+                SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt))
             {
               TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
               TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
@@ -2713,8 +2735,9 @@ namespace Clipper
               p1.next = p2;
               p2.prev = p1;
             }
-            else if (p1.next.pt.Y <= p1.pt.Y && p2.prev.pt.Y <= p2.pt.Y &&
-              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt))
+            else if (((p1.next.pt.X > p1.pt.X && p2.prev.pt.X > p2.pt.X) ||
+                (p1.next.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
+                SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt))
             {
               TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
               TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
@@ -2723,8 +2746,9 @@ namespace Clipper
               pp2.next = pp1;
               pp1.prev = pp2;
             }
-            else if (p1.prev.pt.Y <= p1.pt.Y && p2.next.pt.Y <= p2.pt.Y &&
-              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt))
+            else if (((p1.prev.pt.X > p1.pt.X && p2.next.pt.X > p2.pt.X) ||
+                (p1.prev.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
+                SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt))
             {
               TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
               TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
@@ -2733,8 +2757,9 @@ namespace Clipper
               p1.prev = p2;
               p2.next = p1;
             }
-            else if (p1.prev.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y &&
-              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt))
+            else if (((p1.prev.pt.X > p1.pt.X && p2.prev.pt.X > p2.pt.X) ||
+                (p1.prev.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
+                SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt))
             {
               TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
               TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
@@ -2747,6 +2772,8 @@ namespace Clipper
             else
               continue;
 
+            //When polygons are joined, pointers referencing a 'deleted' polygon
+            //must point to the merged polygon ...
             m_PolyPts[m_Joins[i].idx2] = null;
             FixupJoins(i);
           }

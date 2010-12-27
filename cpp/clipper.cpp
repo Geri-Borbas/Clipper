@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.9                                                             *
-* Date      :  7 December 2010                                                 *
+* Version   :  2.95                                                            *
+* Date      :  27 December 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -422,21 +422,20 @@ bool IsClockwise(TPolyPt *pt)
 
 bool ValidateOrientation(TPolyPt *pt)
 {
-  //check that orientation matches the hole status ...
-
-  //first, find the hole state of the bottom-most point (because
-  //the hole state of other points is not reliable) ...
+  //first, find the hole state of the bottom-most point
+  //(because the hole state of other points may not be reliable) ...
   TPolyPt* bottomPt = pt;
   TPolyPt* ptStart = pt;
   pt = pt->next;
   while(  ( pt != ptStart ) )
   {
-  if(  ( pt->pt.Y > bottomPt->pt.Y ) ||
-    ( ( pt->pt.Y == bottomPt->pt.Y ) && ( pt->pt.X > bottomPt->pt.X ) ) )
-    bottomPt = pt;
-  pt = pt->next;
+    if( pt->pt.Y > bottomPt->pt.Y ||
+      (pt->pt.Y == bottomPt->pt.Y && pt->isHole != sUndefined ))
+      bottomPt = pt;
+    pt = pt->next;
   }
 
+  //check that orientation matches the hole status ...
   while (bottomPt->isHole == sUndefined &&
     bottomPt->next->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->next;
   while (bottomPt->isHole == sUndefined &&
@@ -1108,17 +1107,16 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
       for (unsigned i = 0; i < m_CurrentHorizontals.size(); ++i)
       {
         int hIdx = m_CurrentHorizontals[i].idx1;
-        TDoublePoint hPt = m_CurrentHorizontals[i].pt;
+        TDoublePoint hPt = m_CurrentHorizontals[i].outPPt->pt;
+        TDoublePoint hPt2 = m_CurrentHorizontals[i].pt;
         TPolyPt* p = m_CurrentHorizontals[i].outPPt;
 
         TPolyPt* p2;
-        if (IsHorizontal(p, p->prev)) p2 = p->prev;
-        else if (IsHorizontal(p, p->next)) p2 = p->next;
+        if (IsHorizontal(p, p->prev) && (p->prev->pt.X == hPt2.X)) p2 = p->prev;
+        else if (IsHorizontal(p, p->next) && (p->next->pt.X == hPt2.X)) p2 = p->next;
         else continue;
 
-
-        if (HorizOverlap(p->pt.X, p2->pt.X,
-          lm->rightBound->x, lm->rightBound->xtop))
+        if (HorizOverlap(hPt.X, hPt2.X, lm->rightBound->x, lm->rightBound->xtop))
         {
           AddPolyPt(lm->rightBound, hPt);
           int j = m_Joins.size();
@@ -1128,12 +1126,13 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
           m_Joins[j].pt = hPt;
         }
         else if (HorizOverlap(lm->rightBound->x, lm->rightBound->xtop,
-          hPt.X, p2->pt.X))
+          hPt.X, hPt2.X))
         {
           TDoublePoint pt = DoublePoint(lm->rightBound->x, lm->rightBound->y);
           int j = m_Joins.size();
           m_Joins.resize(j+1);
-          InsertPolyPtBetween(pt, p, p2);
+          if (!PointsEqual(pt, p->pt) && !PointsEqual(pt, p2->pt))
+            InsertPolyPtBetween(pt, p, p2);
           m_Joins[j].idx1 = hIdx;
           m_Joins[j].idx2 = lm->rightBound->outIdx;
           m_Joins[j].pt = pt;
@@ -1148,7 +1147,9 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
       TDoublePoint pt = DoublePoint( lm->leftBound->xbot, lm->leftBound->ybot );
       while( e != lm->rightBound )
       {
-        if(!e) throw clipperException("AddLocalMinima: missing rightbound!");
+        if(!e) throw clipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
+        //nb: For calculating winding counts etc, IntersectEdges() assumes
+        //that param1 will be to the right of param2 ABOVE the intersection ...
         IntersectEdges( lm->rightBound , e , pt , ipNone); //order important here
         e = e->nextInAEL;
       }
@@ -1423,8 +1424,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
           }
           break; //we've reached the end of the horizontal line
         }
-        else if (e->dx < horzEdge->nextInLML->dx)
-          break; //we've reached the end of the horizontal line
+        else if (e->dx < horzEdge->nextInLML->dx) break;
       }
 
       if( e == eMaxPair )
@@ -1778,6 +1778,9 @@ void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const TDoublePoint &pt)
 void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
      const TDoublePoint &pt, TIntersectProtects protects)
 {
+  //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
+  //e2 in AEL except when e1 is being inserted at the intersection point ...
+
   bool e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
     ( fabs( e1->xtop - pt.X ) < tolerance ) && //nb: not precision
     ( fabs( e1->ytop - pt.Y ) < precision );
@@ -1787,7 +1790,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   bool e1Contributing = ( e1->outIdx >= 0 );
   bool e2contributing = ( e2->outIdx >= 0 );
 
-  //update winding counts ...
+  //update winding counts...
+  //assumes that e1 will be to the right of e2 ABOVE the intersection
   if ( e1->polyType == e2->polyType )
   {
     if ( IsNonZeroFillType(e1) )
@@ -2150,7 +2154,7 @@ TEdge* Clipper::BubbleSwap(TEdge *edge)
         {
           if( e->nextInSEL->dx > e->dx )
           {
-            IntersectEdges( e, e->nextInSEL,
+            IntersectEdges(e, e->nextInSEL,  //param order important here
               DoublePoint(e->xbot, e->ybot), ipBoth );
             SwapPositionsInAEL( e , e->nextInSEL );
             SwapPositionsInSEL( e , e->nextInSEL );
@@ -2199,7 +2203,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
           int i = m_CurrentHorizontals.size();
           m_CurrentHorizontals.resize(i+1);
           m_CurrentHorizontals[i].idx1 = e->outIdx;
-          m_CurrentHorizontals[i].pt = pp->pt;
+          m_CurrentHorizontals[i].pt =
+            DoublePoint(e->nextInLML->xtop, e->nextInLML->ytop);
           m_CurrentHorizontals[i].outPPt = pp;
         }
         //very rarely an edge just below a horizontal edge in a contour
@@ -2303,8 +2308,15 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
     bool isAHole = false;
     TEdge* e = m_ActiveEdges;
     while (e) {
-      if (e->outIdx >= 0 && TopX(e,pp->pt.Y) < pp->pt.X - precision)
-        isAHole = !isAHole;
+      if ( e->outIdx < 0 || e == e1 ) ; //ie do nothing
+      else if ( IsHorizontal( *e ) && e->x < e1->x ) isAHole = !isAHole;
+      else
+      {
+        double eX = TopX(e,pp->pt.Y);
+        if ( eX < pp->pt.X - precision ||
+          (fabs(eX - pp->pt.X) < tolerance  && e->dx >= e1->dx) )
+            isAHole = !isAHole;
+      }
       e = e->nextInAEL;
     }
     if (isAHole) pp->isHole = sTrue; else pp->isHole = sFalse;
@@ -2315,9 +2327,6 @@ void Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const TDoublePoint &pt)
 
 void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
 {
-  if( (e1->outIdx < 0) || (e2->outIdx < 0) )
-    throw clipperException("AppendPolygon error");
-
   //get the start and ends of both output polygons ...
   TPolyPt* p1_lft = m_PolyPts[e1->outIdx];
   TPolyPt* p1_rt = p1_lft->prev;
@@ -2368,22 +2377,34 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     side = esRight;
   }
 
+  int OKIdx = e1->outIdx;
   int ObsoleteIdx = e2->outIdx;
+  m_PolyPts[ObsoleteIdx] = 0;
+
+  for( unsigned i = 0 ; i < m_Joins.size() ; ++i )
+  {
+    if (m_Joins[i].idx1 == ObsoleteIdx) m_Joins[i].idx1 = OKIdx;
+    if (m_Joins[i].idx2 == ObsoleteIdx) m_Joins[i].idx2 = OKIdx;
+  }
+  for( unsigned i = 0 ; i < m_CurrentHorizontals.size() ; ++i )
+    if (m_CurrentHorizontals[i].idx1 == ObsoleteIdx)
+      m_CurrentHorizontals[i].idx1 = OKIdx;
+
+  e1->outIdx = -1; //nb: safe because we only get here via AddLocalMaxPoly
   e2->outIdx = -1;
+
   TEdge* e = m_ActiveEdges;
   while( e )
   {
     if( e->
     outIdx == ObsoleteIdx )
     {
-      e->outIdx = e1->outIdx;
+      e->outIdx = OKIdx;
       e->side = side;
       break;
     }
     e = e->nextInAEL;
   }
-  e1->outIdx = -1;
-  m_PolyPts[ObsoleteIdx] = 0;
 }
 //------------------------------------------------------------------------------
 
@@ -2423,8 +2444,8 @@ void Clipper::MergePolysWithCommonEdges()
   for (unsigned i = 0; i < m_Joins.size(); ++i)
   {
     //It's problematic merging overlapping edges in the same output polygon.
-    //While creating 2 polygons from one is straightforward, one of the
-    //polygons may become a hole and determining hole state here is difficult.
+    //While creating 2 polygons from one would be straightforward,
+    //FixupJoins() would no longer work safely ...
     if (m_Joins[i].idx1 == m_Joins[i].idx2) continue;
 
     TPolyPt* p1 = m_PolyPts[m_Joins[i].idx1];
@@ -2437,7 +2458,10 @@ void Clipper::MergePolysWithCommonEdges()
 
     if (!PtInPoly(m_Joins[i].pt, p1) || !PtInPoly(m_Joins[i].pt, p2)) continue;
 
-    if (p1->next->pt.Y < p1->pt.Y && p2->next->pt.Y < p2->pt.Y &&
+    //nb: p1->pt == p2->pt;
+
+    if (((p1->next->pt.X > p1->pt.X && p2->next->pt.X > p2->pt.X) ||
+      (p1->next->pt.Y < p1->pt.Y && p2->next->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->next->pt))
     {
       TPolyPt* pp1 = InsertPolyPt(p1, p1->pt);
@@ -2448,7 +2472,8 @@ void Clipper::MergePolysWithCommonEdges()
       p1->next = p2;
       p2->prev = p1;
     }
-    else if (p1->next->pt.Y <= p1->pt.Y && p2->prev->pt.Y <= p2->pt.Y &&
+    else if (((p1->next->pt.X > p1->pt.X && p2->prev->pt.X > p2->pt.X) ||
+      (p1->next->pt.Y < p1->pt.Y && p2->prev->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->prev->pt))
     {
       TPolyPt* pp1 = InsertPolyPt(p1, p1->pt);
@@ -2458,7 +2483,8 @@ void Clipper::MergePolysWithCommonEdges()
       pp2->next = pp1;
       pp1->prev = pp2;
     }
-    else if (p1->prev->pt.Y <= p1->pt.Y && p2->next->pt.Y <= p2->pt.Y &&
+    else if (((p1->prev->pt.X > p1->pt.X && p2->next->pt.X > p2->pt.X) ||
+      (p1->prev->pt.Y < p1->pt.Y && p2->next->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->next->pt))
     {
       TPolyPt* pp1 = InsertPolyPt(p1->prev, p1->pt);
@@ -2468,7 +2494,8 @@ void Clipper::MergePolysWithCommonEdges()
       p1->prev = p2;
       p2->next = p1;
     }
-    else if (p1->prev->pt.Y < p1->pt.Y && p2->prev->pt.Y < p2->pt.Y &&
+    else if (((p1->prev->pt.X > p1->pt.X && p2->prev->pt.X > p2->pt.X) ||
+      (p1->prev->pt.Y < p1->pt.Y && p2->prev->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->prev->pt))
     {
       TPolyPt* pp1 = InsertPolyPt(p1->prev, p1->pt);
@@ -2482,8 +2509,8 @@ void Clipper::MergePolysWithCommonEdges()
     else
       continue;
 
-    //When polygons are joined, one polygon is effectively deleted. The joins
-    //referencing the 'deleted' polygon must now reference the merged polygon.
+    //When polygons are joined, pointers referencing a 'deleted' polygon
+    //must point to the merged polygon ...
     m_PolyPts[m_Joins[i].idx2] = 0;
     FixupJoins(i);
   }

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.9                                                             *
-* Date      :  7 December 2010                                                 *
+* Version   :  2.95                                                            *
+* Date      :  27 December 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -117,10 +117,8 @@ struct TPolyPt {
 struct TJoinRec {
     TDoublePoint pt;
     int idx1;
-    union {
-      int idx2;
-      TPolyPt* outPPt; //horiz joins only
-    };
+    int idx2;
+    TPolyPt* outPPt; //horiz joins only
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;
