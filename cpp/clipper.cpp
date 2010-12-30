@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.95                                                            *
-* Date      :  27 December 2010                                                *
+* Version   :  2.96                                                            *
+* Date      :  31 December 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
@@ -2461,6 +2461,8 @@ void Clipper::MergePolysWithCommonEdges()
     //nb: p1->pt == p2->pt;
 
     if (((p1->next->pt.X > p1->pt.X && p2->next->pt.X > p2->pt.X) ||
+      (p1->next->pt.X < p1->pt.X && p2->next->pt.X < p2->pt.X) ||
+      (p1->next->pt.Y > p1->pt.Y && p2->next->pt.Y > p2->pt.Y) ||
       (p1->next->pt.Y < p1->pt.Y && p2->next->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->next->pt))
     {
@@ -2473,6 +2475,8 @@ void Clipper::MergePolysWithCommonEdges()
       p2->prev = p1;
     }
     else if (((p1->next->pt.X > p1->pt.X && p2->prev->pt.X > p2->pt.X) ||
+      (p1->next->pt.X < p1->pt.X && p2->prev->pt.X < p2->pt.X) ||
+      (p1->next->pt.Y > p1->pt.Y && p2->prev->pt.Y > p2->pt.Y) ||
       (p1->next->pt.Y < p1->pt.Y && p2->prev->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->next->pt, p2->pt, p2->prev->pt))
     {
@@ -2484,6 +2488,8 @@ void Clipper::MergePolysWithCommonEdges()
       pp1->prev = pp2;
     }
     else if (((p1->prev->pt.X > p1->pt.X && p2->next->pt.X > p2->pt.X) ||
+      (p1->prev->pt.X < p1->pt.X && p2->next->pt.X < p2->pt.X) ||
+      (p1->prev->pt.Y > p1->pt.Y && p2->next->pt.Y > p2->pt.Y) ||
       (p1->prev->pt.Y < p1->pt.Y && p2->next->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->next->pt))
     {
@@ -2495,6 +2501,8 @@ void Clipper::MergePolysWithCommonEdges()
       p2->next = p1;
     }
     else if (((p1->prev->pt.X > p1->pt.X && p2->prev->pt.X > p2->pt.X) ||
+      (p1->prev->pt.X < p1->pt.X && p2->prev->pt.X < p2->pt.X) ||
+      (p1->prev->pt.Y > p1->pt.Y && p2->prev->pt.Y > p2->pt.Y) ||
       (p1->prev->pt.Y < p1->pt.Y && p2->prev->pt.Y < p2->pt.Y)) &&
       SlopesEqual(p1->pt, p1->prev->pt, p2->pt, p2->prev->pt))
     {

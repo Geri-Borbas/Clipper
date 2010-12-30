@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.95                                                            *
-* Date      :  27 December 2010                                                *
+* Version   :  2.96                                                            *
+* Date      :  30 December 2010                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010                                              *
 *                                                                              *
@@ -3190,6 +3190,8 @@ begin
     //nb: p1.pt == p2.pt;
 
     if (((p1.next.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
+      ((p1.next.pt.X < p1.pt.X) and (p2.next.pt.X < p2.pt.X)) or
+      ((p1.next.pt.Y > p1.pt.Y) and (p2.next.pt.Y > p2.pt.Y)) or
       ((p1.next.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt) then
     begin
@@ -3201,8 +3203,10 @@ begin
       p1.next := p2;
       p2.prev := p1;
     end
-    else if ((p1.next.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
-      ((p1.next.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y)) and
+    else if (((p1.next.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
+      ((p1.next.pt.X < p1.pt.X) and (p2.prev.pt.X < p2.pt.X)) or
+      ((p1.next.pt.Y > p1.pt.Y) and (p2.prev.pt.Y > p2.pt.Y)) or
+      ((p1.next.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt) then
     begin
       pp1 := insertPolyPt(p1, p1.pt);
@@ -3213,6 +3217,8 @@ begin
       pp1.prev := pp2;
     end
     else if (((p1.prev.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
+      ((p1.prev.pt.X < p1.pt.X) and (p2.next.pt.X < p2.pt.X)) or
+      ((p1.prev.pt.Y > p1.pt.Y) and (p2.next.pt.Y > p2.pt.Y)) or
       ((p1.prev.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt) then
     begin
@@ -3224,6 +3230,8 @@ begin
       p2.next := p1;
     end
     else if (((p1.prev.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
+      ((p1.prev.pt.X < p1.pt.X) and (p2.prev.pt.X < p2.pt.X)) or
+      ((p1.prev.pt.Y > p1.pt.Y) and (p2.prev.pt.Y > p2.pt.Y)) or
       ((p1.prev.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt) then
     begin

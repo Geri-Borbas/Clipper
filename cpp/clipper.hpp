@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.95                                                            *
-* Date      :  27 December 2010                                                *
+* Version   :  2.96                                                            *
+* Date      :  31 December 2010                                                *
 * Copyright :  Angus Johnson                                                   *
 *                                                                              *
 * License:                                                                     *
