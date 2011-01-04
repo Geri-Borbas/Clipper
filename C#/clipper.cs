@@ -1,9 +1,10 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.96                                                            *
-* Date      :  31 December 2010                                                *
-* Copyright :  Angus Johnson                                                   *
+* Version   :  2.97                                                            *
+* Date      :  4 January 2011                                                  *
+* Website   :  http://www.angusj.com                                           *
+* Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -149,12 +150,7 @@ namespace Clipper
         protected internal const double almost_infinite = -3.39E+38;
 
         //tolerance: is needed because vertices are floating point values and any
-        //comparison of floating point values requires a degree of tolerance. Ideally
-        //this value should vary depending on how big (or small) the supplied polygon
-        //coordinate values are. If coordinate values are greater than 1.0E+5
-        //(ie 100,000+) then tolerance should be adjusted up (since the significand
-        //of type double is 15 decimal places). However, for the vast majority
-        //of uses ... tolerance = 1.0e-10 will be just fine.
+        //comparison of floating point values requires a degree of tolerance. 
         protected internal const double tolerance = 1.0E-10;
         protected internal const double minimal_tolerance = 1.0E-14;
         //precision: defines when adjacent vertices will be considered duplicates
@@ -220,8 +216,12 @@ namespace Clipper
             if ((dx < 0.1 && dy * 10 < dx) || dy < slope_precision)
             {
                 e.dx = infinite;
-                if (e.y != e.next.y) 
-                    e.y = e.next.y;
+                if (e.y != e.next.y)
+                {
+                    if (IsHorizontal(e.prev)) e.next.y = e.y;
+                    else e.y = e.next.y;
+                }
+
             }
             else 
                 e.dx = (e.x - e.next.x) / (e.y - e.next.y);

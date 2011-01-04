@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+2.97 - 4 January 2011
+* Bugfix: Obscure bug in AddPolygon method caused a 
+  memory overflow crash. 
+
 2.96 - 31 December 2010
 * Updated: Further improved the merging of output polygons 
   that share common edges. 

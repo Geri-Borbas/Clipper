@@ -3,10 +3,10 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.96                                                            *
-* Date      :  30 December 2010                                                *
+* Version   :  2.97                                                            *
+* Date      :  4 January 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010                                              *
+* Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -279,14 +279,9 @@ const
   infinite       : double = -3.4e+38;
   almost_infinite: double = -3.39e+38;
   //tolerance: is needed because vertices are floating point values and any
-  //comparison of floating point values requires a degree of tolerance. Ideally
-  //this value should vary depending on how big (or small) the supplied polygon
-  //coordinate values are. If coordinate values are greater than 1.0E+5
-  //(ie 100,000+) then tolerance should be adjusted up (since the significand
-  //of type double is 15 decimal places). However, for the vast majority
-  //of uses ... tolerance = 1.0e-10 will be just fine.
+  //comparison of floating point values requires a degree of tolerance.
   tolerance: double = 1.0e-10;
-  minimal_tolerance: double = 1.0e-14;
+  minimal_tolerance: double = 1.0e-14; //alternative tolerance
   //precision: defines when adjacent vertices will be considered duplicates
   //and hence ignored. This circumvents edges having indeterminate slope.
   precision: double = 1.0e-6;
@@ -822,6 +817,19 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function IsHorizontal(e: PEdge): boolean; overload;
+begin
+  result := assigned(e) and (e.dx < almost_infinite);
+end;
+//------------------------------------------------------------------------------
+
+function IsHorizontal(pp1, pp2: PPolyPt): boolean; overload;
+begin
+  result := (abs(pp1.pt.X - pp2.pt.X) > precision) and
+    (abs(pp1.pt.Y - pp2.pt.Y) < precision);
+end;
+//----------------------------------------------------------------------
+
 procedure SetDx(e: PEdge);
 var
   dx, dy: double;
@@ -835,24 +843,14 @@ begin
   begin
     e.dx := infinite;
     if (e.y <> e.next.y) then
-      e.y := e.next.y;
-  end else e.dx :=
-    (e.x - e.next.x)/(e.y - e.next.y);
+    begin
+      if isHorizontal(e.prev) then e.next.y := e.y
+      else e.y := e.next.y;
+    end;
+  end else
+    e.dx := (e.x - e.next.x)/(e.y - e.next.y);
 end;
 //------------------------------------------------------------------------------
-
-function IsHorizontal(e: PEdge): boolean; overload;
-begin
-  result := assigned(e) and (e.dx < almost_infinite);
-end;
-//------------------------------------------------------------------------------
-
-function IsHorizontal(pp1, pp2: PPolyPt): boolean; overload;
-begin
-  result := (abs(pp1.pt.X - pp2.pt.X) > precision) and
-    (abs(pp1.pt.Y - pp2.pt.Y) < precision);
-end;
-//----------------------------------------------------------------------
 
 procedure SwapSides(edge1, edge2: PEdge);
 var
