@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+2.971 - 6 January 2011
+* Bugfix: Minor bugs in C++ and C# versions (resulting from 
+  mistranslations of the Delphi code).
+
 2.97 - 4 January 2011
 * Bugfix: Obscure bug in AddPolygon method caused a 
   memory overflow crash. 

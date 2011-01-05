@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.97                                                            *
-* Date      :  4 January 2011                                                  *
+* Version   :  2.971                                                           *
+* Date      :  6 January 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1140,13 +1140,10 @@ namespace Clipper
 
         private static bool Edge2InsertsBeforeEdge1(TEdge e1, TEdge e2)
         {
-            if (e2.xbot - tolerance > e1.xbot) 
-                return false;
-            if (e2.xbot + tolerance < e1.xbot) 
-                return true;
-            if (IsHorizontal(e2)) 
-                return false;
-            return (e2.dx >= e1.dx);
+            if (e2.xbot - tolerance > e1.xbot) return false;
+            if (e2.xbot + tolerance < e1.xbot) return true;
+            if (IsHorizontal(e2)) return false;
+            return (e2.dx > e1.dx);
         }
         //------------------------------------------------------------------------------
 
@@ -1245,6 +1242,7 @@ namespace Clipper
                     AddPolyPt(lm.leftBound.prevInAEL, pt);
                     polyPtRec.idx1 = lm.leftBound.outIdx;
                     polyPtRec.idx2 = lm.leftBound.prevInAEL.outIdx;
+                    polyPtRec.pt = pt;
                     m_Joins.Add(polyPtRec);
                 }
 

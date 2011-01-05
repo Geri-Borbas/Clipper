@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.97                                                            *
-* Date      :  4 January 2011                                                  *
+* Version   :  2.971                                                           *
+* Date      :  6 January 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -441,7 +441,7 @@ bool ValidateOrientation(TPolyPt *pt)
     bottomPt->next->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->next;
   while (bottomPt->isHole == sUndefined &&
     bottomPt->prev->pt.Y >= bottomPt->pt.Y) bottomPt = bottomPt->prev;
-  return (IsClockwise(pt) == (bottomPt->isHole == sFalse));
+  return (IsClockwise(pt) == (bottomPt->isHole != sTrue));
 }
 //------------------------------------------------------------------------------
 
