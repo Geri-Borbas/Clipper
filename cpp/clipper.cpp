@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.971                                                           *
-* Date      :  6 January 2011                                                  *
+* Version   :  2.98                                                            *
+* Date      :  10 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -491,33 +491,41 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
 }
 //------------------------------------------------------------------------------
 
-bool FixupForDupsAndColinear( TEdge *&e, TEdge *edges)
+void FixupForDupsAndColinear(TEdge *edges)
 {
-  bool result = false;
-  while ( e->next != e->prev &&
-    (PointsEqual(e->prev->x, e->prev->y, e->x, e->y) ||
-    SlopesEqualInternal(*e->prev, *e)) )
-  {
-    result = true;
-    //remove 'e' from the double-linked-list ...
-    if ( e == edges )
+  TEdge* lastOK = 0;
+  TEdge *e = edges;
+  for (;;) {
+    if (e->next == e->prev) break;
+    else if (PointsEqual(e->prev->x, e->prev->y, e->x, e->y) ||
+      SlopesEqualInternal(*e->prev, *e))
     {
-      //move the content of e.next to e before removing e.next from DLL ...
-      e->x = e->next->x;
-      e->y = e->next->y;
-      e->next->next->prev = e;
-      e->next = e->next->next;
-    } else
-    {
-      //remove 'e' from the loop ...
-      e->prev->next = e->next;
-      e->next->prev = e->prev;
-      e = e->prev; //ie get back into the loop
+      lastOK = 0;
+      //remove 'e' from the double-linked-list ...
+      if ( e == edges )
+      {
+        //move the content of e.next to e before removing e.next from DLL ...
+        e->x = e->next->x;
+        e->y = e->next->y;
+        e->next->next->prev = e;
+        e->next = e->next->next;
+      } else
+      {
+        //remove 'e' from the loop ...
+        e->prev->next = e->next;
+        e->next->prev = e->prev;
+        e = e->prev; //ie get back into the loop
+      }
+      SetDx(*e->prev);
+      SetDx(*e);
     }
-    SetDx(*e->prev);
-    SetDx(*e);
+    else if (lastOK == e) break;
+    else
+    {
+        if (lastOK == 0) lastOK = e;
+        e = e->next;
+    }
   }
-  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -666,20 +674,10 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   InitEdge(&edges[0], &edges[1], &edges[highI], p[0]);
 
   //fixup by deleting any duplicate points and amalgamating co-linear edges ...
-  TEdge* e = edges;
-  do {
-    FixupForDupsAndColinear(e, edges);
-    e = e->next;
-  }
-  while ( e != edges );
-  while  ( FixupForDupsAndColinear(e, edges))
-  {
-    e = e->prev;
-    if ( !FixupForDupsAndColinear(e, edges) ) break;
-    e = edges;
-  }
+  FixupForDupsAndColinear(edges);
 
   //make sure we still have a valid polygon ...
+  TEdge* e = edges;
   if( e->next == e->prev )
   {
     m_edges.pop_back();
@@ -1784,10 +1782,10 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
 
   bool e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
     ( fabs( e1->xtop - pt.X ) < tolerance ) && //nb: not precision
-    ( fabs( e1->ytop - pt.Y ) < precision );
+    ( fabs( e1->ytop - pt.Y ) < tolerance );
   bool e2stops = !(ipRight & protects) &&  !e2->nextInLML &&
     ( fabs( e2->xtop - pt.X ) < tolerance ) && //nb: not precision
-    ( fabs( e2->ytop - pt.Y ) < precision );
+    ( fabs( e2->ytop - pt.Y ) < tolerance );
   bool e1Contributing = ( e1->outIdx >= 0 );
   bool e2contributing = ( e2->outIdx >= 0 );
 
@@ -2025,44 +2023,39 @@ TPolyPt* FixupOutPolygon(TPolyPt *p, bool stripPointyEdgesOnly = false)
   //the form of 'pointy' parallel edges is     : o--o----------*
   //(While merging polygons that share common edges, it's necessary to
   //temporarily retain 'non-pointy' parallel edges.)
-  bool firstPass = true;
   if (!p) return 0;
-  TPolyPt *pp = p, *result = p;
-  bool ptDeleted;
+  TPolyPt *pp = p, *result = p, *lastOK = 0;
   for (;;)
   {
-    if (pp->prev == pp)
+    if (pp->prev == pp || pp->prev == pp->next )
     {
-      delete pp;
+      DisposePolyPts(pp);
       return 0;
     }
     //test for duplicate points and for same slope (cross-product) ...
-    if ( PointsEqual(pp->pt, pp->next->pt) ||
+    if (PointsEqual(pp->pt, pp->next->pt) ||
       (fabs((pp->pt.Y - pp->prev->pt.Y)*(pp->next->pt.X - pp->pt.X) -
       (pp->pt.X - pp->prev->pt.X)*(pp->next->pt.Y - pp->pt.Y)) < precision &&
       (!stripPointyEdgesOnly ||
       ((pp->pt.X - pp->prev->pt.X > 0) != (pp->next->pt.X - pp->pt.X > 0)) ||
       ((pp->pt.Y - pp->prev->pt.Y > 0) != (pp->next->pt.Y - pp->pt.Y > 0)))))
     {
+      lastOK = 0;
       if (pp->isHole != sUndefined && pp->next->isHole == sUndefined)
         pp->next->isHole = pp->isHole;
       pp->prev->next = pp->next;
       pp->next->prev = pp->prev;
       TPolyPt* tmp = pp;
-      if (pp == result)
-      {
-        firstPass = true;
-        result = pp->prev;
-      }
+      if (pp == result) result = pp->prev;
       pp = pp->prev;
       delete tmp;
-      ptDeleted = true;
-    } else {
-      pp = pp->next;
-      ptDeleted = false;
     }
-    if (!firstPass) break;
-    if (pp == result && !ptDeleted) firstPass = false;
+    else if (pp == lastOK) break;
+    else
+    {
+      if (!lastOK) lastOK = pp;
+      pp = pp->next;
+    }
   }
   return result;
 }

@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.98 - 6 January 2011
+* Update: Code tidy up.
+
 2.971 - 6 January 2011
 * Bugfix: Minor bugs in C++ and C# versions (resulting from 
   mistranslations of the Delphi code).

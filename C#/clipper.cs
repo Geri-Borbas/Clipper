@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.971                                                           *
-* Date      :  6 January 2011                                                  *
+* Version   :  2.98                                                            *
+* Date      :  10 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -347,33 +347,42 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static bool FixupForDupsAndColinear(ref TEdge e, TEdge edges)
+        private static void FixupForDupsAndColinear(TEdge edges)
         {
-            bool result = false;
-            while (e.next != e.prev && 
-                (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) || SlopesEqualInternal(e.prev, e)))
+            TEdge lastOK = null;
+            TEdge e = edges;
+            for (;;)
             {
-                result = true;
-                //remove 'e' from the double-linked-list ...
-                if (e == edges)
+                if (e.next == e.prev) break;
+                else if (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) || SlopesEqualInternal(e.prev, e))
                 {
-                    //move the content of e.next to e before removing e.next from DLL ...
-                    e.x = e.next.x;
-                    e.y = e.next.y;
-                    e.next.next.prev = e;
-                    e.next = e.next.next;
+                    lastOK = null;
+                    //remove 'e' from the double-linked-list ...
+                    if (e == edges)
+                    {
+                        //move the content of e.next to e before removing e.next from DLL ...
+                        e.x = e.next.x;
+                        e.y = e.next.y;
+                        e.next.next.prev = e;
+                        e.next = e.next.next;
+                    }
+                    else
+                    {
+                        //remove 'e' from the loop ...
+                        e.prev.next = e.next;
+                        e.next.prev = e.prev;
+                        e = e.prev; //ie get back into the loop
+                    }
+                    SetDx(e.prev);
+                    SetDx(e);
                 }
+                else if (lastOK == e) break;
                 else
                 {
-                    //remove 'e' from the loop ...
-                    e.prev.next = e.next;
-                    e.next.prev = e.prev;
-                    e = e.prev; //ie get back into the loop
+                    if (lastOK == null) lastOK = e;
+                    e = e.next;
                 }
-                SetDx(e.prev);
-                SetDx(e);
             }
-            return result;
         }
         //------------------------------------------------------------------------------
 
@@ -551,20 +560,8 @@ namespace Clipper
             InitEdge(edgeRef, edges[1], edges[highI], p[0]);
 
             //fixup by deleting any duplicate points and amalgamating co-linear edges ...
+            FixupForDupsAndColinear(edges[0]);
             TEdge e = edges[0];
-            do
-            {
-                FixupForDupsAndColinear(ref e, edges[0]);
-                e = e.next;
-            }
-            while (e != edges[0]);
-            while (FixupForDupsAndColinear(ref e, edges[0]))
-            {
-                e = e.prev;
-                if (!FixupForDupsAndColinear(ref e, edges[0]))
-                    break;
-                e = edges[0];
-            }
 
             //make sure we still have a valid polygon ...
             if (e.next == e.prev)
@@ -1973,10 +1970,10 @@ namespace Clipper
 
             bool e1stops = (TProtects.ipLeft & protects) == 0 && e1.nextInLML == null &&
               (Math.Abs(e1.xtop - pt.X) < tolerance) && //nb: not precision
-              (Math.Abs(e1.ytop - pt.Y) < precision);
+              (Math.Abs(e1.ytop - pt.Y) < tolerance);
             bool e2stops = (TProtects.ipRight & protects) == 0 && e2.nextInLML == null &&
               (Math.Abs(e2.xtop - pt.X) < tolerance) && //nb: not precision
-              (Math.Abs(e2.ytop - pt.Y) < precision);
+              (Math.Abs(e2.ytop - pt.Y) < tolerance);
             bool e1Contributing = (e1.outIdx >= 0);
             bool e2contributing = (e2.outIdx >= 0);
 
@@ -2250,48 +2247,40 @@ namespace Clipper
             //(While merging polygons that share common edges, it's necessary to
             //temporarily retain 'non-pointy' parallel edges.)
 
-            bool ptDeleted;
-            bool firstPass = true;
-
             if (p == null) return null;
-            TPolyPt pp = p, result = p;
+            TPolyPt pp = p, result = p, lastOK = null;
             for (;;)
             {
-                if (pp.prev == pp)
+                if (pp.prev == pp || pp.prev == pp.next)
                 {
-                    pp = null;
+                    DisposePolyPts(pp);
                     return null;
                 }
                 //test for duplicate points and for same slope (cross-product) ...
-                if ( PointsEqual(pp.pt, pp.next.pt) ||
+                if (PointsEqual(pp.pt, pp.next.pt) ||
                     (Math.Abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
                     (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < precision &&
                     (!stripPointyEdgesOnly ||
                     ((pp.pt.X - pp.prev.pt.X > 0) != (pp.next.pt.X - pp.pt.X > 0)) ||
                     ((pp.pt.Y - pp.prev.pt.Y > 0) != (pp.next.pt.Y - pp.pt.Y > 0)))))
                 {
+                    lastOK = null;
                     if (pp.isHole != TTriState.sUndefined && 
                         pp.next.isHole == TTriState.sUndefined) 
                           pp.next.isHole = pp.isHole;
                     pp.prev.next = pp.next;
                     pp.next.prev = pp.prev;
                     TPolyPt tmp = pp;
-                    if (pp == result)
-                    {
-                        firstPass = true;
-                        result = pp.prev;
-                    }
+                    if (pp == result) result = pp.prev;
                     pp = pp.prev;
                     tmp = null;
-                    ptDeleted = true;
                 }
+                else if (pp == lastOK) break;
                 else
                 {
+                    if (lastOK == null) lastOK = pp;
                     pp = pp.next;
-                    ptDeleted = false;
                 }
-                if (!firstPass) break;
-                if (pp == result && !ptDeleted) firstPass = false;
             }
             return result;
         }

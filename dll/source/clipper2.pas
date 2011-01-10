@@ -3,7 +3,7 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.97                                                            *
+* Version   :  2.98                                                            *
 * Date      :  4 January 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
@@ -715,10 +715,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure DisposePolyPts(pp: PPolyPt);
+var
+  tmpPp: PPolyPt;
+begin
+  pp.prev.next := nil;
+  while assigned(pp) do
+  begin
+    tmpPp := pp;
+    pp := pp.next;
+    dispose(tmpPp);
+  end;
+end;
+//------------------------------------------------------------------------------
+
 function FixupOutPolygon(outPoly: PPolyPt; stripPointyEdgesOnly: boolean = false): PPolyPt;
 var
-  pp, tmp: PPolyPt;
-  ptDeleted, firstPass: boolean;
+  pp, tmp, lastOK: PPolyPt;
 begin
   //FixupOutPolygon() - removes duplicate points and simplifies consecutive
   //parallel edges by removing the middle vertex.
@@ -730,15 +743,15 @@ begin
   //the form of 'pointy' parallel edges is     : o--o----------*
   //(While merging polygons that share common edges, it's necessary to
   //temporarily retain 'non-pointy' parallel edges.)
-  firstPass := true;
   result := outPoly;
   if not assigned(outPoly) then exit;
+  lastOK := nil;
   pp := outPoly;
   while true do
   begin
-    if pp.prev = pp then
+    if (pp.prev = pp) or (pp.next = pp.prev) then
     begin
-      Dispose(pp);
+      DisposePolyPts(pp);
       result := nil;
       exit;
     end;
@@ -750,40 +763,22 @@ begin
         ((pp.pt.X - pp.prev.pt.X > 0) <> (pp.next.pt.X - pp.pt.X > 0)) or
         ((pp.pt.Y - pp.prev.pt.Y > 0) <> (pp.next.pt.Y - pp.pt.Y > 0)))) then
     begin
+      lastOK := nil;
       if (pp.isHole <> sUndefined) and (pp.next.isHole = sUndefined) then
         pp.next.isHole := pp.isHole;
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
       tmp := pp;
-      if pp = result then
-      begin
-        firstPass := true;
-        result := pp.prev;
-      end;
+      if pp = result then result := pp.prev;
       pp := pp.prev;
       dispose(tmp);
-      ptDeleted := true;
-    end else
+    end
+    else if pp = lastOK then break
+    else
     begin
+      if not assigned(lastOK) then lastOK := pp;
       pp := pp.next;
-      ptDeleted := false;
     end;
-    if not firstPass then break;
-    if (pp = result) and not ptDeleted then firstPass := false;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-procedure DisposePolyPts(pp: PPolyPt);
-var
-  tmpPp: PPolyPt;
-begin
-  pp.prev.next := nil;
-  while assigned(pp) do
-  begin
-    tmpPp := pp;
-    pp := pp.next;
-    dispose(tmpPp);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1050,30 +1045,43 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   end;
   //----------------------------------------------------------------------
 
-  function FixupForDupsAndColinear(var e: PEdge; const edges: PEdgeArray): boolean;
+  procedure FixupForDupsAndColinear(const edges: PEdgeArray);
+  var
+    lastOK: PEdge;
+    e: PEdge;
   begin
-    result := false;
-    while (e.next <> e.prev) and (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) or
-      SlopesEqualInternal(e.prev, e)) do
+    e := @edges[0];
+    lastOK := nil;
+    while true do
     begin
-      result := true;
-      //remove 'e' from the double-linked-list ...
-      if (e = @edges[0]) then
+      if (e.next = e.prev) then break
+      else if (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) or
+        SlopesEqualInternal(e.prev, e)) then
       begin
-        //move the content of e.next to e before removing e.next from DLL ...
-        e.x := e.next.x;
-        e.y := e.next.y;
-        e.next.next.prev := e;
-        e.next := e.next.next;
-      end else
+        lastOK := nil;
+        //remove 'e' from the double-linked-list ...
+        if (e = @edges[0]) then
+        begin
+          //move the content of e.next to e before removing e.next from DLL ...
+          e.x := e.next.x;
+          e.y := e.next.y;
+          e.next.next.prev := e;
+          e.next := e.next.next;
+        end else
+        begin
+          //remove 'e' from the loop ...
+          e.prev.next := e.next;
+          e.next.prev := e.prev;
+          e := e.prev; //now get back into the loop
+        end;
+        SetDx(e.prev);
+        SetDx(e);
+      end else if lastOK = e then break
+      else
       begin
-        //remove 'e' from the loop ...
-        e.prev.next := e.next;
-        e.next.prev := e.prev;
-        e := e.prev; //now get back into the loop
+        if not assigned(lastOK) then lastOK := e;
+        e := e.next;
       end;
-      SetDx(e.prev);
-      SetDx(e);
     end;
   end;
   //----------------------------------------------------------------------
@@ -1198,18 +1206,9 @@ begin
   InitEdge(@edges[0], @edges[1], @edges[highI], pg[0]);
 
   //fixup by deleting any duplicate points and amalgamating co-linear edges ...
-  e := @edges[0];
-  repeat
-    FixupForDupsAndColinear(e, edges);
-    e := e.next;
-  until (e = @edges[0]);
-  while FixupForDupsAndColinear(e, edges) do
-  begin
-    e := e.prev;
-    if not FixupForDupsAndColinear(e, edges) then break;
-    e := @edges[0];
-  end;
+  FixupForDupsAndColinear(edges);
 
+  e := @edges[0];
   if (e.next = e.prev) then
   begin
     //this isn't a valid polygon ...
@@ -2589,10 +2588,10 @@ begin
 
   e1stops := not (ipLeft in protects) and not assigned(e1.nextInLML) and
     (abs(e1.xtop - pt.x) < tolerance) and //nb: not precision
-    (abs(e1.ytop - pt.y) < precision);
+    (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
     (abs(e2.xtop - pt.x) < tolerance) and //nb: not precision
-    (abs(e2.ytop - pt.y) < precision);
+    (abs(e2.ytop - pt.y) < tolerance);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
 
