@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+2.99 - 15 January 2011
+* Bugfix: Obscure bug in AddPolygon method caused endless loop.
+
 2.98 - 6 January 2011
 * Update: Code tidy up.
 

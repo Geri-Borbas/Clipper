@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.98                                                            *
-* Date      :  10 January 2011                                                 *
+* Version   :  2.99                                                            *
+* Date      :  15 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -41,10 +41,7 @@
 
 namespace clipper {
 
-//infinite: simply used to define inverse slope (dx/dy) of horizontal edges
-static double const infinite = -3.4E+38;
-static double const almost_infinite = -3.39E+38;
-
+static double const horizontal = -3.4E+38;
 //tolerance: is needed because vertices are floating point values and any
 //comparison of floating point values requires a degree of tolerance.
 static double const tolerance = 1.0E-10;
@@ -309,7 +306,7 @@ bool PtInPoly(const TDoublePoint pt, TPolyPt*& polyStartPt)
 
 bool IsHorizontal(const TEdge &e)
 {
-  return &e  && ( e.dx < almost_infinite );
+  return &e  && ( e.dx == horizontal );
 }
 //------------------------------------------------------------------------------
 
@@ -329,12 +326,8 @@ void SetDx(TEdge &e)
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision )
   {
-    e.dx = infinite;
-    if (e.y != e.next->y)
-    {
-      if (IsHorizontal(*e.prev)) e.next->y = e.y;
-      else e.y = e.next->y;
-    }
+    e.dx = horizontal;
+    if (e.y != e.next->y) e.y = e.next->y;
   }
   else e.dx =
     (e.x - e.next->x)/(e.y - e.next->y);
@@ -672,12 +665,17 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   for (i = highI-1; i > 0; --i)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], p[i]);
   InitEdge(&edges[0], &edges[1], &edges[highI], p[0]);
+  TEdge* e = &edges[highI];
+  while (IsHorizontal(*e) && e !=&edges[0]) {
+    if (e->y != e->next->y) e->y = e->next->y;
+    e = e->prev;
+  }
 
-  //fixup by deleting any duplicate points and amalgamating co-linear edges ...
+  //fixup by deleting duplicate points and amalgamating co-linear edges ...
   FixupForDupsAndColinear(edges);
 
   //make sure we still have a valid polygon ...
-  TEdge* e = edges;
+  e = edges;
   if( e->next == e->prev )
   {
     m_edges.pop_back();
@@ -694,7 +692,6 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
     e = e->next;
   } while( e != edges );
 
-  TDoublePoint nextPt;
   if ( e->next->nextAtTop )
     ReInitEdge(e, e->next->x, e->next->y, polyType); else
     ReInitEdge(e, e->next->xtop, e->next->ytop, polyType);
@@ -740,10 +737,10 @@ TDoubleRect ClipperBase::GetBounds()
     result.bottom = 0;
     return result;
   }
-  result.left = -infinite;
-  result.top = -infinite;
-  result.right = infinite;
-  result.bottom = infinite;
+  result.left = -horizontal;
+  result.top = -horizontal;
+  result.right = horizontal;
+  result.bottom = horizontal;
   while (lm)
   {
     if (lm->leftBound->y > result.bottom) result.bottom = lm->leftBound->y;

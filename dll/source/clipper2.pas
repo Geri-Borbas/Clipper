@@ -3,8 +3,8 @@ unit clipper2;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.98                                                            *
-* Date      :  4 January 2011                                                  *
+* Version   :  2.99                                                            *
+* Date      :  15 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -275,9 +275,7 @@ type
   TDirection = (dRightToLeft, dLeftToRight);
 
 const
-  //infinite: used to define inverse slope (dx/dy) of horizontal edges
-  infinite       : double = -3.4e+38;
-  almost_infinite: double = -3.39e+38;
+  horizontal: double = -3.4e+38;
   //tolerance: is needed because vertices are floating point values and any
   //comparison of floating point values requires a degree of tolerance.
   tolerance: double = 1.0e-10;
@@ -814,7 +812,7 @@ end;
 
 function IsHorizontal(e: PEdge): boolean; overload;
 begin
-  result := assigned(e) and (e.dx < almost_infinite);
+  result := assigned(e) and (e.dx = horizontal);
 end;
 //------------------------------------------------------------------------------
 
@@ -836,12 +834,8 @@ begin
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
   begin
-    e.dx := infinite;
-    if (e.y <> e.next.y) then
-    begin
-      if isHorizontal(e.prev) then e.next.y := e.y
-      else e.y := e.next.y;
-    end;
+    e.dx := horizontal;
+    if (e.y <> e.next.y) then e.y := e.next.y;
   end else
     e.dx := (e.x - e.next.x)/(e.y - e.next.y);
 end;
@@ -1204,8 +1198,14 @@ begin
   for i := highI-1 downto 1 do
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
   InitEdge(@edges[0], @edges[1], @edges[highI], pg[0]);
+  e := @edges[highI];
+  while IsHorizontal(e) and (e <> @edges[0]) do
+  begin
+    if (e.y <> e.next.y) then e.y := e.next.y;
+    e := e.prev;
+  end;
 
-  //fixup by deleting any duplicate points and amalgamating co-linear edges ...
+  //fixup by deleting duplicate points and amalgamating co-linear edges ...
   FixupForDupsAndColinear(edges);
 
   e := @edges[0];
@@ -1283,10 +1283,10 @@ begin
     result := nullRect;
     exit;
   end;
-  result.Left := -infinite;
-  result.Top := -infinite;
-  result.Right := infinite;
-  result.Bottom := infinite;
+  result.Left := -horizontal; //very large and positive
+  result.Top := -horizontal;
+  result.Right := horizontal; //very large and negative
+  result.Bottom := horizontal;
   while assigned(lm) do
   begin
     if lm.leftBound.y > result.Bottom then result.Bottom := lm.leftBound.y;
@@ -2590,7 +2590,7 @@ begin
     (abs(e1.xtop - pt.x) < tolerance) and //nb: not precision
     (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
-    (abs(e2.xtop - pt.x) < tolerance) and //nb: not precision
+    (abs(e2.xtop - pt.x) < tolerance) and
     (abs(e2.ytop - pt.y) < tolerance);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);

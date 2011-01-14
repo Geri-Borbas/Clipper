@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.98                                                            *
-* Date      :  10 January 2011                                                 *
+* Version   :  2.99                                                            *
+* Date      :  15 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -145,9 +145,7 @@ namespace Clipper
     public class TClipperBase
     {
 
-        //infinite: simply used to define inverse slope (dx/dy) of horizontal edges
-        protected internal const double infinite = -3.4E+38;
-        protected internal const double almost_infinite = -3.39E+38;
+        protected internal const double horizontal = -3.4E+38;
 
         //tolerance: is needed because vertices are floating point values and any
         //comparison of floating point values requires a degree of tolerance. 
@@ -215,13 +213,8 @@ namespace Clipper
             //Therefore treat very short, nearly horizontal edges as horizontal too ...
             if ((dx < 0.1 && dy * 10 < dx) || dy < slope_precision)
             {
-                e.dx = infinite;
-                if (e.y != e.next.y)
-                {
-                    if (IsHorizontal(e.prev)) e.next.y = e.y;
-                    else e.y = e.next.y;
-                }
-
+                e.dx = horizontal;
+                if (e.y != e.next.y) e.y = e.next.y;
             }
             else 
                 e.dx = (e.x - e.next.x) / (e.y - e.next.y);
@@ -230,7 +223,7 @@ namespace Clipper
 
         internal static bool IsHorizontal(TEdge e)
         {
-            return (e != null) && (e.dx < almost_infinite);
+            return (e != null) && (e.dx == horizontal);
         }
         //------------------------------------------------------------------------------
 
@@ -555,13 +548,19 @@ namespace Clipper
                 edgeRef = edges[i];
                 InitEdge(edgeRef, edges[i + 1], edges[i - 1], p[i]);
             }
+            TEdge e = edges[highI];
+            while (IsHorizontal(e) && e != edges[0])
+            {
+                if (e.y != e.next.y) e.y = e.next.y;
+                e = e.prev;
+            }
 
             edgeRef = edges[0];
             InitEdge(edgeRef, edges[1], edges[highI], p[0]);
 
             //fixup by deleting any duplicate points and amalgamating co-linear edges ...
             FixupForDupsAndColinear(edges[0]);
-            TEdge e = edges[0];
+            e = edges[0];
 
             //make sure we still have a valid polygon ...
             if (e.next == e.prev)
@@ -673,8 +672,8 @@ namespace Clipper
         {
             TLocalMinima lm = m_localMinimaList;
             if (lm == null) return new TDoubleRect(0, 0, 0, 0);
-            
-            TDoubleRect result = new TDoubleRect(-infinite, -infinite, infinite, infinite);
+
+            TDoubleRect result = new TDoubleRect(-horizontal, -horizontal, horizontal, horizontal);
             while (lm != null)
             {
                 if (lm.leftBound.y > result.bottom) result.bottom = lm.leftBound.y;
@@ -2544,15 +2543,17 @@ namespace Clipper
                 TEdge e = m_ActiveEdges;
                 while (e != null)
                 {
-                  if ( e.outIdx < 0 || e == e1 ) ; //ie do nothing
-                  else if ( IsHorizontal( e ) && e.x < e1.x ) isAHole = !isAHole;
-                  else 
-                  {
-                    double eX = TopX(e,pp.pt.Y);
-                    if ( eX < pp.pt.X - precision || 
-                        (Math.Abs(eX - pp.pt.X) < tolerance  && e.dx >= e1.dx) )
-                            isAHole = !isAHole;
-                  }
+                    if (e.outIdx >= 0 && e != e1)
+                    {
+                        if (IsHorizontal(e) && e.x < e1.x) isAHole = !isAHole;
+                        else
+                        {
+                            double eX = TopX(e, pp.pt.Y);
+                            if (eX < pp.pt.X - precision ||
+                              (Math.Abs(eX - pp.pt.X) < tolerance && e.dx >= e1.dx))
+                                isAHole = !isAHole;
+                        }
+                    }
                   e = e.nextInAEL;
                 }
                 if (isAHole) pp.isHole = TTriState.sTrue; else pp.isHole = TTriState.sFalse;
