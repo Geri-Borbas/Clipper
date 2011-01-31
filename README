@@ -2,36 +2,19 @@
 Clipper Change Log
 ============================================================
 
+v3.0 - 31 January 2011
+* Update: Major rewrite of the portion of code that calculates 
+  the output polygons' orientation.
+* Update: Help file significantly improved.
+* Change: Renamed ForceOrientation property to IgnoreOrientation. 
+  If the orientation of output polygons is not important, or can 
+  be managed separately, clipping routines can be sped up by about 
+  60% by setting IgnoreOrientation to true. Defaults to false.
+* Change: The OffsetPolygon and Area functions have been moved to 
+  the new unit - clipper_misc. 
+
 2.99 - 15 January 2011
-* Bugfix: Obscure bug in AddPolygon method caused endless loop.
-
-2.98 - 6 January 2011
-* Update: Code tidy up.
-
-2.971 - 6 January 2011
-* Bugfix: Minor bugs in C++ and C# versions (resulting from 
-  mistranslations of the Delphi code).
-
-2.97 - 4 January 2011
-* Bugfix: Obscure bug in AddPolygon method caused a 
-  memory overflow crash. 
-
-2.96 - 31 December 2010
-* Updated: Further improved the merging of output polygons 
-  that share common edges. 
-
-2.95 - 27 December 2010
-* Updated: Further improved merging of output polygons 
-  that share common edges. 
-* Bugfix: Fixed obscure orientation bug in output polygons.
-
-2.9 - 7 December 2010
-* Updated: Significantly improved merging of output polygons 
-  that share common edges. 
-
-2.85 - 26 November 2010
-* Updated: Output polygons with shared horizontal edges were 
-  not being merged into a single polygon. 
+* Bugfix: Obscure bug in AddPolygon method could cause an endless loop. 
 
 2.8 - 20 November 2010
 * Updated: Output polygons which previously shared a common 
@@ -43,139 +26,19 @@ Clipper Change Log
 * Added: Support module for Cairo Graphics Library (with demo). 
 * Updated: C# and C++ demos.
 
-2.71 - 26 October 2010
-* Bugfix: Finally fixed a bug (affecting NonZero filling) 
-  that was introduced in ver 2.6.
-* Updated: C# demo
-
-2.6 - 23 October 2010
-* Added:  C# demo (with full Visual C# 2010 source code).
-* Added:  OffsetPolygon function (but still a work-in-progress). 
-
 2.522 - 15 October 2010
 * Added C# translation (thanks to Olivier Lejeune) and 
   a link to Ruby bindings (thanks to Mike Owens).
-
-2.521 - 8 October 2010
-* Bugfix: Minor bug in the cleaning up of empty polygon 
-          results (affected C++ code only).
-
-2.52 - 24 September 2010
-* Revert: Tolerance in SlopesEqual() function reverted as some 
-          users found the sub-pixel 'smoothing' unacceptable.
-* Update: Minor code tidy. 
-
-2.5 - 10 September 2010
-* Update: Variable tolerance (epsilon) implemented to further 
-          address issues of 'robustness' that are inherent to 
-          floating point calulations.
-
-2.4 - 2 September 2010
-* Bugfix: Obscure bug fixed. 
-* Update: Performance improvement (thanks to Kirill Gavrilov).
-
-2.36 - 27 August 2010
-* Bugfix: Minor bugfix. 
-
-2.35 - 23 August 2010
-* Update: Simplified some very convoluted code in AddPolygon().
-
-2.3 - 21 August 2010
-* Update: Better clean-up of extraneous edges in solution polygons.
-
-2.22 - 11 August 2010
-* Bugfix: Further code tidy up and fix bug added in ver 2.2. 
-
-2.2 - 14 August 2010
-* Change: Precision property removed from Clipper class.
-
-2.11 - 11 August 2010
-* Bugfix: Another minor bugfix. 
-
-2.10 - 10 August 2010
-* Bugfix: Fixed one bug but introduced another in ver 2.08.
-* Change: DuplicatePointTolerance() renamed Precision().
-* Change: ForceAlternateOrientation() renamed ForceOrientation().
-
-2.08 - 7 August 2010
-* Bugfix: Bug in BuildBound() could cause an endless loop. 
-
-2.06 - 5 August 2010
-* Bugfix: Finally nailed an obscure but elusive bug in the 
-merging of co-linear edges in the input polygons where 
-very rarely one would be missed.
-
-2.03 - 3 August 2010
-* Bugfix: A couple of minor bugs fixed.
-
-2.02 - 2 August 2010
-* Bugfix: BuildResult() very occasionally caused an endless loop. 
 
 2.0 - 30 July 2010
 * Clipper now clips using both the Even-Odd (alternate) and 
   Non-Zero (winding) polygon filling rules. (Previously Clipper 
   assumed the Even-Odd rule for polygon filling.)
   
-1.4s - 11 July 2010
-* Bugfix: Some code in BuildResult() in clipper.cpp was being 
-  executed out of order.
-
-1.4r - 10 July 2010
-* Bugfix: The returned orientation of polygons 
-  (clockwise vs counter-clockwise) was not always correct. 
-* Improvement: Removed occasional overlapping co-linear segments 
-  (empty spikes) from result polygons. 
-
-1.4m - 3 July 2010
-* Added DuplicatePointTolerance() to Clipper class
-* Very minor tweaks to clipping algorithm
-
-1.4i - 18 June 2010
-* Minor improvements to C++ code
-  
-1.4e - 17 June 2010
-* Bugfix: Clipper.pas & Clipper.cpp
-  
 1.4c - 16 June 2010
 * Added C++ support for AGG graphics library 
   
-1.4  - 15 June 2010
-* Added Delphi support for AGG graphics library
-  
-1.3  - 9 June 2010
-* Added clipper.dll (& support files) to provide any Windows 
-  application with to access Clipper's functionality.
-* Code tidying. 
-  
-1.2u - 3 June 2010
-* Bugfix: In clipper.cpp, there was inadequate clean-up in
-  the Execute method.
-
 1.2s - 2 June 2010
-* Minor code tidy up.
 * Added C++ translation of clipper.pas
-
-1.2n - 30 May 2010
-* Minor bug in the 'uses' clause fixed.
-
-1.2m - 28 May 2010
-* Minor code tidy up.
-* Demo application updated.
-
-1.2i - 23 May 2010
-* Minor code tidy up.
-* Demo application updated.
-
-1.2e - 21 May 2010
-* Added ForceAlternateOrientation property to TClipper class.
-  This property is useful when operating on simple polygons
-  as it ensures that the clipping operation will return
-  outer polygons with clockwise orientation and inner 
-  (or 'hole') polygons with counter-clockwise orientation. 
-  Disabling this property will result in a minor boost 
-  (ie ~10%) in execution speed. (Default = true)
-* Minor code tidy up.
-
-1.2c - 17 May 2010
 
 1.0 - 9 May 2010

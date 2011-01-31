@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.99                                                            *
-* Date      :  15 January 2011                                                 *
+* Version   :  3.0.2 (beta)                                                    *
+* Date      :  26 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -26,8 +26,8 @@
 
 /*******************************************************************************
 *                                                                              *
-* Initial C# translation was kindly provided by                                *
-* Olivier Lejeune <Olivier.Lejeune@2020.net>                                   *
+* This is a translation of the Delphi Clipper library and the naming style     *
+* used has retained a very strong Delphi flavour.                              *
 *                                                                              *
 *******************************************************************************/
 
@@ -47,18 +47,20 @@ namespace Clipper
 
     //used internally ...
     enum TEdgeSide { esLeft, esRight };
-    enum TTriState { sFalse, sTrue, sUndefined };
     enum TDirection { dRightToLeft, dLeftToRight };
     [Flags]
     enum TProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
+    [Flags]
+    enum TOrientationFlag {ofEmpty = 0, ofClockwise = 1, ofCW = 2,
+        ofForwardBound = 4, ofTop = 8, ofBottomMinima = 16};
 
     public class TDoublePoint
     {
         public double X { get; set; }
         public double Y { get; set; }
-        public TDoublePoint(double _X = 0, double _Y = 0)
+        public TDoublePoint(double X = 0, double Y = 0)
         {
-            X = _X; Y = _Y;
+            this.X = X; this.Y = Y;
         }
     };
 
@@ -68,97 +70,398 @@ namespace Clipper
         public double top { get; set; }
         public double right { get; set; }
         public double bottom { get; set; }
-        public TDoubleRect(double _left = 0, double _top = 0, double _right = 0, double _bottom = 0)
+        public TDoubleRect(double left = 0, double top = 0, double right = 0, double bottom = 0)
         {
-            left = _left; top = _top; right = _right; bottom = _bottom;
+            this.left = left; this.top = top; this.right = right; this.bottom = bottom;
         }
     };
 
     internal class TEdge
     {
-        internal double x;
-        internal double y;
-        internal double xbot;
-        internal double ybot;
-        internal double xtop;
-        internal double ytop;
-        internal double dx;
-        internal double tmpX;
-        internal bool nextAtTop;
-        internal TPolyType polyType;
-        internal TEdgeSide side;
-        internal int windDelta; //1 or -1 depending on winding direction
-        internal int windCnt;
-        internal int windCnt2; //winding count of the opposite polytype
-        internal int outIdx;
-        internal TEdge next;
-        internal TEdge prev;
-        internal TEdge nextInLML;
-        internal TEdge nextInAEL;
-        internal TEdge prevInAEL;
-        internal TEdge nextInSEL;
-        internal TEdge prevInSEL;
+        public double x;
+        public double y;
+        public double xbot;
+        public double ybot;
+        public double xtop;
+        public double ytop;
+        public double dx;
+        public double tmpX;
+        public bool nextAtTop;
+        public TPolyType polyType;
+        public TEdgeSide side;
+        public int windDelta; //1 or -1 depending on winding direction
+        public int windCnt;
+        public int windCnt2; //winding count of the opposite polytype
+        public int outIdx;
+        public TEdge next;
+        public TEdge prev;
+        public TEdge nextInLML;
+        public TEdge nextInAEL;
+        public TEdge prevInAEL;
+        public TEdge nextInSEL;
+        public TEdge prevInSEL;
     };
 
     internal class TIntersectNode
     {
-        internal TEdge edge1;
-        internal TEdge edge2;
-        internal TDoublePoint pt;
-        internal TIntersectNode next;
-        internal TIntersectNode prev;
+        public TEdge edge1;
+        public TEdge edge2;
+        public TDoublePoint pt;
+        public TIntersectNode next;
+        public TIntersectNode prev;
     };
 
     internal class TLocalMinima
     {
-        internal double Y;
-        internal TEdge leftBound;
-        internal TEdge rightBound;
-        internal TLocalMinima nextLm;
+        public double Y;
+        public TEdge leftBound;
+        public TEdge rightBound;
+        public TLocalMinima nextLm;
     };
 
     internal class TScanbeam
     {
-        internal double Y;
-        internal TScanbeam nextSb;
+        public double Y;
+        public TScanbeam nextSb;
     };
 
     internal class TPolyPt
     {
-        internal TDoublePoint pt;
-        internal TPolyPt next;
-        internal TPolyPt prev;
-        internal TTriState isHole;
+        public TDoublePoint pt;
+        public TPolyPt next;
+        public TPolyPt prev;
+        public TOrientationFlag flags;
+        public double dx;
     };
 
     internal class TJoinRec
     {
-        internal TDoublePoint pt;
-        internal int idx1;
-        internal int idx2;
-        internal TPolyPt outPPt; //horiz joins only
+        public TDoublePoint pt;
+        public int idx1;
+        public int idx2;
+        public TPolyPt outPPt; //horiz joins only
     }
 
+    //------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------
+
+    internal class SkipNode<T>
+    {
+        public T item;
+        public int level;
+        public SkipNode<T> prev;    //ie SkipNodes form a double linked list
+        public SkipNode<T>[] next;
+    };
+
+    internal class SkipList<T>
+    {
+        public delegate int compareFunc(T item1, T item2);
+
+        private int m_MaxLevel;
+        private double m_SkipFrac;
+        private int m_CurrentMaxLevel;
+        private SkipNode<T> m_Base;
+        private int m_Count;
+        private SkipNode<T>[] m_Lvls;
+        private compareFunc m_CompareFunc;
+        private Random m_rand;
+
+        public SkipList(compareFunc cf)
+        {
+            const double maxItems = 10000000; //10 Mill.
+            const double skip = 4;
+            m_CompareFunc = new  compareFunc(cf);
+            m_rand = new Random();
+
+            m_MaxLevel = Convert.ToInt32( Math.Ceiling( Math.Log(maxItems) / Math.Log(skip) )); //MaxLevel =12
+            m_SkipFrac = 1 / skip;
+
+            //create and initialize the base node ...
+            m_Base = new SkipNode<T>();
+            m_Base.level = m_MaxLevel;
+            m_Base.next = new SkipNode<T>[m_MaxLevel + 1];
+            for (int i = 0; i <= m_MaxLevel; ++i) m_Base.next[i] = null;
+            m_Base.prev = m_Base;
+
+            m_CurrentMaxLevel = 0;
+            m_Count = 0;
+            m_Lvls = new SkipNode<T>[m_MaxLevel];
+        }
+        //------------------------------------------------------------------------------
+
+        ~SkipList() //destructor
+        {
+            Clear();
+            m_Base = null;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> NewNode(int level, T item)
+        {
+            SkipNode<T> result = new SkipNode<T>();
+            result.next = new SkipNode<T> [level +1];
+            result.level = level;
+            result.item = item;
+            m_Count++;
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public void Clear()
+        {
+            SkipNode<T> tmp = m_Base.prev;
+            SkipNode<T> tmp2;
+            if (tmp == null) 
+                throw new skiplistException("oops!");
+
+            while (tmp != m_Base)
+            {
+                tmp2 = tmp.prev;
+                tmp = null;
+                tmp = tmp2;
+            }
+            for (int i = 0; i < m_MaxLevel; ++i) m_Base.next[i] = null;
+            m_CurrentMaxLevel = 0;
+            m_Base.prev = m_Base;
+            m_Count = 0;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> First()
+        {
+            if (m_Count == 0) return null; else return m_Base.next[0];
+        }
+        //------------------------------------------------------------------------------
+
+
+        public SkipNode<T> Next(SkipNode<T> currentNode)
+        {
+            if (currentNode != null) return currentNode.next[0];
+            else return null;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> Prev(SkipNode<T> currentNode)
+        {
+            if (currentNode != null)
+            {
+                if (currentNode.prev == m_Base) return null;
+                else return currentNode.prev;
+            }
+            else return null;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> Last()
+        {
+            if (m_Base.prev == m_Base) return null;
+            else return m_Base.prev;
+        }
+        //------------------------------------------------------------------------------
+
+        public int Count()
+        {
+            return m_Count;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> InsertItem(T item)
+        {
+          for (int i = 0; i < m_MaxLevel; ++i) m_Lvls[i] = m_Base;
+          SkipNode<T> priorNode = m_Base;
+
+          int compareVal = 1;
+          for (int i = m_CurrentMaxLevel; i >= 0; --i)
+          {
+            while (priorNode.next[i] !=null)
+            {
+              //avoid a few unnecessary compares ...
+              if (compareVal > 0 || priorNode.next[i+1] != priorNode.next[i])
+                compareVal = m_CompareFunc(priorNode.next[i].item, item);
+              if (compareVal > 0) priorNode = priorNode.next[i];
+              else break;
+            }
+            m_Lvls[i] = priorNode;
+          }
+
+          if (compareVal == 0)
+            throw new skiplistException("Skiplist error: Duplicate items not allowed.");
+
+          //get the level of the new node ...
+          int newLevel = 0;
+          while ( newLevel <= m_CurrentMaxLevel && newLevel < m_MaxLevel-1 &&
+            (double)(m_rand.Next(1000))/1000 < m_SkipFrac ) newLevel++;
+          if (newLevel > m_CurrentMaxLevel) m_CurrentMaxLevel = newLevel;
+
+          //create the new node and rearrange links up to newLevel ...
+          SkipNode<T> result = NewNode(newLevel, item);
+          if (priorNode.next[0] != null)
+            priorNode.next[0].prev = result; else
+            m_Base.prev = result; //fBase.prev always points to the last node
+          result.prev = priorNode;
+          for (int i = 0; i <= newLevel; ++i)
+          {
+            result.next[i] = m_Lvls[i].next[i];
+            m_Lvls[i].next[i] = result;
+          }
+          return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public SkipNode<T> FindItem(T item)
+        {
+          SkipNode<T> result = m_Base;
+          int compareVal = 1;
+          for (int i = m_CurrentMaxLevel; i >= 0; --i)
+          {
+            while (result.next[i] !=null)
+            {
+              if (compareVal > 0 || result.next[i+1] != result.next[i])
+                compareVal = m_CompareFunc(result.next[i].item, item);
+              if (compareVal <= 0) break;
+              else result = result.next[i];
+            }
+            if (compareVal == 0) return result.next[i];
+          }
+          return null;
+        }
+        //------------------------------------------------------------------------------
+
+        public bool DeleteItem(T item)
+        {
+          for (int i = 0; i <= m_CurrentMaxLevel; ++i) m_Lvls[i] = m_Base;
+          SkipNode<T> priorNode = m_Base;
+
+          //find the item ...
+          int compareVal = 1;
+          for (int i = m_CurrentMaxLevel; i >= 0; --i)
+          {
+            while (priorNode.next[i] != null)
+            {
+              if (compareVal > 0 || priorNode.next[i+1] != priorNode.next[i])
+                compareVal = m_CompareFunc(priorNode.next[i].item, item);
+              if (compareVal > 0) priorNode = priorNode.next[i];
+              else break;
+            }
+            m_Lvls[i] = priorNode;
+          }
+          if (compareVal != 0) return false;
+
+          SkipNode<T> delNode = priorNode.next[0];
+          //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+          if (delNode.level > 0 && delNode.level == m_CurrentMaxLevel &&
+            m_Lvls[delNode.level] == m_Base && delNode.next[delNode.level] == null)
+              m_CurrentMaxLevel--;
+
+          //fix up links before finally deleting the node ...
+          for (int i = 0; i <= delNode.level; ++i)
+            m_Lvls[i].next[i] = delNode.next[i];
+          if (delNode.next[0] != null)
+            delNode.next[0].prev = delNode.prev; else
+            m_Base.prev = delNode.prev;
+          delNode = null;
+          m_Count--;
+          return true;
+        }
+        //------------------------------------------------------------------------------
+
+        public void Delete(SkipNode<T> delNode)
+        {
+          //this method doesn't call m_CompareFunc() ...
+            for (int i = delNode.level + 1; i <= m_CurrentMaxLevel; ++i) m_Lvls[i] = null;
+            SkipNode<T> nextNode = delNode;
+            int lvl = delNode.level;
+            while (nextNode.next[nextNode.level] != null && nextNode.level < m_CurrentMaxLevel)
+            {
+                nextNode = nextNode.next[nextNode.level];
+                while (nextNode.level > lvl)
+                {
+                    lvl++;
+                    m_Lvls[lvl] = nextNode;
+                }
+            }
+            for (int i = 0; i <= delNode.level; ++i) m_Lvls[i] = delNode;
+
+          SkipNode<T> priorNode = m_Base;
+          for (int i = m_CurrentMaxLevel; i >= 0; --i)
+          {
+            while ( priorNode.next[i] != null && priorNode.next[i] != m_Lvls[i] )
+              priorNode = priorNode.next[i];
+            m_Lvls[i] = priorNode;
+          }
+
+          //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+          if (delNode.level > 0 && delNode.level == m_CurrentMaxLevel &&
+          m_Lvls[delNode.level] == m_Base && delNode.next[delNode.level] == null)
+            m_CurrentMaxLevel--;
+
+          //fix up links before finally deleting the node ...
+          for (int i = 0; i <= delNode.level; ++i)
+              m_Lvls[i].next[i] = delNode.next[i];
+          if (delNode.next[0] != null)
+              delNode.next[0].prev = delNode.prev;
+          else
+              m_Base.prev = delNode.prev;
+          delNode = null;
+          m_Count--;
+        }
+        //------------------------------------------------------------------------------
+
+        public T PopFirst()
+        {
+            if (m_Count == 0) return default(T);
+            SkipNode<T> delNode = m_Base.next[0];
+            T result = delNode.item;
+
+            int delLevel = delNode.level;
+            //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+            if (delLevel > 0 && delLevel == m_CurrentMaxLevel &&
+                m_Base.next[delLevel] == delNode && delNode.next[delLevel] == null)
+                        m_CurrentMaxLevel--;
+
+            //fix up links before finally deleting the node ...
+            for (int i = 0; i <= delLevel; ++i) m_Base.next[i] = delNode.next[i];
+            if (delNode.next[0] != null)
+                delNode.next[0].prev = m_Base; else m_Base.prev = m_Base;
+            delNode = null;
+            m_Count--;
+            return result;
+        }
+        //------------------------------------------------------------------------------
+        //------------------------------------------------------------------------------
+    }
+
+    class skiplistException : Exception
+    {
+        private string m_description;
+        public skiplistException(string description)
+        {
+            m_description = description;
+            Console.WriteLine(m_description);
+            throw new Exception(m_description);
+        }
+    }
     //------------------------------------------------------------------------------
     //------------------------------------------------------------------------------
 
     public class TClipperBase
     {
 
-        protected internal const double horizontal = -3.4E+38;
+        protected const double horizontal = -3.4E+38;
+        protected const double unassigned = 3.4E+38;
 
         //tolerance: is needed because vertices are floating point values and any
         //comparison of floating point values requires a degree of tolerance. 
-        protected internal const double tolerance = 1.0E-10;
-        protected internal const double minimal_tolerance = 1.0E-14;
+        protected const double tolerance = 1.0E-10;
+        protected const double minimal_tolerance = 1.0E-14;
         //precision: defines when adjacent vertices will be considered duplicates
         //and hence ignored. This circumvents edges having indeterminate slope.
-        protected internal const double precision = 1.0E-6;
-        protected internal const double slope_precision = 1.0E-3;
+        protected const double precision = 1.0E-6;
+        protected const double slope_precision = 1.0E-3;
 
         internal TLocalMinima m_localMinimaList;
         internal TLocalMinima m_CurrentLM;
-        internal List<TEdge> m_edges = new List<TEdge>();
+        private List<TEdge> m_edges = new List<TEdge>();
 
         internal static bool PointsEqual(TDoublePoint pt1, TDoublePoint pt2)
         {
@@ -167,7 +470,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        protected internal static bool PointsEqual(double pt1x, double pt1y, double pt2x, double pt2y)
+        internal static bool PointsEqual(double pt1x, double pt1y, double pt2x, double pt2y)
         {
             return (Math.Abs(pt1x - pt2x) < precision + tolerance && 
                 Math.Abs(pt1y - pt2y) < precision + tolerance);
@@ -204,7 +507,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void SetDx(TEdge e)
+        internal static void SetDx(TEdge e)
         {
             double dx = Math.Abs(e.x - e.next.x);
             double dy = Math.Abs(e.y - e.next.y);
@@ -268,8 +571,9 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        internal static bool IntersectPoint(TEdge edge1, TEdge edge2, TDoublePoint ip)
+        internal static bool IntersectPoint(TEdge edge1, TEdge edge2, out TDoublePoint ip)
         {
+            ip = new TDoublePoint();
             double b1, b2;
             if (edge1.dx == 0)
             {
@@ -294,7 +598,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void InitEdge(TEdge e, TEdge eNext, TEdge ePrev, TDoublePoint pt)
+        internal static void InitEdge(TEdge e, TEdge eNext, TEdge ePrev, TDoublePoint pt)
         {
             e.x = pt.X;
             e.y = pt.Y;
@@ -304,7 +608,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void ReInitEdge(TEdge e, double nextX, double nextY, TPolyType polyType)
+        internal static void ReInitEdge(TEdge e, double nextX, double nextY, TPolyType polyType)
         {
             if (e.y > nextY)
             {
@@ -340,7 +644,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void FixupForDupsAndColinear(TEdge edges)
+        internal static void FixupForDupsAndColinear(TEdge edges)
         {
             TEdge lastOK = null;
             TEdge e = edges;
@@ -379,7 +683,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void SwapX(TEdge e)
+        internal static void SwapX(TEdge e)
         {
             //swap horizontal edges' top and bottom x's so they follow the natural
             //progression of the bounds - ie so their xbots will align with the
@@ -404,22 +708,13 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool LocalMinima2InsertsBefore1(TLocalMinima lm1, TLocalMinima lm2)
-        {
-            if (lm2.Y < lm1.Y) return false;
-            if (lm2.Y > lm1.Y) return true;
-            if (IsHorizontal(lm2.rightBound) && !IsHorizontal(lm1.rightBound)) return true;
-            return false;
-        }
-        //----------------------------------------------------------------------
-
         void InsertLocalMinima(TLocalMinima newLm)
         {
             //nb: we'll make sure horizontal minima are sorted below other minima 
             //    of equal Y so that windings will be properly calculated ...
             if (m_localMinimaList == null)
                 m_localMinimaList = newLm;
-            else if (LocalMinima2InsertsBefore1(m_localMinimaList, newLm))
+            else if (newLm.Y >= m_localMinimaList.Y) 
             {
                 newLm.nextLm = m_localMinimaList;
                 m_localMinimaList = newLm;
@@ -427,7 +722,7 @@ namespace Clipper
             else
             {
                 TLocalMinima tmpLm = m_localMinimaList;
-                while (tmpLm.nextLm != null && LocalMinima2InsertsBefore1(newLm, tmpLm.nextLm))
+                while (tmpLm.nextLm != null && (newLm.Y < tmpLm.nextLm.Y))
                     tmpLm = tmpLm.nextLm;
                 newLm.nextLm = tmpLm.nextLm;
                 tmpLm.nextLm = newLm;
@@ -498,7 +793,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static TDoublePoint RoundToPrecision(TDoublePoint pt)
+        internal static TDoublePoint RoundToPrecision(TDoublePoint pt)
         {
             TDoublePoint result = new TDoublePoint();
             result.X = (pt.X >= 0.0) ?
@@ -648,7 +943,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
         
-        protected internal void PopLocalMinima()
+        internal void PopLocalMinima()
         {
             if (m_CurrentLM == null)
                 return;
@@ -668,12 +963,12 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        protected TDoubleRect GetBounds()
+        public TDoubleRect GetBounds()
         {
             TLocalMinima lm = m_localMinimaList;
             if (lm == null) return new TDoubleRect(0, 0, 0, 0);
 
-            TDoubleRect result = new TDoubleRect(-horizontal, -horizontal, horizontal, horizontal);
+            TDoubleRect result = new TDoubleRect(unassigned, unassigned, -unassigned, -unassigned);
             while (lm != null)
             {
                 if (lm.leftBound.y > result.bottom) result.bottom = lm.leftBound.y;
@@ -725,115 +1020,6 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        public static double Area(TPolygon poly)
-        {
-            int highI = poly.Count - 1;
-            if (highI < 2) return 0;
-            double result = 0;
-            for (int i = 0; i < highI; ++i)
-                result += (poly[i].X + poly[i + 1].X) * (poly[i].Y - poly[i + 1].Y);
-            result += (poly[highI].X + poly[0].X) * (poly[highI].Y - poly[0].Y);
-            result = result / 2;
-            return result;
-        }
-        //------------------------------------------------------------------------------
-
-        public static TPolyPolygon OffsetPolygons(TPolyPolygon pts, double delta)
-        {
-
-            //A positive delta will offset each polygon edge towards its left, so
-            //polygons orientated clockwise (ie outer polygons) will expand but
-            //inner polyons (holes) will shrink. Conversely, negative deltas will
-            //offset polygon edges towards their right so outer polygons will shrink
-            //and inner polygons will expand.
-
-            double deltaSq = delta*delta;
-            TPolyPolygon result = new TPolyPolygon(pts.Count);
-            for (int j = 0; j < pts.Count; ++j)
-            {
-
-                int highI = pts[j].Count - 1;
-
-                TPolygon pg = new TPolygon(highI *2 +2);
-                result.Add(pg);
-                
-                //to minimize artefacts, strip out those polygons where
-                //it's shrinking and where its area < Sqr(delta) ...
-                double area = Area(pts[j]);
-                if (delta < 0) { if (area > 0 && area < deltaSq) highI = 0;}
-                else if (area < 0 && -area < deltaSq) highI = 0; //nb: a hole if area < 0
-
-                if (highI < 2) continue;
-
-                TPolygon normals = new TPolygon(highI+1);
-
-                normals.Add(GetUnitNormal(pts[j][highI], pts[j][0]));
-                for (int i = 1; i <= highI; ++i)
-                    normals.Add(GetUnitNormal(pts[j][i - 1], pts[j][i]));
-                for (int i = 0; i < highI; ++i)
-                {
-                    pg.Add(new TDoublePoint(pts[j][i].X + delta * normals[i].X,
-                          pts[j][i].Y + delta * normals[i].Y));
-                    pg.Add(new TDoublePoint(pts[j][i].X + delta * normals[i + 1].X,
-                          pts[j][i].Y + delta * normals[i + 1].Y));
-                }
-                pg.Add(new TDoublePoint(pts[j][highI].X + delta * normals[highI].X,
-                        pts[j][highI].Y + delta * normals[highI].Y));
-                pg.Add(new TDoublePoint(pts[j][highI].X + delta * normals[0].X,
-                        pts[j][highI].Y + delta * normals[0].Y));
-
-                //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
-                //cross product normals < 0 . reflex angle; dot product normals == 1 . no angle
-                if ((normals[highI].X * normals[0].Y - normals[0].X * normals[highI].Y) * delta > 0 &&
-                  (normals[0].X * normals[highI].X + normals[0].Y * normals[highI].Y) < 0.985)
-                {
-                    double a1 = Math.Atan2(normals[highI].Y, normals[highI].X);
-                    double a2 = Math.Atan2(normals[0].Y, normals[0].X);
-                    if (delta > 0 && a2 < a1) a2 = a2 + Math.PI * 2;
-                    else if (delta < 0 && a2 > a1) a2 = a2 - Math.PI * 2;
-                    TPolygon arc = BuildArc(pts[j][highI], a1, a2, delta);
-                    pg.InsertRange(highI * 2 + 1, arc);
-                }
-                for (int i = highI; i > 0; --i)
-                    if ((normals[i - 1].X * normals[i].Y - normals[i].X * normals[i - 1].Y) * delta > 0 &&
-                    (normals[i].X * normals[i - 1].X + normals[i].Y * normals[i - 1].Y) < 0.985)
-                    {
-                        double a1 = Math.Atan2(normals[i - 1].Y, normals[i - 1].X);
-                        double a2 = Math.Atan2(normals[i].Y, normals[i].X);
-                        if (delta > 0 && a2 < a1) a2 = a2 + Math.PI * 2;
-                        else if (delta < 0 && a2 > a1) a2 = a2 - Math.PI * 2;
-                        TPolygon arc = BuildArc(pts[j][i - 1], a1, a2, delta);
-                        pg.InsertRange((i - 1) * 2 + 1, arc);
-                    }
-            }
-
-            //finally, clean up untidy corners ...
-            TClipper c = new TClipper();
-            c.AddPolyPolygon(result, TPolyType.ptSubject);
-            if (delta > 0)
-            {
-                if (!c.Execute(TClipType.ctUnion, result,
-                    TPolyFillType.pftNonZero, TPolyFillType.pftNonZero)) result.Clear();
-            }
-            else
-            {
-                TDoubleRect r = c.GetBounds();
-                TPolygon outer = new TPolygon(4);
-                outer.Add(new TDoublePoint(r.left - 10, r.bottom + 10));
-                outer.Add(new TDoublePoint(r.right + 10, r.bottom + 10));
-                outer.Add(new TDoublePoint(r.right + 10, r.top - 10));
-                outer.Add(new TDoublePoint(r.left - 10, r.top - 10));
-                c.AddPolygon(outer, TPolyType.ptSubject);
-                if (c.Execute(TClipType.ctUnion, result, TPolyFillType.pftNonZero, TPolyFillType.pftNonZero))
-                    result.RemoveAt(0);
-                else
-                    result.Clear();
-
-            }
-            return result;
-        }
-        //------------------------------------------------------------------------------
-
         public static bool IsClockwise(TPolygon poly)
         {
           int highI = poly.Count -1;
@@ -856,7 +1042,7 @@ namespace Clipper
         private TEdge m_SortedEdges;
         private TIntersectNode m_IntersectNodes;
         private bool m_ExecuteLocked;
-        private bool m_ForceOrientation; //****DEPRECATED****
+        private bool m_IgnoreOrientation;
         private TPolyFillType m_ClipFillType;
         private TPolyFillType m_SubjFillType;
         private double m_IntersectTolerance;
@@ -870,14 +1056,14 @@ namespace Clipper
             m_SortedEdges = null;
             m_IntersectNodes = null;
             m_ExecuteLocked = false;
-            m_ForceOrientation = true;
+            m_IgnoreOrientation = false;
             m_PolyPts = new PolyPtList();
             m_Joins = new JoinList();
             m_CurrentHorizontals = new JoinList();
         }
         //------------------------------------------------------------------------------
         
-        internal void DisposeAllPolyPts()
+        private void DisposeAllPolyPts()
         {
             for (int i = 0; i < m_PolyPts.Count; ++i)
                 DisposePolyPts(m_PolyPts[i]);
@@ -885,7 +1071,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        internal void DisposeScanbeamList()
+        private void DisposeScanbeamList()
         {
             while (m_Scanbeam != null)
             {
@@ -908,7 +1094,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static TDoublePoint GetUnitNormal(TDoublePoint pt1, TDoublePoint pt2)
+        public static TDoublePoint GetUnitNormal(TDoublePoint pt1, TDoublePoint pt2)
         {
             double dx = (pt2.X - pt1.X);
             double dy = (pt2.Y - pt1.Y);
@@ -923,50 +1109,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        internal static bool ValidateOrientation(TPolyPt pt)
-        {
-            //first, find the hole state of the bottom-most point
-            //(because the hole state of other points may not be reliable) ...
-            TPolyPt bottomPt = pt;
-            TPolyPt ptStart = pt;
-            pt = pt.next;
-            while ((pt != ptStart))
-            {
-                if (pt.pt.Y > bottomPt.pt.Y ||
-                  (pt.pt.Y == bottomPt.pt.Y && pt.isHole != TTriState.sUndefined))
-                    bottomPt = pt;
-                pt = pt.next;
-            }
-
-            //check that orientation matches the hole status ...
-            while (bottomPt.isHole == TTriState.sUndefined && bottomPt.next.pt.Y >= bottomPt.pt.Y)
-                bottomPt = bottomPt.next;
-            while (bottomPt.isHole == TTriState.sUndefined && bottomPt.prev.pt.Y >= bottomPt.pt.Y)
-                bottomPt = bottomPt.prev;
-            return (IsClockwise(pt) == (bottomPt.isHole != TTriState.sTrue));
-        }
-        //------------------------------------------------------------------------------
-
-        private static TPolygon BuildArc(TDoublePoint pt, double a1, double a2, double r)
-        {
-            int steps = (int)Math.Max(6, Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1));
-            TPolygon result = new TPolygon();
-            result.Capacity = steps;
-            int n = steps - 1;
-            double da = (a2 - a1) / n;
-            double a = a1;
-            for (int i = 0; i <= n; ++i)
-            {
-                double dy = Math.Sin(a) * r;
-                double dx = Math.Cos(a) * r;
-                result.Add(new TDoublePoint(pt.X + dx, pt.Y + dy));
-                a = a + da;
-            }
-            return result;
-        }
-        //------------------------------------------------------------------------------
-
-        private static bool IsClockwise(TPolyPt pt)
+        private bool IsClockwise(TPolyPt pt)
         {
             double area = 0;
             TPolyPt startPt = pt;
@@ -1134,7 +1277,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private static bool Edge2InsertsBeforeEdge1(TEdge e1, TEdge e2)
+        private bool Edge2InsertsBeforeEdge1(TEdge e1, TEdge e2)
         {
             if (e2.xbot - tolerance > e1.xbot) return false;
             if (e2.xbot + tolerance < e1.xbot) return true;
@@ -1192,10 +1335,9 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private void InsertLocalMinimaIntoAEL(double botY, bool horizontals)
+        private void InsertLocalMinimaIntoAEL(double botY)
         {
-            while (m_CurrentLM != null && (m_CurrentLM.Y == botY) &&
-                  (!horizontals || IsHorizontal(m_CurrentLM.rightBound)))
+            while (m_CurrentLM != null && m_CurrentLM.Y == botY)            
             {
                 InsertEdgeIntoAEL(m_CurrentLM.leftBound);
                 InsertScanbeam(m_CurrentLM.leftBound.ytop);
@@ -1670,7 +1812,6 @@ namespace Clipper
         {
             TPolyPt pp = new TPolyPt();
             pp.pt = pt;
-            pp.isHole = TTriState.sUndefined;
             if (pp2 == pp1.next)
             {
                 pp.next = pp2;
@@ -1700,8 +1841,9 @@ namespace Clipper
                 m_PolyPts.Add(newPolyPt);
                 newPolyPt.next = newPolyPt;
                 newPolyPt.prev = newPolyPt;
-                newPolyPt.isHole = TTriState.sUndefined;
                 e.outIdx = m_PolyPts.Count - 1;
+                newPolyPt.flags = TOrientationFlag.ofEmpty;
+                newPolyPt.dx = unassigned;
                 return newPolyPt;
             }
             else
@@ -1711,11 +1853,12 @@ namespace Clipper
                 if (!ToFront && PointsEqual(pt, pp.prev.pt)) return pp.prev;
                 TPolyPt newPolyPt = new TPolyPt();
                 newPolyPt.pt = pt;
-                newPolyPt.isHole = TTriState.sUndefined;
                 newPolyPt.next = pp;
                 newPolyPt.prev = pp.prev;
                 newPolyPt.prev.next = newPolyPt;
                 pp.prev = newPolyPt;
+                newPolyPt.flags = TOrientationFlag.ofEmpty;
+                newPolyPt.dx = unassigned;
                 if (ToFront) m_PolyPts[e.outIdx] = newPolyPt;
                 return newPolyPt;
             }
@@ -1881,8 +2024,8 @@ namespace Clipper
                 while (e.nextInSEL != null)
                 {
                     TEdge eNext = e.nextInSEL;
-                    TDoublePoint pt = new TDoublePoint();
-                    if ((e.tmpX > eNext.tmpX + tolerance) && IntersectPoint(e, eNext, pt))
+                    TDoublePoint pt;
+                    if ((e.tmpX > eNext.tmpX + tolerance) && IntersectPoint(e, eNext, out pt))
                     {
                         AddIntersectNode(e, eNext, pt);
                         SwapPositionsInSEL(e, eNext);
@@ -2205,11 +2348,8 @@ namespace Clipper
                 double ybot = PopScanbeam();
                 do
                 {
-                    //insert horizontals first to ensure winding counts are accurate ...
-                    InsertLocalMinimaIntoAEL(ybot, true);
+                    InsertLocalMinimaIntoAEL(ybot);
                     ProcessHorizontals();
-                    //now insert other non-horizontal local minima ...
-                    InsertLocalMinimaIntoAEL(ybot, false);
                     double ytop = PopScanbeam();
                     ProcessIntersections(ytop);
                     ProcessEdgesAtTopOfScanbeam(ytop);
@@ -2248,7 +2388,7 @@ namespace Clipper
 
             if (p == null) return null;
             TPolyPt pp = p, result = p, lastOK = null;
-            for (;;)
+            for (; ; )
             {
                 if (pp.prev == pp || pp.prev == pp.next)
                 {
@@ -2257,16 +2397,48 @@ namespace Clipper
                 }
                 //test for duplicate points and for same slope (cross-product) ...
                 if (PointsEqual(pp.pt, pp.next.pt) ||
-                    (Math.Abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
-                    (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < precision &&
+                    (Math.Abs((pp.pt.Y - pp.prev.pt.Y) * (pp.next.pt.X - pp.pt.X) -
+                    (pp.pt.X - pp.prev.pt.X) * (pp.next.pt.Y - pp.pt.Y)) < precision &&
                     (!stripPointyEdgesOnly ||
                     ((pp.pt.X - pp.prev.pt.X > 0) != (pp.next.pt.X - pp.pt.X > 0)) ||
                     ((pp.pt.Y - pp.prev.pt.Y > 0) != (pp.next.pt.Y - pp.pt.Y > 0)))))
                 {
                     lastOK = null;
-                    if (pp.isHole != TTriState.sUndefined && 
-                        pp.next.isHole == TTriState.sUndefined) 
-                          pp.next.isHole = pp.isHole;
+                    pp.prev.next = pp.next;
+                    pp.next.prev = pp.prev;
+                    TPolyPt tmp = pp;
+                    if (pp == result) result = pp.prev;
+                    pp = pp.prev;
+                    tmp = null;
+                }
+                else if (pp == lastOK) break;
+                else
+                {
+                    if (lastOK == null) lastOK = pp;
+                    pp = pp.next;
+                }
+            }
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        private TPolyPt FixupOutPolygon2(TPolyPt p, bool stripPointyEdgesOnly = false)
+        {
+            //FixupOutPolygon2() - just removes duplicates
+
+            if (p == null) return null;
+            TPolyPt pp = p, result = p, lastOK = null;
+            for (; ; )
+            {
+                if (pp.prev == pp || pp.prev == pp.next)
+                {
+                    DisposePolyPts(pp);
+                    return null;
+                }
+                //test for duplicate points and for same slope (cross-product) ...
+                if (PointsEqual(pp.pt, pp.next.pt) )
+                {
+                    lastOK = null;
                     pp.prev.next = pp.next;
                     pp.next.prev = pp.prev;
                     TPolyPt tmp = pp;
@@ -2287,56 +2459,45 @@ namespace Clipper
 
         private void BuildResult(TPolyPolygon polypoly)
         {
-            int k = 0;
-
             MergePolysWithCommonEdges();
+            for (int i = 0; i < m_PolyPts.Count; ++i)
+              if (m_PolyPts[i] != null)
+                m_PolyPts[i] = FixupOutPolygon(m_PolyPts[i]);
+
+            if (!m_IgnoreOrientation) FixOrientation();
+
+            polypoly.Clear();
+            polypoly.Capacity = m_PolyPts.Count;
             for (int i = 0; i < m_PolyPts.Count; ++i)
             {
                 if (m_PolyPts[i] != null)
                 {
-                    m_PolyPts[i] = FixupOutPolygon(m_PolyPts[i]);
-                    if (m_PolyPts[i] == null) continue;
-
-                    TPolyPt pt = m_PolyPts[i];
-                    int cnt = 0;
-                    double y = pt.pt.Y;
-                    bool isHorizontalOnly = true;
+                    TPolyPt p = m_PolyPts[i];
+                    TPolygon pg = new TPolygon();
                     do
                     {
-                        pt = pt.next;
-                        if (isHorizontalOnly && Math.Abs(pt.pt.Y - y) > precision)
-                            isHorizontalOnly = false;
-                        ++cnt;
-                    } while (pt != m_PolyPts[i]);
-                    if (cnt < 3 || isHorizontalOnly) continue;
-
-                    //validate the orientation of simple polygons ...
-                    if (ForceOrientation() && !ValidateOrientation(pt))
-                        ReversePolyPtLinks(pt);
-
-                    polypoly.Add(new TPolygon());
-                    for (int j = 0; j < cnt; ++j)
-                    {
-                        polypoly[k].Add(new TDoublePoint());
-                        polypoly[k][j].X = pt.pt.X;
-                        polypoly[k][j].Y = pt.pt.Y;
-                        pt = pt.next;
+                        pg.Add(new TDoublePoint(p.pt.X, p.pt.Y));
+                        p = p.next;
                     }
-                    ++k;
+                    while (p != m_PolyPts[i]);
+                    if (pg.Count < 3)
+                        pg = null;
+                    else
+                        polypoly.Add(pg);
                 }
             }
         }
         //------------------------------------------------------------------------------
 
-        private bool ForceOrientation()
+        private bool IgnoreOrientation()
         {
-            return m_ForceOrientation;
+            return m_IgnoreOrientation;
         }
         //------------------------------------------------------------------------------
 
-        private void ForceOrientation(bool value)
+        private void IgnoreOrientation(bool value)
         {
-            m_ForceOrientation = value;
+            m_IgnoreOrientation = value;
         }
         //------------------------------------------------------------------------------
 
@@ -2523,10 +2684,10 @@ namespace Clipper
         private void AddLocalMinPoly(TEdge e1, TEdge e2, TDoublePoint pt)
         {
             AddPolyPt(e1, pt);
+            e2.outIdx = e1.outIdx;
 
             if (IsHorizontal(e2) || (e1.dx > e2.dx))
             {
-                e1.side = TEdgeSide.esLeft;
                 e1.side = TEdgeSide.esLeft;
                 e2.side = TEdgeSide.esRight;
             }
@@ -2535,30 +2696,6 @@ namespace Clipper
                 e1.side = TEdgeSide.esRight;
                 e2.side = TEdgeSide.esLeft;
             }
-
-            if (m_ForceOrientation)
-            {
-                TPolyPt pp = m_PolyPts[e1.outIdx];
-                bool isAHole = false;
-                TEdge e = m_ActiveEdges;
-                while (e != null)
-                {
-                    if (e.outIdx >= 0 && e != e1)
-                    {
-                        if (IsHorizontal(e) && e.x < e1.x) isAHole = !isAHole;
-                        else
-                        {
-                            double eX = TopX(e, pp.pt.Y);
-                            if (eX < pp.pt.X - precision ||
-                              (Math.Abs(eX - pp.pt.X) < tolerance && e.dx >= e1.dx))
-                                isAHole = !isAHole;
-                        }
-                    }
-                  e = e.nextInAEL;
-                }
-                if (isAHole) pp.isHole = TTriState.sTrue; else pp.isHole = TTriState.sFalse;
-            }
-            e2.outIdx = e1.outIdx;
         }
         //------------------------------------------------------------------------------
 
@@ -2646,14 +2783,6 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool SlopesEqual(TDoublePoint pt1a, TDoublePoint pt1b,
-          TDoublePoint pt2a, TDoublePoint pt2b)
-        {
-          return Math.Abs((pt1b.Y - pt1a.Y) * (pt2b.X - pt2a.X) -
-            (pt1b.X - pt1a.X) * (pt2b.Y - pt2a.Y)) < slope_precision;
-        }
-        //------------------------------------------------------------------------------
-
         private TPolyPt InsertPolyPt(TPolyPt afterPolyPt, TDoublePoint pt)
         {
           TPolyPt polyPt = new TPolyPt();
@@ -2662,63 +2791,82 @@ namespace Clipper
           polyPt.next = afterPolyPt.next;
           afterPolyPt.next.prev = polyPt;
           afterPolyPt.next = polyPt;
-          polyPt.isHole = TTriState.sUndefined;
           return polyPt;
         }
         //------------------------------------------------------------------------------
 
-        bool PtInPoly(TDoublePoint pt, ref TPolyPt polyStartPt)
+        TPolyPt DuplicatePolyPt(TPolyPt polyPt)
+        {
+          TPolyPt result = new TPolyPt();
+          result.pt = polyPt.pt;
+          result.flags = polyPt.flags;
+          result.dx = unassigned;
+          result.prev = polyPt;
+          result.next = polyPt.next;
+          polyPt.next.prev = result;
+          polyPt.next = result;
+          return result;
+        }
+        //------------------------------------------------------------------------------
+
+        bool PtIsAPolyPt(TDoublePoint pt, TPolyPt polyStartPt)
         {
           if (polyStartPt == null) return false;
           TPolyPt p = polyStartPt;
           do {
-            if (PointsEqual(pt, polyStartPt.pt)) return true;
-            polyStartPt = polyStartPt.next;
+            if (PointsEqual(pt, p.pt)) return true;
+            p = p.next;
           }
-          while (polyStartPt != p);
+          while (p !=polyStartPt);
           return false;
         }
         //------------------------------------------------------------------------------
 
-        void FixupJoins(int joinIdx)
+        internal static bool SlopesEqual(TDoublePoint pt1a, TDoublePoint pt1b, 
+            TDoublePoint pt2a, TDoublePoint pt2b)
         {
-            int oldIdx = m_Joins[joinIdx].idx2;
-            int newIdx = m_Joins[joinIdx].idx1;
-            for (int i = joinIdx + 1; i < m_Joins.Count; ++i)
-                if (m_Joins[i].idx1 == oldIdx) m_Joins[i].idx1 = newIdx;
-                else if (m_Joins[i].idx2 == oldIdx) m_Joins[i].idx2 = newIdx;
+          return Math.Abs((pt1b.Y - pt1a.Y) * (pt2b.X - pt2a.X) - 
+              (pt1b.X - pt1a.X) * (pt2b.Y - pt2a.Y)) < slope_precision;
         }
         //------------------------------------------------------------------------------
 
-        void MergePolysWithCommonEdges()
+        private void MergePolysWithCommonEdges()
         {
+          TPolyPt p1, p2;
           for (int i = 0; i < m_Joins.Count; ++i)
           {
-            //It's problematic merging overlapping edges in the same output polygon.
-            //While creating 2 polygons from one would be straightforward,
-            //FixupJoins() would no longer work safely ...
-            if (m_Joins[i].idx1 == m_Joins[i].idx2) continue;
+            if (m_Joins[i].idx1 == m_Joins[i].idx2)
+            {
+              p1 = m_PolyPts[m_Joins[i].idx1];
+              p1 = FixupOutPolygon(p1, true);
+              m_PolyPts[m_Joins[i].idx1] = p1;
+              if (!PtIsAPolyPt(m_Joins[i].pt, p1)) continue;
+              p2 = p1.next; //ie we don't want the same point as p1
+              if (!PtIsAPolyPt(m_Joins[i].pt, p2) || p2 == p1) continue;
+            } else
+            {
+              p1 = m_PolyPts[m_Joins[i].idx1];
+              p1 = FixupOutPolygon(p1, true);
+              m_PolyPts[m_Joins[i].idx1] = p1;
+              //check that fJoins[i].pt is in the polygon and also update p1 so
+              //that p1.pt == fJoins[i].pt ...
+              if (!PtIsAPolyPt(m_Joins[i].pt, p1)) continue;
 
-            TPolyPt p1 = m_PolyPts[m_Joins[i].idx1];
-            p1 = FixupOutPolygon(p1, true);
-            m_PolyPts[m_Joins[i].idx1] = p1;
-
-            TPolyPt p2 = m_PolyPts[m_Joins[i].idx2];
-            p2 = FixupOutPolygon(p2, true);
-            m_PolyPts[m_Joins[i].idx2] = p2;
-
-            if (!PtInPoly(m_Joins[i].pt, ref p1) || !PtInPoly(m_Joins[i].pt, ref p2)) continue;
-
-            //nb: p1.pt == p2.pt;
+              p2 = m_PolyPts[m_Joins[i].idx2];
+              p2 = FixupOutPolygon(p2, true);
+              m_PolyPts[m_Joins[i].idx2] = p2;
+              if (!PtIsAPolyPt(m_Joins[i].pt, p2)) continue;
+            }
 
             if (((p1.next.pt.X > p1.pt.X && p2.next.pt.X > p2.pt.X) ||
-                (p1.next.pt.X < p1.pt.X && p2.next.pt.X < p2.pt.X) ||
-                (p1.next.pt.Y > p1.pt.Y && p2.next.pt.Y > p2.pt.Y) ||
-                (p1.next.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
-                SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt))
+              (p1.next.pt.X < p1.pt.X && p2.next.pt.X < p2.pt.X) ||
+              (p1.next.pt.Y > p1.pt.Y && p2.next.pt.Y > p2.pt.Y) ||
+              (p1.next.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
+              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt))
             {
-              TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
-              TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
+              if (m_Joins[i].idx1 == m_Joins[i].idx2) continue;
+              TPolyPt pp1 = DuplicatePolyPt(p1);
+              TPolyPt pp2 = DuplicatePolyPt(p2);
               ReversePolyPtLinks( p2 );
               pp1.prev = pp2;
               pp2.next = pp1;
@@ -2726,56 +2874,472 @@ namespace Clipper
               p2.prev = p1;
             }
             else if (((p1.next.pt.X > p1.pt.X && p2.prev.pt.X > p2.pt.X) ||
-                (p1.next.pt.X < p1.pt.X && p2.prev.pt.X < p2.pt.X) ||
-                (p1.next.pt.Y > p1.pt.Y && p2.prev.pt.Y > p2.pt.Y) ||
-                (p1.next.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
-                SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt))
+              (p1.next.pt.X < p1.pt.X && p2.prev.pt.X < p2.pt.X) ||
+              (p1.next.pt.Y > p1.pt.Y && p2.prev.pt.Y > p2.pt.Y) ||
+              (p1.next.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
+              SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt))
             {
-              TPolyPt pp1 = InsertPolyPt(p1, p1.pt);
-              TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
-              p1.next = p2;
-              p2.prev = p1;
-              pp2.next = pp1;
-              pp1.prev = pp2;
+              TPolyPt pp1 = DuplicatePolyPt(p1);
+              TPolyPt pp2 = DuplicatePolyPt(p2);
+              p1.next = pp2;
+              pp2.prev = p1;
+              p2.next = pp1;
+              pp1.prev = p2;
             }
             else if (((p1.prev.pt.X > p1.pt.X && p2.next.pt.X > p2.pt.X) ||
-                (p1.prev.pt.X < p1.pt.X && p2.next.pt.X < p2.pt.X) ||
-                (p1.prev.pt.Y > p1.pt.Y && p2.next.pt.Y > p2.pt.Y) ||
-                (p1.prev.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
-                SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt))
+              (p1.prev.pt.X < p1.pt.X && p2.next.pt.X < p2.pt.X) ||
+              (p1.prev.pt.Y > p1.pt.Y && p2.next.pt.Y > p2.pt.Y) ||
+              (p1.prev.pt.Y < p1.pt.Y && p2.next.pt.Y < p2.pt.Y)) &&
+              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt))
             {
-              TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
-              TPolyPt pp2 = InsertPolyPt(p2, p2.pt);
-              pp1.next = pp2;
-              pp2.prev = pp1;
-              p1.prev = p2;
-              p2.next = p1;
+              TPolyPt pp1 = DuplicatePolyPt(p1);
+              TPolyPt pp2 = DuplicatePolyPt(p2);
+              p1.next = pp2;
+              pp2.prev = p1;
+              pp1.prev = p2;
+              p2.next = pp1;
             }
             else if (((p1.prev.pt.X > p1.pt.X && p2.prev.pt.X > p2.pt.X) ||
-                (p1.prev.pt.X < p1.pt.X && p2.prev.pt.X < p2.pt.X) ||
-                (p1.prev.pt.Y > p1.pt.Y && p2.prev.pt.Y > p2.pt.Y) ||
-                (p1.prev.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
-                SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt))
+              (p1.prev.pt.X < p1.pt.X && p2.prev.pt.X < p2.pt.X) ||
+              (p1.prev.pt.Y > p1.pt.Y && p2.prev.pt.Y > p2.pt.Y) ||
+              (p1.prev.pt.Y < p1.pt.Y && p2.prev.pt.Y < p2.pt.Y)) &&
+              SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt))
             {
-              TPolyPt pp1 = InsertPolyPt(p1.prev, p1.pt);
-              TPolyPt pp2 = InsertPolyPt(p2.prev, p2.pt);
-              ReversePolyPtLinks(p2);
-              p1.prev = p2;
-              p2.next = p1;
-              pp1.next = pp2;
-              pp2.prev = pp1;
+              if (m_Joins[i].idx1 == m_Joins[i].idx2) continue;
+              TPolyPt pp1 = DuplicatePolyPt(p1);
+              TPolyPt pp2 = DuplicatePolyPt(p2);
+              ReversePolyPtLinks(pp2);
+              pp1.prev = pp2;
+              pp2.next = pp1;
+              p1.next = p2;
+              p2.prev = p1;
             }
             else
               continue;
 
-            //When polygons are joined, pointers referencing a 'deleted' polygon
-            //must point to the merged polygon ...
-            m_PolyPts[m_Joins[i].idx2] = null;
-            FixupJoins(i);
+            if (m_Joins[i].idx1 == m_Joins[i].idx2)
+            {
+              //When an edge join occurs within the same polygon, then
+              //that polygon effectively splits into 2 polygons ...
+              p1 = FixupOutPolygon(p1, true);
+              m_PolyPts[m_Joins[i].idx1] = p1;
+              p2 = FixupOutPolygon(p2, true);
+              int newIdx = m_PolyPts.Count;
+              m_PolyPts.Add(p2);
+              for (int j = i+1; j < m_Joins.Count; ++j)
+              {
+                if (m_Joins[j].idx1 == m_Joins[i].idx1 &&
+                  PtIsAPolyPt(m_Joins[j].pt, p2))
+                    m_Joins[j].idx1 = newIdx;
+                if (m_Joins[j].idx2 == m_Joins[i].idx1 &&
+                  PtIsAPolyPt(m_Joins[j].pt, p2))
+                    m_Joins[j].idx1 = newIdx;
+              }
+            } else
+            {
+              //When 2 polygons are merged (joined), pointers referencing the
+              //'deleted' polygon must now point to the 'merged' polygon ...
+              m_PolyPts[m_Joins[i].idx2] = null;
+              for (int j = i+1; j < m_Joins.Count; ++j)
+              {
+                if (m_Joins[j].idx1 == m_Joins[i].idx2)
+                  m_Joins[j].idx1 = m_Joins[i].idx1;
+                if (m_Joins[j].idx2 == m_Joins[i].idx2)
+                  m_Joins[j].idx2 = m_Joins[i].idx1;
+              }
+            }
           }
         }
         //------------------------------------------------------------------------------
+
+        internal static double SetDx(TPolyPt pp)
+        {
+          if (pp.dx == unassigned)
+          {
+            TPolyPt pp2;
+            if ((TOrientationFlag.ofForwardBound & pp.flags) != 0) pp2 = pp.next; else pp2 = pp.prev;
+            double dx = Math.Abs(pp.pt.X - pp2.pt.X);
+            double dy = Math.Abs(pp.pt.Y - pp2.pt.Y);
+            if ((dx < 0.1 && dy *10 < dx) || dy < precision)
+              pp.dx = horizontal; else
+              pp.dx = (pp.pt.X - pp2.pt.X)/(pp.pt.Y - pp2.pt.Y);
+          }
+          return pp.dx;
+        }
+        //------------------------------------------------------------------------------
+
+        internal static void NextPoint(ref TPolyPt p, bool goingForward)
+        {
+          if (goingForward)
+          {
+            while (PointsEqual(p.pt, p.next.pt)) p = p.next;
+            p = p.next;
+          } else
+          {
+            while (PointsEqual(p.pt, p.prev.pt)) p = p.prev;
+            p = p.prev;
+          }
+        }
+        //------------------------------------------------------------------------------
+
+        internal static double GetR(TDoublePoint pt1, TDoublePoint pt2, TDoublePoint pt3)
+        {
+          //this function is useful when COMPARING angles as it's a little quicker
+          //than getting the specific angles using arctan().
+          //Return value are between -2 and +2 where -1.99 is an acute angle turning
+          //right, +1.99 is an acute angle turn left and 0 when the points are parallel.
+          TDoublePoint N1 = GetUnitNormal(pt1, pt2);
+          TDoublePoint N2 = GetUnitNormal(pt2, pt3);
+          if (N1.X * N2.Y - N2.X * N1.Y < 0)
+            return 1- (N1.X*N2.X + N1.Y*N2.Y); else
+            return (N1.X*N2.X + N1.Y*N2.Y) -1;
+        }
+        //------------------------------------------------------------------------------
+
+        internal static double DistanceSqr(TDoublePoint pt1, TDoublePoint pt2)
+        {
+          return (pt1.X - pt2.X)*(pt1.X - pt2.X) + (pt1.Y - pt2.Y)*(pt1.Y - pt2.Y);
+        }
+        //------------------------------------------------------------------------------
+
+        internal static int CompareForwardAngles(TPolyPt p1, TPolyPt p2)
+        {
+          //preconditions:
+          //1. p1a == p2a
+          //2. p1.p1nextInBound is colinear with p2.p2nextInBound
+
+          bool p1Forward = (TOrientationFlag.ofForwardBound & p1.flags) !=0;
+          bool p2Forward = (TOrientationFlag.ofForwardBound & p2.flags) != 0;
+          TPolyPt pTmp = null;
+          TDoublePoint p1a, p1b, p1c,  p2a, p2b, p2c;
+          p1b = p1c = p1.pt;
+          p2b = p2c = p2.pt;
+          do
+          {
+            p1a = p1b; p2a = p2b; p1b = p1c; p2b = p2c;
+            NextPoint(ref p1, p1Forward);
+            NextPoint(ref p2, p2Forward);
+
+            //the following avoids a very rare endless loop where the
+            //p1 & p2 polys are almost identical except for their orientations ...
+            if (pTmp == null) 
+                pTmp = p1;
+            else if (pTmp == p1)
+            {
+              if (PointsEqual(p1c, p2c)) return 1;
+              break;
+            }
+            p1c = p1.pt; p2c = p2.pt;
+          }
+          while (PointsEqual(p1c, p2c));
+
+          //and now ... p1c != p2c ...
+          if (PointsEqual(p1a, p1b) ||
+            PointsEqual(GetUnitNormal(p1b, p1c),GetUnitNormal(p2b, p2c)))
+          {
+            //we have parallel edges of unequal length ...
+            if (DistanceSqr(p1b, p1c) < DistanceSqr(p2b, p2c))
+            {
+              p1a = p1b; p1b = p1c;
+              NextPoint(ref p1, p1Forward);
+              double r1 = GetR(p1a, p1b, p1.pt);
+              if (r1 > tolerance) return 1;
+              else if (r1 < -tolerance) return -1;
+              else throw new clipperException("CompareForwardAngles error");
+            } else
+            {
+              p2a = p2b; p2b = p2c;
+              NextPoint(ref p2, p2Forward);
+              double r2 = GetR(p2a, p2b, p2.pt);
+              if (r2 > tolerance) return -1;
+              else if (r2 < -tolerance) return 1;
+              else throw new clipperException("CompareForwardAngles error");
+            }
+          } else
+          {
+            double r1 = GetR(p1a, p1b, p1c);
+            double r2 = GetR(p2a, p2b, p2c);
+            if (r1 > r2 + tolerance) return 1;
+            else if (r1 < r2 - tolerance) return -1;
+            else throw new clipperException("CompareForwardAngles error");
+          }
+        }
+        //------------------------------------------------------------------------------
+
+        int blCompare(TPolyPt pp1, TPolyPt pp2)
+        {
+            if (pp2.pt.Y > pp1.pt.Y + precision) return -1;
+            else if (pp2.pt.Y < pp1.pt.Y - precision) return 1;
+            else if (pp2.pt.X < pp1.pt.X - precision) return -1;
+            else if (pp2.pt.X > pp1.pt.X + precision) return 1;
+            else if (pp1 == pp2) return 0;
+            else
+            {
+                double dx1 = SetDx(pp1);
+                double dx2 = SetDx(pp2);
+                if (dx1 < dx2 - precision) return -1;
+                else if (dx1 > dx2 + precision) return 1;
+                else return CompareForwardAngles(pp1, pp2);
+            }
+        }
+        //------------------------------------------------------------------------------
+
+        int wlCompare(TPolyPt pp1, TPolyPt pp2)
+        {
+          //nb: 1. when item1 < item2, result = 1; when item2 < item1, result = -1
+          //    2. wlCompare is only ever used for insertions into the skiplist.
+          //    3. item2 is always the item being inserted.
+          TPolyPt pp1Next, pp2Next;
+          if ((TOrientationFlag.ofForwardBound & pp1.flags) != 0)
+            pp1Next = pp1.next; else
+            pp1Next = pp1.prev;
+
+          if (pp1 == pp2) return 0;
+          else if (pp1.pt.X < pp2.pt.X - tolerance &&
+            pp1Next.pt.X < pp2.pt.X + tolerance) return 1;
+          else if (pp1.pt.X > pp2.pt.X + tolerance &&
+            pp1Next.pt.X > pp2.pt.X - tolerance) return -1;
+          else if (PointsEqual(pp1.pt, pp2.pt))
+          {
+            double dx1 = SetDx(pp1); double dx2 = SetDx(pp2);
+            //dx1 should never be horizontal, but if dx2 is horizontal ...
+            if (dx2 == horizontal)
+            {
+                if ((TOrientationFlag.ofForwardBound & pp2.flags) != 0)
+                    pp2Next = pp2.next; else pp2Next = pp2.prev;
+                if (pp2Next.pt.X < pp1.pt.X) return -1; else return 1;
+            }
+            else if (dx1 < dx2 - precision) return -1;
+            else if (dx1 > dx2 + precision) return 1;
+            else return CompareForwardAngles(pp1, pp2);
+          } else
+          {
+            SetDx(pp1);
+            if (pp1.dx == horizontal) {
+                if ((TOrientationFlag.ofForwardBound & pp1.flags) != 0)
+                    pp2 = pp1.next; else pp2 = pp1.prev;
+              if (pp2.pt.X > pp1.pt.X) return -1; else return 1;
+            }
+            double pp1X = pp1.pt.X + (pp2.pt.Y - pp1.pt.Y) * pp1.dx;
+            if (pp1X < pp2.pt.X - precision) return 1;
+            else if (pp1X > pp2.pt.X + precision) return -1;
+            else
+            {
+                if ((TOrientationFlag.ofForwardBound & pp2.flags) != 0)
+                    pp2Next = pp2.next; else
+                    pp2Next = pp2.prev;
+                pp1Next = pp2Next;
+                do {
+                    double r = GetR(pp1.pt, pp2.pt, pp2Next.pt);
+                    if (Math.Abs(r) < precision) {
+                        if ((TOrientationFlag.ofForwardBound & pp2.flags) != 0)
+                            pp2Next = pp2.next; else
+                            pp2Next = pp2.prev;
+                        continue;
+                    }
+                    else if (r > 0) return -1;
+                    else return 1;
+                }
+                while (pp2Next != pp1Next); //ie avoids a very rare endless loop
+                return 1;
+            }
+          }
+        }
+        //------------------------------------------------------------------------------
+
+        bool NextIsBottom(TPolyPt p)
+        {
+            TPolyPt pp = p.next;
+            while (pp.next.pt.Y == pp.pt.Y) pp = pp.next;
+            if (pp.next.pt.Y > pp.pt.Y) return false;
+            else return true;
+        }
+        //------------------------------------------------------------------------------
+
+        void UpdateBounds(SkipList<TPolyPt> sl, SkipNode<TPolyPt> sn, double Y)
+        {
+            TPolyPt pp = sn.item;
+            for (;;)
+            {
+                TPolyPt pp2;
+                if ((TOrientationFlag.ofForwardBound & pp.flags) != 0)
+                    pp2 = pp.next;
+                else pp2 = pp.prev;
+                if (pp2.pt.Y < Y - tolerance) break;
+                pp = pp2;
+                if ((TOrientationFlag.ofTop & pp.flags) != 0) break;
+            }
+
+            //nb: DeleteItem() isn't safe here because of wCompare function
+            if ((TOrientationFlag.ofTop & pp.flags) != 0)
+                sl.Delete(sn);
+            else
+                sn.item = pp;
+        }
+        //------------------------------------------------------------------------------
+
+        void FixOrientation()
+        {
+          //Preconditions:
+          //1. All output polygons are simple polygons (ie no self-intersecting edges)
+          //2. While output polygons may touch, none of them overlap other polygons.
+          if (m_PolyPts.Count == 0) return;
+          SkipList<TPolyPt> queue = new SkipList<TPolyPt>(blCompare);
+
+          for (int i = 0; i < m_PolyPts.Count; ++i)
+            if (m_PolyPts[i] != null)
+            {
+              //first, find the lowest left most PPolyPt for each polygon ...
+              TPolyPt p = m_PolyPts[i];
+
+              TPolyPt lowestP = p;
+              p = p.next;
+              do
+              {
+                if (p.pt.Y > lowestP.pt.Y) lowestP = p;
+                else if (p.pt.Y == lowestP.pt.Y &&
+                  p.pt.X <= lowestP.pt.X) lowestP = p;
+                p = p.next;
+              }
+              while ( p != m_PolyPts[i] );
+
+              //dispose of any invalid polygons here ...
+              p = lowestP;
+              if (p.next == p || p.prev == p.next)
+              {
+                DisposePolyPts(p);
+                m_PolyPts[i] = null;
+                continue;
+              }
+              m_PolyPts[i] = lowestP;
+              
+              TOrientationFlag tmpFlag;
+              if (IsClockwise(lowestP)) tmpFlag = TOrientationFlag.ofCW; else tmpFlag = TOrientationFlag.ofEmpty;
+              lowestP.flags = tmpFlag;
+              bool lowestPending = true;
+
+              //loop around the polygon, build 'bounds' for each polygon
+              //and add them to the queue ...
+              do
+              {
+                while (p.next.pt.Y == p.pt.Y) p = p.next; //ignore horizontals
+
+                p.flags = tmpFlag | TOrientationFlag.ofForwardBound;
+                if (lowestPending && (TOrientationFlag.ofCW & lowestP.flags) != 0)
+                {
+                    p.flags = p.flags | TOrientationFlag.ofBottomMinima;
+                    lowestPending = false;
+                }
+
+                queue.InsertItem(p);
+                //go up the bound ...
+                while (p.next.pt.Y <= p.pt.Y)
+                {
+                    p.next.flags = tmpFlag | TOrientationFlag.ofForwardBound;
+                    p = p.next;
+                }
+                p.flags = p.flags | TOrientationFlag.ofTop;
+                //now add the reverse bound (also reversing the bound direction) ...
+                while (!NextIsBottom(p))
+                {
+                  p.next.flags = tmpFlag;
+                  p = p.next;
+                }
+
+                if (p.next.pt.Y == p.next.next.pt.Y)
+                {
+                  p = p.next;
+                  p.flags = tmpFlag;
+                  if ((TOrientationFlag.ofCW & lowestP.flags) == 0 && 
+                      PointsEqual(p.pt, lowestP.pt) && lowestPending )
+                  {
+                      p.flags = p.flags | TOrientationFlag.ofBottomMinima;
+                      lowestPending = false;
+                  }
+                  queue.InsertItem(p);
+                  while (p != lowestP && p.next.pt.Y == p.pt.Y) p = p.next;
+                } else
+                {
+                  p = DuplicatePolyPt(p);
+                  p.pt = p.next.pt;
+                  p.flags = tmpFlag;
+                  if ((TOrientationFlag.ofCW & lowestP.flags) == 0 && PointsEqual(p.pt, lowestP.pt))
+                      p.flags = p.flags | TOrientationFlag.ofBottomMinima;
+                  queue.InsertItem(p);
+                  p = p.next;
+                  while (p != lowestP && p.next.pt.Y == p.prev.pt.Y) p = p.next;
+                }
+              }
+              while (p != lowestP);
+            }
+
+            if (queue.Count() == 0) return;
+            SkipList<TPolyPt> workList = new SkipList<TPolyPt>(wlCompare);
+
+            TPolyPt pp = queue.PopFirst();
+            workList.InsertItem(pp);
+            pp.flags = pp.flags | TOrientationFlag.ofClockwise;
+
+            for (;;)
+            {
+              TPolyPt p = queue.PopFirst();
+              if (p == null) break;
+
+              SkipNode<TPolyPt> sn = workList.First();
+              while (sn != null)
+              {
+                //get the next item in workList in case sn is about to be removed ...
+                  SkipNode<TPolyPt> sn2 = sn.next[0];
+                //update each bound, keeping them level with the new bound 'p'
+                //and removing bounds that are no longer in scope ...
+                //nb: Bounds never intersect other bounds so UpdateBounds() should
+                //not upset the order of the bounds in worklist.
+                UpdateBounds(workList, sn, p.pt.Y);
+                sn = sn2;
+              }
+
+              //insert the new bound into WorkList ...
+              sn = workList.InsertItem(p);
+
+              //if this is the bottom bound of a polyon,
+              //then calculate the polygon's true orientation ...
+              if ((TOrientationFlag.ofBottomMinima & p.flags) != 0)
+              {
+                SkipNode<TPolyPt> sn2 = workList.First();
+                bool isCW = true;
+                while (sn2 != sn)
+                {
+                  isCW = !isCW;
+                  sn2 = sn2.next[0];
+                }
+                if (isCW) p.flags = p.flags | TOrientationFlag.ofClockwise;
+              }
+            }
+
+          for (int i = 0; i < m_PolyPts.Count; ++i)
+            if (m_PolyPts[i] != null)
+            {
+                TPolyPt p = (TPolyPt)m_PolyPts[i];
+                do
+                {
+                    if ((TOrientationFlag.ofBottomMinima & p.flags) != 0) break;
+                    p = p.next;
+                }
+                while (p != m_PolyPts[i]);
+                if ((TOrientationFlag.ofBottomMinima & p.flags) == 0)
+                    throw new clipperException("FixOrientation error");
+                if ((p.flags & (TOrientationFlag.ofCW | TOrientationFlag.ofClockwise)) == TOrientationFlag.ofCW ||
+                     (p.flags & (TOrientationFlag.ofCW | TOrientationFlag.ofClockwise)) == TOrientationFlag.ofClockwise)
+                      ReversePolyPtLinks(p);
+                p = FixupOutPolygon2(p);
+                m_PolyPts[i] = p;
+            }
+          queue = null;
+          workList = null;
+        }
+        //------------------------------------------------------------------------------
     }
+
     //------------------------------------------------------------------------------
     //------------------------------------------------------------------------------
     
@@ -2790,6 +3354,7 @@ namespace Clipper
         }
     }
     //------------------------------------------------------------------------------
+
 }
 
  

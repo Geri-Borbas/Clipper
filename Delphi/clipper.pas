@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  2.99                                                            *
-* Date      :  15 January 2011                                                 *
+* Version   :  3.0.2 (beta)                                                    *
+* Date      :  26 January 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -34,11 +34,54 @@ interface
 
 uses
 {$IFDEF USING_GRAPHICS32}
-  GR32,
+  GR32,                        
 {$ENDIF}
   SysUtils, Classes, Math;
 
 type
+  PSkipNode = ^TSkipNode;
+  TSkipNode = record
+    item: pointer;
+    level: integer;
+    prev: PSkipNode; //ie TSkipNodes form a double linked list
+    next: array [0..15] of PSkipNode;
+    //nb: we never require (nor allocate memory for) anywhere near 16 levels.
+    //The upper array bound depends on (a.) the skip size (currently hardcoded
+    //to 4 in TSkipList's constructor), and (b.) the maximum likely number of
+    //items in the list. Assuming a skip size of 4 and no more than 10 million
+    //items, the maximum levels needed for any item would be 12.
+  end;
+
+  TItemsCompare = function (item1, item2: pointer): integer;
+
+  TSkipList = class
+  private
+    fMaxLevel: integer;
+    fSkipFrac: double;
+    fCurrentMaxLevel: integer;
+    fBase: PSkipNode;
+    fCount: integer;
+    fCompare: TItemsCompare;
+    fLvls: array of PSkipNode;
+    procedure CreateBase;
+    function NewNode(level: integer; item: pointer): PSkipNode;
+  public
+    constructor Create(CompareFunc: TItemsCompare);
+    destructor Destroy; override;
+    procedure Clear;
+    //nb: InsertItem fails if a duplicate item is encountered.
+    function InsertItem(item: pointer): PSkipNode;
+    function FindItem(item: pointer): PSkipNode;
+    function DeleteItem(item: pointer): boolean;
+    procedure Delete(var node: PSkipNode);
+    function PopFirst: pointer;
+    function First: PSkipNode;
+    function Next(currentNode: PSkipNode): PSkipNode;
+    function Prev(currentNode: PSkipNode): PSkipNode;
+    function Last: PSkipNode;
+    property Count: integer read fCount;
+  end;
+
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
   TPolyFillType = (pftEvenOdd, pftNonZero);
@@ -112,14 +155,18 @@ type
     nextSb: PScanbeam;
   end;
 
-  TTriState = (sFalse, sTrue, sUndefined);
+  //TOrientationFlag:
+  //ofClockwise = expected orientation; ofCW = current orientation
+  TOrientationFlag = (ofClockwise, ofCW, ofForwardBound, ofTop, ofBottomMinima);
+  TOrientationFlags = set of TOrientationFlag;
 
   PPolyPt = ^TPolyPt;
   TPolyPt = record
     pt: TDoublePoint;
     next: PPolyPt;
     prev: PPolyPt;
-    isHole: TTriState; //See TClipper ForceOrientation property
+    flags: TOrientationFlags;
+    dx: double;
   end;
 
   TJoinRec = record
@@ -171,12 +218,12 @@ type
     fSortedEdges: PEdge; //used for intersection sorts and horizontal edges
     fIntersectNodes: PIntersectNode;
     fExecuteLocked: boolean;
-    fForceOrientation: boolean;
     fClipFillType: TPolyFillType;
     fSubjFillType: TPolyFillType;
     fIntersectTolerance: double;
     fJoins: TArrayOfJoinRec;
     fCurrentHorizontals: TArrayOfJoinRec;
+    fIgnoreOrientation: boolean;
     function ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
     function ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
     function InitializeScanbeam: boolean;
@@ -190,7 +237,7 @@ type
     procedure InsertLocalMinimaIntoAEL(const botY: double);
     procedure AddEdgeToSEL(edge: PEdge);
     procedure CopyAELToSEL;
-    function IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
+    function IsTopHorz(const XPos: double): boolean;
     procedure ProcessHorizontal(horzEdge: PEdge);
     procedure ProcessHorizontals;
     procedure SwapPositionsInAEL(edge1, edge2: PEdge);
@@ -220,6 +267,7 @@ type
     procedure DisposeAllPolyPts;
     procedure DisposeIntersectNodes;
     procedure MergePolysWithCommonEdges;
+    procedure FixOrientation;
   public
     //SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
 
@@ -235,36 +283,17 @@ type
       out solution: TArrayOfArrayOfDoublePoint;
       subjFillType: TPolyFillType = pftEvenOdd;
       clipFillType: TPolyFillType = pftEvenOdd): boolean; overload;
-
     constructor Create; override;
     destructor Destroy; override;
-
-    //The ForceOrientation property ensures that polygons that result from a
-    //TClipper.Execute() calls will have clockwise 'outer' and counter-clockwise
-    //'inner' (or 'hole') polygons. If ForceOrientation == false, then the
-    //polygons returned in the solution will have undefined orientation.<br>
-    //Setting ForceOrientation = true results in a minor penalty (~10%) in
-    //execution speed. (Default == true)
-    property ForceOrientation: boolean read
-      fForceOrientation write fForceOrientation;
+    //IgnoreOrientation: the Execute method will be approx 60% faster if
+    //Clipper doesn't need to calculate the orientation of output polygons ...
+    property IgnoreOrientation: boolean
+      read fIgnoreOrientation write fIgnoreOrientation;
   end;
 
   function DoublePoint(const X, Y: double): TDoublePoint; overload;
-  //PolygonArea is only useful when polygons don't self-intersect. Negative
-  //results indicate polygons with counter-clockwise orientations.
-  function PolygonArea(const poly: TArrayOfFloatPoint): double; overload;
-  function PolygonArea(const poly: TArrayOfDoublePoint): double; overload;
-  function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
-    const delta: double): TArrayOfArrayOfDoublePoint; overload;
-  function OffsetPolygons(const pts: TArrayOfArrayOfFloatPoint;
-    const delta: double): TArrayOfArrayOfFloatPoint; overload;
-  function TranslatePolygons(const pts: TArrayOfArrayOfDoublePoint;
-    const deltaX, deltaY: double): TArrayOfArrayOfDoublePoint; overload;
-  function TranslatePolygons(const pts: TArrayOfArrayOfFloatPoint;
-    const deltaX, deltaY: double): TArrayOfArrayOfFloatPoint; overload;
-
-  function Area(const pts: TArrayOfDoublePoint): double;
   function IsClockwise(const pts: TArrayOfDoublePoint): boolean; overload;
+  function GetUnitNormal(const pt1, pt2: TDoublePoint): TDoublePoint;
 
   function MakeArrayOfDoublePoint(const a: TArrayOfFloatPoint): TArrayOfDoublePoint; overload;
   function MakeArrayOfFloatPoint(const a: TArrayOfDoublePoint): TArrayOfFloatPoint; overload;
@@ -276,26 +305,324 @@ type
 
 const
   horizontal: double = -3.4e+38;
-  //tolerance: is needed because vertices are floating point values and any
-  //comparison of floating point values requires a degree of tolerance.
+  unassigned: double =  3.4e+38;
   tolerance: double = 1.0e-10;
-  minimal_tolerance: double = 1.0e-14; //alternative tolerance
+  minimal_tolerance: double = 1.0e-14;
   //precision: defines when adjacent vertices will be considered duplicates
   //and hence ignored. This circumvents edges having indeterminate slope.
   precision: double = 1.0e-6;
   slope_precision: double = 1.0e-3;
   nullRect: TFloatRect =(left:0;top:0;right:0;bottom:0);
-  
+
 resourcestring
+  rsSkipListCreate = 'TSkipList create error: no compare function supplied.';
+  rsSkipListInsertItem = 'TSkipList - duplicate items not permitted';
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsProcessEdgesAtTopOfScanbeam = 'ProcessEdgesAtTopOfScanbeam error';
-  rsAppendPolygon = 'AppendPolygon error';
   rsIntersection = 'Intersection error';
   rsInsertPolyPt = 'InsertPolyPtBetween error';
+  rsHorizontal = 'ProcessHorizontal error';
+  rsCompareForwardAngles = 'CompareForwardAngles error';
+  rsFixOrientations = 'FixOrientations error';
 
 //------------------------------------------------------------------------------
+// SkipList methods ...
+//------------------------------------------------------------------------------
+
+constructor TSkipList.Create(CompareFunc: TItemsCompare);
+const
+  //defines a likely 'maximum' of 10 million items. The list can still grow
+  //beyond this number, but as it does, performance will slowly degrade.
+  //nb: available memory starts to be an issue with very large lists where
+  //alternative methods of storage should then be considered (eg databases).
+  maxItems = 10000000;
+  skip = 4;
+begin
+  Randomize;
+  fMaxLevel := trunc( ln(maxItems)/ln(skip) ) +1; //fMaxLevel = 12
+  fSkipFrac := 1/skip;
+  setlength(fLvls, fMaxLevel);
+  if not assigned(CompareFunc) then
+    raise exception.Create(rsSkipListCreate);
+  fCompare := CompareFunc;
+  CreateBase;
+end;
+//------------------------------------------------------------------------------
+
+destructor TSkipList.Destroy;
+begin
+  Clear;
+  FreeMem(fBase);
+  inherited;
+end;
+//------------------------------------------------------------------------------
+
+procedure TSkipList.CreateBase;
+var
+  i: integer;
+begin
+  if assigned(fBase) then exit;
+  fBase := NewNode(fMaxLevel-1, nil);
+
+  for i := 0 to fMaxLevel-1 do fBase.next[i] := nil;
+  fCurrentMaxLevel := 0;
+  fCount := 0;
+  fBase.prev := fBase;
+end;
+//------------------------------------------------------------------------------
+
+procedure TSkipList.Clear;
+var
+  i: integer;
+  tmp, tmp2: PSkipNode;
+begin
+  tmp := fBase.prev;
+  while tmp <> fBase do
+  begin
+    tmp2 := tmp.prev;
+    FreeMem(tmp);
+    tmp := tmp2;
+  end;
+
+  for i := 0 to fMaxLevel-1 do fBase.next[i] := nil;
+  fCurrentMaxLevel := 0;
+  fCount := 0;
+  fBase.prev := fBase;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.NewNode(level: integer; item: pointer): PSkipNode;
+begin
+  GetMem(result, sizeof(TSkipNode) + level *sizeof(pointer));
+  result.level := level;
+  result.item := item;
+  inc(fCount);
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.First: PSkipNode;
+begin
+  if fBase.prev = fBase then result := nil else
+  result := fBase.next[0];
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.Next(currentNode: PSkipNode): PSkipNode;
+begin
+  if assigned(currentNode) then
+    result := currentNode.next[0] else
+    result := nil;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.Prev(currentNode: PSkipNode): PSkipNode;
+begin
+  if assigned(currentNode) then
+  begin
+    result := currentNode.prev;
+    if result = fBase then result := nil;
+  end else
+    result := nil;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.Last: PSkipNode;
+begin
+  if fBase.prev = fBase then result := nil else
+  result := fBase.prev;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.FindItem(item: pointer): PSkipNode;
+var
+  i, compareVal: integer;
+begin
+  result := fBase;
+  compareVal := 1;
+  for i := fCurrentMaxLevel downto 0 do
+  begin
+    while assigned(result.next[i]) do
+    begin
+      if (compareVal > 0) or (result.next[i+1] <> result.next[i]) then
+      compareVal := fCompare(result.next[i].item, item);
+      if compareVal <= 0 then break
+      else result := result.next[i];
+    end;
+    if (compareVal = 0) then
+    begin
+      result := result.next[i];
+      exit;
+    end;
+  end;
+  result := nil;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.InsertItem(item: pointer): PSkipNode;
+var
+  i, compareVal, newLevel: integer;
+  priorNode: PSkipNode;
+begin
+  for i := 0 to fMaxLevel -1 do fLvls[i] := fBase;
+  priorNode := fBase;
+  result := nil;
+
+  compareVal := 1;
+  for i := fCurrentMaxLevel downto 0 do
+  begin
+    while assigned(priorNode.next[i]) do
+    begin
+      //avoid a few unnecessary compares ...
+      if (compareVal > 0) or (priorNode.next[i+1] <> priorNode.next[i]) then
+        compareVal := fCompare(priorNode.next[i].item, item);
+      if compareVal > 0 then priorNode := priorNode.next[i]
+      else break;
+    end;
+    fLvls[i] := priorNode;
+  end;
+
+  //duplicates are NOT allowed ...
+  if (compareVal = 0) then
+    raise exception.Create(rsSkipListInsertItem);
+
+  //get the level of the new node ...
+  newLevel := 0;
+  while (newLevel <= fCurrentMaxLevel) and (newLevel < fMaxLevel-1) and
+    (Random < fSkipFrac) do inc(newLevel);
+  if newLevel > fCurrentMaxLevel then fCurrentMaxLevel := newLevel;
+
+  //create the new node and rearrange links up to newLevel ...
+  result := NewNode(newLevel, item);
+  if assigned(priorNode.next[0]) then
+    priorNode.next[0].prev := result else
+    fBase.prev := result; //fBase.prev always points to the last node
+  result.prev := priorNode;
+  for i := 0 to newLevel do
+  begin
+    result.next[i] := fLvls[i].next[i];
+    fLvls[i].next[i] := result;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.DeleteItem(item: pointer): boolean;
+var
+  i, compareVal: integer;
+  priorNode, delNode: PSkipNode;
+begin
+  for i := 0 to fCurrentMaxLevel do fLvls[i] := fBase;
+  priorNode := fBase;
+
+  //find the item ...
+  compareVal := 1;
+  for i := fCurrentMaxLevel downto 0 do
+  begin
+    while assigned(priorNode.next[i]) do
+    begin
+      if (compareVal > 0) or (priorNode.next[i+1] <> priorNode.next[i]) then
+      compareVal := fCompare(priorNode.next[i].item, item);
+      if compareVal > 0 then priorNode := priorNode.next[i]
+      else break;
+    end;
+    fLvls[i] := priorNode;
+  end;
+  result := compareVal = 0;
+  if not result then exit;
+
+  delNode := priorNode.next[0];
+  //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+  with delNode^ do
+    if (level > 0) and (level = fCurrentMaxLevel) and
+    (fLvls[level] = fBase) and not assigned(next[level]) then
+      dec(fCurrentMaxLevel);
+
+  //fix up links before finally deleting the node ...
+  for i := 0 to delNode.level do
+    fLvls[i].next[i] := delNode.next[i];
+  if assigned(delNode.next[0]) then
+    delNode.next[0].prev := delNode.prev else
+    fBase.prev := delNode.prev;
+  FreeMem(delNode);
+  dec(fCount);
+end;
+//------------------------------------------------------------------------------
+
+procedure TSkipList.Delete(var node: PSkipNode);
+var
+  i,lvl: integer;
+  nextNode, priorNode: PSkipNode;
+begin
+  //this method doesn't require any knowledge of node.item
+  //since it doesn't call fCompare() ...
+  for i := node.level+1 to fCurrentMaxLevel do fLvls[i] := nil;
+  nextNode := node;
+  lvl := node.level;
+  while assigned(nextNode.next[nextNode.level]) and
+    (nextNode.level < fCurrentMaxLevel) do
+  begin
+    nextNode := nextNode.next[nextNode.level];
+    while nextNode.level > lvl do
+    begin
+      inc(lvl);
+      fLvls[lvl] := nextNode;
+    end;
+  end;
+  for i := 0 to node.level do fLvls[i] := node;
+
+  priorNode := fBase;
+  for i := fCurrentMaxLevel downto 0 do
+  begin
+    while assigned(priorNode.next[i]) and (priorNode.next[i] <> fLvls[i]) do
+      priorNode := priorNode.next[i];
+    fLvls[i] := priorNode;
+  end;
+
+  //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+  with node^ do
+    if (level > 0) and (level = fCurrentMaxLevel) and
+    (fLvls[level] = fBase) and not assigned(next[level]) then
+      dec(fCurrentMaxLevel);
+
+  //fix up links before finally deleting the node ...
+  for i := 0 to node.level do
+    fLvls[i].next[i] := node.next[i];
+  if assigned(node.next[0]) then
+    node.next[0].prev := node.prev else
+    fBase.prev := node.prev;
+  FreeMem(node);
+  dec(fCount);
+  node := nil;
+end;
+//------------------------------------------------------------------------------
+
+function TSkipList.PopFirst: pointer;
+var
+  i, delLevel: integer;
+  delNode: PSkipNode;
+begin
+  result := nil;
+  if fCount = 0 then exit;
+
+  delNode := fBase.next[0];
+  result := delNode.item;
+  delLevel := delNode.level;
+  //if this's the only node at fCurrentMaxLevel, decrement fCurrentMaxLevel ...
+  if (delLevel > 0) and (delLevel = fCurrentMaxLevel) and
+    (fBase.next[delLevel] = delNode) and not assigned(delNode.next[delLevel]) then
+      dec(fCurrentMaxLevel);
+
+  //fix up links before finally deleting the node ...
+  for i := 0 to delLevel do fBase.next[i] := delNode.next[i];
+  if assigned(delNode.next[0]) then
+    delNode.next[0].prev := fBase else fBase.prev := fBase;
+  FreeMem(delNode);
+  dec(fCount);
+end;
+
+//------------------------------------------------------------------------------
+// Miscellaneous Functions ...
 //------------------------------------------------------------------------------
 
 {$IFNDEF USING_GRAPHICS32}
@@ -306,34 +633,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 {$ENDIF}
-
-function PolygonArea(const poly: TArrayOfFloatPoint): double;
-var
-  i, highI: integer;
-begin
-  result := 0;
-  highI := high(poly);
-  if highI < 2 then exit;
-  for i :=0 to highI -1 do
-    result := result + (poly[i].X +poly[i+1].X) *(poly[i].Y -poly[i+1].Y);
-  result := result + (poly[highI].X +poly[0].X) *(poly[highI].Y -poly[0].Y);
-  result := result / 2;
-end;
-//------------------------------------------------------------------------------
-
-function PolygonArea(const poly: TArrayOfDoublePoint): double;
-var
-  i, highI: integer;
-begin
-  result := 0;
-  highI := high(poly);
-  if highI < 2 then exit;
-  for i :=0 to highI -1 do
-    result := result + (poly[i].X +poly[i+1].X) *(poly[i].Y -poly[i+1].Y);
-  result := result + (poly[highI].X +poly[0].X) *(poly[highI].Y -poly[0].Y);
-  result := result / 2;
-end;
-//------------------------------------------------------------------------------
 
 function GetUnitNormal(const pt1, pt2: TDoublePoint): TDoublePoint;
 var
@@ -356,37 +655,25 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure SinCos(const Theta, Radius : TFloat; out Sin, Cos: double);
+function GetR(const pt1,pt2,pt3: TDoublePoint): double;
 var
-  S, C: Extended;
+  N1,N2: TDoublePoint;
 begin
-  Math.SinCos(Theta, S, C);
-  Sin := S * Radius;
-  Cos := C * Radius;
+  //this function is useful when COMPARING angles as it's a little quicker
+  //than getting the specific angles using arctan().
+  //Return value are between -2 and +2 where -1.99 is an acute angle turning
+  //right, +1.99 is an acute angle turn left and 0 when the points are parallel.
+  N1 := GetUnitNormal(pt1, pt2);
+  N2 := GetUnitNormal(pt2, pt3);
+  if (N1.X * N2.Y - N2.X * N1.Y) < 0 then
+    result := 1- (N1.X*N2.X + N1.Y*N2.Y) else
+    result := (N1.X*N2.X + N1.Y*N2.Y) -1;
 end;
 //------------------------------------------------------------------------------
 
-function BuildArc(const pt: TDoublePoint;
-  a1, a2, r: single): TArrayOfDoublePoint; overload;
-const
-  MINSTEPS = 6;
-var
-  I, N: Integer;
-  a, da, dx, dy: double;
-  Steps: Integer;
+function DistanceSqr(const pt1,pt2: TDoublePoint): double;
 begin
-  Steps := Max(MINSTEPS, Round(Sqrt(Abs(r)) * Abs(a2 - a1)));
-  SetLength(Result, Steps);
-  N := Steps - 1;
-  da := (a2 - a1) / N;
-  a := a1;
-  for I := 0 to N do
-  begin
-    SinCos(a, r, dy, dx);
-    Result[I].X := pt.X + dx;
-    Result[I].Y := pt.Y + dy;
-    a := a + da;
-  end;
+  result := (pt1.X - pt2.X)*(pt1.X - pt2.X) + (pt1.Y - pt2.Y)*(pt1.Y - pt2.Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -418,81 +705,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetBounds(const pts: TArrayOfDoublePoint): TFloatRect;
-var
-  i: integer;
-begin
-  if not assigned(pts) then
-    result := nullRect
-  else
-  begin
-    result.Left := pts[0].X; result.Top := pts[0].Y;
-    result.Right := pts[0].X; result.Bottom := pts[0].Y;
-    for i := 1 to high(pts) do
-    begin
-      if pts[i].X < result.Left then result.Left := pts[i].X
-      else if pts[i].X > result.Right then result.Right := pts[i].X;
-      if pts[i].Y < result.Top then result.Top := pts[i].Y
-      else if pts[i].Y > result.Bottom then result.Bottom := pts[i].Y;
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function InsertPoints(const existingPts, newPts:
-  TArrayOfDoublePoint; position: integer): TArrayOfDoublePoint; overload;
-var
-  lenE, lenN: integer;
-begin
-  result := existingPts;
-  lenE := length(existingPts);
-  lenN := length(newPts);
-  if lenN = 0 then exit;
-  if position < 0 then position := 0
-  else if position > lenE then position := lenE;
-  setlength(result, lenE + lenN);
-  Move(result[position],
-    result[position+lenN],(lenE-position)*sizeof(TDoublePoint));
-  Move(newPts[0], result[position], lenN*sizeof(TDoublePoint));
-end;
-//------------------------------------------------------------------------------
-
-function TranslatePolygons(const pts: TArrayOfArrayOfDoublePoint;
-  const deltaX, deltaY: double): TArrayOfArrayOfDoublePoint;
-var
-  i,j: integer;
-begin
-  setlength(result, length(pts));
-  for i := 0 to high(pts) do
-  begin
-    setlength(result[i], length(pts[i]));
-    for j := 0 to high(pts[i]) do
-    begin
-      result[i][j].X := pts[i][j].X + deltaX;
-      result[i][j].Y := pts[i][j].Y + deltaY;
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function TranslatePolygons(const pts: TArrayOfArrayOfFloatPoint;
-  const deltaX, deltaY: double): TArrayOfArrayOfFloatPoint;
-var
-  i,j: integer;
-begin
-  setlength(result, length(pts));
-  for i := 0 to high(pts) do
-  begin
-    setlength(result[i], length(pts[i]));
-    for j := 0 to high(pts[i]) do
-    begin
-      result[i][j].X := pts[i][j].X + deltaX;
-      result[i][j].Y := pts[i][j].Y + deltaY;
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-
 function IsClockwise(const pts: TArrayOfDoublePoint): boolean; overload;
 var
   i, highI: integer;
@@ -507,151 +719,6 @@ begin
     area := area + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
   //area := area/2;
   result := area > 0; //ie reverse of normal formula because Y axis inverted
-end;
-//------------------------------------------------------------------------------
-
-function Area(const pts: TArrayOfDoublePoint): double;
-var
-  i, highI: integer;
-begin
-  result := 0;
-  highI := high(pts);
-  if highI < 2 then exit;
-  //or ...(x2-x1)(y2+y1)
-  result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
-  for i := 0 to highI-1 do
-    result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-  result := result/2;
-end;
-//------------------------------------------------------------------------------
-
-function OffsetPolygons(const pts: TArrayOfArrayOfDoublePoint;
-  const delta: double): TArrayOfArrayOfDoublePoint;
-var
-  j, i, highI: integer;
-  normals: TArrayOfDoublePoint;
-  a1,a2, deltaSq: double;
-  arc, outer: TArrayOfDoublePoint;
-  r: TFloatRect;
-  c: TClipper;
-begin
-  //A positive delta will offset each polygon edge towards its left, so
-  //polygons orientated clockwise (ie outer polygons) will expand but
-  //inner polyons (holes) will shrink. Conversely, negative deltas will
-  //offset polygon edges towards their right so outer polygons will shrink
-  //and inner polygons will expand.
-
-  deltaSq := delta*delta;
-  setLength(result, length(pts));
-  for j := 0 to high(pts) do
-  begin
-    highI := high(pts[j]);
-
-    //to minimize artefacts, strip out those polygons where
-    //it's shrinking and where its area < Sqr(delta) ...
-    a1 := Area(pts[j]);
-    if (delta < 0) then
-    begin
-      if (a1 > 0) and (a1 < deltaSq) then highI := 0;
-    end else
-      if (a1 < 0) and (-a1 < deltaSq) then highI := 0; //nb: a hole if area < 0
-
-    if highI < 2 then
-    begin
-      result[j] := nil;
-      continue;
-    end;
-
-    setLength(normals, highI+1);
-    normals[0] := GetUnitNormal(pts[j][highI], pts[j][0]);
-    for i := 1 to highI do
-      normals[i] := GetUnitNormal(pts[j][i-1], pts[j][i]);
-
-    setLength(result[j], (highI+1)*2);
-    for i := 0 to highI-1 do
-    begin
-      result[j][i*2].X := pts[j][i].X +delta *normals[i].X;
-      result[j][i*2].Y := pts[j][i].Y +delta *normals[i].Y;
-      result[j][i*2+1].X := pts[j][i].X +delta *normals[i+1].X;
-      result[j][i*2+1].Y := pts[j][i].Y +delta *normals[i+1].Y;
-    end;
-    result[j][highI*2].X := pts[j][highI].X +delta *normals[highI].X;
-    result[j][highI*2].Y := pts[j][highI].Y +delta *normals[highI].Y;
-    result[j][highI*2+1].X := pts[j][highI].X +delta *normals[0].X;
-    result[j][highI*2+1].Y := pts[j][highI].Y +delta *normals[0].Y;
-
-    //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
-    //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta > 0) and
-      ((normals[0].X*normals[highI].X+normals[0].Y*normals[highI].Y) < 0.985) then
-    begin
-      a1 := ArcTan2(normals[highI].Y, normals[highI].X);
-      a2 := ArcTan2(normals[0].Y, normals[0].X);
-      if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
-      else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
-      arc := BuildArc(pts[j][highI],a1,a2,delta);
-      result[j] := InsertPoints(result[j],arc,highI*2+1);
-    end;
-    for i := highI downto 1 do
-      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta > 0) and
-         ((normals[i].X*normals[i-1].X+normals[i].Y*normals[i-1].Y) < 0.985) then
-      begin
-        a1 := ArcTan2(normals[i-1].Y, normals[i-1].X);
-        a2 := ArcTan2(normals[i].Y, normals[i].X);
-        if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
-        else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
-        arc := BuildArc(pts[j][i-1],a1,a2,delta);
-        result[j] := InsertPoints(result[j],arc,(i-1)*2+1);
-      end;
-  end;
-
-  //finally, clean up untidy corners ...
-  c := TClipper.Create;
-  try
-    c.AddPolyPolygon(result, ptSubject);
-    if delta > 0 then
-    begin
-      if not c.Execute(ctUnion, result, pftNonZero, pftNonZero) then
-        result := nil;
-    end else
-    begin
-      r := c.GetBounds;
-      setlength(outer, 4);
-      outer[0] := DoublePoint(r.left-10, r.bottom+10);
-      outer[1] := DoublePoint(r.right+10, r.bottom+10);
-      outer[2] := DoublePoint(r.right+10, r.top-10);
-      outer[3] := DoublePoint(r.left-10, r.top-10);
-      c.AddPolygon(outer, ptSubject);
-      if c.Execute(ctUnion, result, pftNonZero, pftNonZero) then
-      begin
-        //delete the outer rectangle ...
-        highI := high(result);
-        for i := 1 to highI do result[i-1] := result[i];
-        setlength(result, highI);
-      end else
-        result := nil;
-    end;
-  finally
-    c.free;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function OffsetPolygons(const pts: TArrayOfArrayOfFloatPoint;
-  const delta: double): TArrayOfArrayOfFloatPoint;
-var
-  i, len: integer;
-  dblPts: TArrayOfArrayOfDoublePoint;
-begin
-  len := length(pts);
-  setlength(dblPts, len);
-  for i := 0 to len -1 do
-    dblPts[i] := MakeArrayOfDoublePoint(pts[i]);
-  dblPts := OffsetPolygons(dblPts, delta);
-  len := length(dblPts);
-  setlength(result, len);
-  for i := 0 to len -1 do
-    Result[i] := MakeArrayOfFloatPoint(dblPts[i]);
 end;
 //------------------------------------------------------------------------------
 
@@ -727,6 +794,44 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function IsHorizontal(e: PEdge): boolean; overload;
+begin
+  result := assigned(e) and (e.dx = horizontal);
+end;
+//------------------------------------------------------------------------------
+
+function IsHorizontal(const pt1, pt2: TDoublePoint): boolean; overload;
+begin
+  result := (abs(pt1.X - pt2.X) > precision) and
+    (abs(pt1.Y - pt2.Y) < precision);
+end;
+//----------------------------------------------------------------------
+
+function SlopesEqual(const pt1a, pt1b, pt2a, pt2b: TDoublePoint): boolean; overload;
+begin
+  result := abs((pt1b.Y - pt1a.Y)*(pt2b.X - pt2a.X) -
+    (pt1b.X - pt1a.X)*(pt2b.Y - pt2a.Y)) < slope_precision;
+end;
+//---------------------------------------------------------------------------
+
+function SlopesEqual(const pt1, pt2, pt3: TDoublePoint): boolean; overload;
+begin
+  result :=
+    ((abs(pt1.X-pt2.X) <= slope_precision) and (abs(pt2.X-pt3.X) <= slope_precision)) or
+    ((abs(pt1.Y-pt2.Y) <= slope_precision) and (abs(pt2.Y-pt3.Y) <= slope_precision)) or
+    (abs((pt2.Y - pt1.Y)*(pt3.X - pt2.X) - (pt2.X - pt1.X)*(pt3.Y - pt2.Y)) < slope_precision);
+end;
+//---------------------------------------------------------------------------
+
+function SlopesEqual(e1, e2: PEdge): boolean; overload;
+begin
+  if IsHorizontal(e1) then result := IsHorizontal(e2)
+  else if IsHorizontal(e2) then result := false
+  else result := abs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
+    (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
+end;
+//---------------------------------------------------------------------------
+
 function FixupOutPolygon(outPoly: PPolyPt; stripPointyEdgesOnly: boolean = false): PPolyPt;
 var
   pp, tmp, lastOK: PPolyPt;
@@ -753,17 +858,50 @@ begin
       result := nil;
       exit;
     end;
-    //test for duplicate points and for same slope (cross-product) ...
+    //test for duplicate points and for same slope ...
     if PointsEqual(pp.pt, pp.next.pt) or
-      ((abs((pp.pt.Y - pp.prev.pt.Y)*(pp.next.pt.X - pp.pt.X) -
-        (pp.pt.X - pp.prev.pt.X)*(pp.next.pt.Y - pp.pt.Y)) < precision)
-      and (not stripPointyEdgesOnly or
-        ((pp.pt.X - pp.prev.pt.X > 0) <> (pp.next.pt.X - pp.pt.X > 0)) or
-        ((pp.pt.Y - pp.prev.pt.Y > 0) <> (pp.next.pt.Y - pp.pt.Y > 0)))) then
+      (SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt) and (not stripPointyEdgesOnly or
+      ((pp.pt.X - pp.prev.pt.X > 0) <> (pp.next.pt.X - pp.pt.X > 0)) or
+      ((pp.pt.Y - pp.prev.pt.Y > 0) <> (pp.next.pt.Y - pp.pt.Y > 0)))) then
     begin
       lastOK := nil;
-      if (pp.isHole <> sUndefined) and (pp.next.isHole = sUndefined) then
-        pp.next.isHole := pp.isHole;
+      pp.prev.next := pp.next;
+      pp.next.prev := pp.prev;
+      tmp := pp;
+      if pp = result then result := pp.prev;
+      pp := pp.prev;
+      dispose(tmp);
+    end
+    else if pp = lastOK then break
+    else
+    begin
+      if not assigned(lastOK) then lastOK := pp;
+      pp := pp.next;
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function FixupOutPolygon2(outPoly: PPolyPt): PPolyPt;
+var
+  pp, tmp, lastOK: PPolyPt;
+begin
+  //FixupOutPolygon2 - just removes duplicate points ...
+  result := outPoly;
+  if not assigned(outPoly) then exit;
+  lastOK := nil;
+  pp := outPoly;
+  while true do
+  begin
+    if (pp.prev = pp) or (pp.next = pp.prev) then
+    begin
+      DisposePolyPts(pp);
+      result := nil;
+      break;
+    end
+    else if PointsEqual(pp.pt, pp.next.pt) then
+    begin
+      lastOK := nil;
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
       tmp := pp;
@@ -795,7 +933,32 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PtInPoly(const pt: TDoublePoint; var polyStartPt: PPolyPt): boolean;
+procedure DisposePolyPt(var pp: PPolyPt);
+var
+  tmpPp: PPolyPt;
+begin
+  pp.next.prev := pp.prev;
+  pp.prev.next := pp.next;
+  tmpPp := pp;
+  pp := pp.next;
+  dispose(tmpPp);
+end;
+//------------------------------------------------------------------------------
+
+function DuplicatePolyPt(polyPt: PPolyPt): PPolyPt;
+begin
+  new(result);
+  result.pt := polyPt.pt;
+  result.flags := polyPt.flags;
+  result.dx := unassigned;
+  result.prev := polyPt;
+  result.next := polyPt.next;
+  polyPt.next.prev := result;
+  polyPt.next := result;
+end;
+//------------------------------------------------------------------------------
+
+function PtIsAPolyPt(const pt: TDoublePoint; var polyStartPt: PPolyPt): boolean;
 var
   p: PPolyPt;
 begin
@@ -810,20 +973,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IsHorizontal(e: PEdge): boolean; overload;
-begin
-  result := assigned(e) and (e.dx = horizontal);
-end;
-//------------------------------------------------------------------------------
-
-function IsHorizontal(pp1, pp2: PPolyPt): boolean; overload;
-begin
-  result := (abs(pp1.pt.X - pp2.pt.X) > precision) and
-    (abs(pp1.pt.Y - pp2.pt.Y) < precision);
-end;
-//----------------------------------------------------------------------
-
-procedure SetDx(e: PEdge);
+procedure SetDx(e: PEdge); overload;
 var
   dx, dy: double;
 begin
@@ -836,8 +986,8 @@ begin
   begin
     e.dx := horizontal;
     if (e.y <> e.next.y) then e.y := e.next.y;
-  end else
-    e.dx := (e.x - e.next.x)/(e.y - e.next.y);
+  end else e.dx :=
+    (e.x - e.next.x)/(e.y - e.next.y);
 end;
 //------------------------------------------------------------------------------
 
@@ -873,15 +1023,6 @@ begin
   result := assigned(e1) and assigned(e2) and (e1.outIdx = e2.outIdx);
 end;
 //------------------------------------------------------------------------------
-
-function SlopesEqual(e1, e2: PEdge): boolean;
-begin
-  if IsHorizontal(e1) then result := IsHorizontal(e2)
-  else if IsHorizontal(e2) then result := false
-  else result := abs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
-    (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
-end;
-//---------------------------------------------------------------------------
 
 function IntersectPoint(edge1, edge2: PEdge; out ip: TDoublePoint): boolean;
 var
@@ -922,38 +1063,11 @@ begin
   area := 0;
   startPt := pt;
   repeat
-    //or ...(x2-x1)(y2+y1)
     area := area + (pt.pt.X * pt.next.pt.Y) - (pt.next.pt.X * pt.pt.Y);
     pt := pt.next;
   until pt = startPt;
   //area := area /2;
   result := area > 0; //ie reverse of normal formula because Y axis inverted
-end;
-//------------------------------------------------------------------------------
-
-function ValidateOrientation(pt: PPolyPt): boolean;
-var
-  ptStart, bottomPt: PPolyPt;
-begin
-  //first, find the hole state of the bottom-most point
-  //(because the hole state of other points may not be reliable) ...
-  bottomPt := pt;
-  ptStart := pt;
-  pt := pt.next;
-  while (pt <> ptStart) do
-  begin
-    if (pt.pt.Y > bottomPt.pt.Y) or
-      ((pt.pt.Y = bottomPt.pt.Y) and (pt.isHole <> sUndefined)) then
-        bottomPt := pt;
-    pt := pt.next;
-  end;
-
-  //check that orientation matches the hole status ...
-  while (bottomPt.isHole = sUndefined) and
-    (bottomPt.next.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.next;
-  while (bottomPt.isHole = sUndefined) and
-    (bottomPt.prev.pt.Y >= bottomPt.pt.Y) do bottomPt := bottomPt.prev;
-  result := IsClockwise(pt) = (bottomPt.isHole <> sTrue);
 end;
 
 //------------------------------------------------------------------------------
@@ -991,7 +1105,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   procedure InitEdge(e, eNext, ePrev: PEdge; const pt: TDoublePoint);
   begin
-    //set up double-link-list linkage and initialize savedBot & dx only
+    //set up double-link-list linkage and initialize x, y and dx only
     fillChar(e^, sizeof(TEdge), 0);
     e.x := pt.X;
     e.y := pt.Y;
@@ -1032,10 +1146,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     else if IsHorizontal(e2) then result := false
     else
       //cross product of dy1/dx1 = dy2/dx2 ...
-      result := abs((e1.y - e1.next.y) *
-        (e2.x - e2.next.x) -
-        (e1.x - e1.next.x) *
-        (e2.y - e2.next.y)) < slope_precision;
+      result := abs((e1.y - e1.next.y)*(e2.x - e2.next.x) -
+        (e1.x - e1.next.x)*(e2.y - e2.next.y)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
@@ -1205,7 +1317,7 @@ begin
     e := e.prev;
   end;
 
-  //fixup by deleting duplicate points and amalgamating co-linear edges ...
+  //fixup by deleting duplicate points and merging co-linear edges ...
   FixupForDupsAndColinear(edges);
 
   e := @edges[0];
@@ -1234,6 +1346,8 @@ begin
   //make sure eHighest is positioned so the following loop works safely ...
   if eHighest.nextAtTop then eHighest := eHighest.next;
   if IsHorizontal(eHighest) then eHighest := eHighest.next;
+  //eHighest is the edge touching the top of the polygon but also
+  //just starting the descent ...
 
   //finally insert each local minima ...
   e := eHighest;
@@ -1283,10 +1397,10 @@ begin
     result := nullRect;
     exit;
   end;
-  result.Left := -horizontal; //very large and positive
-  result.Top := -horizontal;
-  result.Right := horizontal; //very large and negative
-  result.Bottom := horizontal;
+  result.Left := unassigned;
+  result.Top := unassigned;
+  result.Right := -unassigned;
+  result.Bottom := -unassigned;
   while assigned(lm) do
   begin
     if lm.leftBound.y > result.Bottom then result.Bottom := lm.leftBound.y;
@@ -1380,7 +1494,7 @@ constructor TClipper.Create;
 begin
   inherited Create;
   fPolyPtList := TList.Create;
-  fForceOrientation := true;
+  fIgnoreOrientation := false;
 end;
 //------------------------------------------------------------------------------
 
@@ -1483,37 +1597,26 @@ function TClipper.ResultAsFloatPointArray: TArrayOfArrayOfFloatPoint;
 var
   i,j,k,cnt: integer;
   pt: PPolyPt;
-  y: double;
-  isHorizontalOnly: boolean;
 begin
   k := 0;
   MergePolysWithCommonEdges;
+  for i := 0 to fPolyPtList.Count -1 do
+    if assigned(fPolyPtList[i]) then
+      fPolyPtList[i] := FixupOutPolygon(fPolyPtList[i]);
+
+  if not fIgnoreOrientation then FixOrientation;
+
   setLength(result, fPolyPtList.Count);
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
-      fPolyPtList[i] := FixupOutPolygon(fPolyPtList[i]);
-      if not assigned(fPolyPtList[i]) then continue;
       cnt := 0;
       pt := PPolyPt(fPolyPtList[i]);
-      isHorizontalOnly := true;
-      y := pt.pt.Y;
       repeat
         pt := pt.next;
-        if isHorizontalOnly and (abs(pt.pt.Y - y) > precision) then
-          isHorizontalOnly := false;
         inc(cnt);
       until (pt = PPolyPt(fPolyPtList[i]));
-      if (cnt < 3) or isHorizontalOnly then continue;
-
-      //optionally validate the orientation of simple polygons ...
-      pt := PPolyPt(fPolyPtList[i]);
-      if fForceOrientation and not ValidateOrientation(pt) then
-      begin
-        ReversePolyPtLinks(pt);
-        fPolyPtList[i] := pt.next;
-        pt := pt.next;
-      end;
+      if (cnt < 3) then continue;
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
@@ -1531,45 +1634,39 @@ end;
 function TClipper.ResultAsDoublePointArray: TArrayOfArrayOfDoublePoint;
 var
   i,j,k,cnt: integer;
-  pt: PPolyPt;
-  y: double;
-  isHorizontalOnly: boolean;
+  p: PPolyPt;
 begin
-  k := 0;
   MergePolysWithCommonEdges;
+  for i := 0 to fPolyPtList.Count -1 do
+    if assigned(fPolyPtList[i]) then
+      fPolyPtList[i] := FixupOutPolygon(fPolyPtList[i]);
+
+  if not fIgnoreOrientation then FixOrientation;
+
+  k := 0;
   setLength(result, fPolyPtList.Count);
   for i := 0 to fPolyPtList.Count -1 do
     if assigned(fPolyPtList[i]) then
     begin
-      fPolyPtList[i] := FixupOutPolygon(fPolyPtList[i]);
-      if not assigned(fPolyPtList[i]) then continue;
+      //make sure each polygons has at least 3 vertices ...
       cnt := 0;
-      pt := PPolyPt(fPolyPtList[i]);
-      isHorizontalOnly := true;
-      y := pt.pt.Y;
+      p := PPolyPt(fPolyPtList[i]);
       repeat
-        pt := pt.next;
-        if isHorizontalOnly and (abs(pt.pt.Y - y) > precision) then
-          isHorizontalOnly := false;
+        p := p.next;
         inc(cnt);
-      until (pt = PPolyPt(fPolyPtList[i]));
-      if (cnt < 3) or isHorizontalOnly then continue;
+      until (p = PPolyPt(fPolyPtList[i]));
+      if (cnt < 3) then continue;
 
-      //optionally validate the orientation of simple polygons ...
-      pt := PPolyPt(fPolyPtList[i]);
-      if fForceOrientation and not ValidateOrientation(pt) then
-      begin
-        ReversePolyPtLinks(pt);
-        fPolyPtList[i] := pt.next;
-        pt := pt.next;
-      end;
+      //nb: for those who might want to modify the TPolyPolygon struct to
+      //include orientation, p.flags will have the ofClockwise bit set when
+      //it's an outer polygon.
 
       setLength(result[k], cnt);
       for j := 0 to cnt -1 do
       begin
-        result[k][j].X := pt.pt.X;
-        result[k][j].Y := pt.pt.Y;
-        pt := pt.next;
+        result[k][j].X := p.pt.X;
+        result[k][j].Y := p.pt.Y;
+        p := p.next;
       end;
       inc(k);
     end;
@@ -1852,8 +1949,8 @@ begin
         hPt := fCurrentHorizontals[i].outPPt.pt;
         hPt2 := fCurrentHorizontals[i].pt;
         p := fCurrentHorizontals[i].outPPt;
-        if IsHorizontal(p, p.prev) and (p.prev.pt.X = hPt2.X) then p2 := p.prev
-        else if IsHorizontal(p, p.next) and (p.next.pt.X = hPt2.X) then p2 := p.next
+        if IsHorizontal(p.pt, p.prev.pt) and (p.prev.pt.X = hPt2.X) then p2 := p.prev
+        else if IsHorizontal(p.pt, p.next.pt) and (p.next.pt.X = hPt2.X) then p2 := p.next
         else continue;
 
         if HorizOverlap(hPt.X, hPt2.X, rb.x, rb.xtop) then
@@ -2111,7 +2208,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsTopHorz(horzEdge: PEdge; const XPos: double): boolean;
+function TClipper.IsTopHorz(const XPos: double): boolean;
 var
   e: PEdge;
 begin
@@ -2219,19 +2316,19 @@ begin
         //intersect with e only if e.xbot is within the bounds of horzEdge ...
         if Direction = dLeftToRight then
           IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
-            ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
+            ProtectRight[not IsTopHorz(e.xbot)])
         else
           IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
-            ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
+            ProtectLeft[not IsTopHorz(e.xbot)]);
       end
       else if (Direction = dLeftToRight) then
       begin
         IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
-          ProtectRight[not IsTopHorz(horzEdge, e.xbot)])
+          ProtectRight[not IsTopHorz(e.xbot)])
       end else
       begin
         IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
-          ProtectLeft[not IsTopHorz(horzEdge, e.xbot)]);
+          ProtectLeft[not IsTopHorz(e.xbot)]);
       end;
       SwapPositionsInAEL(horzEdge, e);
     end
@@ -2254,6 +2351,7 @@ begin
     if horzEdge.outIdx >= 0 then
       IntersectEdges(horzEdge, eMaxPair,
         DoublePoint(horzEdge.xtop, horzEdge.ybot), [ipLeft,ipRight]);
+    if eMaxPair.outIdx >= 0 then raise exception.Create(rsHorizontal);
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
   end;
@@ -2264,7 +2362,6 @@ function TClipper.InsertPolyPtBetween(const pt: TDoublePoint; pp1, pp2: PPolyPt)
 begin
   new(result);
   result.pt := pt;
-  result.isHole := sUndefined;
   if pp2 = pp1.next then
   begin
     result.next := pp2;
@@ -2295,7 +2392,8 @@ begin
     e.outIdx := fPolyPtList.Add(result);
     result.next := result;
     result.prev := result;
-    result.isHole := sUndefined;
+    result.flags := [];
+    result.dx := unassigned;
   end else
   begin
     result := nil;
@@ -2306,10 +2404,11 @@ begin
 
     new(result);
     result.pt := pt;
-    result.isHole := sUndefined;
     result.next := fp;
     result.prev := fp.prev;
     result.prev.next := result;
+    result.flags := [];
+    result.dx := unassigned;
     fp.prev := result;
     if ToFront then fPolyPtList[e.outIdx] := result;
   end;
@@ -2590,7 +2689,7 @@ begin
     (abs(e1.xtop - pt.x) < tolerance) and //nb: not precision
     (abs(e1.ytop - pt.y) < tolerance);
   e2stops := not (ipRight in protects) and not assigned(e2.nextInLML) and
-    (abs(e2.xtop - pt.x) < tolerance) and
+    (abs(e2.xtop - pt.x) < tolerance) and //nb: not precision
     (abs(e2.ytop - pt.y) < tolerance);
   e1Contributing := (e1.outIdx >= 0);
   e2contributing := (e2.outIdx >= 0);
@@ -2999,13 +3098,9 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TDoublePoint);
-var
-  pp: PPolyPt;
-  e: PEdge;
-  isAHole: boolean;
-  eX: double;
 begin
   AddPolyPt(e1, pt);
+  e2.outIdx := e1.outIdx;
 
   if IsHorizontal(e2) or (e1.dx > e2.dx) then
   begin
@@ -3016,30 +3111,6 @@ begin
     e1.side := esRight;
     e2.side := esLeft;
   end;
-
-  if fForceOrientation then
-  begin
-    pp := PPolyPt(fPolyPtList[e1.outIdx]);
-    isAHole := false;
-    e := fActiveEdges;
-    while assigned(e) do
-    begin
-      if (e = e1) or (e.outIdx < 0) then
-        //do nothing
-      else if IsHorizontal(e) and (e.x < e1.x) then
-        isAHole := not isAHole
-      else
-      begin
-        eX := TopX(e, pp.pt.Y);
-        if (eX < pp.pt.X - tolerance) or
-          ((abs(eX - pp.pt.X) < tolerance) and (e.dx >= e1.dx)) then
-            isAHole := not isAHole;
-      end;
-      e := e.nextInAEL;
-    end;
-    if isAHole then pp.isHole := sTrue else pp.isHole := sFalse;
-  end;
-  e2.outIdx := e1.outIdx;
 end;
 //------------------------------------------------------------------------------
 
@@ -3132,59 +3203,33 @@ end;
 
 procedure TClipper.MergePolysWithCommonEdges;
 var
-  i: integer;
+  i, j, newIdx: integer;
   p1, p2, pp1, pp2: PPolyPt;
-
-  function SlopesEqual(const pt1a, pt1b, pt2a, pt2b: TDoublePoint): boolean;
-  begin
-    result := abs((pt1b.Y - pt1a.Y)*(pt2b.X - pt2a.X) -
-      (pt1b.X - pt1a.X)*(pt2b.Y - pt2a.Y)) < slope_precision;
-  end;
-
-  function insertPolyPt(afterPolyPt: PPolyPt; pt: TDoublePoint): PPolyPt;
-  begin
-    new(result);
-    result.pt := pt;
-    result.prev := afterPolyPt;
-    result.next := afterPolyPt.next;
-    afterPolyPt.next.prev := result;
-    afterPolyPt.next := Result;
-    result.isHole := sUndefined;
-  end;
-
-  procedure FixupJoins(joinIdx: integer);
-  var
-    i, oldIdx, newIdx: integer;
-  begin
-    oldIdx := fJoins[joinIdx].idx2;
-    newIdx := fJoins[joinIdx].idx1;
-    for i := joinIdx+1 to high(fJoins) do
-    begin
-      if (fJoins[i].idx1 = oldIdx) then fJoins[i].idx1 := newIdx;
-      if (fJoins[i].idx2 = oldIdx) then fJoins[i].idx2 := newIdx;
-    end;
-  end;
-
 begin
   for i := 0 to high(fJoins) do
   begin
-    //It's problematic merging overlapping edges in the same output polygon.
-    //While creating 2 polygons from one would be straightforward,
-    //FixupJoins() would no longer work safely ...
-    if fJoins[i].idx1 = fJoins[i].idx2 then continue;
+    if fJoins[i].idx1 = fJoins[i].idx2 then
+    begin
+      p1 := fPolyPtList[fJoins[i].idx1];
+      p1 := FixupOutPolygon(p1, true);
+      fPolyPtList[fJoins[i].idx1] := p1;
+      if not PtIsAPolyPt(fJoins[i].pt, p1) then continue;
+      p2 := p1.next; //ie we don't want the same point as p1
+      if not PtIsAPolyPt(fJoins[i].pt, p2) or (p2 = p1) then continue;
+    end else
+    begin
+      p1 := fPolyPtList[fJoins[i].idx1];
+      p1 := FixupOutPolygon(p1, true);
+      fPolyPtList[fJoins[i].idx1] := p1;
+      //check that fJoins[i].pt is in the polygon and also update p1 so
+      //that p1.pt == fJoins[i].pt ...
+      if not PtIsAPolyPt(fJoins[i].pt, p1) then continue;
 
-    p1 := fPolyPtList[fJoins[i].idx1];
-    p1 := FixupOutPolygon(p1, true);
-    fPolyPtList[fJoins[i].idx1] := p1;
-
-    p2 := fPolyPtList[fJoins[i].idx2];
-    p2 := FixupOutPolygon(p2, true);
-    fPolyPtList[fJoins[i].idx2] := p2;
-
-    if not PtInPoly(fJoins[i].pt, p1) or
-      not PtInPoly(fJoins[i].pt, p2) then continue;
-
-    //nb: p1.pt == p2.pt;
+      p2 := fPolyPtList[fJoins[i].idx2];
+      p2 := FixupOutPolygon(p2, true);
+      fPolyPtList[fJoins[i].idx2] := p2;
+      if not PtIsAPolyPt(fJoins[i].pt, p2) then continue;
+    end;
 
     if (((p1.next.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
       ((p1.next.pt.X < p1.pt.X) and (p2.next.pt.X < p2.pt.X)) or
@@ -3192,8 +3237,9 @@ begin
       ((p1.next.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.next.pt) then
     begin
-      pp1 := insertPolyPt(p1, p1.pt);
-      pp2 := insertPolyPt(p2, p2.pt);
+      if fJoins[i].idx1 = fJoins[i].idx2 then continue;
+      pp1 := DuplicatePolyPt(p1);
+      pp2 := DuplicatePolyPt(p2);
       ReversePolyPtLinks(p2);
       pp1.prev := pp2;
       pp2.next := pp1;
@@ -3206,12 +3252,12 @@ begin
       ((p1.next.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.next.pt, p2.pt, p2.prev.pt) then
     begin
-      pp1 := insertPolyPt(p1, p1.pt);
-      pp2 := insertPolyPt(p2.prev, p2.pt);
-      p1.next := p2;
-      p2.prev := p1;
-      pp2.next := pp1;
-      pp1.prev := pp2;
+      pp1 := DuplicatePolyPt(p1);
+      pp2 := DuplicatePolyPt(p2);
+      p1.next := pp2;
+      pp2.prev := p1;
+      p2.next := pp1;
+      pp1.prev := p2;
     end
     else if (((p1.prev.pt.X > p1.pt.X) and (p2.next.pt.X > p2.pt.X)) or
       ((p1.prev.pt.X < p1.pt.X) and (p2.next.pt.X < p2.pt.X)) or
@@ -3219,12 +3265,12 @@ begin
       ((p1.prev.pt.Y < p1.pt.Y) and (p2.next.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.next.pt) then
     begin
-      pp1 := insertPolyPt(p1.prev, p1.pt);
-      pp2 := insertPolyPt(p2, p2.pt);
-      pp1.next := pp2;
-      pp2.prev := pp1;
-      p1.prev := p2;
-      p2.next := p1;
+      pp1 := DuplicatePolyPt(p1);
+      pp2 := DuplicatePolyPt(p2);
+      p1.next := pp2;
+      pp2.prev := p1;
+      pp1.prev := p2;
+      p2.next := pp1;
     end
     else if (((p1.prev.pt.X > p1.pt.X) and (p2.prev.pt.X > p2.pt.X)) or
       ((p1.prev.pt.X < p1.pt.X) and (p2.prev.pt.X < p2.pt.X)) or
@@ -3232,22 +3278,447 @@ begin
       ((p1.prev.pt.Y < p1.pt.Y) and (p2.prev.pt.Y < p2.pt.Y))) and
       SlopesEqual(p1.pt, p1.prev.pt, p2.pt, p2.prev.pt) then
     begin
-      pp1 := insertPolyPt(p1.prev, p1.pt);
-      pp2 := insertPolyPt(p2.prev, p2.pt);
-      ReversePolyPtLinks(p2);
-      p1.prev := p2;
-      p2.next := p1;
-      pp1.next := pp2;
-      pp2.prev := pp1;
+      if fJoins[i].idx1 = fJoins[i].idx2 then continue;
+      pp1 := DuplicatePolyPt(p1);
+      pp2 := DuplicatePolyPt(p2);
+      ReversePolyPtLinks(pp2);
+      pp1.prev := pp2;
+      pp2.next := pp1;
+      p1.next := p2;
+      p2.prev := p1;
     end
     else
       continue;
 
-    //When polygons are joined, pointers referencing a 'deleted' polygon
-    //must point to the merged polygon ...
-    fPolyPtList[fJoins[i].idx2] := nil;
-    FixupJoins(i);
+    if fJoins[i].idx1 = fJoins[i].idx2 then
+    begin
+      //When an edge join occurs within the same polygon, then
+      //that polygon effectively splits into 2 polygons ...
+      p1 := FixupOutPolygon(p1, true);
+      fPolyPtList[fJoins[i].idx1] := p1;
+      p2 := FixupOutPolygon(p2, true);
+      newIdx := fPolyPtList.Add(p2);
+      for j := i+1 to high(fJoins) do
+      begin
+        if (fJoins[j].idx1 = fJoins[i].idx1) and
+          PtIsAPolyPt(fJoins[j].pt, p2) then
+            fJoins[j].idx1 := newIdx;
+        if (fJoins[j].idx2 = fJoins[i].idx1) and
+          PtIsAPolyPt(fJoins[j].pt, p2) then
+            fJoins[j].idx1 := newIdx;
+      end;
+    end else
+    begin
+      //When 2 polygons are merged (joined), pointers referencing the
+      //'deleted' polygon must now point to the 'merged' polygon ...
+      fPolyPtList[fJoins[i].idx2] := nil;
+      for j := i+1 to high(fJoins) do
+      begin
+        if (fJoins[j].idx1 = fJoins[i].idx2) then
+          fJoins[j].idx1 := fJoins[i].idx1;
+        if (fJoins[j].idx2 = fJoins[i].idx2) then
+          fJoins[j].idx2 := fJoins[i].idx1;
+      end;
+    end;
   end;
+end;
+//------------------------------------------------------------------------------
+
+function SetDx(pp: PPolyPt): double; overload;
+var
+  dx, dy: double;
+  pp2: PPolyPt;
+begin
+  if pp.dx = unassigned then
+  begin
+    if ofForwardBound in pp.flags then pp2 := pp.next else pp2 := pp.prev;
+    dx := abs(pp.pt.X - pp2.pt.X);
+    dy := abs(pp.pt.Y - pp2.pt.Y);
+    if ((dx < 0.1) and  (dy *10 < dx)) or (dy < precision) then
+      pp.dx := horizontal else
+      pp.dx := (pp.pt.X - pp2.pt.X)/(pp.pt.Y - pp2.pt.Y);
+  end;
+  result := pp.dx;
+end;
+//------------------------------------------------------------------------------
+
+function CompareForwardAngles(p1, p2: PPolyPt): integer;
+var
+  p1a, p1b, p1c, p2a, p2b, p2c: TDoublePoint;
+  r1, r2: double;
+  p1Forward, p2Forward: boolean;
+  pTmp: PPolyPt;
+
+  procedure NextPoint(var p: PPolyPt; goingForward: boolean);
+  begin
+    if goingForward then
+    begin
+      while PointsEqual(p.pt, p.next.pt) do p := p.next;
+      p := p.next;
+    end else
+    begin
+      while PointsEqual(p.pt, p.prev.pt) do p := p.prev;
+      p := p.prev;
+    end;
+  end;
+
+begin
+  //preconditions:
+  //1. p1a == p2a
+  //2. p1->p1nextInBound is colinear with p2->p2nextInBound
+
+  p1Forward := (ofForwardBound in p1.flags);
+  p2Forward := (ofForwardBound in p2.flags);
+  pTmp := nil;
+  p1c := p1.pt; p2c := p2.pt; p1b := p1c; p2b := p2c;
+  repeat
+    p1a := p1b; p2a := p2b; p1b := p1c; p2b := p2c;
+    NextPoint(p1, p1Forward);
+    NextPoint(p2, p2Forward);
+
+    //the following avoids a very rare endless loop where the
+    //p1 & p2 polys are almost identical except for their orientations ...
+    if pTmp = nil then pTmp := p1
+    else if (pTmp = p1) then
+    begin
+      if PointsEqual(p1c, p2c) then
+      begin
+        result := 1;
+        exit;
+      end else break;
+    end;
+
+    p1c := p1.pt; p2c := p2.pt;
+  until not PointsEqual(p1c, p2c);
+
+  //and now ... p1c != p2c ...
+  if PointsEqual(p1a, p1b) or
+    PointsEqual(GetUnitNormal(p1b, p1c),GetUnitNormal(p2b, p2c)) then
+  begin
+    //we have parallel edges of unequal length ...
+    if DistanceSqr(p1b, p1c) < DistanceSqr(p2b, p2c) then
+    begin
+      p1a := p1b; p1b := p1c;
+      NextPoint(p1, p1Forward);
+      r1 := GetR(p1a, p1b, p1.pt);
+      if r1 > tolerance then result := 1
+      else if r1 < -tolerance then result := -1
+      else raise exception.Create(rsCompareForwardAngles);
+    end else
+    begin
+      p2a := p2b; p2b := p2c;
+      NextPoint(p2, p2Forward);
+      r2 := GetR(p2a, p2b, p2.pt);
+      if r2 > tolerance then result := -1
+      else if r2 < -tolerance then result := 1
+      else raise exception.Create(rsCompareForwardAngles);
+    end;
+  end else
+  begin
+    r1 := GetR(p1a, p1b, p1c);
+    r2 := GetR(p2a, p2b, p2c);
+    if r1 > r2 + tolerance then result := 1
+    else if r1 < r2 - tolerance then result := -1
+    else raise exception.Create(rsCompareForwardAngles);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function blCompare(item1, item2: pointer): integer;
+var
+  pp1, pp2: PPolyPt;
+  dx1, dx2: double;
+begin
+  pp1 := PPolyPt(item1);
+  pp2 := PPolyPt(item2);
+  if pp2.pt.Y > pp1.pt.Y + precision then result := -1
+  else if pp2.pt.Y < pp1.pt.Y - precision  then result := +1
+  else if pp2.pt.X < pp1.pt.X - precision  then result := -1
+  else if pp2.pt.X > pp1.pt.X + precision  then result := +1
+  else if item1 = item2 then result := 0
+  else
+  begin
+    dx1 := SetDx(pp1); dx2 := SetDx(pp2);
+    if (dx1 < dx2 - precision) then result := -1
+    else if (dx1 > dx2 + precision) then result := +1
+    else result := CompareForwardAngles(pp1, pp2);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function wlCompare(item1, item2: pointer): integer;
+var
+  pp1, pp2, pp1Next, pp2Next: PPolyPt;
+  r, dx1, dx2, pp1X: double;
+begin
+  //nb: 1. when item1 < item2, result = 1; when item2 < item1, result = -1
+  //    2. wlCompare is only ever used for insertions into the skiplist.
+  //    3. item2 is always the item being inserted.
+  pp1 := PPolyPt(item1);
+  pp2 := PPolyPt(item2);
+  if (ofForwardBound in pp1.flags) then
+    pp1Next := pp1.next else
+    pp1Next := pp1.prev;
+
+  if item1 = item2 then result := 0
+  //given pp1 and pp1Next represent the p1 edge at Y coordinate pp2.pt.Y,
+  //if the x coords of this edge are both before or both after pp2's x coord,
+  //then this edge (and its polygon) must respectively precede or follow pp2 ...
+  else if (pp1.pt.X < pp2.pt.X - tolerance) and
+    (pp1Next.pt.X < pp2.pt.X + tolerance) then result := 1
+  else if (pp1.pt.X > pp2.pt.X + tolerance) and
+    (pp1Next.pt.X > pp2.pt.X - tolerance) then result := -1
+  else if PointsEqual(pp1.pt, pp2.pt) then
+  begin
+    //compare slopes of edge pp1->pp1Next & edge pp2->pp2Next ...
+
+    dx1 := SetDx(pp1); dx2 := SetDx(pp2);
+    //dx1 should never be horizontal, but if dx2 is horizontal ...
+    if dx2 = horizontal then
+    begin
+      if (ofForwardBound in pp2.flags) then
+        pp2Next := pp2.next else
+        pp2Next := pp2.prev;
+      if pp2Next.pt.X < pp1.pt.X then result := -1 else result := 1;
+    end
+    else if (dx1 < dx2 - precision) then result := -1
+    else if (dx1 > dx2 + precision) then result := 1
+    //if these slopes are both equal then ...
+    else result := CompareForwardAngles(pp1, pp2);
+  end else
+  begin
+    SetDx(pp1);
+    if pp1.dx = horizontal then
+    begin
+      if ofForwardBound in pp1.flags then pp2 := pp1.next else pp2 := pp1.prev;
+      if pp2.pt.X > pp1.pt.X then result := -1 else result := 1;
+      exit;
+    end;
+    pp1X := pp1.pt.X + (pp2.pt.Y - pp1.pt.Y) * pp1.dx;
+    if (pp1X < pp2.pt.X - precision) then result := 1
+    else if (pp1X > pp2.pt.X + precision) then result := -1
+    else
+    begin
+      //presumably pp1 is below pp2 to get here and the edge bounded by
+      //pp1->pp1Next touches pp2.pt.
+      if (ofForwardBound in pp2.flags) then
+        pp2Next := pp2.next else
+        pp2Next := pp2.prev;
+
+      result := 1;
+      pp1Next := pp2Next;
+      //given that edge pp2->pp2Next can't intersect pp1->pp1Next, if the angle
+      //made by pp1->pp2 & pp2->pp2Next turns to the right (ie GetR > 0) then
+      //the polygon owning pp2 must be to the right of the polygon owning pp1.
+      repeat
+        r := GetR(pp1.pt, pp2.pt, pp2Next.pt);
+        if abs(r) < precision then //ie parallel
+        begin
+         if (ofForwardBound in pp2.flags) then
+          pp2Next := pp2Next.next else
+          pp2Next := pp2Next.prev;
+          continue;
+        end
+        else if r > 0 then result := -1
+        else result := 1;
+        break;
+      until pp2Next = pp1Next; //ie avoids a very rare endless loop
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.FixOrientation;
+var
+  i: integer;
+  p, lowestP: PPolyPt;
+  worklist, queue: TSkipList;
+  sn, sn2: PSkipNode;
+  tmpFlag: TOrientationFlags;
+  isCW, lowestPending: boolean;
+
+  function NextIsBottom(p: PPolyPt): boolean;
+  var
+    pp: PPolyPt;
+  begin
+    pp := p.next;
+    while (pp.next.pt.Y = pp.pt.Y) do pp := pp.next;
+    if pp.next.pt.Y > pp.pt.Y then result := false
+    else result := true;
+  end;
+
+  procedure UpdateBounds(sn: PSkipNode; const Y: double);
+  var
+    pp, pp2: PPolyPt;
+  begin
+    pp := PPolyPt(sn.item);
+    while true do
+    begin
+      if ofForwardBound in pp.flags then
+        pp2 := pp.next else pp2 := pp.prev;
+      if (pp2.pt.Y < Y - tolerance) then break;
+      pp := pp2;
+      if (ofTop in pp.flags) then break;
+    end;
+    //if we've reached the top of this bound then remove it from worklist ...
+    if (ofTop in pp.flags) then
+      //nb: DeleteItem() isn't safe here because of how
+      //wCompare function works. Hence we use Delete() instead ...
+      worklist.Delete(sn) else
+      sn.item := pp;
+  end;
+
+begin
+  //Preconditions:
+  //1. All output polygons are simple polygons (ie no self-intersecting edges)
+  //2. While output polygons may touch, none of them overlap other polygons.
+  queue := TSkipList.Create(blCompare);
+  worklist := TSkipList.Create(wlCompare);
+  try
+    for i := 0 to fPolyPtList.Count -1 do
+      if assigned(fPolyPtList[i]) then
+      begin
+        //first, find the lowest left most PPolyPt for each polygon ...
+        p := PPolyPt(fPolyPtList[i]);
+
+        lowestP := p;
+        p := p.next;
+        repeat
+          if p.pt.Y > lowestP.pt.Y then lowestP := p
+          else if (p.pt.Y = lowestP.pt.Y) and
+            (p.pt.X <= lowestP.pt.X) then lowestP := p;
+          p := p.next;
+        until (p = fPolyPtList[i]);
+
+        //dispose of any invalid polygons here ...
+        p := lowestP;
+        if (p.next = p) or (p.prev = p.next) then
+        begin
+          DisposePolyPts(p);
+          fPolyPtList[i] := nil;
+          continue;
+        end;
+        fPolyPtList[i] := lowestP;
+        if IsClockwise(lowestP) then tmpFlag := [ofCW] else tmpFlag := [];
+        lowestP.flags := tmpFlag;
+        lowestPending := true;
+
+        //loop around the polygon, build 'bounds' for each polygon
+        //and add them to the queue ...
+        repeat
+          while p.next.pt.Y = p.pt.Y do p := p.next; //ignore horizontals
+          p.flags := tmpFlag + [ofForwardBound];
+          if lowestPending and (ofCW in lowestP.flags) then
+          begin
+            include(p.flags, ofBottomMinima);
+            lowestPending := false;
+          end;
+
+          queue.InsertItem(p);
+          //go up the bound ...
+          while (p.next.pt.Y <= p.pt.Y) do
+          begin
+            p.next.flags := tmpFlag + [ofForwardBound];
+            p := p.next;
+          end;
+          Include(p.flags, ofTop);
+          //now add the reverse bound (also reversing the bound direction) ...
+          while not NextIsBottom(p) do
+          begin
+            p.next.flags := tmpFlag;
+            p := p.next;
+          end;
+
+          if (p.next.pt.Y = p.next.next.pt.Y) then
+          begin
+            p := p.next;
+            p.flags := tmpFlag;
+            if not (ofCW in lowestP.flags) and PointsEqual(p.pt, lowestP.pt) and
+              lowestPending then
+            begin
+              include(p.flags, ofBottomMinima);
+              lowestPending := false;
+            end;
+            queue.InsertItem(p);
+            while (p <> lowestP) and (p.next.pt.Y = p.pt.Y) do
+              p := p.next;
+          end else
+          begin
+            p := DuplicatePolyPt(p);
+            p.pt := p.next.pt;
+            p.flags := tmpFlag;
+            if not (ofCW in lowestP.flags) and PointsEqual(p.pt, lowestP.pt) then
+              include(p.flags, ofBottomMinima);
+            queue.InsertItem(p);
+            p := p.next;
+            while (p <> lowestP) and (p.next.pt.Y = p.prev.pt.Y) do
+              p := p.next;
+          end;
+        until (p = lowestP);
+      end;
+
+      if queue.Count = 0 then exit;
+      p := PPolyPt(queue.PopFirst);
+
+      worklist.InsertItem(p);
+      include(p.flags, ofClockwise);
+
+      while true do
+      begin
+        p := PPolyPt(queue.PopFirst);
+        if not assigned(p) then break;
+
+        sn := worklist.first;
+        while assigned(sn) do
+        begin
+          //get the next item in workList in case sn is about to be removed ...
+          sn2 := sn.next[0];
+          //update each bound, keeping them level with the new bound 'p'
+          //and removing bounds that are no longer in scope ...
+          //nb: Bounds never intersect other bounds so UpdateBounds() should
+          //not upset the order of the bounds in worklist.
+          UpdateBounds(sn, p.pt.Y);
+          sn := sn2;
+        end;
+
+        //insert the new bound into worklist ...
+        sn := worklist.InsertItem(p);
+
+        //if this is the bottom bound of a polyon,
+        //then calculate the polygon's true orientation ...
+        if (ofBottomMinima in p.flags) then
+        begin
+          sn2 := worklist.First;
+          isCW := true;
+          while sn2 <> sn do
+          begin
+            isCW := not isCW;
+            sn2 := sn2.next[0];
+          end;
+          if isCW then include(p.flags, ofClockwise);
+        end;
+      end;
+  finally
+    queue.Free;
+    worklist.Free;
+  end;
+
+  for i := 0 to fPolyPtList.Count -1 do
+    if assigned(fPolyPtList[i]) then
+    begin
+      p := PPolyPt(fPolyPtList[i]);
+      repeat
+        if ofBottomMinima in p.flags then break;
+        p := p.next;
+      until p = PPolyPt(fPolyPtList[i]);
+      if not (ofBottomMinima in p.flags) then
+        raise exception.Create(rsFixOrientations);
+      if not (p.flags * [ofCW,ofClockwise] = [ofCW,ofClockwise]) and not
+        (p.flags * [ofCW,ofClockwise] = []) then
+          ReversePolyPtLinks(PPolyPt(fPolyPtList[i]));
+      p := FixupOutPolygon2(p);
+      fPolyPtList[i] := p;
+    end;
 end;
 //------------------------------------------------------------------------------
 
