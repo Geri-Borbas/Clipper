@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2 (beta)                                                    *
-* Date      :  26 January 2011                                                 *
+* Version   :  3.0.2                                                           *
+* Date      :  5 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -37,9 +37,9 @@ using System.Collections.Generic;
 namespace Clipper
 {
     using TPolygon = List<TDoublePoint>;
+    using TPolyPolygon = List<List<TDoublePoint>>;
     using PolyPtList = List<TPolyPt>;
     using JoinList = List<TJoinRec>;
-    using TPolyPolygon = List<List<TDoublePoint>>;
 
     public enum TClipType { ctIntersection, ctUnion, ctDifference, ctXor };
     public enum TPolyType { ptSubject, ptClip };
@@ -173,7 +173,7 @@ namespace Clipper
             m_CompareFunc = new  compareFunc(cf);
             m_rand = new Random();
 
-            m_MaxLevel = Convert.ToInt32( Math.Ceiling( Math.Log(maxItems) / Math.Log(skip) )); //MaxLevel =12
+            m_MaxLevel = Convert.ToInt32(Math.Ceiling(Math.Log(maxItems) / Math.Log(skip))); //MaxLevel =12
             m_SkipFrac = 1 / skip;
 
             //create and initialize the base node ...
@@ -289,8 +289,8 @@ namespace Clipper
 
           //get the level of the new node ...
           int newLevel = 0;
-          while ( newLevel <= m_CurrentMaxLevel && newLevel < m_MaxLevel-1 &&
-            (double)(m_rand.Next(1000))/1000 < m_SkipFrac ) newLevel++;
+          while (newLevel <= m_CurrentMaxLevel && newLevel < m_MaxLevel - 1 &&
+            m_rand.Next(1000) < m_SkipFrac *1000) newLevel++;
           if (newLevel > m_CurrentMaxLevel) m_CurrentMaxLevel = newLevel;
 
           //create the new node and rearrange links up to newLevel ...
@@ -1042,11 +1042,11 @@ namespace Clipper
         private TEdge m_SortedEdges;
         private TIntersectNode m_IntersectNodes;
         private bool m_ExecuteLocked;
-        private bool m_IgnoreOrientation;
         private TPolyFillType m_ClipFillType;
         private TPolyFillType m_SubjFillType;
         private double m_IntersectTolerance;
-
+        private bool m_IgnoreOrientation;
+        public bool IgnoreOrientation { get { return m_IgnoreOrientation; } set { m_IgnoreOrientation = value; } }
         //------------------------------------------------------------------------------
 
         public TClipper()
@@ -2489,36 +2489,23 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IgnoreOrientation()
-        {
-            return m_IgnoreOrientation;
-        }
-        //------------------------------------------------------------------------------
-
-        private void IgnoreOrientation(bool value)
-        {
-            m_IgnoreOrientation = value;
-        }
-        //------------------------------------------------------------------------------
-
         private TEdge BubbleSwap(TEdge edge)
         {
-            int cnt = 1;
+            int n = 1;
             TEdge result = edge.nextInAEL;
             while (result != null && (Math.Abs(result.xbot - edge.xbot) <= tolerance))
             {
-                ++cnt;
+                ++n;
                 result = result.nextInAEL;
             }
-
-            //let e = no edges in a complex intersection
-            //let cnt = no intersection ops between those edges at that intersection
-            //then ... e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
-            //series s (where s = intersections per no edges) ... s = 0,1,3,6,10,15 ...
-            //generalising: given i = e-1, and s[0] = 0, then ... cnt = i + s[i-1]
-            //example: no. intersect ops required by 4 edges in a complex intersection ...
-            //         cnt = 3 + 2 + 1 + 0 = 6 intersection ops
-            if (cnt > 2)
+            //if more than 2 edges intersect at a given point then there are multiple
+            //intersections at this point between all the edges. Therefore ...
+            //let n = no. edges intersecting at a given point.
+            //given f(n) = no. intersections between n edges at a given point, & f(0) = 0
+            //then f(n) = f(n-1) + n-1;
+            //therefore 1 edge -> 0 intersections; 2 -> 1; 3 -> 3; 4 -> 6; 5 -> 10 etc.
+            //nb: coincident edges will cause unexpected f(n) values.
+            if (n > 2)
             {
                 //create the sort list ...
                 try
@@ -2526,11 +2513,11 @@ namespace Clipper
                     m_SortedEdges = edge;
                     edge.prevInSEL = null;
                     TEdge e = edge.nextInAEL;
-                    for (int i = 2; i <= cnt; ++i)
+                    for (int i = 2; i <= n; ++i)
                     {
                         e.prevInSEL = e.prevInAEL;
                         e.prevInSEL.nextInSEL = e;
-                        if (i == cnt) e.nextInSEL = null;
+                        if (i == n) e.nextInSEL = null;
                         e = e.nextInAEL;
                     }
                     while (m_SortedEdges != null && m_SortedEdges.nextInSEL != null)

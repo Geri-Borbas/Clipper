@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2 (beta)                                                    *
-* Date      :  26 January 2011                                                 *
+* Version   :  3.0.2                                                           *
+* Date      :  5 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -44,8 +44,8 @@ type
     item: pointer;
     level: integer;
     prev: PSkipNode; //ie TSkipNodes form a double linked list
-    next: array [0..15] of PSkipNode;
-    //nb: we never require (nor allocate memory for) anywhere near 16 levels.
+    next: array [0..31] of PSkipNode;
+    //nb: we never require (nor allocate memory for) anywhere near 32 levels.
     //The upper array bound depends on (a.) the skip size (currently hardcoded
     //to 4 in TSkipList's constructor), and (b.) the maximum likely number of
     //items in the list. Assuming a skip size of 4 and no more than 10 million
@@ -2896,36 +2896,35 @@ end;
 
 function TClipper.BubbleSwap(edge: PEdge): PEdge;
 var
-  i, cnt: integer;
+  i, n: integer;
   e: PEdge;
 begin
-  cnt := 1;
+  n := 1; //no. edges intersecting at the same point.
   result := edge.nextInAEL;
   while assigned(result) and (abs(result.xbot - edge.xbot) <= tolerance) do
   begin
-    inc(cnt);
+    inc(n);
     result := Result.nextInAEL;
   end;
-  //let e = no edges in a complex intersect (ie >2 edges intersect at same pt).
-  //if cnt = no intersection ops between those edges at that intersection
-  //then ... when e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
-  //series s (where s = intersections per no edges) ... s = 0,1,3,6,10,15 ...
-  //generalising: given i = e-1, and s[0] = 0, then ... cnt = i + s[i-1]
-  //example: no. intersect ops required by 4 edges in a complex intersection ...
-  //         cnt = 3 + 2 + 1 + 0 = 6 intersection ops
-  //nb: parallel edges within intersections will cause unexpected cnt values.
-  if cnt > 2 then
+  //if more than 2 edges intersect at a given point then there are multiple
+  //intersections at this point between all the edges. Therefore ...
+  //let n = no. edges intersecting at a given point.
+  //given f(n) = no. intersections between n edges at a given point, & f(0) = 0
+  //then f(n) = f(n-1) + n-1;
+  //therefore 1 edge -> 0 intersections; 2 -> 1; 3 -> 3; 4 -> 6; 5 -> 10 etc.
+  //nb: coincident edges will cause unexpected f(n) values.
+  if n > 2 then
   begin
     try
       //create the sort list ...
       fSortedEdges := edge;
       edge.prevInSEL := nil;
       e := edge.nextInAEL;
-      for i := 2 to cnt do
+      for i := 2 to n do
       begin
         e.prevInSEL := e.prevInAEL;
         e.prevInSEL.nextInSEL := e;
-        if i = cnt then e.nextInSEL := nil;
+        if i = n then e.nextInSEL := nil;
         e := e.nextInAEL;
       end;
 
@@ -2940,7 +2939,7 @@ begin
         begin
           if (e.nextInSEL.dx > e.dx) then
           begin
-            IntersectEdges(e, e.nextInSEL, //param order important here
+            IntersectEdges(e, e.nextInSEL, //param order is important here
               DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapPositionsInSEL(e, e.nextInSEL);

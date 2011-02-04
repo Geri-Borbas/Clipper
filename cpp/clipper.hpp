@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2 (beta)                                                    *
-* Date      :  26 January 2011                                                 *
+* Version   :  3.0.2                                                           *
+* Date      :  5 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -276,7 +276,7 @@ class clipperException : public std::exception
     int m_CurrentMaxLevel;
     SkipNode* m_Base;
     int m_Count;
-    SkipNode* m_Lvls[16];
+    SkipNode* m_Lvls[32];
     SkipNode* NewNode(int level, T item);
     compareFunc m_CompareFunc;
   };

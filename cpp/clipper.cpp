@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2 (beta)                                                    *
-* Date      :  26 January 2011                                                 *
+* Version   :  3.0.2                                                           *
+* Date      :  5 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -61,7 +61,7 @@ SkipList<T>::SkipList( compareFunc cf ): m_CompareFunc(cf)
   const double skip = 4;
   std::srand ( std::time(0) );
 
-  m_MaxLevel = std::floor( std::log(maxItems)/std::log(skip) ) +1;//MaxLevel =12
+  m_MaxLevel = std::ceil( std::log(maxItems)/std::log(skip) );//MaxLevel =12
   m_SkipFrac = 1/skip;
 
   //create and initialize the base node ...
@@ -136,7 +136,7 @@ SkipNode* SkipList<T>::InsertItem(T item)
   //get the level of the new node ...
   int newLevel = 0;
   while ( newLevel <= m_CurrentMaxLevel && newLevel < m_MaxLevel-1 &&
-    (double)(std::rand() % 1000)/1000 < m_SkipFrac ) newLevel++;
+    (std::rand() % 1000) < m_SkipFrac*1000 ) newLevel++;
   if (newLevel > m_CurrentMaxLevel) m_CurrentMaxLevel = newLevel;
 
   //create the new node and rearrange links up to newLevel ...
@@ -378,13 +378,11 @@ bool PointsEqual( const double &pt1x, const double &pt1y,
 
 TDoublePoint GetUnitNormal( const TDoublePoint &pt1, const TDoublePoint &pt2)
 {
-  using namespace std; //because hypot() isn't always in std namespace
-
   double dx = ( pt2.X - pt1.X );
   double dy = ( pt2.Y - pt1.Y );
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
-  double f = 1 *1.0/ hypot( dx , dy );
+  double f = 1 *1.0/ std::sqrt( dx*dx + dy*dy );
   dx = dx * f;
   dy = dy * f;
   return DoublePoint(dy, -dx);
@@ -2278,33 +2276,32 @@ void Clipper::IgnoreOrientation(bool value){
 
 TEdge* Clipper::BubbleSwap(TEdge *edge)
 {
-  int cnt = 1;
+  int n = 1;
   TEdge* result = edge->nextInAEL;
   while( result  && ( std::fabs(result->xbot - edge->xbot) <= tolerance ) )
   {
-    ++cnt;
+    ++n;
     result = result->nextInAEL;
   }
-
-  //let e = no edges in a complex intersection
-  //let cnt = no intersection ops between those edges at that intersection
-  //then ... e =1, cnt =0; e =2, cnt =1; e =3, cnt =3; e =4, cnt =6; ...
-  //series s (where s = intersections per no edges) ... s = 0,1,3,6,10,15 ...
-  //generalising: given i = e-1, and s[0] = 0, then ... cnt = i + s[i-1]
-  //example: no. intersect ops required by 4 edges in a complex intersection ...
-  //         cnt = 3 + 2 + 1 + 0 = 6 intersection ops
-  if( cnt > 2 )
+  //if more than 2 edges intersect at a given point then there are multiple
+  //intersections at this point between all the edges. Therefore ...
+  //let n = no. edges intersecting at a given point.
+  //given f(n) = no. intersections between n edges at a given point, & f(0) = 0
+  //then f(n) = f(n-1) + n-1;
+  //therefore 1 edge -> 0 intersections; 2 -> 1; 3 -> 3; 4 -> 6; 5 -> 10 etc.
+  //nb: coincident edges will cause unexpected f(n) values.
+  if( n > 2 )
   {
     //create the sort list ...
     try {
       m_SortedEdges = edge;
       edge->prevInSEL = 0;
       TEdge *e = edge->nextInAEL;
-      for( int i = 2 ; i <= cnt ; ++i )
+      for( int i = 2 ; i <= n ; ++i )
       {
         e->prevInSEL = e->prevInAEL;
         e->prevInSEL->nextInSEL = e;
-        if(  i == cnt ) e->nextInSEL = 0;
+        if(  i == n ) e->nextInSEL = 0;
         e = e->nextInAEL;
       }
       while( m_SortedEdges  && m_SortedEdges->nextInSEL )
