@@ -11,11 +11,11 @@
 #include "agg_conv_clip_polygon.h"
 #include "agg_gsv_text.h"
 #include "agg_pixfmt_rgb.h"
-#include "platform/agg_platform_support.h"
+#include "agg_platform_support.h"
 
-#include "ctrl/agg_slider_ctrl.h"
-#include "ctrl/agg_cbox_ctrl.h"
-#include "ctrl/agg_rbox_ctrl.h"
+#include "agg_slider_ctrl.h"
+#include "agg_cbox_ctrl.h"
+#include "agg_rbox_ctrl.h"
 
 #include "agg_conv_clipper.h"
 
@@ -181,7 +181,7 @@ public:
             double t2 = elapsed_time();
 
             char buf[100];
-            sprintf(buf, "Contours: %d      Points: %d", counter.m_contours, counter.m_points);
+            sprintf_s(buf, "Contours: %d      Points: %d", counter.m_contours, counter.m_points);
             agg::gsv_text txt;
             agg::conv_stroke<agg::gsv_text> txt_stroke(txt);
             txt_stroke.width(1.5);
@@ -193,7 +193,7 @@ public:
             ren.color(agg::rgba(0.0, 0.0, 0.0));
             agg::render_scanlines(ras, sl, ren);
 
-            sprintf(buf, "Clipper=%.3fms Render=%.3fms", t1, t2);
+            sprintf_s(buf, "Clipper=%.3fms Render=%.3fms", t1, t2);
             txt.start_point(250, 20);
             txt.text(buf);
             ras.add_path(txt_stroke);
@@ -603,7 +603,7 @@ public:
         if(flags & agg::mouse_right)
         {
             char buf[100];
-            sprintf(buf, "%d %d", x, y);
+            sprintf_s(buf, "%d %d", x, y);
             message(buf);
         }
     }
@@ -624,7 +624,6 @@ public:
 };
 
 
-
 int agg_main(int argc, char* argv[])
 {
     the_application app(agg::pix_format_bgr24, flip_y);
@@ -634,7 +633,7 @@ int agg_main(int argc, char* argv[])
     {
         return app.run();
     }
-    return 1;
+    return 0;
 }
 
 

@@ -45,17 +45,17 @@ namespace agg
   private:
     source_a_type*							m_src_a;
     source_b_type*							m_src_b;
-    status									    m_status;
-    int										      m_vertex;
-    int										      m_contour;
-    clipper_op_e							  m_operation;
+    status									m_status;
+    int										m_vertex;
+    int										m_contour;
+    clipper_op_e							m_operation;
     pod_bvector<clipper::TDoublePoint, 8>	m_vertex_accumulator;
     clipper::TPolyPolygon					m_poly_a;
     clipper::TPolyPolygon					m_poly_b;
     clipper::TPolyPolygon					m_result;
-    clipper::Clipper						  m_clipper;
-    clipper_PolyFillType          m_subjFillType;
-    clipper_PolyFillType          m_clipFillType;
+    clipper::Clipper						m_clipper;
+    clipper_PolyFillType					m_subjFillType;
+    clipper_PolyFillType					m_clipFillType;
 
   public:
     conv_clipper(source_a_type &a, source_b_type &b,
@@ -71,7 +71,7 @@ namespace agg
         m_subjFillType(subjFillType),
         m_clipFillType(clipFillType)
     {
-      m_clipper.ForceOrientation(true);
+      m_clipper.IgnoreOrientation(false);
     }
 
     ~conv_clipper()
