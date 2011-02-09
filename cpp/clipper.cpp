@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2                                                           *
-* Date      :  5 February 2011                                                 *
+* Version   :  3.0.3                                                           *
+* Date      :  9 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -465,18 +465,17 @@ bool IsHorizontal(TDoublePoint pt1, TDoublePoint pt2)
 
 void SetDx(TEdge &e)
 {
-  double dx = std::fabs(e.x - e.next->x);
-  double dy = std::fabs(e.y - e.next->y);
+  double dx = std::fabs(e.xbot - e.next->xbot);
+  double dy = std::fabs(e.ybot - e.next->ybot);
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision )
   {
     e.dx = horizontal;
-    if (e.y != e.next->y) e.y = e.next->y;
+    if (e.ybot != e.next->ybot) e.ybot = e.next->ybot;
   }
-  else e.dx =
-    (e.x - e.next->x)/(e.y - e.next->y);
+  else e.dx = (e.xbot - e.next->xbot)/(e.ybot - e.next->ybot);
 }
 //------------------------------------------------------------------------------
 
@@ -499,7 +498,7 @@ void SwapPolyIndexes(TEdge &edge1, TEdge &edge2)
 double TopX(TEdge *edge, const double &currentY)
 {
   if(  currentY == edge->ytop ) return edge->xtop;
-  return edge->x + edge->dx *( currentY - edge->y );
+  return edge->xbot + edge->dx *( currentY - edge->ybot );
 }
 //------------------------------------------------------------------------------
 
@@ -513,8 +512,8 @@ bool SlopesEqual(TEdge &e1, TEdge &e2)
 {
   if (IsHorizontal(e1)) return IsHorizontal(e2);
   if (IsHorizontal(e2)) return false;
-  return std::fabs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
-      (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
+  return std::fabs((e1.ytop - e1.ybot)*(e2.xtop - e2.xbot) -
+      (e1.xtop - e1.xbot)*(e2.ytop - e2.ybot)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -535,21 +534,21 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2, TDoublePoint &ip)
   double b1, b2;
   if(  edge1.dx == 0 )
   {
-    ip.X = edge1.x;
-    b2 = edge2.y - edge2.x/edge2.dx;
+    ip.X = edge1.xbot;
+    b2 = edge2.ybot - edge2.xbot/edge2.dx;
     ip.Y = ip.X/edge2.dx + b2;
   }
   else if(  edge2.dx == 0 )
   {
-    ip.X = edge2.x;
-    b1 = edge1.y - edge1.x/edge1.dx;
+    ip.X = edge2.xbot;
+    b1 = edge1.ybot - edge1.xbot/edge1.dx;
     ip.Y = ip.X/edge1.dx + b1;
   }
   else
   {
     if( edge1.dx == edge2.dx ) return false;
-    b1 = edge1.x - edge1.y *edge1.dx;
-    b2 = edge2.x - edge2.y *edge2.dx;
+    b1 = edge1.xbot - edge1.ybot *edge1.dx;
+    b2 = edge2.xbot - edge2.ybot *edge2.dx;
     ip.Y = (b2-b1)/(edge1.dx - edge2.dx);
     ip.X = edge1.dx * ip.Y + b1;
   }
@@ -575,8 +574,8 @@ bool IsClockwise(TPolyPt *pt)
 void InitEdge(TEdge *e, TEdge *eNext, TEdge *ePrev, const TDoublePoint &pt)
 {
   std::memset( e, 0, sizeof( TEdge ));
-  e->x = pt.X;
-  e->y = pt.Y;
+  e->xbot = pt.X;
+  e->ybot = pt.Y;
   e->next = eNext;
   e->prev = ePrev;
   SetDx(*e);
@@ -586,20 +585,20 @@ void InitEdge(TEdge *e, TEdge *eNext, TEdge *ePrev, const TDoublePoint &pt)
 void ReInitEdge(TEdge *e, const double &nextX,
   const double &nextY, TPolyType polyType)
 {
-  if ( e->y > nextY )
+  if ( e->ybot > nextY )
   {
-    e->xbot = e->x;
-    e->ybot = e->y;
+    e->xcurr = e->xbot;
+    e->ycurr = e->ybot;
     e->xtop = nextX;
     e->ytop = nextY;
     e->nextAtTop = true;
   } else {
-    e->xbot = nextX;
-    e->ybot = nextY;
-    e->xtop = e->x;
-    e->ytop = e->y;
-    e->x = e->xbot;
-    e->y = e->ybot;
+    e->xcurr = nextX;
+    e->ycurr = nextY;
+    e->xtop = e->xbot;
+    e->ytop = e->ybot;
+    e->xbot = e->xcurr;
+    e->ybot = e->ycurr;
     e->nextAtTop = false;
   }
   e->polyType = polyType;
@@ -611,10 +610,10 @@ bool SlopesEqualInternal(TEdge &e1, TEdge &e2)
 {
   if (IsHorizontal(e1)) return IsHorizontal(e2);
   if (IsHorizontal(e2)) return false;
-  return std::fabs((e1.y - e1.next->y) *
-      (e2.x - e2.next->x) -
-      (e1.x - e1.next->x) *
-      (e2.y - e2.next->y)) < slope_precision;
+  return std::fabs((e1.ybot - e1.next->ybot) *
+      (e2.xbot - e2.next->xbot) -
+      (e1.xbot - e1.next->xbot) *
+      (e2.ybot - e2.next->ybot)) < slope_precision;
 }
 //------------------------------------------------------------------------------
 
@@ -624,7 +623,7 @@ void FixupForDupsAndColinear(TEdge *edges)
   TEdge *e = edges;
   for (;;) {
     if (e->next == e->prev) break;
-    else if (PointsEqual(e->prev->x, e->prev->y, e->x, e->y) ||
+    else if (PointsEqual(e->prev->xbot, e->prev->ybot, e->xbot, e->ybot) ||
       SlopesEqualInternal(*e->prev, *e))
     {
       lastOK = 0;
@@ -632,8 +631,8 @@ void FixupForDupsAndColinear(TEdge *edges)
       if ( e == edges )
       {
         //move the content of e.next to e before removing e.next from DLL ...
-        e->x = e->next->x;
-        e->y = e->next->y;
+        e->xbot = e->next->xbot;
+        e->ybot = e->next->ybot;
         e->next->next->prev = e;
         e->next = e->next->next;
       } else
@@ -661,9 +660,9 @@ void SwapX(TEdge &e)
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-  e.xbot = e.xtop;
-  e.xtop = e.x;
-  e.x = e.xbot;
+  e.xcurr = e.xtop;
+  e.xtop = e.xbot;
+  e.xbot = e.xcurr;
   e.nextAtTop = !e.nextAtTop; //but really redundant for horizontals
 }
 
@@ -720,11 +719,11 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
       //nb: proceed through horizontals when approaching from their right,
       //    but break on horizontal minima if approaching from their left.
       //    This ensures 'local minima' are always on the left of horizontals.
-      if (e->next->ytop < e->ytop && e->next->xbot > e->prev->xbot) break;
-      if (e->xtop != e->prev->xbot) SwapX( *e );
+      if (e->next->ytop < e->ytop && e->next->xcurr > e->prev->xcurr) break;
+      if (e->xtop != e->prev->xcurr) SwapX( *e );
       e->nextInLML = e->prev;
     }
-    else if (e->ybot == e->prev->ybot) break;
+    else if (e->ycurr == e->prev->ycurr) break;
     else e->nextInLML = e->prev;
     e = e->next;
   }
@@ -732,11 +731,11 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
   //e and e.prev are now at a local minima ...
   TLocalMinima* newLm = new TLocalMinima;
   newLm->nextLm = 0;
-  newLm->Y = e->prev->ybot;
+  newLm->Y = e->prev->ycurr;
 
   if ( IsHorizontal(*e) ) //horizontal edges never start a left bound
   {
-    if (e->xbot != e->prev->xbot) SwapX(*e);
+    if (e->xcurr != e->prev->xcurr) SwapX(*e);
     newLm->leftBound = e->prev;
     newLm->rightBound = e;
   } else if (e->dx < e->prev->dx)
@@ -757,7 +756,7 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
     if ( e->next->ytop == e->ytop && !IsHorizontal(*e->next) ) break;
     e->nextInLML = e->next;
     e = e->next;
-    if ( IsHorizontal(*e) && e->xbot != e->prev->xtop) SwapX(*e);
+    if ( IsHorizontal(*e) && e->xcurr != e->prev->xtop) SwapX(*e);
   }
   return e->next;
 }
@@ -793,15 +792,15 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   m_edges.push_back(edges);
 
   //convert 'edges' to a double-linked-list and initialize a few of the vars ...
-  edges[0].x = p[0].X;
-  edges[0].y = p[0].Y;
+  edges[0].xbot = p[0].X;
+  edges[0].ybot = p[0].Y;
   InitEdge(&edges[highI], &edges[0], &edges[highI-1], p[highI]);
   for (i = highI-1; i > 0; --i)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], p[i]);
   InitEdge(&edges[0], &edges[1], &edges[highI], p[0]);
   TEdge* e = &edges[highI];
   while (IsHorizontal(*e) && e !=&edges[0]) {
-    if (e->y != e->next->y) e->y = e->next->y;
+    if (e->ybot != e->next->ybot) e->ybot = e->next->ybot;
     e = e->prev;
   }
 
@@ -821,13 +820,13 @@ void ClipperBase::AddPolygon( const TPolygon &pg, TPolyType polyType)
   e = edges->next;
   TEdge* eHighest = e;
   do {
-    ReInitEdge(e, e->next->x, e->next->y, polyType);
+    ReInitEdge(e, e->next->xbot, e->next->ybot, polyType);
     if(  e->ytop < eHighest->ytop ) eHighest = e;
     e = e->next;
   } while( e != edges );
 
   if ( e->next->nextAtTop )
-    ReInitEdge(e, e->next->x, e->next->y, polyType); else
+    ReInitEdge(e, e->next->xbot, e->next->ybot, polyType); else
     ReInitEdge(e, e->next->xtop, e->next->ytop, polyType);
   if ( e->ytop < eHighest->ytop ) eHighest = e;
 
@@ -877,24 +876,24 @@ TDoubleRect ClipperBase::GetBounds()
   result.bottom = -unassigned;
   while (lm)
   {
-    if (lm->leftBound->y > result.bottom) result.bottom = lm->leftBound->y;
+    if (lm->leftBound->ybot > result.bottom) result.bottom = lm->leftBound->ybot;
     TEdge* e = lm->leftBound;
     while (e->nextInLML)
     {
-      if (e->x < result.left) result.left = e->x;
+      if (e->xbot < result.left) result.left = e->xbot;
       e = e->nextInLML;
     }
-    if (e->x < result.left) result.left = e->x;
+    if (e->xbot < result.left) result.left = e->xbot;
     else if (e->xtop < result.left) result.left = e->xtop;
     if (e->ytop < result.top) result.top = e->ytop;
 
     e = lm->rightBound;
     while (e->nextInLML)
     {
-      if (e->x > result.right) result.right = e->x;
+      if (e->xbot > result.right) result.right = e->xbot;
       e = e->nextInLML;
     }
-    if (e->x > result.right) result.right = e->x;
+    if (e->xbot > result.right) result.right = e->xbot;
     else if (e->xtop > result.right) result.right = e->xtop;
 
     lm = lm->nextLm;
@@ -915,8 +914,8 @@ bool ClipperBase::Reset()
     TEdge* e = lm->leftBound;
     while( e )
     {
-      e->xbot = e->x;
-      e->ybot = e->y;
+      e->xcurr = e->xbot;
+      e->ycurr = e->ybot;
       e->side = esLeft;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -924,8 +923,8 @@ bool ClipperBase::Reset()
     e = lm->rightBound;
     while( e )
     {
-      e->xbot = e->x;
-      e->ybot = e->y;
+      e->xcurr = e->xbot;
+      e->ycurr = e->ybot;
       e->side = esRight;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -1128,8 +1127,8 @@ bool Clipper::IsNonZeroAltFillType(const TEdge& edge) const
 
 bool Edge2InsertsBeforeEdge1(TEdge &e1, TEdge &e2)
 {
-  if( e2.xbot - tolerance > e1.xbot ) return false;
-  if( e2.xbot + tolerance < e1.xbot ) return true;
+  if( e2.xcurr - tolerance > e1.xcurr ) return false;
+  if( e2.xcurr + tolerance < e1.xcurr ) return true;
   if( IsHorizontal(e2) ) return false;
   return (e2.dx > e1.dx);
 }
@@ -1215,15 +1214,16 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
     TLocalMinima* lm = m_CurrentLM;
     if( IsContributing(*lm->leftBound) )
       AddLocalMinPoly( lm->leftBound,
-        lm->rightBound, DoublePoint( lm->leftBound->xbot , lm->Y ) );
+        lm->rightBound, DoublePoint( lm->leftBound->xcurr , lm->Y ) );
 
     //flag polygons that share colinear edges, so they can be merged later ...
     if (lm->leftBound->outIdx >= 0 && lm->leftBound->prevInAEL &&
       lm->leftBound->prevInAEL->outIdx >= 0 &&
-      std::fabs(lm->leftBound->prevInAEL->xbot - lm->leftBound->x) < tolerance &&
+      std::fabs(lm->leftBound->prevInAEL->xcurr
+        - lm->leftBound->xbot) < tolerance &&
       SlopesEqual(*lm->leftBound, *lm->leftBound->prevInAEL))
     {
-      TDoublePoint pt = DoublePoint(lm->leftBound->x,lm->leftBound->y);
+      TDoublePoint pt = DoublePoint(lm->leftBound->xbot,lm->leftBound->ybot);
       AddPolyPt(lm->leftBound->prevInAEL, pt);
       int i = m_Joins.size();
       m_Joins.resize(i+1);
@@ -1248,7 +1248,7 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
           p2 = p->next;
         else continue;
 
-        if (HorizOverlap(hPt.X, hPt2.X, lm->rightBound->x, lm->rightBound->xtop))
+        if (HorizOverlap(hPt.X, hPt2.X, lm->rightBound->xbot, lm->rightBound->xtop))
         {
           AddPolyPt(lm->rightBound, hPt);
           int j = m_Joins.size();
@@ -1257,10 +1257,11 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
           m_Joins[j].idx2 = lm->rightBound->outIdx;
           m_Joins[j].pt = hPt;
         }
-        else if (HorizOverlap(lm->rightBound->x, lm->rightBound->xtop,
-          hPt.X, hPt2.X))
+        else if (HorizOverlap(lm->rightBound->xbot,
+          lm->rightBound->xtop, hPt.X, hPt2.X))
         {
-          TDoublePoint pt = DoublePoint(lm->rightBound->x, lm->rightBound->y);
+          TDoublePoint pt =
+            DoublePoint(lm->rightBound->xbot, lm->rightBound->ybot);
           int j = m_Joins.size();
           m_Joins.resize(j+1);
           if (!PointsEqual(pt, p->pt) && !PointsEqual(pt, p2->pt))
@@ -1276,7 +1277,7 @@ void Clipper::InsertLocalMinimaIntoAEL( const double &botY)
     if( lm->leftBound->nextInAEL != lm->rightBound )
     {
       TEdge* e = lm->leftBound->nextInAEL;
-      TDoublePoint pt = DoublePoint( lm->leftBound->xbot, lm->leftBound->ybot );
+      TDoublePoint pt = DoublePoint( lm->leftBound->xcurr, lm->leftBound->ycurr );
       while( e != lm->rightBound )
       {
         if(!e) throw clipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
@@ -1502,8 +1503,8 @@ bool Clipper::IsTopHorz(const double &XPos)
   TEdge* e = m_SortedEdges;
   while( e )
   {
-    if(  ( XPos >= std::min(e->xbot, e->xtop) ) &&
-      ( XPos <= std::max(e->xbot, e->xtop) ) ) return false;
+    if(  ( XPos >= std::min(e->xcurr, e->xtop) ) &&
+      ( XPos <= std::max(e->xcurr, e->xtop) ) ) return false;
     e = e->nextInSEL;
   }
   return true;
@@ -1515,15 +1516,15 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   TDirection Direction;
   double horzLeft, horzRight;
 
-  if( horzEdge->xbot < horzEdge->xtop )
+  if( horzEdge->xcurr < horzEdge->xtop )
   {
-    horzLeft = horzEdge->xbot;
+    horzLeft = horzEdge->xcurr;
     horzRight = horzEdge->xtop;
     Direction = dLeftToRight;
   } else
   {
     horzLeft = horzEdge->xtop;
-    horzRight = horzEdge->xbot;
+    horzRight = horzEdge->xcurr;
     Direction = dRightToLeft;
   }
 
@@ -1535,10 +1536,10 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   while( e )
   {
     TEdge* eNext = GetNextInAEL( e, Direction );
-    if((e->xbot >= horzLeft - tolerance) && (e->xbot <= horzRight + tolerance))
+    if((e->xcurr >= horzLeft - tolerance) && (e->xcurr <= horzRight + tolerance))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
-      if ( std::fabs(e->xbot - horzEdge->xtop) < tolerance && horzEdge->nextInLML)
+      if ( std::fabs(e->xcurr - horzEdge->xtop) < tolerance && horzEdge->nextInLML)
       {
         if ( SlopesEqual(*e, *horzEdge->nextInLML) )
         {
@@ -1563,36 +1564,36 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if (Direction == dLeftToRight)
-          IntersectEdges(horzEdge, e, DoublePoint(e->xbot, horzEdge->ybot), ipNone);
+          IntersectEdges(horzEdge, e, DoublePoint(e->xcurr, horzEdge->ycurr), ipNone);
         else
-          IntersectEdges(e, horzEdge, DoublePoint(e->xbot, horzEdge->ybot), ipNone);
+          IntersectEdges(e, horzEdge, DoublePoint(e->xcurr, horzEdge->ycurr), ipNone);
         return;
       }
-      else if( IsHorizontal(*e) &&  !IsMinima(e) &&  !(e->xbot > e->xtop) )
+      else if( IsHorizontal(*e) &&  !IsMinima(e) &&  !(e->xcurr > e->xtop) )
       {
         if(  Direction == dLeftToRight )
-          IntersectEdges( horzEdge , e , DoublePoint(e->xbot, horzEdge->ybot),
-            (IsTopHorz( e->xbot ))? ipLeft : ipBoth );
+          IntersectEdges( horzEdge , e , DoublePoint(e->xcurr, horzEdge->ycurr),
+            (IsTopHorz( e->xcurr ))? ipLeft : ipBoth );
         else
-          IntersectEdges( e , horzEdge , DoublePoint(e->xbot, horzEdge->ybot),
-            (IsTopHorz( e->xbot ))? ipRight : ipBoth );
+          IntersectEdges( e , horzEdge , DoublePoint(e->xcurr, horzEdge->ycurr),
+            (IsTopHorz( e->xcurr ))? ipRight : ipBoth );
       }
       else if( Direction == dLeftToRight )
       {
-        IntersectEdges( horzEdge , e , DoublePoint(e->xbot, horzEdge->ybot),
-          (IsTopHorz( e->xbot ))? ipLeft : ipBoth );
+        IntersectEdges( horzEdge , e , DoublePoint(e->xcurr, horzEdge->ycurr),
+          (IsTopHorz( e->xcurr ))? ipLeft : ipBoth );
       }
       else
       {
-        IntersectEdges( e , horzEdge , DoublePoint(e->xbot, horzEdge->ybot),
-          (IsTopHorz( e->xbot ))? ipRight : ipBoth );
+        IntersectEdges( e , horzEdge , DoublePoint(e->xcurr, horzEdge->ycurr),
+          (IsTopHorz( e->xcurr ))? ipRight : ipBoth );
       }
       SwapPositionsInAEL( horzEdge , e );
     }
     else if(  ( Direction == dLeftToRight ) &&
-      ( e->xbot > horzRight + tolerance ) &&  !horzEdge->nextInSEL ) break;
+      ( e->xcurr > horzRight + tolerance ) &&  !horzEdge->nextInSEL ) break;
     else if(  ( Direction == dRightToLeft ) &&
-      ( e->xbot < horzLeft - tolerance ) &&  !horzEdge->nextInSEL  ) break;
+      ( e->xcurr < horzLeft - tolerance ) &&  !horzEdge->nextInSEL  ) break;
     e = eNext;
   } //end while ( e )
 
@@ -1606,7 +1607,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   {
     if ( horzEdge->outIdx >= 0 )
       IntersectEdges( horzEdge, eMaxPair,
-        DoublePoint(horzEdge->xtop, horzEdge->ybot), ipBoth);
+        DoublePoint(horzEdge->xtop, horzEdge->ycurr), ipBoth);
     if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
@@ -1746,8 +1747,8 @@ bool Clipper::Process1Before2(TIntersectNode *Node1, TIntersectNode *Node2)
         //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         return E1PrecedesE2inAEL(Node1->edge2, Node2->edge2);
       else if //check if minima **
-        ( (std::fabs(Node1->edge2->y - Node1->pt.Y) < slope_precision  ||
-        std::fabs(Node2->edge2->y - Node2->pt.Y) < slope_precision ) &&
+        ( (std::fabs(Node1->edge2->ybot - Node1->pt.Y) < slope_precision  ||
+        std::fabs(Node2->edge2->ybot - Node2->pt.Y) < slope_precision ) &&
         (Node1->edge2->next == Node2->edge2 || Node1->edge2->prev == Node2->edge2) )
       {
         if ( Node1->edge1->dx < 0 ) return Node1->edge2->dx > Node2->edge2->dx;
@@ -2070,11 +2071,11 @@ void Clipper::UpdateEdgeIntoAEL(TEdge *&e)
 
     //if output polygons share an edge, they'll need joining later ...
     if (e->outIdx >= 0 && AelPrev && AelPrev->outIdx >= 0 &&
-      std::fabs(AelPrev->xbot - e->x) < tolerance && SlopesEqual(*e, *AelPrev))
+      std::fabs(AelPrev->xcurr - e->xbot) < tolerance && SlopesEqual(*e, *AelPrev))
     {
       int i = m_Joins.size();
       m_Joins.resize(i+1);
-      TDoublePoint pt = DoublePoint(e->x, e->y);
+      TDoublePoint pt = DoublePoint(e->xbot, e->ybot);
       AddPolyPt(AelPrev, pt);
       AddPolyPt(e, pt);
       m_Joins[i].idx1 = AelPrev->outIdx;
@@ -2121,14 +2122,14 @@ bool Clipper::Execute(TClipType clipType, TPolyPolygon &solution,
     m_Joins.clear();
     m_CurrentHorizontals.clear();
 
-    double ybot = PopScanbeam();
+    double botY = PopScanbeam();
     do {
-      InsertLocalMinimaIntoAEL( ybot );
+      InsertLocalMinimaIntoAEL( botY );
       ProcessHorizontals();
-      double ytop = PopScanbeam();
-      ProcessIntersections( ytop );
-      ProcessEdgesAtTopOfScanbeam( ytop );
-      ybot = ytop;
+      double topY = PopScanbeam();
+      ProcessIntersections( topY );
+      ProcessEdgesAtTopOfScanbeam( topY );
+      botY = topY;
     } while( m_Scanbeam );
 
     //build the return polygons ...
@@ -2278,7 +2279,7 @@ TEdge* Clipper::BubbleSwap(TEdge *edge)
 {
   int n = 1;
   TEdge* result = edge->nextInAEL;
-  while( result  && ( std::fabs(result->xbot - edge->xbot) <= tolerance ) )
+  while( result  && ( std::fabs(result->xcurr - edge->xcurr) <= tolerance ) )
   {
     ++n;
     result = result->nextInAEL;
@@ -2312,7 +2313,7 @@ TEdge* Clipper::BubbleSwap(TEdge *edge)
           if( e->nextInSEL->dx > e->dx )
           {
             IntersectEdges(e, e->nextInSEL,  //param order important here
-              DoublePoint(e->xbot, e->ybot), ipBoth );
+              DoublePoint(e->xcurr, e->ycurr), ipBoth );
             SwapPositionsInAEL( e , e->nextInSEL );
             SwapPositionsInSEL( e , e->nextInSEL );
           }
@@ -2349,7 +2350,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
     }
     else
     {
-      //2. promote horizontal edges, otherwise update xbot and ybot ...
+      //2. promote horizontal edges, otherwise update xcurr and ycurr ...
       if(  IsIntermediate( e , topY ) && IsHorizontal( *e->nextInLML ) )
       {
         if (e->outIdx >= 0)
@@ -2367,10 +2368,10 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
         //very rarely an edge just below a horizontal edge in a contour
         //intersects with another edge at the very top of a scanbeam.
         //If this happens that intersection must be managed first ...
-        if ( e->prevInAEL && e->prevInAEL->xbot > e->xtop + tolerance )
+        if ( e->prevInAEL && e->prevInAEL->xcurr > e->xtop + tolerance )
         {
-          IntersectEdges(e->prevInAEL, e, DoublePoint(e->prevInAEL->xbot,
-            e->prevInAEL->ybot), ipBoth);
+          IntersectEdges(e->prevInAEL, e, DoublePoint(e->prevInAEL->xcurr,
+            e->prevInAEL->ycurr), ipBoth);
           SwapPositionsInAEL(e->prevInAEL, e);
           UpdateEdgeIntoAEL(e);
           AddEdgeToSEL(e);
@@ -2380,10 +2381,10 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
         }
         else if (e->nextInAEL && e->xtop > TopX(e->nextInAEL, topY) + tolerance)
         {
-          e->nextInAEL->xbot = TopX(e->nextInAEL, topY);
-          e->nextInAEL->ybot = topY;
-          IntersectEdges(e, e->nextInAEL, DoublePoint(e->nextInAEL->xbot,
-            e->nextInAEL->ybot), ipBoth);
+          e->nextInAEL->xcurr = TopX(e->nextInAEL, topY);
+          e->nextInAEL->ycurr = topY;
+          IntersectEdges(e, e->nextInAEL, DoublePoint(e->nextInAEL->xcurr,
+            e->nextInAEL->ycurr), ipBoth);
           SwapPositionsInAEL(e, e->nextInAEL);
           UpdateEdgeIntoAEL(e);
           AddEdgeToSEL(e);
@@ -2395,8 +2396,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
       } else
       {
         //this just simplifies horizontal processing ...
-        e->xbot = TopX( e , topY );
-        e->ybot = topY;
+        e->xcurr = TopX( e , topY );
+        e->ycurr = topY;
       }
       e = e->nextInAEL;
     }
@@ -2424,9 +2425,9 @@ void Clipper::ProcessEdgesAtTopOfScanbeam( const double &topY)
   while( e )
   {
     if( !e->nextInAEL ) break;
-    if( e->nextInAEL->xbot < e->xbot - precision )
+    if( e->nextInAEL->xcurr < e->xcurr - precision )
       throw clipperException("ProcessEdgesAtTopOfScanbeam() error");
-    if( e->nextInAEL->xbot > e->xbot + tolerance )
+    if( e->nextInAEL->xcurr > e->xcurr + tolerance )
       e = e->nextInAEL;
     else
       e = BubbleSwap( e );

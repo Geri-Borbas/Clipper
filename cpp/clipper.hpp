@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2                                                           *
-* Date      :  5 February 2011                                                 *
+* Version   :  3.0.3                                                           *
+* Date      :  9 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -59,10 +59,10 @@ enum TEdgeSide { esLeft, esRight };
 enum TIntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
 
 struct TEdge {
-  double x;
-  double y;
   double xbot;
   double ybot;
+  double xcurr;
+  double ycurr;
   double xtop;
   double ytop;
   double dx;

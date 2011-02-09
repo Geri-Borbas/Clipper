@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.2                                                           *
-* Date      :  5 February 2011                                                 *
+* Version   :  3.0.3                                                           *
+* Date      :  9 February 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -105,11 +105,11 @@ type
 
   PEdge = ^TEdge;
   TEdge = record
-    x: double;
-    y: double;
-    xbot: double;
+    xbot: double;  //bottom
     ybot: double;
-    xtop: double;
+    xcurr: double; //current (ie relative to bottom of current scanbeam)
+    ycurr: double;
+    xtop: double;  //top
     ytop: double;
     dx  : double;
     tmpX:  double;
@@ -827,8 +827,8 @@ function SlopesEqual(e1, e2: PEdge): boolean; overload;
 begin
   if IsHorizontal(e1) then result := IsHorizontal(e2)
   else if IsHorizontal(e2) then result := false
-  else result := abs((e1.ytop - e1.y)*(e2.xtop - e2.x) -
-    (e1.xtop - e1.x)*(e2.ytop - e2.y)) < slope_precision;
+  else result := abs((e1.ytop - e1.ybot)*(e2.xtop - e2.xbot) -
+    (e1.xtop - e1.xbot)*(e2.ytop - e2.ybot)) < slope_precision;
 end;
 //---------------------------------------------------------------------------
 
@@ -977,17 +977,17 @@ procedure SetDx(e: PEdge); overload;
 var
   dx, dy: double;
 begin
-  dx := abs(e.x - e.next.x);
-  dy := abs(e.y - e.next.y);
+  dx := abs(e.xbot - e.next.xbot);
+  dy := abs(e.ybot - e.next.ybot);
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
   if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
   begin
     e.dx := horizontal;
-    if (e.y <> e.next.y) then e.y := e.next.y;
+    if (e.ybot <> e.next.ybot) then e.ybot := e.next.ybot;
   end else e.dx :=
-    (e.x - e.next.x)/(e.y - e.next.y);
+    (e.xbot - e.next.xbot)/(e.ybot - e.next.ybot);
 end;
 //------------------------------------------------------------------------------
 
@@ -1014,7 +1014,7 @@ end;
 function TopX(edge: PEdge; const currentY: double): double;
 begin
   if currentY = edge.ytop then result := edge.xtop
-  else result := edge.x + edge.dx*(currentY - edge.y);
+  else result := edge.xbot + edge.dx*(currentY - edge.ybot);
 end;
 //------------------------------------------------------------------------------
 
@@ -1035,19 +1035,19 @@ begin
   end;
   if edge1.dx = 0 then
   begin
-    ip.X := edge1.x;
-    with edge2^ do b2 := y - x/dx;
+    ip.X := edge1.xbot;
+    with edge2^ do b2 := ybot - xbot/dx;
     ip.Y := ip.X/edge2.dx + b2;
   end
   else if edge2.dx = 0 then
   begin
-    ip.X := edge2.x;
-    with edge1^ do b1 := y - x/dx;
+    ip.X := edge2.xbot;
+    with edge1^ do b1 := ybot - xbot/dx;
     ip.Y := ip.X/edge1.dx + b1;
   end else
   begin
-    with edge1^ do b1 := x - y *dx;
-    with edge2^ do b2 := x - y *dx;
+    with edge1^ do b1 := xbot - ybot *dx;
+    with edge2^ do b2 := xbot - ybot *dx;
     ip.Y := (b2-b1)/(edge1.dx - edge2.dx);
     ip.X := edge1.dx * ip.Y + b1;
   end;
@@ -1107,8 +1107,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
   begin
     //set up double-link-list linkage and initialize x, y and dx only
     fillChar(e^, sizeof(TEdge), 0);
-    e.x := pt.X;
-    e.y := pt.Y;
+    e.xbot := pt.X;
+    e.ybot := pt.Y;
     e.next := eNext;
     e.prev := ePrev;
     SetDx(e);
@@ -1117,22 +1117,22 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
 
   procedure ReInitEdge(e: PEdge; const nextX, nextY: double);
   begin
-    if e.y > nextY then
+    if e.ybot > nextY then
     begin
-      e.xbot := e.x;
-      e.ybot := e.y;
+      e.xcurr := e.xbot;
+      e.ycurr := e.ybot;
       e.xtop := nextX;
       e.ytop := nextY;
       e.nextAtTop := true;
     end else
     begin
       //reverse top and bottom ...
-      e.xbot := nextX;
-      e.ybot := nextY;
-      e.xtop := e.x;
-      e.ytop := e.y;
-      e.x := e.xbot;
-      e.y := e.ybot;
+      e.xcurr := nextX;
+      e.ycurr := nextY;
+      e.xtop := e.xbot;
+      e.ytop := e.ybot;
+      e.xbot := e.xcurr;
+      e.ybot := e.ycurr;
       e.nextAtTop := false;
     end;
     e.polyType := polyType;
@@ -1146,8 +1146,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     else if IsHorizontal(e2) then result := false
     else
       //cross product of dy1/dx1 = dy2/dx2 ...
-      result := abs((e1.y - e1.next.y)*(e2.x - e2.next.x) -
-        (e1.x - e1.next.x)*(e2.y - e2.next.y)) < slope_precision;
+      result := abs((e1.ybot - e1.next.ybot)*(e2.xbot - e2.next.xbot) -
+        (e1.xbot - e1.next.xbot)*(e2.ybot - e2.next.ybot)) < slope_precision;
   end;
   //----------------------------------------------------------------------
 
@@ -1161,7 +1161,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     while true do
     begin
       if (e.next = e.prev) then break
-      else if (PointsEqual(e.prev.x, e.prev.y, e.x, e.y) or
+      else if (PointsEqual(e.prev.xbot, e.prev.ybot, e.xbot, e.ybot) or
         SlopesEqualInternal(e.prev, e)) then
       begin
         lastOK := nil;
@@ -1169,8 +1169,8 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
         if (e = @edges[0]) then
         begin
           //move the content of e.next to e before removing e.next from DLL ...
-          e.x := e.next.x;
-          e.y := e.next.y;
+          e.xbot := e.next.xbot;
+          e.ybot := e.next.ybot;
           e.next.next.prev := e;
           e.next := e.next.next;
         end else
@@ -1197,9 +1197,9 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     //swap horizontal edges' top and bottom x's so they follow the natural
     //progression of the bounds - ie so their xbots will align with the
     //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-    e.xbot := e.xtop;
-    e.xtop := e.x;
-    e.x := e.xbot;
+    e.xcurr := e.xtop;
+    e.xtop := e.xbot;
+    e.xbot := e.xcurr;
   end;
   //----------------------------------------------------------------------
 
@@ -1241,11 +1241,11 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
         //nb: proceed through horizontals when approaching from their right,
         //    but break on horizontal minima if approaching from their left.
         //    This ensures 'local minima' are always on the left of horizontals.
-        if (e.next.ytop < e.ytop) and (e.next.xbot > e.prev.xbot) then break;
-        if (e.xtop <> e.prev.xbot) then SwapX(e);
+        if (e.next.ytop < e.ytop) and (e.next.xcurr > e.prev.xcurr) then break;
+        if (e.xtop <> e.prev.xcurr) then SwapX(e);
         e.nextInLML := e.prev;
       end
-      else if (e.ybot = e.prev.ybot) then break
+      else if (e.ycurr = e.prev.ycurr) then break
       else e.nextInLML := e.prev;
       e := e.next;
     until false;
@@ -1253,10 +1253,10 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
     //e and e.prev are now at a local minima ...
     new(newLm);
     newLm.nextLm := nil;
-    newLm.y := e.prev.ybot;
+    newLm.y := e.prev.ycurr;
     if IsHorizontal(e) then //horizontal edges never start a left bound
     begin
-      if (e.xbot <> e.prev.xbot) then SwapX(e);
+      if (e.xcurr <> e.prev.xcurr) then SwapX(e);
       newLm.leftBound := e.prev;
       newLm.rightBound := e;
     end else if (e.dx < e.prev.dx) then
@@ -1276,7 +1276,7 @@ procedure TClipperBase.AddPolygon(const polygon: TArrayOfDoublePoint; polyType: 
       if (e.next.ytop = e.ytop) and not IsHorizontal(e.next) then break;
       e.nextInLML := e.next;
       e := e.next;
-      if IsHorizontal(e) and (e.xbot <> e.prev.xtop) then SwapX(e);
+      if IsHorizontal(e) and (e.xcurr <> e.prev.xtop) then SwapX(e);
     until false;
     result := e.next;
   end;
@@ -1304,8 +1304,8 @@ begin
 
   GetMem(edges, sizeof(TEdge)*(highI+1));
   //convert 'edges' to a double-linked-list and initialize a few of the vars ...
-  edges[0].x := pg[0].X;
-  edges[0].y := pg[0].Y;
+  edges[0].xbot := pg[0].X;
+  edges[0].ybot := pg[0].Y;
   InitEdge(@edges[highI], @edges[0], @edges[highI-1], pg[highI]);
   for i := highI-1 downto 1 do
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
@@ -1313,7 +1313,7 @@ begin
   e := @edges[highI];
   while IsHorizontal(e) and (e <> @edges[0]) do
   begin
-    if (e.y <> e.next.y) then e.y := e.next.y;
+    if (e.ybot <> e.next.ybot) then e.ybot := e.next.ybot;
     e := e.prev;
   end;
 
@@ -1334,12 +1334,12 @@ begin
   e := edges[0].next;
   eHighest := e;
   repeat
-    ReInitEdge(e, e.next.x, e.next.y);
+    ReInitEdge(e, e.next.xbot, e.next.ybot);
     if e.ytop < eHighest.ytop then eHighest := e;
     e := e.next;
   until e = @edges[0];
   if e.next.nextAtTop then
-    ReInitEdge(e, e.next.x, e.next.y) else
+    ReInitEdge(e, e.next.xbot, e.next.ybot) else
     ReInitEdge(e, e.next.xtop, e.next.ytop);
   if e.ytop < eHighest.ytop then eHighest := e;
 
@@ -1403,24 +1403,24 @@ begin
   result.Bottom := -unassigned;
   while assigned(lm) do
   begin
-    if lm.leftBound.y > result.Bottom then result.Bottom := lm.leftBound.y;
+    if lm.leftBound.ybot > result.Bottom then result.Bottom := lm.leftBound.ybot;
     e := lm.leftBound;
     while assigned(e.nextInLML) do
     begin
-      if e.x < result.Left then result.Left := e.x;
+      if e.xbot < result.Left then result.Left := e.xbot;
       e := e.nextInLML;
     end;
-    if e.x < result.Left then result.Left := e.x
+    if e.xbot < result.Left then result.Left := e.xbot
     else if e.xtop < result.Left then result.Left := e.xtop;
     if e.ytop < result.Top then result.Top := e.ytop;
 
     e := lm.rightBound;
     while assigned(e.nextInLML) do
     begin
-      if e.x > result.Right then result.Right := e.x;
+      if e.xbot > result.Right then result.Right := e.xbot;
       e := e.nextInLML;
     end;
-    if e.x > result.Right then result.Right := e.x;
+    if e.xbot > result.Right then result.Right := e.xbot;
     if e.xtop > result.Right then result.Right := e.xtop;
 
     lm := lm.nextLm;
@@ -1446,8 +1446,8 @@ begin
     e := lm.leftBound;
     while assigned(e) do
     begin
-      e.xbot := e.x;
-      e.ybot := e.y;
+      e.xcurr := e.xbot;
+      e.ycurr := e.ybot;
       e.side := esLeft;
       e.outIdx := -1;
       e := e.nextInLML;
@@ -1455,8 +1455,8 @@ begin
     e := lm.rightBound;
     while assigned(e) do
     begin
-      e.xbot := e.x;
-      e.ybot := e.y;
+      e.xcurr := e.xbot;
+      e.ycurr := e.ybot;
       e.side := esRight;
       e.outIdx := -1;
       e := e.nextInLML;
@@ -1567,7 +1567,7 @@ end;
 
 function TClipper.ExecuteInternal(clipType: TClipType): boolean;
 var
-  yBot, yTop: double;
+  botY, topY: double;
 begin
   result := false;
   try
@@ -1577,14 +1577,14 @@ begin
     fJoins := nil;
     fCurrentHorizontals := nil;
     fClipType := clipType;
-    yBot := PopScanbeam;
+    botY := PopScanbeam;
     repeat
-      InsertLocalMinimaIntoAEL(yBot);
+      InsertLocalMinimaIntoAEL(botY);
       ProcessHorizontals;
-      yTop := PopScanbeam;
-      ProcessIntersections(yTop);
-      ProcessEdgesAtTopOfScanbeam(yTop);
-      yBot := yTop;
+      topY := PopScanbeam;
+      ProcessIntersections(topY);
+      ProcessEdgesAtTopOfScanbeam(topY);
+      botY := topY;
     until not assigned(fScanbeam);
     result := true;
   except
@@ -1853,8 +1853,8 @@ end;
 
 function Edge2InsertsBeforeEdge1(e1,e2: PEdge): boolean;
 begin
-  if (e2.xbot - tolerance > e1.xbot) then result := false
-  else if (e2.xbot + tolerance < e1.xbot) then result := true
+  if (e2.xcurr - tolerance > e1.xcurr) then result := false
+  else if (e2.xcurr + tolerance < e1.xcurr) then result := true
   else if IsHorizontal(e2) then result := false
   else result := e2.dx > e1.dx;
 end;
@@ -1899,12 +1899,12 @@ begin
   {InsertLocalMinimaIntoAEL}
   while assigned(CurrentLM) and (CurrentLM.y = botY) do
   begin
-    InsertEdgeIntoAEL(CurrentLM.leftBound);
-    InsertScanbeam(CurrentLM.leftBound.ytop);
-    InsertEdgeIntoAEL(CurrentLM.rightBound);
-
     lb := CurrentLM.leftBound;
     rb := CurrentLM.rightBound;
+
+    InsertEdgeIntoAEL(lb);
+    InsertScanbeam(lb.ytop);
+    InsertEdgeIntoAEL(rb);
 
     //set edge winding states ...
     SetWindingDelta(lb);
@@ -1924,15 +1924,15 @@ begin
       InsertScanbeam(rb.ytop);
 
     if IsContributing(lb) then
-      AddLocalMinPoly(lb, rb, DoublePoint(lb.xbot, CurrentLM.y));
+      AddLocalMinPoly(lb, rb, DoublePoint(lb.xcurr, CurrentLM.y));
 
     //flag polygons that share colinear edges, so they can be merged later ...
     if (lb.outIdx >= 0) and assigned(lb.prevInAEL) and
       (lb.prevInAEL.outIdx >= 0) and
-      (abs(lb.prevInAEL.xbot - lb.x) < tolerance) and
+      (abs(lb.prevInAEL.xcurr - lb.xbot) < tolerance) and
       SlopesEqual(lb, lb.prevInAEL) then
     begin
-      pt := DoublePoint(lb.x,lb.y);
+      pt := DoublePoint(lb.xbot,lb.ybot);
       AddPolyPt(lb.prevInAEL, pt);
       i := length(fJoins);
       setlength(fJoins, i+1);
@@ -1953,7 +1953,7 @@ begin
         else if IsHorizontal(p.pt, p.next.pt) and (p.next.pt.X = hPt2.X) then p2 := p.next
         else continue;
 
-        if HorizOverlap(hPt.X, hPt2.X, rb.x, rb.xtop) then
+        if HorizOverlap(hPt.X, hPt2.X, rb.xbot, rb.xtop) then
         begin
           AddPolyPt(rb, hPt);
           j := length(fJoins);
@@ -1962,9 +1962,9 @@ begin
           fJoins[j].idx2 := rb.outIdx;
           fJoins[j].pt := hPt;
         end
-        else if HorizOverlap(rb.x, rb.xtop, hPt.X, hPt2.X) then
+        else if HorizOverlap(rb.xbot, rb.xtop, hPt.X, hPt2.X) then
         begin
-          pt := DoublePoint(rb.x,rb.y);
+          pt := DoublePoint(rb.xbot,rb.ybot);
           j := length(fJoins);
           setlength(fJoins, j+1);
           if not PointsEqual(pt, p.pt) and not PointsEqual(pt, p2.pt) then
@@ -1979,7 +1979,7 @@ begin
     if (lb.nextInAEL <> rb) then
     begin
       e := lb.nextInAEL;
-      pt := DoublePoint(lb.xbot,lb.ybot);
+      pt := DoublePoint(lb.xcurr,lb.ycurr);
       while e <> rb do
       begin
         if not assigned(e) then raise exception.Create(rsMissingRightbound);
@@ -2216,7 +2216,7 @@ begin
   e := fSortedEdges;
   while assigned(e) do
   begin
-    if (XPos >= min(e.xbot,e.xtop)) and (XPos <= max(e.xbot,e.xtop)) then exit;
+    if (XPos >= min(e.xcurr,e.xtop)) and (XPos <= max(e.xcurr,e.xtop)) then exit;
     e := e.nextInSEL;
   end;
   result := true;
@@ -2253,13 +2253,13 @@ begin
 *        /                 \      /          \   /                             *
 *******************************************************************************)
 
-  if horzEdge.xbot < horzEdge.xtop then
+  if horzEdge.xcurr < horzEdge.xtop then
   begin
-    horzLeft := horzEdge.xbot; horzRight := horzEdge.xtop;
+    horzLeft := horzEdge.xcurr; horzRight := horzEdge.xtop;
     Direction := dLeftToRight;
   end else
   begin
-    horzLeft := horzEdge.xtop; horzRight := horzEdge.xbot;
+    horzLeft := horzEdge.xtop; horzRight := horzEdge.xcurr;
     Direction := dRightToLeft;
   end;
 
@@ -2271,11 +2271,11 @@ begin
   while assigned(e) do
   begin
     eNext := GetNextInAEL(e, Direction);
-    if (e.xbot >= horzLeft -tolerance) and (e.xbot <= horzRight +tolerance) then
+    if (e.xcurr >= horzLeft -tolerance) and (e.xcurr <= horzRight +tolerance) then
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
 
-      if (abs(e.xbot - horzEdge.xtop) < tolerance) and
+      if (abs(e.xcurr - horzEdge.xtop) < tolerance) and
         assigned(horzEdge.nextInLML) then
       begin
         if SlopesEqual(e, horzEdge.nextInLML) then
@@ -2304,39 +2304,39 @@ begin
       begin
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
-          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot)) else
-          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot));
+          IntersectEdges(horzEdge, e, DoublePoint(e.xcurr, horzEdge.ycurr)) else
+          IntersectEdges(e, horzEdge, DoublePoint(e.xcurr, horzEdge.ycurr));
         exit;
       end
-      else if IsHorizontal(e) and not IsMinima(e) and not (e.xbot > e.xtop) then
+      else if IsHorizontal(e) and not IsMinima(e) and not (e.xcurr > e.xtop) then
       begin
         //An overlapping horizontal edge. Overlapping horizontal edges are
         //processed as if layered with the current horizontal edge (horizEdge)
         //being infinitesimally lower that the next (e). Therfore, we
-        //intersect with e only if e.xbot is within the bounds of horzEdge ...
+        //intersect with e only if e.xcurr is within the bounds of horzEdge ...
         if Direction = dLeftToRight then
-          IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
-            ProtectRight[not IsTopHorz(e.xbot)])
+          IntersectEdges(horzEdge, e, DoublePoint(e.xcurr, horzEdge.ycurr),
+            ProtectRight[not IsTopHorz(e.xcurr)])
         else
-          IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
-            ProtectLeft[not IsTopHorz(e.xbot)]);
+          IntersectEdges(e, horzEdge, DoublePoint(e.xcurr, horzEdge.ycurr),
+            ProtectLeft[not IsTopHorz(e.xcurr)]);
       end
       else if (Direction = dLeftToRight) then
       begin
-        IntersectEdges(horzEdge, e, DoublePoint(e.xbot, horzEdge.ybot),
-          ProtectRight[not IsTopHorz(e.xbot)])
+        IntersectEdges(horzEdge, e, DoublePoint(e.xcurr, horzEdge.ycurr),
+          ProtectRight[not IsTopHorz(e.xcurr)])
       end else
       begin
-        IntersectEdges(e, horzEdge, DoublePoint(e.xbot, horzEdge.ybot),
-          ProtectLeft[not IsTopHorz(e.xbot)]);
+        IntersectEdges(e, horzEdge, DoublePoint(e.xcurr, horzEdge.ycurr),
+          ProtectLeft[not IsTopHorz(e.xcurr)]);
       end;
       SwapPositionsInAEL(horzEdge, e);
     end
     else if (Direction = dLeftToRight) and
-      (e.xbot > horzRight + tolerance) and not assigned(horzEdge.nextInSEL) then
+      (e.xcurr > horzRight + tolerance) and not assigned(horzEdge.nextInSEL) then
         break
     else if (Direction = dRightToLeft) and
-      (e.xbot < horzLeft - tolerance) and not assigned(horzEdge.nextInSEL) then
+      (e.xcurr < horzLeft - tolerance) and not assigned(horzEdge.nextInSEL) then
         break;
     e := eNext;
   end;
@@ -2350,7 +2350,7 @@ begin
   begin
     if horzEdge.outIdx >= 0 then
       IntersectEdges(horzEdge, eMaxPair,
-        DoublePoint(horzEdge.xtop, horzEdge.ybot), [ipLeft,ipRight]);
+        DoublePoint(horzEdge.xtop, horzEdge.ycurr), [ipLeft,ipRight]);
     if eMaxPair.outIdx >= 0 then raise exception.Create(rsHorizontal);
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
@@ -2490,8 +2490,8 @@ begin
         //(N1.E1 == N2.E1) and (N1.E2 & N2.E2 are co-linear) ...
         result := E1PrecedesE2inAEL(Node1.edge2, Node2.edge2)
       else if //check if minima **
-        ((abs(Node1.edge2.y - Node1.pt.Y) < slope_precision) or
-        (abs(Node2.edge2.y - Node2.pt.Y) < slope_precision)) and
+        ((abs(Node1.edge2.ybot - Node1.pt.Y) < slope_precision) or
+        (abs(Node2.edge2.ybot - Node2.pt.Y) < slope_precision)) and
         ((Node1.edge2.next = Node2.edge2) or (Node1.edge2.prev = Node2.edge2)) then
       begin
         if Node1.edge1.dx < 0 then
@@ -2879,11 +2879,11 @@ begin
 
     //if output polygons share an edge, they'll need joining later ...
     if (e.outIdx >= 0) and assigned(AelPrev) and (AelPrev.outIdx >= 0) and
-      (abs(AelPrev.xbot - e.x) < tolerance) and SlopesEqual(e, AelPrev) then
+      (abs(AelPrev.xcurr - e.xbot) < tolerance) and SlopesEqual(e, AelPrev) then
     begin
       i := length(fJoins);
       setlength(fJoins, i+1);
-      pt := DoublePoint(e.x,e.y);
+      pt := DoublePoint(e.xbot,e.ybot);
       AddPolyPt(AelPrev, pt);
       fJoins[i].idx1 := AelPrev.outIdx;
       AddPolyPt(e, pt);
@@ -2901,7 +2901,7 @@ var
 begin
   n := 1; //no. edges intersecting at the same point.
   result := edge.nextInAEL;
-  while assigned(result) and (abs(result.xbot - edge.xbot) <= tolerance) do
+  while assigned(result) and (abs(result.xcurr - edge.xcurr) <= tolerance) do
   begin
     inc(n);
     result := Result.nextInAEL;
@@ -2940,7 +2940,7 @@ begin
           if (e.nextInSEL.dx > e.dx) then
           begin
             IntersectEdges(e, e.nextInSEL, //param order is important here
-              DoublePoint(e.xbot,e.ybot), [ipLeft,ipRight]);
+              DoublePoint(e.xcurr,e.ycurr), [ipLeft,ipRight]);
             SwapPositionsInAEL(e, e.nextInSEL);
             SwapPositionsInSEL(e, e.nextInSEL);
           end else
@@ -2998,7 +2998,7 @@ begin
         e := ePrior.nextInAEL;
     end else
     begin
-      //2. promote horizontal edges, otherwise update xbot and ybot ...
+      //2. promote horizontal edges, otherwise update xcurr and ycurr ...
       if IsIntermediate(e, topY) and IsHorizontal(e.nextInLML) then
       begin
         if (e.outIdx >= 0) then
@@ -3017,10 +3017,10 @@ begin
         //very rarely an edge just below a horizontal edge in a contour
         //intersects with another edge at the very top of a scanbeam.
         //If this happens that intersection must be managed first ...
-        if assigned(e.prevInAEL) and (e.prevInAEL.xbot > e.xtop + tolerance) then
+        if assigned(e.prevInAEL) and (e.prevInAEL.xcurr > e.xtop + tolerance) then
         begin
           IntersectEdges(e.prevInAEL, e,
-            DoublePoint(e.prevInAEL.xbot,e.prevInAEL.ybot), [ipLeft,ipRight]);
+            DoublePoint(e.prevInAEL.xcurr,e.prevInAEL.ycurr), [ipLeft,ipRight]);
           SwapPositionsInAEL(e.prevInAEL, e);
           UpdateEdgeIntoAEL(e);
           AddEdgeToSEL(e);
@@ -3031,10 +3031,10 @@ begin
         else if assigned(e.nextInAEL) and
           (e.xtop > topX(e.nextInAEL, topY) + tolerance) then
         begin
-          e.nextInAEL.xbot := TopX(e.nextInAEL, topY);
-          e.nextInAEL.ybot := topY;
+          e.nextInAEL.xcurr := TopX(e.nextInAEL, topY);
+          e.nextInAEL.ycurr := topY;
           IntersectEdges(e, e.nextInAEL,
-            DoublePoint(e.nextInAEL.xbot,e.nextInAEL.ybot), [ipLeft,ipRight]);
+            DoublePoint(e.nextInAEL.xcurr,e.nextInAEL.ycurr), [ipLeft,ipRight]);
           SwapPositionsInAEL(e, e.nextInAEL);
           UpdateEdgeIntoAEL(e);
           AddEdgeToSEL(e);
@@ -3046,8 +3046,8 @@ begin
       end else
       begin
         //this just simplifies horizontal processing ...
-        e.xbot := TopX(e, topY);
-        e.ybot := topY;
+        e.xcurr := TopX(e, topY);
+        e.ycurr := topY;
       end;
       e := e.nextInAEL;
     end;
@@ -3075,9 +3075,9 @@ begin
   while assigned(e) do
   begin
     if not assigned(e.nextInAEL) then break;
-    if e.nextInAEL.xbot < e.xbot - precision then
+    if e.nextInAEL.xcurr < e.xcurr - precision then
       raise Exception.Create(rsProcessEdgesAtTopOfScanbeam);
-    if e.nextInAEL.xbot > e.xbot + tolerance then
+    if e.nextInAEL.xcurr > e.xcurr + tolerance then
       e := e.nextInAEL else
       e := BubbleSwap(e);
   end;

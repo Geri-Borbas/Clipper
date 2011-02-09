@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v3.0.3 - 9 February 2011
+* Bugfix: Significant bug, but only in C# code.
+* Update: Minor refactoring.
+
 v3.0 - 31 January 2011
 * Update: Major rewrite of the portion of code that calculates 
   the output polygons' orientation.
