@@ -37,6 +37,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cstring>
+#include <cstdlib>
 
 namespace clipper {
 
