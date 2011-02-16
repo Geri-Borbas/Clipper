@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.3                                                           *
-* Date      :  9 February 2011                                                 *
+* Version   :  3.0.4                                                           *
+* Date      :  16 February 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -35,6 +35,8 @@
 #include <cmath>
 #include <ctime>
 #include <vector>
+#include <stdexcept>
+#include <cstring>
 
 namespace clipper {
 
@@ -2932,7 +2934,7 @@ void Clipper::FixOrientation()
         m_PolyPts[i] = 0;
         continue;
       }
-      (TPolyPt*)m_PolyPts[i] = lowestP;
+      m_PolyPts[i] = lowestP;
       TOrientationFlag tmpFlag;
       if (IsClockwise(lowestP)) tmpFlag = ofCW; else tmpFlag = ofEmpty;
       lowestP->flags = tmpFlag;
