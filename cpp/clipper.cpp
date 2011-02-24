@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.4                                                           *
-* Date      :  16 February 2011                                                *
+* Version   :  3.1.1                                                           *
+* Date      :  24 February 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -60,11 +60,14 @@ static const TDoubleRect nullRect = {0,0,0,0};
 template<typename T>
 SkipList<T>::SkipList( compareFunc cf ): m_CompareFunc(cf)
 {
-  const double maxItems = 10000000;
+  //Hard code a likely 'maximum' of 10 million items (since I can't imagine
+  //more than 10M edges existing in any given scanbeam.). The list could still
+  //grow beyond this number, but Skiplist performance would slowly degrade.
+  //const double maxItems = 10000000;
   const double skip = 4;
   std::srand ( std::time(0) );
 
-  m_MaxLevel = std::ceil( std::log(maxItems)/std::log(skip) );//MaxLevel =12
+  m_MaxLevel = 12;//std::ceil( std::log(maxItems)/std::log(skip) );
   m_SkipFrac = 1/skip;
 
   //create and initialize the base node ...
@@ -80,15 +83,15 @@ template<typename T>
 SkipList<T>::~SkipList()
 {
   Clear();
-  delete m_Base;
+  std::free(m_Base);
 }
 //------------------------------------------------------------------------------
 
 template<typename T>
 SkipNode* SkipList<T>::NewNode(int level, T item)
 {
-  void* buf = std::malloc(sizeof(SkipNode)+ level*sizeof(void*));
-  SkipNode* result = new (buf) SkipNode;
+  SkipNode* result =
+    static_cast<SkipNode*>(std::malloc(sizeof(SkipNode)+ level*sizeof(void*)));
   result->level = level;
   result->item = item;
   m_Count++;
@@ -103,7 +106,7 @@ void SkipList<T>::Clear()
   while (tmp != m_Base)
   {
     SkipNode* tmp2 = tmp->prev;
-    delete tmp;
+    std::free(tmp);
     tmp = tmp2;
   }
   for (int i = 0; i < m_MaxLevel; ++i) m_Base->next[i] = 0;
@@ -210,7 +213,7 @@ bool SkipList<T>::DeleteItem(T item)
   if (delNode->next[0])
     delNode->next[0]->prev = delNode->prev; else
     m_Base->prev = delNode->prev;
-  delete delNode;
+  std::free(delNode);
   m_Count--;
   return true;
 }
@@ -254,7 +257,7 @@ void SkipList<T>::Delete(SkipNode*& node)
   if (node->next[0])
     node->next[0]->prev = node->prev; else
     m_Base->prev = node->prev;
-  delete node;
+  std::free(node);
   m_Count--;
   node = 0;
 }
@@ -277,7 +280,7 @@ T SkipList<T>::PopFirst()
   for (int i = 0; i <= delLevel; ++i) m_Base->next[i] = delNode->next[i];
   if (delNode->next[0])
     delNode->next[0]->prev = m_Base; else m_Base->prev = m_Base;
-  delete delNode;
+  std::free(delNode);
   m_Count--;
   return result;
 }
@@ -470,10 +473,11 @@ void SetDx(TEdge &e)
 {
   double dx = std::fabs(e.xbot - e.next->xbot);
   double dy = std::fabs(e.ybot - e.next->ybot);
+  if (dx == 0) e.dx = 0;
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
-  if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision )
+  else if ( (dx < 0.1 && dy *10 < dx) || dy < slope_precision )
   {
     e.dx = horizontal;
     if (e.ybot != e.next->ybot) e.ybot = e.next->ybot;

@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.3                                                           *
-* Date      :  9 February 2011                                                 *
+* Version   :  3.1.0                                                           *
+* Date      :  17 February 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -50,6 +50,8 @@ namespace Clipper
     enum TDirection { dRightToLeft, dLeftToRight };
     [Flags]
     enum TProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
+
+    //nb: ofClockwise = desired orientation flag; ofCW = current orientation flag
     [Flags]
     enum TOrientationFlag {ofEmpty = 0, ofClockwise = 1, ofCW = 2,
         ofForwardBound = 4, ofTop = 8, ofBottomMinima = 16};
@@ -139,7 +141,7 @@ namespace Clipper
         public TDoublePoint pt;
         public int idx1;
         public int idx2;
-        public TPolyPt outPPt; //horiz joins only
+        public TPolyPt outPPt; //used by horizontal joins only
     }
 
     //------------------------------------------------------------------------------
@@ -168,12 +170,15 @@ namespace Clipper
 
         public SkipList(compareFunc cf)
         {
-            const double maxItems = 10000000; //10 Mill.
+            //Hard code a likely 'maximum' of 10 million items (since I can't imagine
+            //more than 10M edges existing in any given scanbeam.). The list could still
+            //grow beyond this number, but Skiplist performance would slowly degrade.
+            //const double maxItems = 10000000; //10 Mill.
             const double skip = 4;
             m_CompareFunc = new  compareFunc(cf);
             m_rand = new Random();
 
-            m_MaxLevel = Convert.ToInt32(Math.Ceiling(Math.Log(maxItems) / Math.Log(skip))); //MaxLevel =12
+            m_MaxLevel = 12;// Convert.ToInt32(Math.Ceiling(Math.Log(maxItems) / Math.Log(skip))); //MaxLevel =12
             m_SkipFrac = 1 / skip;
 
             //create and initialize the base node ...
@@ -461,7 +466,7 @@ namespace Clipper
 
         internal TLocalMinima m_localMinimaList;
         internal TLocalMinima m_CurrentLM;
-        private List<TEdge> m_edges = new List<TEdge>();
+        private List<List<TEdge>> m_edges = new List<List<TEdge>>();
 
         internal static bool PointsEqual(TDoublePoint pt1, TDoublePoint pt2)
         {
@@ -511,10 +516,11 @@ namespace Clipper
         {
             double dx = Math.Abs(e.xbot - e.next.xbot);
             double dy = Math.Abs(e.ybot - e.next.ybot);
+            if (dx == 0) e.dx = 0;
             //Very short, nearly horizontal edges can cause problems by very
             //inaccurately determining intermediate X values - see TopX().
             //Therefore treat very short, nearly horizontal edges as horizontal too ...
-            if ((dx < 0.1 && dy * 10 < dx) || dy < slope_precision)
+            else if ((dx < 0.1 && dy * 10 < dx) || dy < slope_precision)
             {
                 e.dx = horizontal;
                 if (e.ybot != e.next.ybot) e.ybot = e.next.ybot;
@@ -608,7 +614,7 @@ namespace Clipper
         }
         //------------------------------------------------------------------------------
 
-        internal static void ReInitEdge(TEdge e, double nextX, double nextY, TPolyType polyType)
+        internal void ReInitEdge(TEdge e, double nextX, double nextY, TPolyType polyType)
         {
             if (e.ybot > nextY)
             {
@@ -826,10 +832,10 @@ namespace Clipper
                 return;
 
             //create a new edge array ...
-            List<TEdge> edges = new List<TEdge>();
+            List<TEdge> edges = new List<TEdge>(highI);
             for (int i = 0; i < highI + 1; i++)
                 edges.Add(new TEdge());
-            m_edges.AddRange(edges);
+            m_edges.Add(edges);
 
             //convert 'edges' to a double-linked-list and initialize a few of the vars ...
             edges[0].xbot = p[0].X;

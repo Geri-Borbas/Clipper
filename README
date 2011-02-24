@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v3.1.0 - 17 February 2011
+* Bugfix: Obscure bug in TClipperBase.SetDx method that caused 
+  problems with very small edges ( edges <1/1000th pixel in size).
+  
 v3.0.3 - 9 February 2011
 * Bugfix: Significant bug, but only in C# code.
 * Update: Minor refactoring.

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.4                                                           *
-* Date      :  16 February 2011                                                *
+* Version   :  3.1.1                                                           *
+* Date      :  24 February 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -35,6 +35,7 @@
 #define clipper_hpp
 
 #include <vector>
+#include <stdexcept>
 #include <cstring>
 #include <cstdlib>
 
@@ -104,6 +105,7 @@ struct TScanbeam {
   TScanbeam *nextSb;
 };
 
+//nb: ofClockwise = desired orientation flag; ofCW = current orientation flag
 enum TOrientationFlag {ofEmpty = 0, ofClockwise = 1, ofCW = 2,
   ofForwardBound = 4, ofTop = 8, ofBottomMinima = 16};
 
@@ -122,7 +124,7 @@ struct TJoinRec {
     TDoublePoint pt;
     int idx1;
     int idx2;
-    TPolyPt* outPPt; //horiz joins only
+    TPolyPt* outPPt; //used by horizontal joins only
 };
 
 typedef std::vector < TPolyPt * > PolyPtList;

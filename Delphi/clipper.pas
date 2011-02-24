@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.0.3                                                           *
-* Date      :  9 February 2011                                                 *
+* Version   :  3.1.0                                                           *
+* Date      :  17 February 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -156,7 +156,7 @@ type
   end;
 
   //TOrientationFlag:
-  //ofClockwise = expected orientation; ofCW = current orientation
+  //nb: ofClockwise = desired orientation flag; ofCW = current orientation flag
   TOrientationFlag = (ofClockwise, ofCW, ofForwardBound, ofTop, ofBottomMinima);
   TOrientationFlags = set of TOrientationFlag;
 
@@ -173,7 +173,7 @@ type
     pt  : TDoublePoint;
     idx1: integer;
     idx2: integer;
-    outPPt: PPolyPt;    //horizontal joins only
+    outPPt: PPolyPt;    //used by horizontal joins only
   end;
 
   TArrayOfJoinRec = array of TJoinRec;
@@ -269,8 +269,6 @@ type
     procedure MergePolysWithCommonEdges;
     procedure FixOrientation;
   public
-    //SavedSolution: TArrayOfArrayOfFloatPoint; //clipper.DLL only
-
     //The Execute() method performs the specified clipping task on previously
     //assigned subject and clip polygons. This method can be called multiple
     //times (ie to perform different clipping operations) without having to
@@ -333,15 +331,14 @@ resourcestring
 
 constructor TSkipList.Create(CompareFunc: TItemsCompare);
 const
-  //defines a likely 'maximum' of 10 million items. The list can still grow
-  //beyond this number, but as it does, performance will slowly degrade.
-  //nb: available memory starts to be an issue with very large lists where
-  //alternative methods of storage should then be considered (eg databases).
+  //Hard code a likely 'maximum' of 10 million items (since I can't imagine
+  //more than 10M edges existing in any given scanbeam.). The list could still
+  //grow beyond this number, but Skiplist performance would slowly degrade.
   maxItems = 10000000;
   skip = 4;
 begin
   Randomize;
-  fMaxLevel := trunc( ln(maxItems)/ln(skip) ) +1; //fMaxLevel = 12
+  fMaxLevel := 12; // =trunc( ln(maxItems)/ln(skip) ) +1;
   fSkipFrac := 1/skip;
   setlength(fLvls, fMaxLevel);
   if not assigned(CompareFunc) then
@@ -979,10 +976,11 @@ var
 begin
   dx := abs(e.xbot - e.next.xbot);
   dy := abs(e.ybot - e.next.ybot);
+  if (dx = 0) then e.dx := 0
   //Very short, nearly horizontal edges can cause problems by very
   //inaccurately determining intermediate X values - see TopX().
   //Therefore treat very short, nearly horizontal edges as horizontal too ...
-  if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
+  else if ((dx < 0.1) and  (dy *10 < dx)) or (dy < slope_precision) then
   begin
     e.dx := horizontal;
     if (e.ybot <> e.next.ybot) then e.ybot := e.next.ybot;
