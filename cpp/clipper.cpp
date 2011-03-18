@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  3.1.2                                                           *
-* Date      :  10 March 2011                                                   *
+* Version   :  3.1.3                                                           *
+* Date      :  18 March 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2262,7 +2262,7 @@ void Clipper::BuildResult(TPolyPolygon &polypoly){
       if (pg->size() < 3) pg->clear(); else k++;
     }
   }
-
+  polypoly.resize(k);
 }
 //------------------------------------------------------------------------------
 
