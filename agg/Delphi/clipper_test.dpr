@@ -390,7 +390,8 @@ begin
     ps1.Construct;
     ps2.Construct;
 
-    clipper.Construct(@ps1 ,@ps2 , clipper_or, clipper_nonZero, clipper_nonZero);
+    clipper.Construct(@ps1, @ps2, clipper_or,
+      clipper_nonZero, clipper_nonZero);
 
     x:=m_x - _initial_width / 2 + 100;
     y:=m_y - _initial_height / 2 + 100;
@@ -448,7 +449,8 @@ begin
     stroke.Construct(@ps2 );
     stroke.width_   (10.0 );
 
-    clipper.Construct(@ps1 ,@stroke, clipper_or, clipper_nonZero, clipper_nonZero);
+    clipper.Construct(@ps1 ,@stroke, clipper_or,
+      clipper_nonZero, clipper_nonZero);
 
     x:=m_x - _initial_width / 2 + 100;
     y:=m_y - _initial_height / 2 + 100;
@@ -661,7 +663,8 @@ begin
     trans.Construct(@glyph ,@mtx );
     curve.Construct(@trans );
 
-    clipper.Construct(@stroke ,@curve, clipper_or, clipper_nonZero, clipper_nonZero);
+    clipper.Construct(@stroke ,@curve, clipper_or,
+      clipper_nonZero, clipper_nonZero);
 
     ras.reset;
     ras.add_path    (@stroke );

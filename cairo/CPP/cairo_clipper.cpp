@@ -1,18 +1,20 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  0.6                                                             *
-* Date      :  6 December 2010                                                 *
-* Copyright :  Angus Johnson                                                   *
+* Version   :  1.1                                                             *
+* Date      :  4 April 2011                                                    *
+* Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
 * http://www.boost.org/LICENSE_1_0.txt                                         *
 *                                                                              *
-* Modified by Mike Owens to support coordinate transformation and tolerance    *
+* Modified by Mike Owens to support coordinate transformation                  *
 *******************************************************************************/
 
-#include <cairo/cairo.h>
+#include <stdexcept>
+#include <cmath>
+#include <cairo.h>
 #include "clipper.hpp"
 #include "cairo_clipper.hpp"
 
@@ -20,47 +22,45 @@ namespace clipper {
   namespace cairo {
 
     namespace {
-      inline void transform_point(cairo_t* pen,
-                                  Transform transform,
-                                  double* x, double* y)
+
+      inline int Round(double val)
       {
-        switch (transform) 
+        if ((val < 0)) return (int)(val - 0.5); else return (int)(val + 0.5);
+      }
+
+      void transform_point(cairo_t* pen, Transform transform, int* x, int* y)
+      {
+        double _x = *x, _y = *y;
+        switch (transform)
         {
           case tDeviceToUser:
-            cairo_device_to_user(pen, x, y);
+            cairo_device_to_user(pen, &_x, &_y);
             break;
           case tUserToDevice:
-            cairo_user_to_device(pen, x, y);
+            cairo_user_to_device(pen, &_x, &_y);
             break;
           default:
             ;
         }
+        *x = Round(_x); *y = Round(_y);
       }
     }
 
     void cairo_to_clipper(cairo_t* cr,
-                          TPolyPolygon &pg,
-                          Transform transform,
-                          double tolerance)
+                          Polygons &pg,
+                          int scaling_factor,
+                          Transform transform)
     {
-      pg.clear();
+      if (scaling_factor > 8 || scaling_factor < 0)
+        throw clipperCairoException("cairo_to_clipper: invalid scaling factor");
+      double scaling = std::pow((double)10, scaling_factor);
 
-      /* Avoid a push/pop if not required. */
-      cairo_path_t *path = 0;
-      if (tolerance != 0.0) {
-        cairo_save(cr);
-        cairo_set_tolerance(cr, tolerance);
-        path = cairo_copy_path_flat(cr);
-        cairo_restore(cr);
-      } else {
-        path = cairo_copy_path_flat(cr);
-      }
+      pg.clear();
+      cairo_path_t *path = cairo_copy_path_flat(cr);
 
       int poly_count = 0;
       for (int i = 0; i < path->num_data; i += path->data[i].header.length) {
-        if( path->data[i].header.type == CAIRO_PATH_CLOSE_PATH) {
-          poly_count++;
-        }
+        if( path->data[i].header.type == CAIRO_PATH_CLOSE_PATH) poly_count++;
       }
 
       pg.resize(poly_count);
@@ -81,18 +81,20 @@ namespace clipper {
           pg.resize(pc);
           break;
         }
-        pg[pc][0].X = path->data[i+1].point.x;
-        pg[pc][0].Y = path->data[i+1].point.y;
-        transform_point(cr, transform, &pg[pc][0].X, &pg[pc][0].Y);
+        pg[pc][0].X = Round(path->data[i+1].point.x *scaling);
+        pg[pc][0].Y = Round(path->data[i+1].point.y *scaling);
+        if (transform != tNone)
+          transform_point(cr, transform, &pg[pc][0].X, &pg[pc][0].Y);
 
         i += path->data[i].header.length;
 
         j = 1;
         while (j < vert_count && i < path->num_data &&
           path->data[i].header.type == CAIRO_PATH_LINE_TO) {
-          pg[pc][j].X = path->data[i+1].point.x;
-          pg[pc][j].Y = path->data[i+1].point.y;
-          transform_point(cr, transform, &pg[pc][j].X, &pg[pc][j].Y);
+          pg[pc][j].X = Round(path->data[i+1].point.x *scaling);
+          pg[pc][j].Y = Round(path->data[i+1].point.y *scaling);
+          if (transform != tNone)
+            transform_point(cr, transform, &pg[pc][j].X, &pg[pc][j].Y);
           j++;
           i += path->data[i].header.length;
         }
@@ -103,10 +105,14 @@ namespace clipper {
     }
     //--------------------------------------------------------------------------
 
-    void clipper_to_cairo(const TPolyPolygon &pg,
+    void clipper_to_cairo(const Polygons &pg,
                           cairo_t* cr,
+                          int scaling_factor,
                           Transform transform)
     {
+      if (scaling_factor > 8 || scaling_factor < 0)
+        throw clipperCairoException("clipper_to_cairo: invalid scaling factor");
+      double scaling = std::pow((double)10, scaling_factor);
       for (size_t i = 0; i < pg.size(); ++i)
       {
         size_t sz = pg[i].size();
@@ -114,10 +120,10 @@ namespace clipper {
           continue;
         cairo_new_sub_path(cr);
         for (size_t j = 0; j < sz; ++j) {
-          double x = pg[i][j].X,
-                 y = pg[i][j].Y;
-          transform_point(cr, transform, &x, &y);
-          cairo_line_to(cr, x, y);
+          int x = pg[i][j].X, y = pg[i][j].Y;
+          if (transform != tNone)
+            transform_point(cr, transform, &x, &y);
+          cairo_line_to(cr, (double)x / scaling, (double)y / scaling);
         }
         cairo_close_path(cr);
       }

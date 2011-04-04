@@ -1,24 +1,16 @@
-//----------------------------------------------------------------------------
-// Anti-Grain Geometry - Version 2.4
-// Copyright (C) 2002-2005 Maxim Shemanarev (http://www.antigrain.com)
-//
-// Permission to copy, use, modify, sell and distribute this software
-// is granted provided this copyright notice appears in all copies.
-// This software is provided "as is" without express or implied
-// warranty, and with no claim as to its suitability for any purpose.
-//
-//----------------------------------------------------------------------------
-// Contact: mcseem@antigrain.com
-// mcseemagg@yahoo.com
-// http://www.antigrain.com
-//----------------------------------------------------------------------------
-//
-//----------------------------------------------------------------------------
-// agg_conv_clipper.h
-// Author    :  Angus Johnson                                                   
-// Version   :  2.04
-// Date      :  4 August 2010
-//----------------------------------------------------------------------------
+/*******************************************************************************
+*                                                                              *
+* Author    :  Angus Johnson                                                   *
+* Version   :  1.1                                                             *
+* Date      :  4 April 2011                                                    *
+* Website   :  http://www.angusj.com                                           *
+* Copyright :  Angus Johnson 2010-2011                                         *
+*                                                                              *
+* License:                                                                     *
+* Use, modification & distribution is subject to Boost Software License Ver 1. *
+* http://www.boost.org/LICENSE_1_0.txt                                         *
+*                                                                              *
+*******************************************************************************/
 
 #ifndef AGG_CONV_CLIPPER_INCLUDED
 #define AGG_CONV_CLIPPER_INCLUDED
@@ -40,7 +32,6 @@ namespace agg
     typedef VSA source_a_type;
     typedef VSB source_b_type;
     typedef conv_clipper<source_a_type, source_b_type> self_type;
-	//typedef   vertex_array_type;
 
   private:
     source_a_type*							m_src_a;
@@ -48,20 +39,27 @@ namespace agg
     status									m_status;
     int										m_vertex;
     int										m_contour;
+	int										m_scaling_factor;
     clipper_op_e							m_operation;
-    pod_bvector<clipper::TDoublePoint, 8>	m_vertex_accumulator;
-    clipper::TPolyPolygon					m_poly_a;
-    clipper::TPolyPolygon					m_poly_b;
-    clipper::TPolyPolygon					m_result;
+    pod_bvector<clipper::IntPoint, 8>		m_vertex_accumulator;
+    clipper::Polygons						m_poly_a;
+    clipper::Polygons						m_poly_b;
+    clipper::Polygons						m_result;
     clipper::Clipper						m_clipper;
     clipper_PolyFillType					m_subjFillType;
     clipper_PolyFillType					m_clipFillType;
+
+    int Round(double val)
+    {
+    if ((val < 0)) return (int)(val - 0.5); else return (int)(val + 0.5);
+    }
 
   public:
     conv_clipper(source_a_type &a, source_b_type &b,
       clipper_op_e op = clipper_or,
       clipper_PolyFillType subjFillType = clipper_even_odd,
-      clipper_PolyFillType clipFillType = clipper_even_odd) :
+      clipper_PolyFillType clipFillType = clipper_even_odd,
+	  int scaling_factor = 2) :
         m_src_a(&a),
         m_src_b(&b),
         m_status(status_move_to),
@@ -71,8 +69,9 @@ namespace agg
         m_subjFillType(subjFillType),
         m_clipFillType(clipFillType)
     {
-      m_clipper.IgnoreOrientation(false);
-    }
+		m_scaling_factor = std::max(std::min(scaling_factor, 6),0);
+		m_scaling_factor = Round(std::pow((double)10, m_scaling_factor));
+	}
 
     ~conv_clipper()
     {
@@ -92,9 +91,9 @@ namespace agg
     bool next_vertex(double* x, double* y);
     void start_extracting();
     void add_vertex_(double &x, double &y);
-    void end_contour(clipper::TPolyPolygon &p);
+    void end_contour(clipper::Polygons &p);
 
-	template<class VS> void add(VS &src, clipper::TPolyPolygon &p){
+	template<class VS> void add(VS &src, clipper::Polygons &p){
 		unsigned cmd;
 		double x; double y; double start_x; double start_y;
 		bool starting_first_line;
@@ -150,45 +149,45 @@ namespace agg
     add( m_src_b , m_poly_b );
     m_result.resize(0);
 
-    clipper::TPolyFillType pftSubj = (m_subjFillType == clipper_even_odd) ?
+    clipper::PolyFillType pftSubj = (m_subjFillType == clipper_even_odd) ?
       clipper::pftEvenOdd : clipper::pftNonZero;
-    clipper::TPolyFillType pftClip = (m_clipFillType == clipper_even_odd) ?
+    clipper::PolyFillType pftClip = (m_clipFillType == clipper_even_odd) ?
       clipper::pftEvenOdd : clipper::pftNonZero;
 
     m_clipper.Clear();
     switch( m_operation ) {
       case clipper_or:
         {
-        m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
-        m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
+        m_clipper.AddPolygons( m_poly_a , clipper::ptSubject );
+        m_clipper.AddPolygons( m_poly_b , clipper::ptClip );
         m_clipper.Execute( clipper::ctUnion , m_result , pftSubj, pftClip);
 		break;
         }
       case clipper_and:
         {
-        m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
-        m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
+        m_clipper.AddPolygons( m_poly_a , clipper::ptSubject );
+        m_clipper.AddPolygons( m_poly_b , clipper::ptClip );
         m_clipper.Execute( clipper::ctIntersection , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_xor:
         {
-        m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
-        m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
+        m_clipper.AddPolygons( m_poly_a , clipper::ptSubject );
+        m_clipper.AddPolygons( m_poly_b , clipper::ptClip );
         m_clipper.Execute( clipper::ctXor , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_a_minus_b:
         {
-        m_clipper.AddPolyPolygon( m_poly_a , clipper::ptSubject );
-        m_clipper.AddPolyPolygon( m_poly_b , clipper::ptClip );
+        m_clipper.AddPolygons( m_poly_a , clipper::ptSubject );
+        m_clipper.AddPolygons( m_poly_b , clipper::ptClip );
         m_clipper.Execute( clipper::ctDifference , m_result, pftSubj, pftClip );
 		break;
         }
       case clipper_b_minus_a:
         {
-        m_clipper.AddPolyPolygon( m_poly_b , clipper::ptSubject );
-        m_clipper.AddPolyPolygon( m_poly_a , clipper::ptClip );
+        m_clipper.AddPolygons( m_poly_b , clipper::ptSubject );
+        m_clipper.AddPolygons( m_poly_a , clipper::ptClip );
         m_clipper.Execute( clipper::ctDifference , m_result, pftSubj, pftClip );
 		break;
         }
@@ -198,7 +197,7 @@ namespace agg
   //------------------------------------------------------------------------------
 
   template<class VSA, class VSB>
-  void conv_clipper<VSA, VSB>::end_contour( clipper::TPolyPolygon &p)
+  void conv_clipper<VSA, VSB>::end_contour( clipper::Polygons &p)
   {
   unsigned i, len;
 
@@ -215,10 +214,10 @@ namespace agg
   template<class VSA, class VSB> 
   void conv_clipper<VSA, VSB>::add_vertex_(double &x, double &y)
   {
-	 clipper::TDoublePoint v;
+	  clipper::IntPoint v;
 
-	  v.X = x;
-	  v.Y = y;
+	  v.X = Round(x * m_scaling_factor);
+	  v.Y = Round(y * m_scaling_factor);
 	  m_vertex_accumulator.add( v );
   }
   //------------------------------------------------------------------------------
@@ -238,8 +237,8 @@ namespace agg
   {
     m_vertex++;
     if(m_vertex >= (int)m_result[m_contour].size()) return false;
-    *x = m_result[ m_contour ][ m_vertex ].X;
-    *y = m_result[ m_contour ][ m_vertex ].Y;
+    *x = (double)m_result[ m_contour ][ m_vertex ].X / m_scaling_factor;
+    *y = (double)m_result[ m_contour ][ m_vertex ].Y / m_scaling_factor;
     return true;
   }
   //------------------------------------------------------------------------------

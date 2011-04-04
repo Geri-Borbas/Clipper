@@ -1,23 +1,16 @@
-//----------------------------------------------------------------------------
-// Anti-Grain Geometry - Version 2.4 (Public License)
-// Copyright (C) 2002-2005 Maxim Shemanarev (http://www.antigrain.com)
-//
-// Anti-Grain Geometry - Version 2.4 Release Milano 3 (AggPas 2.4 RM3)
-// Pascal Port By: Milan Marusinec alias Milano
-//                 milan@marusinec.sk
-//                 http://www.aggpas.org
-// Copyright (c) 2005-2006
-//
-// Permission to copy, use, modify, sell and distribute this software
-// is granted provided this copyright notice appears in all copies.
-// This software is provided "as is" without express or implied
-// warranty, and with no claim as to its suitability for any purpose.
-//
-//----------------------------------------------------------------------------
-// Contact: mcseem@antigrain.com
-//          mcseemagg@yahoo.com
-//          http://www.antigrain.com
-//----------------------------------------------------------------------------
+(*******************************************************************************
+*                                                                              *
+* Author    :  Angus Johnson                                                   *
+* Version   :  1.1                                                             *
+* Date      :  4 April 2011                                                    *
+* Website   :  http://www.angusj.com                                           *
+* Copyright :  Angus Johnson 2010-2011                                         *
+*                                                                              *
+* License:                                                                     *
+* Use, modification & distribution is subject to Boost Software License Ver 1. *
+* http://www.boost.org/LICENSE_1_0.txt                                         *
+*                                                                              *
+*******************************************************************************)
 
 unit
  agg_conv_clipper ;
@@ -27,10 +20,12 @@ interface
 {$I agg_mode.inc }
 
 uses
- clipper ,
- agg_basics ,
- agg_array ,
- agg_vertex_source ;
+  types,
+  math,
+  clipper ,
+  agg_basics ,
+  agg_array ,
+  agg_vertex_source ;
 
 type
   clipper_op_e = (
@@ -49,7 +44,7 @@ type
   status = (status_move_to, status_line_to, status_stop );
 
  conv_clipper_ptr = ^conv_clipper;
- conv_clipper = object(vertex_source )
+ conv_clipper = object(vertex_source)
    m_src_a ,
    m_src_b : vertex_source_ptr;
 
@@ -58,12 +53,14 @@ type
    m_contour   : int;
    m_operation : clipper_op_e;
 
+   m_scaling_factor: int;
+
    m_subjFillType,
    m_clipFillType: clipper_polyFillType;
 
    m_poly_a ,
    m_poly_b ,
-   m_result : TArrayOfArrayOfDoublePoint;
+   m_result : TArrayOfArrayOfPoint;
 
    m_vertex_accumulator: pod_deque;
    clipper: TClipper;
@@ -71,7 +68,8 @@ type
    constructor Construct(a, b : vertex_source_ptr;
      op : clipper_op_e = clipper_or;
      subjFillType: clipper_polyFillType = clipper_evenOdd;
-     clipFillType: clipper_polyFillType = clipper_evenOdd);
+     clipFillType: clipper_polyFillType = clipper_evenOdd;
+     scaling_factor: integer = 2); //default scaling == 2 decimal places
 
    destructor  Destruct; virtual;
 
@@ -91,8 +89,8 @@ type
    procedure start_extracting;
    procedure start_contour;
    procedure add_vertex_ (x,y: double );
-   procedure end_contour(var p: TArrayOfArrayOfDoublePoint);
-   procedure add(src : vertex_source_ptr; var p: TArrayOfArrayOfDoublePoint);
+   procedure end_contour(var p: TArrayOfArrayOfPoint);
+   procedure add(src : vertex_source_ptr; var p: TArrayOfArrayOfPoint);
   end;
 
 implementation
@@ -107,11 +105,15 @@ end;
 constructor conv_clipper.Construct(a, b: vertex_source_ptr;
      op: clipper_op_e = clipper_or;
      subjFillType: clipper_polyFillType = clipper_evenOdd;
-     clipFillType: clipper_polyFillType = clipper_evenOdd);
+     clipFillType: clipper_polyFillType = clipper_evenOdd;
+     scaling_factor: integer = 2); //default scaling == 2 decimal places
 begin
   m_src_a := a;
   m_src_b := b;
   m_operation := op;
+
+  m_scaling_factor := max(min(scaling_factor, 6),0);
+  m_scaling_factor := round(power(10, m_scaling_factor));
 
   m_status   := status_move_to;
   m_vertex   := -1;
@@ -120,13 +122,11 @@ begin
   m_poly_a := nil;
   m_poly_b := nil;
   m_result := nil;
-  m_vertex_accumulator.Construct (sizeof(TDoublePoint), 8 );
+  m_vertex_accumulator.Construct (sizeof(TPoint), 8 );
 
   m_subjFillType := subjFillType;
   m_clipFillType := clipFillType;
   clipper := TClipper.Create;
-  clipper.IgnoreOrientation := false;
-
 end;
 //------------------------------------------------------------------------------
 
@@ -182,32 +182,32 @@ begin
     case m_operation of
       clipper_or :
        begin
-         AddPolyPolygon(m_poly_a, ptSubject);
-         AddPolyPolygon(m_poly_b, ptClip);
+         AddPolygons(m_poly_a, ptSubject);
+         AddPolygons(m_poly_b, ptClip);
          Execute(ctUnion, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_and :
        begin
-         AddPolyPolygon(m_poly_a, ptSubject);
-         AddPolyPolygon(m_poly_b, ptClip);
+         AddPolygons(m_poly_a, ptSubject);
+         AddPolygons(m_poly_b, ptClip);
          Execute(ctIntersection, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_xor :
        begin
-         AddPolyPolygon(m_poly_a, ptSubject);
-         AddPolyPolygon(m_poly_b, ptClip);
+         AddPolygons(m_poly_a, ptSubject);
+         AddPolygons(m_poly_b, ptClip);
          Execute(ctXor, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_a_minus_b :
        begin
-         AddPolyPolygon(m_poly_a, ptSubject);
-         AddPolyPolygon(m_poly_b, ptClip);
+         AddPolygons(m_poly_a, ptSubject);
+         AddPolygons(m_poly_b, ptClip);
          Execute(ctDifference, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
       clipper_b_minus_a :
        begin
-         AddPolyPolygon(m_poly_b, ptSubject);
-         AddPolyPolygon(m_poly_a, ptClip);
+         AddPolygons(m_poly_b, ptSubject);
+         AddPolygons(m_poly_a, ptClip);
          Execute(ctDifference, m_result, pft(m_subjFillType), pft(m_clipFillType));
        end;
     end;
@@ -222,7 +222,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.end_contour(var p: TArrayOfArrayOfDoublePoint);
+procedure conv_clipper.end_contour(var p: TArrayOfArrayOfPoint);
 var
   i, len: integer;
 begin
@@ -231,17 +231,17 @@ begin
   setLength(p, len+1);
   setLength(p[len], m_vertex_accumulator.size);
   for i := 0 to m_vertex_accumulator.size -1 do
-    p[len][i] := PDoublePoint(m_vertex_accumulator.array_operator(i))^;
+    p[len][i] := PPoint(m_vertex_accumulator.array_operator(i))^;
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.add_vertex_ (x,y: double );
+procedure conv_clipper.add_vertex_ (x,y: double);
 var
- v : TDoublePoint;
+ v : TPoint;
 begin
-  v.x := x;
-  v.y := y;
-  m_vertex_accumulator.add(@v );
+  v.x := round(x * m_scaling_factor);
+  v.y := round(y * m_scaling_factor);
+  m_vertex_accumulator.add(@v);
 end;
 //------------------------------------------------------------------------------
 
@@ -255,13 +255,13 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function conv_clipper.next_vertex;
+function conv_clipper.next_vertex(x ,y : double_ptr ) : boolean;
 begin
   result:=false;
   inc(m_vertex);
   if m_vertex >= length(m_result[m_contour]) then exit;
-  x^ := m_result[m_contour][m_vertex].X;
-  y^ := m_result[m_contour][m_vertex].Y;
+  x^ := m_result[m_contour][m_vertex].X / m_scaling_factor;
+  y^ := m_result[m_contour][m_vertex].Y / m_scaling_factor;
   result := true;
 end;
 //------------------------------------------------------------------------------
@@ -297,7 +297,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfDoublePoint);
+procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfPoint);
 var
   cmd: unsigned;
   x, y, start_x ,start_y: double;
