@@ -20,9 +20,8 @@ coordinate precision, the programmer must keep in mind that on most platforms
 integers are still confined to 32bits, so there is a limit to how much scaling 
 is possible before overflow errors will be encountered.
 
-Many of Clipper's methods have been renamed though they still retain a 
-similarity with their old names. (The old names were cumbersome but had their 
-heritage in the Delphi programming language and the popular Delphi graphics 
-library Graphics32.) As an example, the AddPolyPolygon() method has been 
-renamed AddPolygons(). Likewise, all classes, structures and enumerations have 
-lost their T's (except in the Delphi code) - so TClipType is now ClipType etc.
+The AddPolyPolygon() method has been renamed AddPolygons(). (The old name was
+a relic from a naming style in the Delphi Graphics32 library.) Also, in
+throwing off another Delphi naming convention, all classes, structures and 
+enumerations in the C++ and C# translations have lost their T prescripts - eg 
+TClipType is now ClipType, though the T's are retained in the Delphi code.

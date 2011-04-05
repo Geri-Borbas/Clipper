@@ -2,6 +2,18 @@
 Clipper Change Log
 ============================================================
 
+v4.0 - 5 April 2011
+* Clipper 4 is a major rewrite of earlier versions. The biggest 
+  change is that floating point values are no longer used, 
+  except for the storing of edge slope values. The main benefit 
+  of this is the issue of numerical robustness has been 
+  addressed. Due to other major code improvements Clipper v4 
+  is approximately 40% faster than Clipper v3. 
+* The AddPolyPolygon method has been renamed to AddPolygons. 
+* The IgnoreOrientation property has been removed. 
+* The clipper_misc library has been merged back into the 
+  main clipper library.
+  
 v3.1.0 - 17 February 2011
 * Bugfix: Obscure bug in TClipperBase.SetDx method that caused 
   problems with very small edges ( edges <1/1000th pixel in size).
