@@ -2,6 +2,13 @@
 Clipper Change Log
 ============================================================
 
+v4.1.1 - 8 April 2011
+* Update: All polygon coordinates are now stored as 64bit integers. 
+* Change: AddPolygon and AddPolygons methods now return boolean 
+  values. 
+* Bugfix: Bug in JoinCommonEdges() caused potential endless loop. 
+* Bugfix: Bug in IsClockwise(). (C++ code only)
+
 v4.0 - 5 April 2011
 * Clipper 4 is a major rewrite of earlier versions. The biggest 
   change is that floating point values are no longer used, 

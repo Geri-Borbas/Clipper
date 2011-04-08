@@ -11,14 +11,14 @@ edge slope comparisons may affect edge sort order within 'scanbeams', but this
 should not affect the robustness of the library.) 
 
 Due to major code improvements and to a lesser extent due to the change to 
-integer coordinates, Clipper4 is approximately 40% faster than Clipper3.
+integer coordinates, Clipper4 is approximately 30% faster than Clipper3.
 
 One minor drawback with the change to integer coordinates, is that the user 
 will have to convert floating point coordinates into integer values - usually 
 with some scaling to manage precision. When values are scaled up to improve 
-coordinate precision, the programmer must keep in mind that on most platforms 
-integers are still confined to 32bits, so there is a limit to how much scaling 
-is possible before overflow errors will be encountered.
+coordinate precision, the programmer must keep in mind that integers are 
+confined to 64bits, so there is a limit to how much scaling is possible before 
+overflow errors will be encountered.
 
 The AddPolyPolygon() method has been renamed AddPolygons(). (The old name was
 a relic from a naming style in the Delphi Graphics32 library.) Also, in

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.1.1                                                           *
-* Date      :  8 April 2011                                                    *
+* Version   :  4.1.2                                                           *
+* Date      :  9 April 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -42,6 +42,7 @@ type
 
   PIntPoint = ^TIntPoint;
   TIntPoint = record X, Y: int64; end;
+  TIntRect = record left, top, right, bottom: int64; end;
 
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
@@ -235,13 +236,13 @@ function OffsetPolygons(const pts: TArrayOfArrayOfIntPoint;
 function PointInPolygon(const pt: TIntPoint; const pts: TArrayOfIntPoint): Boolean;
 
 function IntPoint(const X, Y: Int64): TIntPoint;
-function FloatPointsToPoint(const a: TArrayOfFloatPoint;
+function FloatPointsToIntPoints(const a: TArrayOfFloatPoint;
   decimals: integer = 2): TArrayOfIntPoint; overload;
-function FloatPointsToPoint(const a: TArrayOfArrayOfFloatPoint;
+function FloatPointsToIntPoints(const a: TArrayOfArrayOfFloatPoint;
   decimals: integer = 2): TArrayOfArrayOfIntPoint; overload;
-function PointsToFloatPoints(const a: TArrayOfIntPoint;
+function IntPointsToFloatPoints(const a: TArrayOfIntPoint;
   decimals: integer = 2): TArrayOfFloatPoint; overload;
-function PointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
+function IntPointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
   decimals: integer = 2): TArrayOfArrayOfFloatPoint; overload;
 
 implementation
@@ -268,7 +269,7 @@ resourcestring
 //------------------------------------------------------------------------------
 
 {$IFDEF USING_GRAPHICS32}
-function FloatPointsToPoint(const a: TArrayOfFloatPoint;
+function FloatPointsToIntPoints(const a: TArrayOfFloatPoint;
   decimals: integer = 2): TArrayOfIntPoint; overload;
 var
   i,decScale: integer;
@@ -283,7 +284,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FloatPointsToPoint(const a: TArrayOfArrayOfFloatPoint;
+function FloatPointsToIntPoints(const a: TArrayOfArrayOfFloatPoint;
   decimals: integer = 2): TArrayOfArrayOfIntPoint; overload;
 var
   i,j,decScale: integer;
@@ -302,7 +303,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointsToFloatPoints(const a: TArrayOfIntPoint;
+function IntPointsToFloatPoints(const a: TArrayOfIntPoint;
   decimals: integer = 2): TArrayOfFloatPoint; overload;
 var
   i,decScale: integer;
@@ -317,7 +318,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
+function IntPointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
   decimals: integer = 2): TArrayOfArrayOfFloatPoint; overload;
 var
   i,j,decScale: integer;
@@ -370,10 +371,9 @@ begin
   result := true;
   highI := high(pts);
   if highI < 2 then exit;
-  //or ...(x2-x1)(y2+y1)
-  area := (pts[highI].x) * pts[0].y - (pts[0].x) * pts[highI].y;
+  area := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
   for i := 0 to highI-1 do
-    area := area + (pts[i].x) * pts[i+1].y - (pts[i+1].x) * pts[i].y;
+    area := area + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
   //area := area/2;
   result := area > 0; //ie reverse of normal formula because Y axis inverted
 end;
@@ -386,9 +386,10 @@ begin
   result := 0;
   highI := high(pts);
   if highI < 2 then exit;
-  result := (pts[highI].x) * pts[0].y - (pts[0].x) * pts[highI].y;
+  result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
   for i := 0 to highI-1 do
-    result := result + (pts[i].x) * pts[i+1].y - (pts[i+1].x) * pts[i].y;
+    result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
+  result := result / 2;
 end;
 //------------------------------------------------------------------------------
 
@@ -687,7 +688,7 @@ var
   e, eHighest: PEdge;
   pg: TArrayOfIntPoint;
 const
-  MaxVal = 1.5E9; //~ Sqrt(2^63)/2
+  MaxVal = 1.5E9; //(2*MaxVal)*(2*MaxVal) < 2^63 - see SlopesEqual() 
 begin
   {AddPolygon}
   result := false; //ie assume nothing added
@@ -2710,11 +2711,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetBounds(const a: TArrayOfArrayOfIntPoint): TRect;
+function GetBounds(const a: TArrayOfArrayOfIntPoint): TIntRect;
 var
   i,j,len: integer;
 const
-  nullRect: TRect = (left:0;top:0;right:0;bottom:0);
+  nullRect: TIntRect = (left:0;top:0;right:0;bottom:0);
 begin
   len := length(a);
   i := 0;
@@ -2748,7 +2749,7 @@ var
   normals: TArrayOfDoublePoint;
   a1, a2, deltaSq: double;
   arc, outer: TArrayOfIntPoint;
-  bounds: TRect;
+  bounds: TIntRect;
   c: TClipper;
 begin
   deltaSq := delta*delta;

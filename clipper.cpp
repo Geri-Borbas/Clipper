@@ -54,11 +54,11 @@ bool IsClockwise(const Polygon &poly)
   int highI = poly.size() -1;
   if (highI < 2) return false;
   double a;
-  a = (double)poly[highI].X * (double)poly[0].Y -
-    (double)poly[0].X * (double)poly[highI].Y;
+  a = static_cast<double>(poly[highI].X) * static_cast<double>(poly[0].Y) -
+    static_cast<double>(poly[0].X) * static_cast<double>(poly[highI].Y);
   for (int i = 0; i < highI; ++i)
-    a += (double)poly[i].X * (double)poly[i+1].Y -
-      (double)poly[i+1].X * (double)poly[i].Y;
+    a += static_cast<double>(poly[i].X) * static_cast<double>(poly[i+1].Y) -
+      static_cast<double>(poly[i+1].X) * static_cast<double>(poly[i].Y);
   //area := area/2;
   return a > 0; //ie reverse of normal formula because assume Y axis inverted
 }
@@ -70,8 +70,8 @@ bool IsClockwise(PolyPt *pt)
   PolyPt* startPt = pt;
   do
   {
-    a += (double)pt->pt.X * (double)pt->next->pt.Y -
-      (double)pt->next->pt.X * (double)pt->pt.Y;
+    a += static_cast<double>(pt->pt.X) * static_cast<double>(pt->next->pt.Y) -
+      static_cast<double>(pt->next->pt.X) * static_cast<double>(pt->pt.Y);
     pt = pt->next;
   }
   while (pt != startPt);
@@ -84,11 +84,12 @@ double Area(const Polygon &poly)
 {
   int highI = poly.size() -1;
   if (highI < 2) return 0;
-  double a = (double)poly[highI].X * (double)poly[0].Y -
-    (double)poly[0].X * (double)poly[highI].Y;
+  double a;
+  a = static_cast<double>(poly[highI].X) * static_cast<double>(poly[0].Y) -
+    static_cast<double>(poly[0].X) * static_cast<double>(poly[highI].Y);
   for (int i = 0; i < highI; ++i)
-    a += (double)poly[i].X * (double)poly[i+1].Y -
-      (double)poly[i+1].X * (double)poly[i].Y;
+    a += static_cast<double>(poly[i].X) * static_cast<double>(poly[i+1].Y) -
+      static_cast<double>(poly[i+1].X) * static_cast<double>(poly[i].Y);
   return a/2;
 }
 //------------------------------------------------------------------------------
@@ -114,14 +115,16 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2, const IntPoint pt3)
 void SetDx(TEdge &e)
 {
   if (e.ybot == e.ytop) e.dx = horizontal;
-  else e.dx = ((double)e.xtop-(double)e.xbot)/((double)e.ytop-(double)e.ybot);
+  else e.dx =
+    static_cast<double>(e.xtop - e.xbot) / static_cast<double>(e.ytop - e.ybot);
 }
 //---------------------------------------------------------------------------
 
 double GetDx(const IntPoint pt1, const IntPoint pt2)
 {
   if (pt1.Y == pt2.Y) return horizontal;
-  else return ((double)pt2.X - (double)pt1.X)/((double)pt2.Y - (double)pt1.Y);
+  else return
+    static_cast<double>(pt2.X - pt1.X) / static_cast<double>(pt2.Y - pt1.Y);
 }
 //---------------------------------------------------------------------------
 
@@ -143,13 +146,14 @@ void SwapPolyIndexes(TEdge &edge1, TEdge &edge2)
 
 inline long64 Round(double val)
 {
-  if ((val < 0)) return (long64)(val - 0.5); else return (long64)(val + 0.5);
+  if ((val < 0)) return static_cast<long64>(val - 0.5);
+  else return static_cast<long64>(val + 0.5);
 }
 //------------------------------------------------------------------------------
 
 inline long64 Abs(long64 val)
 {
-  if ((val < 0)) return (long64)-val; else return (long64)val;
+  if ((val < 0)) return -val; else return val;
 }
 //------------------------------------------------------------------------------
 
@@ -168,8 +172,8 @@ long64 TopX(const IntPoint pt1, const IntPoint pt2, const long64 currentY)
   else if (pt1.X == pt2.X) return pt1.X;
   else
   {
-    double q = (double)(pt1.X-pt2.X)/(double)(pt1.Y-pt2.Y);
-    return (long64)(pt1.X + (currentY - pt1.Y) *q);
+    double q = static_cast<double>(pt1.X-pt2.X)/static_cast<double>(pt1.Y-pt2.Y);
+    return static_cast<long64>(pt1.X + (currentY - pt1.Y) *q);
   }
 }
 //------------------------------------------------------------------------------
@@ -2201,8 +2205,8 @@ Polygon BuildArc(const IntPoint &pt,
 
 DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
 {
-  double dx = (double)(pt2.X - pt1.X);
-  double dy = (double)(pt2.Y - pt1.Y);
+  double dx = static_cast<double>(pt2.X - pt1.X);
+  double dy = static_cast<double>(pt2.Y - pt1.Y);
   if(  ( dx == 0 ) && ( dy == 0 ) ) return DoublePoint( 0, 0 );
 
   double f = 1 *1.0/ std::sqrt( dx*dx + dy*dy );
