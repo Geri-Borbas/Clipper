@@ -87,20 +87,20 @@ var
 implementation
 
 const
-  subjPenColor: TColor32 = $00C3C9CF;
-  subjBrushColor: TColor32 = $00DDDDFF;
-  clipPenColor: TColor32 = $00F9BEA6;
+  subjPenColor: TColor32 = $60C3C9CF;
+  subjBrushColor: TColor32 = $00DDDDF0;
+  clipPenColor: TColor32 = $30F9BEA6;
   clipBrushColor: TColor32 = $00FFE0E0;
-  solPenColor: TColor32 = $7F000000;
-  solBrushColor: TColor32 = $7FFFFF66;
+  solPenColor: TColor32 = $7F003300;
+  solBrushColor: TColor32 = $8066EF7F;
 
 var
   subj: TArrayOfArrayOfFloatPoint = nil;
   clip: TArrayOfArrayOfFloatPoint = nil;
-  subjI: TArrayOfArrayOfPoint = nil;
-  clipI: TArrayOfArrayOfPoint = nil;
+  subjI: TArrayOfArrayOfIntPoint = nil;
+  clipI: TArrayOfArrayOfIntPoint = nil;
   solution: TArrayOfArrayOfFloatPoint = nil;
-  solutionI: TArrayOfArrayOfPoint = nil;
+  solutionI: TArrayOfArrayOfIntPoint = nil;
   subjOpacity: cardinal = $FF000000;
   clipOpacity: cardinal = $FF000000;
 
@@ -110,7 +110,7 @@ var
 //------------------------------------------------------------------------------
 
 function AAFloatPoint2AAPoint(const a: TArrayOfArrayOfFloatPoint;
-  decimals: integer = 1): TArrayOfArrayOfPoint;
+  decimals: integer = 1): TArrayOfArrayOfIntPoint;
 var
   i,j,decScale: integer;
 begin
@@ -128,7 +128,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AAPoint2AAFloatPoint(const a: TArrayOfArrayOfPoint;
+function AAPoint2AAFloatPoint(const a: TArrayOfArrayOfIntPoint;
   decimals: integer = 1): TArrayOfArrayOfFloatPoint;
 var
   i,j,decScale: integer;
@@ -204,7 +204,7 @@ procedure TMainForm.RepaintBitmapI;
 var
   pfm: TPolyFillMode;
   sol: TArrayOfArrayOfFloatPoint;
-  solI: TArrayOfArrayOfPoint;
+  solI: TArrayOfArrayOfIntPoint;
 begin
   ImgView321.Bitmap.Clear(clWhite32);
 

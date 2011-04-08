@@ -26,7 +26,7 @@ var
   cr: Pcairo_t;
   extent: cairo_text_extents_t;
   clipper: TClipper;
-  ppa: TArrayOfArrayOfPoint;
+  ppa: TArrayOfArrayOfIntPoint;
   rec: TRect;
   text: string;
 const

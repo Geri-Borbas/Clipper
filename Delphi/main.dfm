@@ -1,8 +1,8 @@
 object MainForm: TMainForm
-  Left = 148
-  Top = 122
-  Width = 859
-  Height = 604
+  Left = 176
+  Top = 84
+  Width = 843
+  Height = 603
   Caption = 'Clipper Demo'
   Color = clBtnFace
   Font.Charset = ARABIC_CHARSET
@@ -24,7 +24,7 @@ object MainForm: TMainForm
     Left = 0
     Top = 0
     Width = 183
-    Height = 558
+    Height = 557
     Align = alLeft
     TabOrder = 0
     object lblClipOpacity: TLabel
@@ -270,8 +270,8 @@ object MainForm: TMainForm
   end
   object StatusBar1: TStatusBar
     Left = 0
-    Top = 558
-    Width = 851
+    Top = 557
+    Width = 835
     Height = 19
     Panels = <>
     SimplePanel = True
@@ -279,8 +279,8 @@ object MainForm: TMainForm
   object ImgView321: TImgView32
     Left = 183
     Top = 0
-    Width = 668
-    Height = 558
+    Width = 652
+    Height = 557
     Align = alClient
     Bitmap.ResamplerClassName = 'TNearestResampler'
     BitmapAlign = baCustom

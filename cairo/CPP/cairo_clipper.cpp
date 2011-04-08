@@ -23,12 +23,12 @@ namespace clipper {
 
     namespace {
 
-      inline int Round(double val)
+      inline long64 Round(double val)
       {
-        if ((val < 0)) return (int)(val - 0.5); else return (int)(val + 0.5);
+        if ((val < 0)) return (long64)(val - 0.5); else return (long64)(val + 0.5);
       }
 
-      void transform_point(cairo_t* pen, Transform transform, int* x, int* y)
+      void transform_point(cairo_t* pen, Transform transform, long64* x, long64* y)
       {
         double _x = *x, _y = *y;
         switch (transform)
@@ -120,7 +120,7 @@ namespace clipper {
           continue;
         cairo_new_sub_path(cr);
         for (size_t j = 0; j < sz; ++j) {
-          int x = pg[i][j].X, y = pg[i][j].Y;
+          long64 x = pg[i][j].X, y = pg[i][j].Y;
           if (transform != tNone)
             transform_point(cr, transform, &x, &y);
           cairo_line_to(cr, (double)x / scaling, (double)y / scaling);

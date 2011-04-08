@@ -184,8 +184,8 @@ namespace WindowsFormsApplication1
             newgraphic = Graphics.FromImage(mybitmap);
             newgraphic.SmoothingMode = SmoothingMode.AntiAlias;
             newgraphic.Clear(Color.WhiteSmoke);
-            Pen myPen = new Pen(Color.LightSlateGray, (float)1.5);
-            SolidBrush myBrush = new SolidBrush(Color.FromArgb(16, Color.Blue));
+            Pen myPen = new Pen(Color.LightSlateGray, (float)0.8);
+            SolidBrush myBrush = new SolidBrush(Color.FromArgb(16, 0, 0, 156));
             
             GraphicsPath path = new GraphicsPath();
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
@@ -207,7 +207,7 @@ namespace WindowsFormsApplication1
                 pts = null;
             }
             myPen.Color = Color.LightSalmon;
-            myBrush.Color = Color.FromArgb(16, Color.Red);
+            myBrush.Color = Color.FromArgb(16, 156, 0, 0);
             newgraphic.FillPath(myBrush, path);
             newgraphic.DrawPath(myPen, path);
 
@@ -215,52 +215,97 @@ namespace WindowsFormsApplication1
             if ((clips.Count > 0 || subjects.Count > 0) && !rbNone.Checked)
             {
                 Polygons solution = new Polygons();
-                //Stopwatch sw = new Stopwatch();
-                //sw.Start();
-
                 clipper.Clipper c = new clipper.Clipper();
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
-                if (!c.Execute(GeClipType(), solution, GePolyFillType(), GePolyFillType()))
+                bool succeeded = c.Execute(GeClipType(), solution, GePolyFillType(), GePolyFillType());
+
+                if (succeeded)
                 {
-                    Console.Beep(1250, 250);
-                }
-                
-                //sw.Stop();
-                //TimeSpan ts = sw.Elapsed;
-                //this.Text = Convert.ToString(ts.TotalMilliseconds);
-
-                myBrush.Color = Color.Black;
-                path.Reset();
-
-                //It really shouldn't matter what FillMode is used for solution
-                //polygons because none of the solution polygons overlap. 
-                //However, FillMode.Winding will show any orientation errors where 
-                //holes will be stroked (outlined) correctly but filled incorrectly  ...
-                path.FillMode = FillMode.Winding; 
-
-                //or for something fancy ...
-                if (nudOffset.Value != 0)
-                    solution = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
-                foreach (Polygon pg in solution)
-                {
-                    PointF[] pts = PolygonToPointFArray(pg, scale);
-                    if (pts.Count() > 2)
-                      path.AddPolygon(pts);
-                    pts = null;
-                }
-                myBrush.Color = Color.FromArgb(128, Color.Yellow);
-                myPen.Color = Color.Black;
-                newgraphic.FillPath(myBrush, path);
-                newgraphic.DrawPath(myPen, path);
-
-                foreach (Polygon pg in solution)
-                {
-                    PointF[] pts = PolygonToPointFArray(pg, scale);
+                    myBrush.Color = Color.Black;
                     path.Reset();
-                    path.AddPolygon(pts);
-                }
-            }
+
+                    //It really shouldn't matter what FillMode is used for solution
+                    //polygons because none of the solution polygons overlap. 
+                    //However, FillMode.Winding will show any orientation errors where 
+                    //holes will be stroked (outlined) correctly but filled incorrectly  ...
+                    path.FillMode = FillMode.Winding;
+
+                    //or for something fancy ...
+                    if (nudOffset.Value != 0)
+                        solution = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
+                    foreach (Polygon pg in solution)
+                    {
+                        PointF[] pts = PolygonToPointFArray(pg, scale);
+                        if (pts.Count() > 2)
+                            path.AddPolygon(pts);
+                        pts = null;
+                    }
+                    myBrush.Color = Color.FromArgb(96, 128, 255, 156);
+                    myPen.Color = Color.DarkGreen;
+                    newgraphic.FillPath(myBrush, path);
+                    newgraphic.DrawPath(myPen, path);
+
+                    foreach (Polygon pg in solution)
+                    {
+                        PointF[] pts = PolygonToPointFArray(pg, scale);
+                        path.Reset();
+                        path.AddPolygon(pts);
+                    }
+
+                    //now do some fancy testing ...
+                    Font f = new Font("Arial", 8);
+                    SolidBrush b = new SolidBrush(Color.Navy);
+                    double a1 = 0, a2 = 0, a3 = 0, a4 = 0;
+                    c.Clear();
+                    c.AddPolygons(subjects, PolyType.ptSubject);
+                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
+                    foreach (Polygon pg in solution) a1 += clipper.Clipper.Area(pg);
+                    c.Clear();
+                    c.AddPolygons(clips, PolyType.ptClip);
+                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
+                    foreach (Polygon pg in solution) a2 += clipper.Clipper.Area(pg);
+                    c.AddPolygons(subjects, PolyType.ptSubject);
+                    c.Execute(ClipType.ctIntersection, solution, GePolyFillType(), GePolyFillType());
+                    foreach (Polygon pg in solution) a3 += clipper.Clipper.Area(pg);
+                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
+                    foreach (Polygon pg in solution) a4 += clipper.Clipper.Area(pg);
+
+                    StringFormat lftStringFormat = new StringFormat();
+                    lftStringFormat.Alignment = StringAlignment.Near;
+                    lftStringFormat.LineAlignment = StringAlignment.Near;
+                    StringFormat rtStringFormat = new StringFormat();
+                    rtStringFormat.Alignment = StringAlignment.Far;
+                    rtStringFormat.LineAlignment = StringAlignment.Near;
+                    Rectangle rec = new Rectangle(pictureBox1.ClientSize.Width - 108, pictureBox1.ClientSize.Height - 116, 104, 106);
+                    newgraphic.FillRectangle(new SolidBrush(Color.FromArgb(196, Color.WhiteSmoke)), rec);
+                    newgraphic.DrawRectangle(myPen, rec);
+                    rec.Inflate(new Size(-2, 0));
+                    newgraphic.DrawString("Areas", f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 14));
+                    newgraphic.DrawString("subj: ", f, b, rec, lftStringFormat);
+                    newgraphic.DrawString((a1 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 12));
+                    newgraphic.DrawString("clip: ", f, b, rec, lftStringFormat);
+                    newgraphic.DrawString((a2 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 12));
+                    newgraphic.DrawString("intersect: ", f, b, rec, lftStringFormat);
+                    newgraphic.DrawString((a3 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 12));
+                    newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 10));
+                    newgraphic.DrawString("s + c - i: ", f, b, rec, lftStringFormat);
+                    newgraphic.DrawString(((a1 + a2 - a3) / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 10));
+                    newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 10));
+                    newgraphic.DrawString("union: ", f, b, rec, lftStringFormat);
+                    newgraphic.DrawString((a4 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    rec.Offset(new Point(0, 10));
+                    newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
+                } //end if succeeded
+            } //end if something to clip
+
             pictureBox1.Image = mybitmap;
             newgraphic.Dispose();
             Cursor.Current = Cursors.Default;
@@ -290,6 +335,8 @@ namespace WindowsFormsApplication1
 
         private void Form1_Resize(object sender, EventArgs e)
         {
+            if (pictureBox1.ClientRectangle.Width == 0 || 
+                pictureBox1.ClientRectangle.Height == 0) return;
             mybitmap.Dispose();
             mybitmap = new Bitmap(
                 pictureBox1.ClientRectangle.Width,
@@ -355,6 +402,45 @@ namespace WindowsFormsApplication1
             else
                 lblCount.Text = "Ellipse &Count:";
             DrawBitmap();
+        }
+        //---------------------------------------------------------------------
+
+        private void b1000Samples_Click(object sender, EventArgs e)
+        {
+            //calculate the time to do 1000 intersection operations on subject 
+            //and clip polygon where both have nudCount.Value edges ...
+
+            Cursor.Current = Cursors.WaitCursor;
+            Polygons solution = new Polygons();
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+
+            int errorCnt = 0;
+            clipper.Clipper c = new clipper.Clipper();
+
+            for (int i = 0; i < 1000; i++)
+            {
+                c.Clear();
+                GenerateRandomPolygon((int)nudCount.Value);
+                c.AddPolygons(subjects, PolyType.ptSubject);
+                c.AddPolygons(clips, PolyType.ptClip);
+                if (!c.Execute(ClipType.ctIntersection, solution, PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd)) errorCnt++;
+            }
+            sw.Stop();
+            TimeSpan ts = sw.Elapsed;
+            Cursor.Current = Cursors.Default;
+            
+            DrawBitmap();
+            Font f = new Font("Arial", 8);
+            SolidBrush b = new SolidBrush(Color.Navy);
+            Graphics newgraphic;
+            newgraphic = Graphics.FromImage(mybitmap);
+            newgraphic.SmoothingMode = SmoothingMode.AntiAlias;
+            newgraphic.DrawString("Time: " + (ts.TotalMilliseconds/1000).ToString("0.00") + " secs.  (Errors: " + errorCnt +")"
+                , f, b, 10, pictureBox1.ClientRectangle.Bottom - 20);
+            pictureBox1.Image = mybitmap;
+            newgraphic.Dispose();
+            
         }
         //---------------------------------------------------------------------
 

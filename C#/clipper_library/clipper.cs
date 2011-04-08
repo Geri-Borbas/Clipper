@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.1.0                                                           *
-* Date      :  5 April 2011                                                    *
+* Version   :  4.1.1                                                           *
+* Date      :  8 April 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -40,9 +40,9 @@ namespace clipper
 
     public class IntPoint
     {
-        public int X { get; set; }
-        public int Y { get; set; }
-        public IntPoint(int X = 0, int Y = 0)
+        public Int64 X { get; set; }
+        public Int64 Y { get; set; }
+        public IntPoint(Int64 X = 0, Int64 Y = 0)
         {
             this.X = X; this.Y = Y;
         }
@@ -50,11 +50,11 @@ namespace clipper
 
     public class IntRect
     {
-        public int left { get; set; }
-        public int top { get; set; }
-        public int right { get; set; }
-        public int bottom { get; set; }
-        public IntRect(int l = 0, int t = 0, int r = 0, int b = 0)
+        public Int64 left { get; set; }
+        public Int64 top { get; set; }
+        public Int64 right { get; set; }
+        public Int64 bottom { get; set; }
+        public IntRect(Int64 l = 0, Int64 t = 0, Int64 r = 0, Int64 b = 0)
         {
             this.left = l; this.top = t;
             this.right = r; this.bottom = b;
@@ -72,49 +72,49 @@ namespace clipper
     [Flags]
     internal enum Protects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
 
-    internal class TEdge4 {
-        public int xbot;
-        public int ybot;
-        public int xcurr;
-        public int ycurr;
-        public int xtop;
-        public int ytop;
+    internal class TEdge {
+        public Int64 xbot;
+        public Int64 ybot;
+        public Int64 xcurr;
+        public Int64 ycurr;
+        public Int64 xtop;
+        public Int64 ytop;
         public double dx;
-        public int tmpX;
+        public Int64 tmpX;
         public PolyType polyType;
         public EdgeSide side;
         public int windDelta; //1 or -1 depending on winding direction
         public int windCnt;
         public int windCnt2; //winding count of the opposite polytype
         public int outIdx;
-        public TEdge4 next;
-        public TEdge4 prev;
-        public TEdge4 nextInLML;
-        public TEdge4 nextInAEL;
-        public TEdge4 prevInAEL;
-        public TEdge4 nextInSEL;
-        public TEdge4 prevInSEL;
+        public TEdge next;
+        public TEdge prev;
+        public TEdge nextInLML;
+        public TEdge nextInAEL;
+        public TEdge prevInAEL;
+        public TEdge nextInSEL;
+        public TEdge prevInSEL;
     };
 
     internal class IntersectNode
     {
-        public TEdge4 edge1;
-        public TEdge4 edge2;
+        public TEdge edge1;
+        public TEdge edge2;
         public IntPoint pt;
         public IntersectNode next;
     };
 
     internal class LocalMinima
     {
-        public int Y;
-        public TEdge4 leftBound;
-        public TEdge4 rightBound;
+        public Int64 Y;
+        public TEdge leftBound;
+        public TEdge rightBound;
         public LocalMinima next;
     };
 
     internal class Scanbeam
     {
-        public int Y;
+        public Int64 Y;
         public Scanbeam next;
     };
 
@@ -138,7 +138,7 @@ namespace clipper
 
     internal class HorzJoinRec
     {
-        public TEdge4 edge;
+        public TEdge edge;
         public int savedIdx;
     };
 
@@ -147,7 +147,7 @@ namespace clipper
         protected const double horizontal = -3.4E+38;
         internal LocalMinima m_MinimaList;
         internal LocalMinima m_CurrentLM;
-        private List<List<TEdge4>> m_edges = new List<List<TEdge4>>();
+        private List<List<TEdge>> m_edges = new List<List<TEdge>>();
 
         //------------------------------------------------------------------------------
 
@@ -157,7 +157,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        internal bool SlopesEqual(TEdge4 e1, TEdge4 e2)
+        internal bool SlopesEqual(TEdge e1, TEdge e2)
         {
           if (e1.ybot == e1.ytop) return (e2.ybot == e2.ytop);
           else if (e2.ybot == e2.ytop) return false;
@@ -212,22 +212,28 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        public void AddPolygons(Polygons ppg, PolyType polyType)
+        public bool AddPolygons(Polygons ppg, PolyType polyType)
         {
+            bool result = false;
             for (int i = 0; i < ppg.Count; ++i)
-                AddPolygon(ppg[i], polyType);
+                if (AddPolygon(ppg[i], polyType)) result = true;
+            return result;
         }
         //------------------------------------------------------------------------------
 
-        public void AddPolygon(Polygon pg, PolyType polyType)
+        public bool AddPolygon(Polygon pg, PolyType polyType)
         {
             int len = pg.Count;
-            if (len < 3) return;
+            if (len < 3) return false;
             Polygon p = new Polygon(len);
             p.Add(new IntPoint(pg[0].X, pg[0].Y));
             int j = 0;
             for (int i = 1; i < len; ++i)
             {
+                const Int64 MaxVal = 1500000000; //~ Sqrt(2^63)/2 . 1.5Billion
+                if (Math.Abs(pg[i].X) > MaxVal || Math.Abs(pg[i].Y) > MaxVal)
+                    throw new ClipperException("Integer exceeds range bounds");
+                
                 if (PointsEqual(p[j], pg[i])) continue;
                 else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i]))
                 {
@@ -237,7 +243,7 @@ namespace clipper
                     p[j] = pg[i]; else
                     p.Add(new IntPoint(pg[i].X, pg[i].Y));
             }
-            if (j < 2) return;
+            if (j < 2) return false;
 
             len = j+1;
             for (;;)
@@ -256,11 +262,11 @@ namespace clipper
             if (j == len-1 || j < 2) break;
             len = j +1;
             }
-            if (len < 3) return;
+            if (len < 3) return false;
 
             //create a new edge array ...
-            List<TEdge4> edges = new List<TEdge4>(len);
-            for (int i = 0; i < len; i++) edges.Add(new TEdge4());
+            List<TEdge> edges = new List<TEdge>(len);
+            for (int i = 0; i < len; i++) edges.Add(new TEdge());
             m_edges.Add(edges);
 
             //convert vertices to a double-linked-list of edges and initialize ...
@@ -273,8 +279,8 @@ namespace clipper
 
             //reset xcurr & ycurr and find 'eHighest' (given the Y axis coordinates
             //increase downward so the 'highest' edge will have the smallest ytop) ...
-            TEdge4 e = edges[0];
-            TEdge4 eHighest = e;
+            TEdge e = edges[0];
+            TEdge eHighest = e;
             do
             {
             e.xcurr = e.xbot;
@@ -294,12 +300,12 @@ namespace clipper
             e = AddBoundsToLML(e);
             }
             while( e != eHighest );
-
+            return true;
         }
         //------------------------------------------------------------------------------
 
-        private void InitEdge(TEdge4 e, TEdge4 eNext,
-          TEdge4 ePrev, IntPoint pt, PolyType polyType)
+        private void InitEdge(TEdge e, TEdge eNext,
+          TEdge ePrev, IntPoint pt, PolyType polyType)
         {
           e.next = eNext;
           e.prev = ePrev;
@@ -326,14 +332,14 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void SetDx(TEdge4 e)
+        private void SetDx(TEdge e)
         {
           if (e.ybot == e.ytop) e.dx = horizontal;
           else e.dx = (double)(e.xtop - e.xbot)/(e.ytop - e.ybot);
         }
         //---------------------------------------------------------------------------
 
-        TEdge4 AddBoundsToLML(TEdge4 e)
+        TEdge AddBoundsToLML(TEdge e)
         {
           //Starting at the top of one bound we progress to the bottom where there's
           //a local minima. We then go to the top of the next bound. These two bounds
@@ -418,7 +424,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void SwapX(TEdge4 e)
+        private void SwapX(TEdge e)
         {
           //swap horizontal edges' top and bottom x's so they follow the natural
           //progression of the bounds - ie so their xbots will align with the
@@ -429,16 +435,15 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        protected virtual bool Reset()
+        protected virtual void Reset()
         {
             m_CurrentLM = m_MinimaList;
-            if ( m_CurrentLM == null ) return false; //ie nothing to process
 
             //reset all edges ...
             LocalMinima lm = m_MinimaList;
             while (lm != null)
             {
-                TEdge4 e = lm.leftBound;
+                TEdge e = lm.leftBound;
                 while (e != null)
                 {
                     e.xcurr = e.xbot;
@@ -458,7 +463,7 @@ namespace clipper
                 }
                 lm = lm.next;
             }
-            return true;
+            return;
         }
         //------------------------------------------------------------------------------
 
@@ -475,7 +480,7 @@ namespace clipper
           {
             if (lm.leftBound.ybot > result.bottom)
               result.bottom = lm.leftBound.ybot;
-            TEdge4 e = lm.leftBound;
+            TEdge e = lm.leftBound;
             for (;;) {
               while (e.nextInLML != null)
               {
@@ -505,8 +510,8 @@ namespace clipper
         private List<PolyPt> m_PolyPts;
         private ClipType m_ClipType;
         private Scanbeam m_Scanbeam;
-        private TEdge4 m_ActiveEdges;
-        private TEdge4 m_SortedEdges;
+        private TEdge m_ActiveEdges;
+        private TEdge m_SortedEdges;
         private IntersectNode m_IntersectNodes;
         private bool m_ExecuteLocked;
         private PolyFillType m_ClipFillType;
@@ -542,9 +547,9 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        protected override bool Reset() 
+        protected override void Reset() 
         {
-          if ( !base.Reset() ) return false;
+          base.Reset();
           m_Scanbeam = null;
           m_ActiveEdges = null;
           m_SortedEdges = null;
@@ -555,11 +560,10 @@ namespace clipper
             InsertScanbeam(lm.leftBound.ytop);
             lm = lm.next;
           }
-          return true;
         }
         //------------------------------------------------------------------------------
 
-        private void InsertScanbeam(int Y)
+        private void InsertScanbeam(Int64 Y)
         {
           if( m_Scanbeam == null )
           {
@@ -594,7 +598,8 @@ namespace clipper
           try {
             m_ExecuteLocked = true;
             solution.Clear();
-            if ( !Reset() )
+            Reset();
+            if (m_CurrentLM == null)
             {
               m_ExecuteLocked = false;
               return false;
@@ -603,12 +608,12 @@ namespace clipper
             m_ClipFillType = clipFillType;
             m_ClipType = clipType;
 
-            int botY = PopScanbeam();
+            Int64 botY = PopScanbeam();
             do {
               InsertLocalMinimaIntoAEL(botY);
               m_HorizJoins.Clear();
               ProcessHorizontals();
-              int topY = PopScanbeam();
+              Int64 topY = PopScanbeam();
               succeeded = ProcessIntersections(topY);
               if (succeeded) ProcessEdgesAtTopOfScanbeam(topY);
               botY = topY;
@@ -631,9 +636,9 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private int PopScanbeam()
+        private Int64 PopScanbeam()
         {
-          int Y = m_Scanbeam.Y;
+          Int64 Y = m_Scanbeam.Y;
           Scanbeam sb2 = m_Scanbeam;
           m_Scanbeam = m_Scanbeam.next;
           sb2 = null;
@@ -662,7 +667,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AddJoin(TEdge4 e1, TEdge4 e2, int e1OutIdx = -1)
+        private void AddJoin(TEdge e1, TEdge e2, int e1OutIdx = -1)
         {
             JoinRec jr = new JoinRec();
             if (e1OutIdx >= 0)
@@ -677,7 +682,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AddHorzJoin(TEdge4 e, int idx)
+        private void AddHorzJoin(TEdge e, int idx)
         {
             HorzJoinRec hj = new HorzJoinRec();
             hj.edge = e;
@@ -686,12 +691,12 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void InsertLocalMinimaIntoAEL(int botY)
+        private void InsertLocalMinimaIntoAEL(Int64 botY)
         {
           while(  m_CurrentLM != null  && ( m_CurrentLM.Y == botY ) )
           {
-            TEdge4 lb = m_CurrentLM.leftBound;
-            TEdge4 rb = m_CurrentLM.rightBound;
+            TEdge lb = m_CurrentLM.leftBound;
+            TEdge rb = m_CurrentLM.rightBound;
 
             InsertEdgeIntoAEL( lb );
             InsertScanbeam( lb.ytop );
@@ -750,7 +755,7 @@ namespace clipper
 
             if( lb.nextInAEL != rb )
             {
-              TEdge4 e = lb.nextInAEL;
+              TEdge e = lb.nextInAEL;
               IntPoint pt = new IntPoint(lb.xcurr, lb.ycurr);
               while( e != rb )
               {
@@ -767,7 +772,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void InsertEdgeIntoAEL(TEdge4 edge)
+        private void InsertEdgeIntoAEL(TEdge edge)
         {
           edge.prevInAEL = null;
           edge.nextInAEL = null;
@@ -782,7 +787,7 @@ namespace clipper
             m_ActiveEdges = edge;
           } else
           {
-            TEdge4 e = m_ActiveEdges;
+            TEdge e = m_ActiveEdges;
             while (e.nextInAEL != null && !E2InsertsBeforeE1(e.nextInAEL, edge))
               e = e.nextInAEL;
             edge.nextInAEL = e.nextInAEL;
@@ -793,14 +798,14 @@ namespace clipper
         }
         //----------------------------------------------------------------------
 
-        private bool E2InsertsBeforeE1(TEdge4 e1, TEdge4 e2)
+        private bool E2InsertsBeforeE1(TEdge e1, TEdge e2)
         {
           if (e2.xcurr == e1.xcurr) return e2.dx > e1.dx;
           else return e2.xcurr < e1.xcurr;
         }
         //------------------------------------------------------------------------------
 
-        private bool IsNonZeroFillType(TEdge4 edge) 
+        private bool IsNonZeroFillType(TEdge edge) 
         {
           if (edge.polyType == PolyType.ptSubject)
             return m_SubjFillType == PolyFillType.pftNonZero; else
@@ -808,7 +813,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IsNonZeroAltFillType(TEdge4 edge) 
+        private bool IsNonZeroAltFillType(TEdge edge) 
         {
           if (edge.polyType == PolyType.ptSubject)
             return m_ClipFillType == PolyFillType.pftNonZero; else
@@ -816,7 +821,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IsContributing(TEdge4 edge)
+        private bool IsContributing(TEdge edge)
         {
             switch (m_ClipType)
             {
@@ -838,9 +843,9 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void SetWindingCount(TEdge4 edge)
+        private void SetWindingCount(TEdge edge)
         {
-            TEdge4 e = edge.prevInAEL;
+            TEdge e = edge.prevInAEL;
             //find the edge of the same polytype that immediately preceeds 'edge' in AEL
             while (e != null && e.polyType != edge.polyType)
                 e = e.prevInAEL;
@@ -907,7 +912,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AddEdgeToSEL(TEdge4 edge)
+        private void AddEdgeToSEL(TEdge edge)
         {
             //SEL pointers in PEdge are reused to build a list of horizontal edges.
             //However, we don't need to worry about order with horizontal edge processing.
@@ -929,7 +934,7 @@ namespace clipper
 
         private void CopyAELToSEL()
         {
-            TEdge4 e = m_ActiveEdges;
+            TEdge e = m_ActiveEdges;
             m_SortedEdges = e;
             if (m_ActiveEdges == null)
                 return;
@@ -945,7 +950,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void SwapPositionsInAEL(TEdge4 edge1, TEdge4 edge2)
+        private void SwapPositionsInAEL(TEdge edge1, TEdge edge2)
         {
             if (edge1.nextInAEL == null && edge1.prevInAEL == null)
                 return;
@@ -954,10 +959,10 @@ namespace clipper
 
             if (edge1.nextInAEL == edge2)
             {
-                TEdge4 next = edge2.nextInAEL;
+                TEdge next = edge2.nextInAEL;
                 if (next != null)
                     next.prevInAEL = edge1;
-                TEdge4 prev = edge1.prevInAEL;
+                TEdge prev = edge1.prevInAEL;
                 if (prev != null)
                     prev.nextInAEL = edge2;
                 edge2.prevInAEL = prev;
@@ -967,10 +972,10 @@ namespace clipper
             }
             else if (edge2.nextInAEL == edge1)
             {
-                TEdge4 next = edge1.nextInAEL;
+                TEdge next = edge1.nextInAEL;
                 if (next != null)
                     next.prevInAEL = edge2;
-                TEdge4 prev = edge2.prevInAEL;
+                TEdge prev = edge2.prevInAEL;
                 if (prev != null)
                     prev.nextInAEL = edge1;
                 edge1.prevInAEL = prev;
@@ -980,8 +985,8 @@ namespace clipper
             }
             else
             {
-                TEdge4 next = edge1.nextInAEL;
-                TEdge4 prev = edge1.prevInAEL;
+                TEdge next = edge1.nextInAEL;
+                TEdge prev = edge1.prevInAEL;
                 edge1.nextInAEL = edge2.nextInAEL;
                 if (edge1.nextInAEL != null)
                     edge1.nextInAEL.prevInAEL = edge1;
@@ -1003,7 +1008,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void SwapPositionsInSEL(TEdge4 edge1, TEdge4 edge2)
+        private void SwapPositionsInSEL(TEdge edge1, TEdge edge2)
         {
             if (edge1.nextInSEL == null && edge1.prevInSEL == null)
                 return;
@@ -1012,10 +1017,10 @@ namespace clipper
 
             if (edge1.nextInSEL == edge2)
             {
-                TEdge4 next = edge2.nextInSEL;
+                TEdge next = edge2.nextInSEL;
                 if (next != null)
                     next.prevInSEL = edge1;
-                TEdge4 prev = edge1.prevInSEL;
+                TEdge prev = edge1.prevInSEL;
                 if (prev != null)
                     prev.nextInSEL = edge2;
                 edge2.prevInSEL = prev;
@@ -1025,10 +1030,10 @@ namespace clipper
             }
             else if (edge2.nextInSEL == edge1)
             {
-                TEdge4 next = edge1.nextInSEL;
+                TEdge next = edge1.nextInSEL;
                 if (next != null)
                     next.prevInSEL = edge2;
-                TEdge4 prev = edge2.prevInSEL;
+                TEdge prev = edge2.prevInSEL;
                 if (prev != null)
                     prev.nextInSEL = edge1;
                 edge1.prevInSEL = prev;
@@ -1038,8 +1043,8 @@ namespace clipper
             }
             else
             {
-                TEdge4 next = edge1.nextInSEL;
-                TEdge4 prev = edge1.prevInSEL;
+                TEdge next = edge1.nextInSEL;
+                TEdge prev = edge1.prevInSEL;
                 edge1.nextInSEL = edge2.nextInSEL;
                 if (edge1.nextInSEL != null)
                     edge1.nextInSEL.prevInSEL = edge1;
@@ -1062,7 +1067,7 @@ namespace clipper
         //------------------------------------------------------------------------------
 
 
-        private void AddLocalMaxPoly(TEdge4 e1, TEdge4 e2, IntPoint pt)
+        private void AddLocalMaxPoly(TEdge e1, TEdge e2, IntPoint pt)
         {
             AddPolyPt(e1, pt);
             if (e1.outIdx == e2.outIdx)
@@ -1074,7 +1079,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AddLocalMinPoly(TEdge4 e1, TEdge4 e2, IntPoint pt)
+        private void AddLocalMinPoly(TEdge e1, TEdge e2, IntPoint pt)
         {
             if (e2.dx == horizontal || (e1.dx > e2.dx))
             {
@@ -1093,7 +1098,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private PolyPt AddPolyPt(TEdge4 e, IntPoint pt)
+        private PolyPt AddPolyPt(TEdge e, IntPoint pt)
         {
           bool ToFront = (e.side == EdgeSide.esLeft);
           if(  e.outIdx < 0 )
@@ -1224,7 +1229,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AppendPolygon(TEdge4 e1, TEdge4 e2)
+        private void AppendPolygon(TEdge e1, TEdge e2)
         {
           //get the start and ends of both output polygons ...
           PolyPt p1_lft = m_PolyPts[e1.outIdx];
@@ -1306,7 +1311,7 @@ namespace clipper
           e1.outIdx = -1; //nb: safe because we only get here via AddLocalMaxPoly
           e2.outIdx = -1;
 
-          TEdge4 e = m_ActiveEdges;
+          TEdge e = m_ActiveEdges;
           while( e != null )
           {
             if( e.outIdx == ObsoleteIdx )
@@ -1335,7 +1340,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void SwapSides(TEdge4 edge1, TEdge4 edge2)
+        private static void SwapSides(TEdge edge1, TEdge edge2)
         {
             EdgeSide side = edge1.side;
             edge1.side = edge2.side;
@@ -1343,7 +1348,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private static void SwapPolyIndexes(TEdge4 edge1, TEdge4 edge2)
+        private static void SwapPolyIndexes(TEdge edge1, TEdge edge2)
         {
             int outIdx = edge1.outIdx;
             edge1.outIdx = edge2.outIdx;
@@ -1351,7 +1356,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DoEdge1(TEdge4 edge1, TEdge4 edge2, IntPoint pt)
+        private void DoEdge1(TEdge edge1, TEdge edge2, IntPoint pt)
         {
             AddPolyPt(edge1, pt);
             SwapSides(edge1, edge2);
@@ -1359,7 +1364,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DoEdge2(TEdge4 edge1, TEdge4 edge2, IntPoint pt)
+        private void DoEdge2(TEdge edge1, TEdge edge2, IntPoint pt)
         {
             AddPolyPt(edge2, pt);
             SwapSides(edge1, edge2);
@@ -1367,7 +1372,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DoBothEdges(TEdge4 edge1, TEdge4 edge2, IntPoint pt)
+        private void DoBothEdges(TEdge edge1, TEdge edge2, IntPoint pt)
         {
             AddPolyPt(edge1, pt);
             AddPolyPt(edge2, pt);
@@ -1376,7 +1381,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void IntersectEdges(TEdge4 e1, TEdge4 e2, IntPoint pt, Protects protects)
+        private void IntersectEdges(TEdge e1, TEdge e2, IntPoint pt, Protects protects)
         {
             //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
             //e2 in AEL except when e1 is being inserted at the intersection point ...
@@ -1503,10 +1508,10 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DeleteFromAEL(TEdge4 e)
+        private void DeleteFromAEL(TEdge e)
         {
-            TEdge4 AelPrev = e.prevInAEL;
-            TEdge4 AelNext = e.nextInAEL;
+            TEdge AelPrev = e.prevInAEL;
+            TEdge AelNext = e.nextInAEL;
             if (AelPrev == null && AelNext == null && (e != m_ActiveEdges))
                 return; //already deleted
             if (AelPrev != null)
@@ -1519,10 +1524,10 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DeleteFromSEL(TEdge4 e)
+        private void DeleteFromSEL(TEdge e)
         {
-            TEdge4 SelPrev = e.prevInSEL;
-            TEdge4 SelNext = e.nextInSEL;
+            TEdge SelPrev = e.prevInSEL;
+            TEdge SelNext = e.nextInSEL;
             if (SelPrev == null && SelNext == null && (e != m_SortedEdges))
                 return; //already deleted
             if (SelPrev != null)
@@ -1535,12 +1540,12 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void UpdateEdgeIntoAEL(ref TEdge4 e)
+        private void UpdateEdgeIntoAEL(ref TEdge e)
         {
             if (e.nextInLML == null)
                 throw new ClipperException("UpdateEdgeIntoAEL: invalid call");
-            TEdge4 AelPrev = e.prevInAEL;
-            TEdge4 AelNext = e.nextInAEL;
+            TEdge AelPrev = e.prevInAEL;
+            TEdge AelNext = e.nextInAEL;
             e.nextInLML.outIdx = e.outIdx;
             if (AelPrev != null)
                 AelPrev.nextInAEL = e.nextInLML;
@@ -1567,7 +1572,7 @@ namespace clipper
 
         private void ProcessHorizontals()
         {
-            TEdge4 horzEdge = m_SortedEdges;
+            TEdge horzEdge = m_SortedEdges;
             while (horzEdge != null)
             {
                 DeleteFromSEL(horzEdge);
@@ -1577,10 +1582,10 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void ProcessHorizontal(TEdge4 horzEdge)
+        private void ProcessHorizontal(TEdge horzEdge)
         {
             Direction Direction;
-            int horzLeft, horzRight;
+            Int64 horzLeft, horzRight;
 
             if (horzEdge.xcurr < horzEdge.xtop)
             {
@@ -1595,16 +1600,16 @@ namespace clipper
                 Direction = Direction.dRightToLeft;
             }
 
-            TEdge4 eMaxPair;
+            TEdge eMaxPair;
             if (horzEdge.nextInLML != null)
                 eMaxPair = null;
             else
                 eMaxPair = GetMaximaPair(horzEdge);
 
-            TEdge4 e = GetNextInAEL(horzEdge, Direction);
+            TEdge e = GetNextInAEL(horzEdge, Direction);
             while (e != null)
             {
-                TEdge4 eNext = GetNextInAEL(e, Direction);
+                TEdge eNext = GetNextInAEL(e, Direction);
                 if (e.xcurr >= horzLeft && e.xcurr <= horzRight)
                 {
                     //ok, so far it looks like we're still in range of the horizontal edge
@@ -1677,9 +1682,9 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IsTopHorz(TEdge4 horzEdge, double XPos)
+        private bool IsTopHorz(TEdge horzEdge, double XPos)
         {
-            TEdge4 e = m_SortedEdges;
+            TEdge e = m_SortedEdges;
             while (e != null)
             {
                 if ((XPos >= Math.Min(e.xcurr, e.xtop)) && (XPos <= Math.Max(e.xcurr, e.xtop)))
@@ -1690,32 +1695,32 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private TEdge4 GetNextInAEL(TEdge4 e, Direction Direction)
+        private TEdge GetNextInAEL(TEdge e, Direction Direction)
         {
             if (Direction == Direction.dLeftToRight) return e.nextInAEL;
             else return e.prevInAEL;
         }
         //------------------------------------------------------------------------------
 
-        private bool IsMinima(TEdge4 e)
+        private bool IsMinima(TEdge e)
         {
             return e != null && (e.prev.nextInLML != e) && (e.next.nextInLML != e);
         }
         //------------------------------------------------------------------------------
 
-        private bool IsMaxima(TEdge4 e, double Y)
+        private bool IsMaxima(TEdge e, double Y)
         {
             return (e != null && e.ytop == Y && e.nextInLML == null);
         }
         //------------------------------------------------------------------------------
 
-        private bool IsIntermediate(TEdge4 e, double Y)
+        private bool IsIntermediate(TEdge e, double Y)
         {
             return (e.ytop == Y && e.nextInLML != null);
         }
         //------------------------------------------------------------------------------
 
-        private TEdge4 GetMaximaPair(TEdge4 e)
+        private TEdge GetMaximaPair(TEdge e)
         {
             if (!IsMaxima(e.next, e.ytop) || (e.next.xtop != e.xtop))
                 return e.prev; else
@@ -1723,7 +1728,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool ProcessIntersections(int topY)
+        private bool ProcessIntersections(Int64 topY)
         {
           if( m_ActiveEdges == null ) return true;
           try {
@@ -1741,12 +1746,12 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void BuildIntersectList(int topY)
+        private void BuildIntersectList(Int64 topY)
         {
           if ( m_ActiveEdges == null ) return;
 
           //prepare for sorting ...
-          TEdge4 e = m_ActiveEdges;
+          TEdge e = m_ActiveEdges;
           e.tmpX = TopX( e, topY );
           m_SortedEdges = e;
           m_SortedEdges.prevInSEL = null;
@@ -1768,7 +1773,7 @@ namespace clipper
             e = m_SortedEdges;
             while( e.nextInSEL != null )
             {
-              TEdge4 eNext = e.nextInSEL;
+              TEdge eNext = e.nextInSEL;
               IntPoint pt = new IntPoint();
               if(e.tmpX > eNext.tmpX && IntersectPoint(e, eNext, ref pt))
               {
@@ -1795,8 +1800,8 @@ namespace clipper
           IntersectNode int2 = m_IntersectNodes.next;
           while (int2 != null)
           {
-            TEdge4 e1 = int1.edge1;
-            TEdge4 e2;
+            TEdge e1 = int1.edge1;
+            TEdge e2;
             if (e1.prevInSEL == int1.edge2) e2 = e1.prevInSEL;
             else if (e1.nextInSEL == int1.edge2) e2 = e1.nextInSEL;
             else
@@ -1844,13 +1849,13 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private static int Round(double value)
+        private static Int64 Round(double value)
         {
-            if ((value < 0)) return (int)(value - 0.5); else return (int)(value + 0.5);
+            if ((value < 0)) return (Int64)(value - 0.5); else return (Int64)(value + 0.5);
         }
         //------------------------------------------------------------------------------
 
-        private static int TopX(TEdge4 edge, int currentY)
+        private static Int64 TopX(TEdge edge, Int64 currentY)
         {
             if (currentY == edge.ytop)
                 return edge.xtop;
@@ -1858,7 +1863,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private int TopX(IntPoint pt1, IntPoint pt2, int currentY)
+        private Int64 TopX(IntPoint pt1, IntPoint pt2, Int64 currentY)
         {
           //preconditions: pt1.Y <> pt2.Y and pt1.Y > pt2.Y
           if (currentY >= pt1.Y) return pt1.X;
@@ -1867,12 +1872,12 @@ namespace clipper
           else
           {
             double q = (pt1.X-pt2.X)/(pt1.Y-pt2.Y);
-            return (int)(pt1.X + (currentY - pt1.Y) *q);
+            return (Int64)(pt1.X + (currentY - pt1.Y) * q);
           }
         }
         //------------------------------------------------------------------------------
 
-        private void AddIntersectNode(TEdge4 e1, TEdge4 e2, IntPoint pt)
+        private void AddIntersectNode(TEdge e1, TEdge e2, IntPoint pt)
         {
           IntersectNode newNode = new IntersectNode();
           newNode.edge1 = e1;
@@ -1919,8 +1924,8 @@ namespace clipper
 
         private void SwapIntersectNodes(IntersectNode int1, IntersectNode int2)
         {
-          TEdge4 e1 = int1.edge1;
-          TEdge4 e2 = int1.edge2;
+          TEdge e1 = int1.edge1;
+          TEdge e2 = int1.edge2;
           IntPoint p = int1.pt;
           int1.edge1 = int2.edge1;
           int1.edge2 = int2.edge2;
@@ -1931,7 +1936,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IntersectPoint(TEdge4 edge1, TEdge4 edge2, ref IntPoint ip)
+        private bool IntersectPoint(TEdge edge1, TEdge edge2, ref IntPoint ip)
         {
           double b1, b2;
           if (SlopesEqual(edge1, edge2)) return false;
@@ -1986,9 +1991,9 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void ProcessEdgesAtTopOfScanbeam(int topY)
+        private void ProcessEdgesAtTopOfScanbeam(Int64 topY)
         {
-          TEdge4 e = m_ActiveEdges;
+          TEdge e = m_ActiveEdges;
           while( e != null )
           {
             //1. process maxima, treating them as if they're 'bent' horizontal edges,
@@ -1996,7 +2001,7 @@ namespace clipper
             if( IsMaxima(e, topY) && GetMaximaPair(e).dx != horizontal )
             {
               //'e' might be removed from AEL, as may any following edges so ...
-              TEdge4 ePrior = e.prevInAEL;
+              TEdge ePrior = e.prevInAEL;
               DoMaxima(e, topY);
               if( ePrior == null ) e = m_ActiveEdges;
               else e = ePrior.nextInAEL;
@@ -2043,11 +2048,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void DoMaxima(TEdge4 e, int topY)
+        private void DoMaxima(TEdge e, Int64 topY)
         {
-          TEdge4 eMaxPair = GetMaximaPair(e);
-          int X = e.xtop;
-          TEdge4 eNext = e.nextInAEL;
+          TEdge eMaxPair = GetMaximaPair(e);
+          Int64 X = e.xtop;
+          TEdge eNext = e.nextInAEL;
           while( eNext != eMaxPair )
           {
             if (eNext == null) throw new ClipperException("DoMaxima error");
@@ -2072,9 +2077,11 @@ namespace clipper
           int highI = poly.Count -1;
           if (highI < 2) return false;
           double area;
-          area = (double)poly[highI].X * poly[0].Y -(double)poly[0].X * poly[highI].Y;
+          area = (double)poly[highI].X * (double)poly[0].Y -
+              (double)poly[0].X * (double)poly[highI].Y;
           for (int i = 0; i < highI; ++i)
-            area += (double)poly[i].X * poly[i+1].Y -(double)poly[i+1].X * poly[i].Y;
+              area += (double)poly[i].X * (double)poly[i + 1].Y -
+                  (double)poly[i + 1].X * (double)poly[i].Y;
           //area := area/2;
           return area > 0; //reverse of normal formula because assuming Y axis inverted
         }
@@ -2082,11 +2089,12 @@ namespace clipper
 
         private bool IsClockwise(PolyPt pt)
         {
-            Int64 area = 0;
+            double area = 0;
             PolyPt startPt = pt;
             do
             {
-                area += (Int64)pt.pt.X * pt.next.pt.Y - (Int64)pt.next.pt.X * pt.pt.Y;
+                area += (double)pt.pt.X * (double)pt.next.pt.Y -
+                    (double)pt.next.pt.X * (double)pt.pt.Y;
                 pt = pt.next;
             }
             while (pt != startPt);
@@ -2163,10 +2171,10 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IsHole(TEdge4 e)
+        private bool IsHole(TEdge e)
         {
             bool hole = false;
-            TEdge4 e2 = m_ActiveEdges;
+            TEdge e2 = m_ActiveEdges;
             while (e2 != null && e2 != e)
             {
                 if (e2.outIdx >= 0) hole = !hole;
@@ -2175,6 +2183,24 @@ namespace clipper
             return hole;
         }
         //----------------------------------------------------------------------
+
+        PolyPt DeletePolyPt(PolyPt pp)
+        {
+            if (pp.next == pp)
+            {
+                pp = null;
+                return null;
+            }
+            else
+            {
+                PolyPt result = pp.prev;
+                pp.next.prev = result;
+                result.next = pp.next;
+                pp = null;
+                return result;
+            }
+        }
+        //------------------------------------------------------------------------------
 
         private void JoinCommonEdges()
         {
@@ -2239,13 +2265,44 @@ namespace clipper
                 else if (pos2 == Position.pFirst) p4 = pp2a;
                 else p4 = pp2b;
 
-                if (p1.next == p2) p1.next = p3; else p1.prev = p3;
-                if (p3.next == p4) p3.next = p1; else p3.prev = p1;
+                //p1.pt should equal p3.pt and p2.pt should equal p4.pt here, so ...
+                //join p1 to p3 and p2 to p4 ...
+                if (p1.next == p2 && p3.prev == p4)
+                {
+                    p1.next = p3;
+                    p3.prev = p1;
+                    p2.prev = p4;
+                    p4.next = p2;
+                }
+                else if (p1.prev == p2 && p3.next == p4)
+                {
+                    p1.prev = p3;
+                    p3.next = p1;
+                    p2.next = p4;
+                    p4.prev = p2;
+                }
+                else
+                    continue; //an orientation is probably wrong
 
-                if (p2.next == p1) p2.next = p4; else p2.prev = p4;
-                if (p4.next == p3) p4.next = p2; else p4.prev = p2;
-
+                //delete duplicate points and obsolete polygon pointer ...
+                DeletePolyPt(p3);
+                DeletePolyPt(p4);
                 m_PolyPts[j.poly2Idx] = null;
+
+                //cleanup redundant edges too ...
+                if (SlopesEqual(p1.prev.pt, p1.pt, p1.next.pt))
+                {
+                    if (p1 == m_PolyPts[j.poly1Idx])
+                        m_PolyPts[j.poly1Idx] = p1.prev;
+                    DeletePolyPt(p1);
+                }
+
+                if (SlopesEqual(p2.prev.pt, p2.pt, p2.next.pt))
+                {
+                    if (p2 == m_PolyPts[j.poly1Idx])
+                        m_PolyPts[j.poly1Idx] = p2.prev;
+                    DeletePolyPt(p2);
+                }
               }
             }
           }
@@ -2259,9 +2316,11 @@ namespace clipper
         {
           int highI = poly.Count -1;
           if (highI < 2) return 0;
-          float area = (Int64)poly[highI].X * poly[0].Y - (Int64)poly[0].X * poly[highI].Y;
+          double area = (double)poly[highI].X * (double)poly[0].Y -
+              (double)poly[0].X * (double)poly[highI].Y;
           for (int i = 0; i < highI; ++i)
-              area += (Int64)poly[i].X * poly[i + 1].Y - (Int64)poly[i + 1].X * poly[i].Y;
+              area += (double)poly[i].X * (double)poly[i + 1].Y -
+                  (double)poly[i + 1].X * (double)poly[i].Y;
           return area/2;
         }
         //------------------------------------------------------------------------------
@@ -2287,7 +2346,7 @@ namespace clipper
           double a = a1;
           for (int i = 0; i < steps; ++i)
           {
-            result.Add(new IntPoint(pt.X + (int)(Math.Cos(a)*r), pt.Y + (int)(Math.Sin(a)*r)));
+              result.Add(new IntPoint(pt.X + Round(Math.Cos(a) * r), pt.Y + Round(Math.Sin(a) * r)));
             a += da;
           }
           return result;
@@ -2337,14 +2396,14 @@ namespace clipper
             for (int i = 0; i < highI; ++i)
             {
               pg.Add(new IntPoint(Round(pts[j][i].X + delta *normals[i].X),
-                (int)(pts[j][i].Y + delta *normals[i].Y)));
+                Round(pts[j][i].Y + delta *normals[i].Y)));
               pg.Add(new IntPoint(Round(pts[j][i].X + delta * normals[i + 1].X),
-                (int)(pts[j][i].Y + delta *normals[i+1].Y)));
+                Round(pts[j][i].Y + delta *normals[i+1].Y)));
             }
             pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[highI].X),
-              (int)(pts[j][highI].Y + delta *normals[highI].Y)));
+              Round(pts[j][highI].Y + delta *normals[highI].Y)));
             pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[0].X),
-              (int)(pts[j][highI].Y + delta *normals[0].Y)));
+              Round(pts[j][highI].Y + delta *normals[0].Y)));
 
             //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
             //cross product normals < 0 . reflex angle; dot product normals == 1 . no angle

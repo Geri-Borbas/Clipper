@@ -23,10 +23,10 @@ uses
 //be scaled up and down when being passed to and from Clipper. This is easily
 //accomplished by setting the scaling factor (10^x) in the following functions.
 //When scaling, remember that on most platforms, integer is only a 32bit value.
-function PointArrayToCairo(const fpa: TArrayOfArrayOfPoint;
+function PointArrayToCairo(const fpa: TArrayOfArrayOfIntPoint;
   cairo: Pcairo_t; scaling_factor: integer = 2): boolean;
 function CairoToPointArray(cairo: Pcairo_t;
-  out fpa: TArrayOfArrayOfPoint; scaling_factor: integer = 2): boolean;
+  out fpa: TArrayOfArrayOfIntPoint; scaling_factor: integer = 2): boolean;
 
 implementation
 
@@ -35,7 +35,7 @@ type
   TCairoPathDataArray =
     array [0.. MAXINT div sizeof(cairo_path_data_t) -1] of cairo_path_data_t;
 
-function PointArrayToCairo(const fpa: TArrayOfArrayOfPoint;
+function PointArrayToCairo(const fpa: TArrayOfArrayOfIntPoint;
   cairo: Pcairo_t; scaling_factor: integer = 2): boolean;
 var
   i,j: integer;
@@ -57,7 +57,7 @@ end;
 //------------------------------------------------------------------------------
 
 function CairoToPointArray(cairo: Pcairo_t;
-  out fpa: TArrayOfArrayOfPoint; scaling_factor: integer = 2): boolean;
+  out fpa: TArrayOfArrayOfIntPoint; scaling_factor: integer = 2): boolean;
 const
   buffLen1: integer = 32;
   buffLen2: integer = 128;
@@ -65,7 +65,7 @@ var
   i,currLen1, currLen2: integer;
   pdHdr: cairo_path_data_t;
   path: Pcairo_path_t;
-  currPos: TPoint;
+  currPos: TIntPoint;
   scaling: double;
 begin
   if abs(scaling_factor) > 6 then
@@ -75,7 +75,7 @@ begin
   setlength(fpa, buffLen1);
   currLen1 := 1;
   currLen2 := 0;
-  currPos := Point(0,0);
+  currPos := IntPoint(0,0);
   i := 0;
   path := cairo_copy_path_flat(cairo);
   try
@@ -92,7 +92,7 @@ begin
             inc(currLen1);
           end;
           currLen2 := 0;
-          currPos := Point(0,0);
+          currPos := IntPoint(0,0);
           result := true;
         end;
       CAIRO_PATH_MOVE_TO, CAIRO_PATH_LINE_TO:
@@ -103,7 +103,7 @@ begin
           if (currLen2 mod buffLen2 = 0) then
             SetLength(fpa[currLen1-1], currLen2 + buffLen2);
           with PCairoPathDataArray(path.data)[i+1].point do
-            currPos := Point(Round(x*scaling),Round(y*scaling));
+            currPos := IntPoint(Round(x*scaling),Round(y*scaling));
           fpa[currLen1-1][currLen2] := currPos;
           inc(currLen2);
         end;

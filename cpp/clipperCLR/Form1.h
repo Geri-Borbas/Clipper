@@ -1,6 +1,6 @@
 #pragma once
 
-namespace clipper4CLR {
+namespace clipperCLR {
 
 	using namespace System;
 	using namespace System::ComponentModel;
@@ -9,7 +9,7 @@ namespace clipper4CLR {
 	using namespace System::Data;
 	using namespace System::Drawing;
 	using namespace System::Drawing::Drawing2D;
-	using namespace clipper4;
+	using namespace clipper;
 	using namespace System::Runtime::InteropServices;
 	
 	/// <summary>
@@ -340,11 +340,11 @@ namespace clipper4CLR {
 					MakeRandomPoly(*clip, pictureBox1->Size.Width, this->pictureBox1->Size.Height, 50);
 				}
 
-				Clipper4 *cp4 = new Clipper4;
-				cp4->AddPolygons(*subj, ptSubject);
-				cp4->AddPolygons(*clip, ptClip);
-				succeeded = cp4->Execute(ct, *solution, pft, pft);
-				delete cp4;
+				Clipper *cp = new Clipper;
+				cp->AddPolygons(*subj, ptSubject);
+				cp->AddPolygons(*clip, ptClip);
+				succeeded = cp->Execute(ct, *solution, pft, pft);
+				delete cp;
 				if (!succeeded) solution->clear();
 		}
 		//---------------------------------------------------------------------------
@@ -358,11 +358,11 @@ namespace clipper4CLR {
 			for (unsigned i = 0; i < ppg.size(); ++i)
 				if (ppg[i].size() > 2)
 					{
-					array<Point> ^ pts = gcnew array<Point>(ppg[i].size());
+					array<PointF> ^ pts = gcnew array<PointF>(ppg[i].size());
 					for (unsigned j = 0; j < ppg[i].size(); ++j)
 					{
-						pts[j].X = ppg[i][j].X;
-						pts[j].Y = ppg[i][j].Y;
+						pts[j].X = (float)ppg[i][j].X;
+						pts[j].Y = (float)ppg[i][j].Y;
 					}
 					path->AddPolygon(pts);
 					}
@@ -377,7 +377,7 @@ namespace clipper4CLR {
 		}
 		//------------------------------------------------------------------------------
 
-		private: bool LoadFromFile(char* filename, clipper4::Polygons &pp){
+		private: bool LoadFromFile(char* filename, clipper::Polygons &pp){
 		  char buffer[10];
 		  FILE *f; 
 		  fopen_s(&f, filename, "r");
@@ -428,9 +428,9 @@ namespace clipper4CLR {
 
 	private: System::Void Form1_Load(System::Object^  sender, System::EventArgs^  e) {
 			srand((unsigned)time(0));
-			subj = new clipper4::Polygons;
-			clip = new clipper4::Polygons;
-			solution = new clipper4::Polygons;
+			subj = new clipper::Polygons;
+			clip = new clipper::Polygons;
+			solution = new clipper::Polygons;
 			MakeNewPolygons(false);
 		 }
 

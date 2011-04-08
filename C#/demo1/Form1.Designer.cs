@@ -51,6 +51,7 @@
             this.bCancel = new System.Windows.Forms.Button();
             this.panel2 = new System.Windows.Forms.Panel();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
+            this.b1000Samples = new System.Windows.Forms.Button();
             this.statusStrip1.SuspendLayout();
             this.panel1.SuspendLayout();
             this.groupBox3.SuspendLayout();
@@ -67,7 +68,7 @@
             this.statusStrip1.GripStyle = System.Windows.Forms.ToolStripGripStyle.Visible;
             this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.toolStripStatusLabel1});
-            this.statusStrip1.Location = new System.Drawing.Point(0, 525);
+            this.statusStrip1.Location = new System.Drawing.Point(0, 543);
             this.statusStrip1.Name = "statusStrip1";
             this.statusStrip1.Size = new System.Drawing.Size(758, 22);
             this.statusStrip1.TabIndex = 4;
@@ -81,6 +82,7 @@
             // panel1
             // 
             this.panel1.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
+            this.panel1.Controls.Add(this.b1000Samples);
             this.panel1.Controls.Add(this.groupBox3);
             this.panel1.Controls.Add(this.groupBox2);
             this.panel1.Controls.Add(this.groupBox1);
@@ -89,7 +91,7 @@
             this.panel1.Dock = System.Windows.Forms.DockStyle.Left;
             this.panel1.Location = new System.Drawing.Point(0, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(109, 525);
+            this.panel1.Size = new System.Drawing.Size(109, 543);
             this.panel1.TabIndex = 5;
             // 
             // groupBox3
@@ -305,7 +307,7 @@
             // bCancel
             // 
             this.bCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.bCancel.Location = new System.Drawing.Point(9, 456);
+            this.bCancel.Location = new System.Drawing.Point(9, 499);
             this.bCancel.Name = "bCancel";
             this.bCancel.Size = new System.Drawing.Size(88, 27);
             this.bCancel.TabIndex = 9;
@@ -320,7 +322,7 @@
             this.panel2.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel2.Location = new System.Drawing.Point(109, 0);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(649, 525);
+            this.panel2.Size = new System.Drawing.Size(649, 543);
             this.panel2.TabIndex = 6;
             // 
             // pictureBox1
@@ -328,16 +330,26 @@
             this.pictureBox1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pictureBox1.Location = new System.Drawing.Point(0, 0);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(645, 521);
+            this.pictureBox1.Size = new System.Drawing.Size(645, 539);
             this.pictureBox1.TabIndex = 1;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.DoubleClick += new System.EventHandler(this.bRefresh_Click);
+            // 
+            // b1000Samples
+            // 
+            this.b1000Samples.Location = new System.Drawing.Point(8, 454);
+            this.b1000Samples.Name = "b1000Samples";
+            this.b1000Samples.Size = new System.Drawing.Size(88, 27);
+            this.b1000Samples.TabIndex = 10;
+            this.b1000Samples.Text = "&1000 samples";
+            this.b1000Samples.UseVisualStyleBackColor = true;
+            this.b1000Samples.Click += new System.EventHandler(this.b1000Samples_Click);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(758, 547);
+            this.ClientSize = new System.Drawing.Size(758, 565);
             this.Controls.Add(this.panel2);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.statusStrip1);
@@ -392,6 +404,7 @@
         private System.Windows.Forms.Button bCancel;
         private System.Windows.Forms.Panel panel2;
         private System.Windows.Forms.PictureBox pictureBox1;
+        private System.Windows.Forms.Button b1000Samples;
     }
 }
 

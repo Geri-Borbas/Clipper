@@ -192,8 +192,8 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 		for (clipper::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
 			GLdouble *vert = new GLdouble[3];
-			vert[0] = pgs[i][j].X;
-			vert[1] = pgs[i][j].Y;
+			vert[0] = (GLdouble)pgs[i][j].X;
+			vert[1] = (GLdouble)pgs[i][j].Y;
 			vert[2] = 0;
 			AddToCleanup(vert);
 			gluTessVertex(tess, vert, vert); 
@@ -219,8 +219,8 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 		for (clipper::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
 			GLdouble *vert = new GLdouble[3];
-			vert[0] = pgs[i][j].X;
-			vert[1] = pgs[i][j].Y;
+			vert[0] = (GLdouble)pgs[i][j].X;
+			vert[1] = (GLdouble)pgs[i][j].Y;
 			vert[2] = 0;
 			AddToCleanup(vert);
 			gluTessVertex(tess, vert, vert); 

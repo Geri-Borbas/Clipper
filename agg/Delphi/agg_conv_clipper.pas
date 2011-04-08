@@ -60,7 +60,7 @@ type
 
    m_poly_a ,
    m_poly_b ,
-   m_result : TArrayOfArrayOfPoint;
+   m_result : TArrayOfArrayOfIntPoint;
 
    m_vertex_accumulator: pod_deque;
    clipper: TClipper;
@@ -89,8 +89,8 @@ type
    procedure start_extracting;
    procedure start_contour;
    procedure add_vertex_ (x,y: double );
-   procedure end_contour(var p: TArrayOfArrayOfPoint);
-   procedure add(src : vertex_source_ptr; var p: TArrayOfArrayOfPoint);
+   procedure end_contour(var p: TArrayOfArrayOfIntPoint);
+   procedure add(src : vertex_source_ptr; var p: TArrayOfArrayOfIntPoint);
   end;
 
 implementation
@@ -122,7 +122,7 @@ begin
   m_poly_a := nil;
   m_poly_b := nil;
   m_result := nil;
-  m_vertex_accumulator.Construct (sizeof(TPoint), 8 );
+  m_vertex_accumulator.Construct (sizeof(TIntPoint), 8 );
 
   m_subjFillType := subjFillType;
   m_clipFillType := clipFillType;
@@ -222,7 +222,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.end_contour(var p: TArrayOfArrayOfPoint);
+procedure conv_clipper.end_contour(var p: TArrayOfArrayOfIntPoint);
 var
   i, len: integer;
 begin
@@ -231,13 +231,13 @@ begin
   setLength(p, len+1);
   setLength(p[len], m_vertex_accumulator.size);
   for i := 0 to m_vertex_accumulator.size -1 do
-    p[len][i] := PPoint(m_vertex_accumulator.array_operator(i))^;
+    p[len][i] := PIntPoint(m_vertex_accumulator.array_operator(i))^;
 end;
 //------------------------------------------------------------------------------
 
 procedure conv_clipper.add_vertex_ (x,y: double);
 var
- v : TPoint;
+ v : TIntPoint;
 begin
   v.x := round(x * m_scaling_factor);
   v.y := round(y * m_scaling_factor);
@@ -297,7 +297,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfPoint);
+procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfIntPoint);
 var
   cmd: unsigned;
   x, y, start_x ,start_y: double;
