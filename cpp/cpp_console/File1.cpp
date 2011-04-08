@@ -15,38 +15,42 @@
 using namespace clipper;
 using namespace std;
 
-const scaling = 10000;
-
-inline int Round(double val)
+inline long64 Round(double val)
 {
-  if ((val < 0)) return (int)(val - 0.5); else return (int)(val + 0.5);
+  if ((val < 0)) return (long64)(val - 0.5); else return (long64)(val + 0.5);
 }
 //------------------------------------------------------------------------------
 
-bool LoadFromFile(char* filename, clipper::Polygons &pp){
-  char buffer[10];
+bool LoadFromFile(clipper::Polygons &ppg, char * filename, int scale= 1,
+  int xOffset = 0, int yOffset = 0)
+{
+  ppg.clear();
+
   FILE *f = fopen(filename, "r");
-  if (f == 0) return false;
-  int polyCnt, vertCnt, i, j;
+  if (!f) return false;
+  int polyCnt, vertCnt;
+  char junk [80];
   double X, Y;
-  pp.clear();
-  if (fscanf(f, "%d", &polyCnt) != 1 || polyCnt == 0) return false;
-  pp.resize(polyCnt);
-  for (i = 0; i < polyCnt; i++) {
-    if (fscanf(f, "%d", &vertCnt) != 1) return false;
-    pp[i].resize(vertCnt);
-    for (j = 0; j < vertCnt; j++){
-      if (fscanf(f, "%lf, %lf", &X, &Y) != 2) return false;
-      pp[i][j].X = Round(X *scaling); pp[i][j].Y = Round(Y *scaling);
-      fgets(buffer, 10, f); //gobble any trailing commas
+  if (fscanf(f, "%d", &polyCnt) == 1 && polyCnt > 0)
+  {
+    ppg.resize(polyCnt);
+    for (int i = 0; i < polyCnt; i++) {
+      if (fscanf(f, "%d", &vertCnt) != 1 || vertCnt <= 0) break;
+      ppg[i].resize(vertCnt);
+      for (int j = 0; j < vertCnt; j++) {
+        if (fscanf(f, "%lf%*[, ]%lf", &X, &Y) != 2) break;
+        ppg[i][j].X = Round((X + xOffset) * scale);
+        ppg[i][j].Y = Round((Y + yOffset) * scale);
+        fgets(junk, 80, f);
+      }
     }
   }
   fclose(f);
   return true;
 }
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
-void SaveToConsole(const string name, const clipper::Polygons &pp)
+void SaveToConsole(const string name, const clipper::Polygons &pp, int scale = 1)
 {
   cout << '\n' << name << ":\n"
     << pp.size() << '\n';
@@ -54,22 +58,26 @@ void SaveToConsole(const string name, const clipper::Polygons &pp)
   {
     cout << pp[i].size() << '\n';
     for (unsigned j = 0; j < pp[i].size(); ++j)
-      cout << pp[i][j].X /scaling << ", " << pp[i][j].Y /scaling << ",\n";
+      cout << pp[i][j].X /scale << ", " << pp[i][j].Y /scale << ",\n";
   }
   cout << "\n";
 }
 //---------------------------------------------------------------------------
 
-void SaveToFile(char *filename, clipper::Polygons &pp)
+void SaveToFile(char *filename, clipper::Polygons &pp, int scale = 1)
 {
   FILE *f = fopen(filename, "w");
   fprintf(f, "%d\n", pp.size());
   for (unsigned i = 0; i < pp.size(); ++i)
   {
     fprintf(f, "%d\n", pp[i].size());
-    for (unsigned j = 0; j < pp[i].size(); ++j)
-      fprintf(f, "%.4lf, %.4lf\n",
-        (double)pp[i][j].X /scaling, (double)pp[i][j].Y /scaling);
+    if (scale > 1)
+      for (unsigned j = 0; j < pp[i].size(); ++j)
+        fprintf(f, "%.4lf, %.4lf,\n",
+          (double)pp[i][j].X /scale, (double)pp[i][j].Y /scale);
+    else
+      for (unsigned j = 0; j < pp[i].size(); ++j)
+        fprintf(f, "%d, %d,\n", (int)pp[i][j].X, (int)pp[i][j].Y);
   }
   fclose(f);
 }
@@ -84,7 +92,8 @@ int _tmain(int argc, _TCHAR* argv[])
     cout << "\nUSAGE:\n"
       << "clipper.exe subject_file clip_file "
       << "[INTERSECTION | UNION | DIFFERENCE | XOR] "
-      << "[EVENODD | NONZERO] [EVENODD | NONZERO]\n";
+      << "[EVENODD | NONZERO] [EVENODD | NONZERO] "
+      << "[precision, in decimal places (def = 0)]\n";
     cout << "\nINPUT AND OUTPUT FILE FORMAT ([optional] {comments}):\n"
       << "Polygon Count\n"
       << "Vertex Count {first polygon}\n"
@@ -97,14 +106,18 @@ int _tmain(int argc, _TCHAR* argv[])
     return 1;
   }
 
+  int scaling = 0;
+  if (argc == 7) scaling = argv[6][0] - '0';
+  double scale = std::pow(double(10), scaling);
+
   Polygons subject, clip;
-  if (!LoadFromFile(argv[1], subject))
+  if (!LoadFromFile(subject, argv[1], scale))
   {
     cerr << "\nCan't open the file " << argv[1]
       << " or the file format is invalid.\n";
     return 1;
   }
-  if (!LoadFromFile(argv[2], clip))
+  if (!LoadFromFile(clip, argv[2], scale))
   {
     cerr << "\nCan't open the file " << argv[2]
       << " or the file format is invalid.\n";
@@ -123,7 +136,7 @@ int _tmain(int argc, _TCHAR* argv[])
   }
 
   PolyFillType subj_pft = pftNonZero, clip_pft = pftNonZero;
-  if (argc == 6)
+  if (argc > 5)
   {
     if (stricmp(argv[4], "EVENODD") == 0) subj_pft = pftEvenOdd;
     if (stricmp(argv[5], "EVENODD") == 0) clip_pft = pftEvenOdd;
@@ -133,17 +146,20 @@ int _tmain(int argc, _TCHAR* argv[])
   c.AddPolygons(subject, ptSubject);
   c.AddPolygons(clip, ptClip);
   Polygons solution;
-  c.Execute(clipType, solution, subj_pft, clip_pft);
-
+  bool succeeded = c.Execute(clipType, solution, subj_pft, clip_pft);
   string s = "Subjects (";
   s += (subj_pft == pftEvenOdd ? "EVENODD)" : "NONZERO)");
-  SaveToConsole(s, subject);
+  SaveToConsole(s, subject, scale);
   s = "Clips (";
   s += (clip_pft == pftEvenOdd ? "EVENODD)" : "NONZERO)");
   SaveToConsole(s, clip);
-  s = "Solution (using " + sClipType[clipType] + ")";
-  SaveToConsole(s, solution);
-  SaveToFile("solution.txt", solution);
+  if (succeeded) {
+    s = "Solution (using " + sClipType[clipType] + ")";
+    SaveToConsole(s, solution, scale);
+    SaveToFile("solution.txt", solution, scale);
+  } else
+      cout << sClipType[clipType] +" failed!\n\n";
+
   return 0;
 }
 //---------------------------------------------------------------------------
