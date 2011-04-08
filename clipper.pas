@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.1.2                                                           *
+* Version   :  4.1.3                                                           *
 * Date      :  9 April 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
@@ -33,9 +33,6 @@ unit clipper;
 interface
 
 uses
-{$IFDEF USING_GRAPHICS32}
-  GR32,                        
-{$ENDIF}
   SysUtils, Types, Classes, Math;
 
 type
@@ -47,14 +44,6 @@ type
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
   TPolyFillType = (pftEvenOdd, pftNonZero);
-
-{$IFNDEF USING_GRAPHICS32}
-  TFloat = Single;
-  TFloatPoint = record X, Y: TFloat; end;
-  TArrayOfFloatPoint = array of TFloatPoint;
-  TArrayOfArrayOfFloatPoint = array of TArrayOfFloatPoint;
-  TFloatRect = record left, top, right, bottom: TFloat; end;
-{$ENDIF}
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
@@ -234,16 +223,7 @@ function Area(const pts: TArrayOfIntPoint): double;
 function OffsetPolygons(const pts: TArrayOfArrayOfIntPoint;
   const delta: single): TArrayOfArrayOfIntPoint;
 function PointInPolygon(const pt: TIntPoint; const pts: TArrayOfIntPoint): Boolean;
-
 function IntPoint(const X, Y: Int64): TIntPoint;
-function FloatPointsToIntPoints(const a: TArrayOfFloatPoint;
-  decimals: integer = 2): TArrayOfIntPoint; overload;
-function FloatPointsToIntPoints(const a: TArrayOfArrayOfFloatPoint;
-  decimals: integer = 2): TArrayOfArrayOfIntPoint; overload;
-function IntPointsToFloatPoints(const a: TArrayOfIntPoint;
-  decimals: integer = 2): TArrayOfFloatPoint; overload;
-function IntPointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
-  decimals: integer = 2): TArrayOfArrayOfFloatPoint; overload;
 
 implementation
 
@@ -267,76 +247,6 @@ resourcestring
 //------------------------------------------------------------------------------
 // Miscellaneous Functions ...
 //------------------------------------------------------------------------------
-
-{$IFDEF USING_GRAPHICS32}
-function FloatPointsToIntPoints(const a: TArrayOfFloatPoint;
-  decimals: integer = 2): TArrayOfIntPoint; overload;
-var
-  i,decScale: integer;
-begin
-  decScale := round(power(10,decimals));
-  setlength(result, length(a));
-  for i := 0 to high(a) do
-  begin
-    result[i].X := round(a[i].X *decScale);
-    result[i].Y := round(a[i].Y *decScale);
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function FloatPointsToIntPoints(const a: TArrayOfArrayOfFloatPoint;
-  decimals: integer = 2): TArrayOfArrayOfIntPoint; overload;
-var
-  i,j,decScale: integer;
-begin
-  decScale := round(power(10,decimals));
-  setlength(result, length(a));
-  for i := 0 to high(a) do
-  begin
-    setlength(result[i], length(a[i]));
-    for j := 0 to high(a[i]) do
-    begin
-      result[i][j].X := round(a[i][j].X *decScale);
-      result[i][j].Y := round(a[i][j].Y *decScale);
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function IntPointsToFloatPoints(const a: TArrayOfIntPoint;
-  decimals: integer = 2): TArrayOfFloatPoint; overload;
-var
-  i,decScale: integer;
-begin
-  decScale := round(power(10,decimals));
-  setlength(result, length(a));
-  for i := 0 to high(a) do
-  begin
-    result[i].X := a[i].X /decScale;
-    result[i].Y := a[i].Y /decScale;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function IntPointsToFloatPoints(const a: TArrayOfArrayOfIntPoint;
-  decimals: integer = 2): TArrayOfArrayOfFloatPoint; overload;
-var
-  i,j,decScale: integer;
-begin
-  decScale := round(power(10,decimals));
-  setlength(result, length(a));
-  for i := 0 to high(a) do
-  begin
-    setlength(result[i], length(a[i]));
-    for j := 0 to high(a[i]) do
-    begin
-      result[i][j].X := a[i][j].X /decScale;
-      result[i][j].Y := a[i][j].Y /decScale;
-    end;
-  end;
-end;
-//------------------------------------------------------------------------------
-{$ENDIF}
 
 function PointsEqual(const P1, P2: TIntPoint): Boolean; overload;
 begin
