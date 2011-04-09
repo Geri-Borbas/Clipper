@@ -25,11 +25,6 @@ unit clipper;
 *                                                                              *
 *******************************************************************************)
 
-//Several type definitions used in the code below are defined in the Delphi
-//Graphics32 library ( see http://www.graphics32.org/wiki/ ). These type
-//definitions are redefined here in case you don't wish to use Graphics32.
-{$DEFINE USING_GRAPHICS32}
-
 interface
 
 uses
@@ -1523,6 +1518,7 @@ var
   e: PEdge;
   bottom1, bottom2: PPolyPt;
   hole: boolean;
+  j: PJoinRec;
 begin
   //get the start and ends of both output polygons ...
   p1_lft := PPolyPt(fPolyPtList[e1.outIdx]);
@@ -1611,6 +1607,16 @@ begin
       break;
     end;
     e := e.nextInAEL;
+  end;
+
+  if assigned(fJoins) then
+  begin
+    j := fJoins;
+    repeat
+      if j.poly1Idx = ObsoleteIdx then j.poly1Idx := OKIdx;
+      if j.poly2Idx = ObsoleteIdx then j.poly2Idx := OKIdx;
+      j := j.next;
+    until j = fJoins;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2460,15 +2466,15 @@ begin
   repeat
     pp1a := PPolyPt(fPolyPtList[j.poly1Idx]);
     pp2a := PPolyPt(fPolyPtList[j.poly2Idx]);
-    if FindSegment(pp1a, j.pt1a, j.pt1b) and
+    if (j.poly1Idx <> j.poly2Idx) and
+      FindSegment(pp1a, j.pt1a, j.pt1b) and
       FindSegment(pp2a, j.pt2a, j.pt2b) then
     begin
       if PointsEqual(pp1a.next.pt, j.pt1b) then
         pp1b := pp1a.next else pp1b := pp1a.prev;
       if PointsEqual(pp2a.next.pt, j.pt2b) then
         pp2b := pp2a.next else pp2b := pp2a.prev;
-      if (j.poly1Idx <> j.poly2Idx) and
-        GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, pt1, pt2) then
+      if GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, pt1, pt2) then
       begin
         //get p1 & p2 polypts - the overlap start & endpoints on poly1
         pos1 := GetPosition(pp1a.pt, pp1b.pt, pt1);
@@ -2526,7 +2532,10 @@ begin
           p4.prev := p2;
         end
         else
+        begin
+          j := j.next;
           continue; //an orientation is probably wrong
+        end;
 
         //delete duplicate points and obsolete polygon pointer ...
         DeletePolyPt(p3);
@@ -2547,7 +2556,6 @@ begin
             fPolyPtList[j.poly1Idx] := p2.prev;
           DeletePolyPt(p2);
         end;
-
 
       end;
     end;

@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v4.1.2 - 9 April 2011
+* Update: Minor code tidy. 
+* Bugfix: Possible endless loop in JoinCommonEdges in clipper.pas.
+
 v4.1.1 - 8 April 2011
 * Update: All polygon coordinates are now stored as 64bit integers. 
 * Change: AddPolygon and AddPolygons methods now return boolean 
