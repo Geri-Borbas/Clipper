@@ -1281,7 +1281,7 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
   //fixup orientation (hole) flag if necessary ...
   if (p1_lft->isHole != p2_lft->isHole)
   {
-    PolyPt *p, *pp;
+    PolyPt *p;
     PolyPt *bottom1 = PolygonBottom(p1_lft);
     PolyPt *bottom2 = PolygonBottom(p2_lft);
     if (bottom1->pt.Y > bottom2->pt.Y) p = p2_lft;
@@ -2231,8 +2231,8 @@ void Clipper::JoinCommonEdges()
           continue; //an orientation is probably wrong
 
         //delete duplicate points  ...
-        DeletePolyPt(p3);
-        DeletePolyPt(p4);
+        if (PointsEqual(p1.pt, p3.pt)) DeletePolyPt(p3);
+        if (PointsEqual(p2.pt, p4.pt)) DeletePolyPt(p4);
 
         if (j->poly2Idx == j->poly1Idx)
         {

@@ -2368,8 +2368,8 @@ namespace clipper
                     continue; //an orientation is probably wrong
 
                 //delete duplicate points ...
-                DeletePolyPt(p3);
-                DeletePolyPt(p4);
+                if (PointsEqual(p1.pt, p3.pt)) DeletePolyPt(p3);
+                if (PointsEqual(p2.pt, p4.pt)) DeletePolyPt(p4);
 
                 if (j.poly2Idx == j.poly1Idx)
                 {
@@ -2471,6 +2471,7 @@ namespace clipper
 
         public static Polygons OffsetPolygons(Polygons pts, double delta)
         {
+          if (delta == 0) return pts;
           double deltaSq = delta*delta;
           Polygons result = new Polygons(pts.Count);
 

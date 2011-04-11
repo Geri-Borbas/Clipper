@@ -2601,8 +2601,8 @@ begin
         end;
 
         //delete duplicate points ...
-        DeletePolyPt(p3);
-        DeletePolyPt(p4);
+        if (PointsEqual(p1.pt, p3.pt)) then DeletePolyPt(p3);
+        if (PointsEqual(p2.pt, p4.pt)) then DeletePolyPt(p4);
 
         if (j.poly2Idx = j.poly1Idx) then
         begin
