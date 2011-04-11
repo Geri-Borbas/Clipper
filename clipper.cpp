@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.1.1                                                           *
-* Date      :  8 April 2011                                                    *
+* Version   :  4.2.0                                                           *
+* Date      :  11 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -80,6 +80,12 @@ bool IsClockwise(PolyPt *pt)
 }
 //------------------------------------------------------------------------------
 
+inline bool PointsEqual( const IntPoint &pt1, const IntPoint &pt2)
+{
+  return ( pt1.X == pt2.X && pt1.Y == pt2.Y );
+}
+//------------------------------------------------------------------------------
+
 double Area(const Polygon &poly)
 {
   int highI = poly.size() -1;
@@ -91,6 +97,36 @@ double Area(const Polygon &poly)
     a += static_cast<double>(poly[i].X) * static_cast<double>(poly[i+1].Y) -
       static_cast<double>(poly[i+1].X) * static_cast<double>(poly[i].Y);
   return a/2;
+}
+//------------------------------------------------------------------------------
+
+bool PointIsVertex(const IntPoint &pt, PolyPt *pp)
+{
+  PolyPt *pp2 = pp;
+  do
+  {
+    if (PointsEqual(pp2->pt, pt)) return true;
+    pp2 = pp2->next;
+  }
+  while (pp2 != pp);
+  return false;
+}
+//------------------------------------------------------------------------------
+
+bool PointInPolygon(const IntPoint &pt, PolyPt *pp)
+{
+  PolyPt *pp2 = pp;
+  bool result = false;
+  do
+  {
+    if ((((pp2->pt.Y <= pt.Y) && (pt.Y < pp2->prev->pt.Y)) ||
+      ((pp2->prev->pt.Y <= pt.Y) && (pt.Y < pp2->pt.Y))) &&
+      (pt.X - pp2->pt.X < (pp2->prev->pt.X - pp2->pt.X) * (pt.Y - pp2->pt.Y) /
+      (pp2->prev->pt.Y - pp2->pt.Y))) result = !result;
+    pp2 = pp2->next;
+  }
+  while (pp2 != pp);
+  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -246,12 +282,6 @@ void DisposePolyPts(PolyPt*& pp)
     pp = pp->next;
     delete tmpPp ;
   }
-}
-//------------------------------------------------------------------------------
-
-inline bool PointsEqual( const IntPoint &pt1, const IntPoint &pt2)
-{
-  return ( pt1.X == pt2.X && pt1.Y == pt2.Y );
 }
 //------------------------------------------------------------------------------
 
@@ -1228,6 +1258,18 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
 }
 //------------------------------------------------------------------------------
 
+void SetHoleState(PolyPt *pp, bool isHole)
+{
+  PolyPt *pp2 = pp;
+  do
+  {
+    pp2->isHole = isHole;
+    pp2 = pp2->next;
+  }
+  while (pp2 != pp);
+}
+//------------------------------------------------------------------------------
+
 void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
 {
   //get the start and ends of both output polygons ...
@@ -1246,17 +1288,10 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     else if (bottom1->pt.Y < bottom2->pt.Y) p = p1_lft;
     else if (bottom1->pt.X < bottom2->pt.X) p = p2_lft;
     else if (bottom1->pt.X > bottom2->pt.X) p = p1_lft;
-    //todo - the following line still isn't 100% ...
+    //todo - the following line really only a best guess ...
     else if (bottom1->isHole) p = p1_lft; else p = p2_lft;
 
-    bool hole = !p->isHole;
-    pp = p;
-    do
-    {
-      pp->isHole = hole;
-      pp = pp->next;
-    }
-    while (pp != p);
+    SetHoleState(p, !p->isHole);
   }
 
   EdgeSide side;
@@ -1321,6 +1356,19 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     }
     e = e->nextInAEL;
   }
+
+  for (JoinList::size_type i = 0; i < m_Joins.size(); ++i)
+  {
+      if (m_Joins[i]->poly1Idx == ObsoleteIdx) m_Joins[i]->poly1Idx = OKIdx;
+      if (m_Joins[i]->poly2Idx == ObsoleteIdx) m_Joins[i]->poly2Idx = OKIdx;
+  }
+
+  for (HorzJoinList::size_type i = 0; i < m_HorizJoins.size(); ++i)
+  {
+      if (m_HorizJoins[i]->savedIdx == ObsoleteIdx)
+        m_HorizJoins[i]->savedIdx = OKIdx;
+  }
+
 }
 //------------------------------------------------------------------------------
 
@@ -1912,6 +1960,7 @@ void Clipper::BuildResult(Polygons &polypoly)
         pg->push_back(p->pt);
         p = p->next;
       } while (p != m_PolyPts[i]);
+      //make sure each polygon has at least 3 vertices ...
       if (pg->size() < 3) pg->clear(); else k++;
     }
   }
@@ -2066,29 +2115,61 @@ PolyPt* DeletePolyPt(PolyPt* pp)
 }
 //------------------------------------------------------------------------------
 
+PolyPt* FixSpikes(PolyPt *pp)
+{
+  PolyPt *pp2 = pp, *pp3;
+  PolyPt *result = pp;
+  do
+  {
+    if (SlopesEqual(pp2->prev->pt, pp2->pt, pp2->next->pt) &&
+      ((((pp2->prev->pt.X < pp2->pt.X) == (pp2->next->pt.X < pp2->pt.X)) &&
+      ((pp2->prev->pt.X != pp2->pt.X) || (pp2->next->pt.X != pp2->pt.X))) ||
+      ((((pp2->prev->pt.Y < pp2->pt.Y) == (pp2->next->pt.Y < pp2->pt.Y))) &&
+      ((pp2->prev->pt.Y != pp2->pt.Y) || (pp2->next->pt.Y != pp2->pt.Y)))))
+    {
+      if (pp2 == result) result = pp2->prev;
+      pp3 = pp2->next;
+      DeletePolyPt(pp2);
+      pp2 = pp3;
+    } else
+      pp2 = pp2->next;
+  }
+  while (pp2 != result);
+  return result;
+}
+//------------------------------------------------------------------------------
+
 void Clipper::JoinCommonEdges()
 {
   for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
   {
-    JoinRec* j = m_Joins[i];
-
     PolyPt *pp1a, *pp1b, *pp2a, *pp2b;
     IntPoint pt1, pt2;
-
-    if (j->poly1Idx < 0 || j->poly2Idx < 0)
-      throw clipperException("oops");
+    JoinRec* j = m_Joins[i];
 
     pp1a = m_PolyPts[j->poly1Idx];
     pp2a = m_PolyPts[j->poly2Idx];
-    if (FindSegment(pp1a, j->pt1a, j->pt1b) &&
-      FindSegment(pp2a, j->pt2a, j->pt2b))
+    bool found = FindSegment(pp1a, j->pt1a, j->pt1b);
+    if (found)
+    {
+      if (j->poly1Idx == j->poly2Idx)
+      {
+        //we're searching the same polygon for overlapping segments so
+        //we really don't want segment 2 to be the same as segment 1 ...
+        pp2a = pp1a->next;
+        found = FindSegment(pp2a, j->pt2a, j->pt2b) && (pp2a != pp1a);
+      }
+      else
+        found = FindSegment(pp2a, j->pt2a, j->pt2b);
+    }
+
+    if (found)
     {
       if (PointsEqual(pp1a->next->pt, j->pt1b))
         pp1b = pp1a->next; else pp1b = pp1a->prev;
       if (PointsEqual(pp2a->next->pt, j->pt2b))
         pp2b = pp2a->next; else pp2b = pp2a->prev;
-      if (j->poly1Idx != j->poly2Idx &&
-        GetOverlapSegment(pp1a->pt, pp1b->pt, pp2a->pt, pp2b->pt, pt1, pt2))
+      if (GetOverlapSegment(pp1a->pt, pp1b->pt, pp2a->pt, pp2b->pt, pt1, pt2))
       {
         PolyPt *p1, *p2, *p3, *p4;
         //get p1 & p2 polypts - the overlap start & endpoints on poly1
@@ -2149,25 +2230,49 @@ void Clipper::JoinCommonEdges()
         else
           continue; //an orientation is probably wrong
 
-        //delete duplicate points and obsolete polygon pointer ...
+        //delete duplicate points  ...
         DeletePolyPt(p3);
         DeletePolyPt(p4);
-        m_PolyPts[j->poly2Idx] = 0;
 
-        //cleanup redundant edges too ...
-        if (SlopesEqual(p1->prev->pt, p1->pt, p1->next->pt))
+        if (j->poly2Idx == j->poly1Idx)
         {
-          if (p1 == m_PolyPts[j->poly1Idx])
-            m_PolyPts[j->poly1Idx] = p1->prev;
-          DeletePolyPt(p1);
+          //instead of joining two polygons, we've just created
+          //a new one by splitting one polygon into two.
+          m_PolyPts[j->poly1Idx] = p1;
+          m_PolyPts.push_back(p2);
+          j->poly2Idx = m_PolyPts.size()-1;
+
+          if (PointInPolygon(p2->pt, p1)) SetHoleState(p2, !p1->isHole);
+          else if (PointInPolygon(p1->pt, p2)) SetHoleState(p1, !p2->isHole);
+
+          //now fixup any subsequent m_Joins that match this polygon
+          for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)
+          {
+            JoinRec* j2 = m_Joins[k];
+            if (j2->poly1Idx == j->poly1Idx && PointIsVertex(j2->pt1a, p2))
+              j2->poly1Idx = j->poly2Idx;
+            if (j2->poly2Idx == j->poly1Idx && PointIsVertex(j2->pt2a, p2))
+              j2->poly2Idx = j->poly2Idx;
+          }
+        } else
+        {
+          //having joined 2 polygons together, delete the obsolete pointer ...
+          m_PolyPts[j->poly2Idx] = 0;
+
+          //now fixup any subsequent fJoins that match this polygon
+          for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)
+          {
+            JoinRec* j2 = m_Joins[k];
+            if (j2->poly1Idx == j->poly2Idx) j2->poly1Idx = j->poly1Idx;
+            if (j2->poly2Idx == j->poly2Idx) j2->poly2Idx = j->poly1Idx;
+          }
+          j->poly2Idx = j->poly1Idx;
         }
 
-        if (SlopesEqual(p2->prev->pt, p2->pt, p2->next->pt))
-        {
-          if (p2 == m_PolyPts[j->poly1Idx])
-            m_PolyPts[j->poly1Idx] = p2->prev;
-          DeletePolyPt(p2);
-        }
+        //now cleanup redundant edges too ...
+        m_PolyPts[j->poly1Idx] = FixSpikes(p1);
+        if (j->poly2Idx != j->poly1Idx)
+          m_PolyPts[j->poly2Idx] = FixSpikes(p2);
 
       }
     }
@@ -2218,6 +2323,8 @@ DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
 
 Polygons OffsetPolygons(const Polygons &pts, const float &delta)
 {
+  if (delta == 0) return pts;
+
   double deltaSq = delta*delta;
   Polygons result(pts.size());
 

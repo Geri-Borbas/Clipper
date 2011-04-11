@@ -17,8 +17,10 @@ One minor drawback with the change to integer coordinates, is that the user
 will have to convert floating point coordinates into integer values - usually 
 with some scaling to manage precision. When values are scaled up to improve 
 coordinate precision, the programmer must keep in mind that integers are 
-confined to 64bits, so there is a limit to how much scaling is possible before 
-overflow errors will be encountered.
+confined to 32bits*, so there is a limit to how much scaling is possible before 
+overflow errors will be encountered. (Currently coordinate values must be inside 
+the range -1.5e9 to +1.5e9 otherwise errors will be thrown. This avoids the
+possibility of unreported overflow errors resulting from integer math.)
 
 The AddPolyPolygon() method has been renamed AddPolygons(). (The old name was
 a relic from a naming style in the Delphi Graphics32 library.) Also, in

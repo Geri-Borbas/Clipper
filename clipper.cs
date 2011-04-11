@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.1.1                                                           *
-* Date      :  8 April 2011                                                    *
+* Version   :  4.2.0                                                           *
+* Date      :  11 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -154,6 +154,36 @@ namespace clipper
         protected bool PointsEqual(IntPoint pt1, IntPoint pt2)
         {
           return ( pt1.X == pt2.X && pt1.Y == pt2.Y );
+        }
+        //------------------------------------------------------------------------------
+
+        internal bool PointIsVertex(IntPoint pt, PolyPt pp)
+        {
+          PolyPt pp2 = pp;
+          do
+          {
+            if (PointsEqual(pp2.pt, pt)) return true;
+            pp2 = pp2.next;
+          }
+          while (pp2 != pp);
+          return false;
+        }
+        //------------------------------------------------------------------------------
+
+        internal bool PointInPolygon(IntPoint pt, PolyPt pp)
+        {
+          PolyPt pp2 = pp;
+          bool result = false;
+          do
+          {
+            if ((((pp2.pt.Y <= pt.Y) && (pt.Y < pp2.prev.pt.Y)) ||
+              ((pp2.prev.pt.Y <= pt.Y) && (pt.Y < pp2.pt.Y))) &&
+              (pt.X - pp2.pt.X < (pp2.prev.pt.X - pp2.pt.X) * (pt.Y - pp2.pt.Y) /
+              (pp2.prev.pt.Y - pp2.pt.Y))) result = !result;
+            pp2 = pp2.next;
+          }
+          while (pp2 != pp);
+          return result;
         }
         //------------------------------------------------------------------------------
 
@@ -1229,6 +1259,18 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
+        private void SetHoleState(PolyPt pp, bool isHole)
+        {
+            PolyPt pp2 = pp;
+            do
+            {
+                pp2.isHole = isHole;
+                pp2 = pp2.next;
+            }
+            while (pp2 != pp);
+        }
+        //------------------------------------------------------------------------------
+
         private void AppendPolygon(TEdge e1, TEdge e2)
         {
           //get the start and ends of both output polygons ...
@@ -1240,24 +1282,17 @@ namespace clipper
           //fixup orientation (hole) flag if necessary ...
           if (p1_lft.isHole != p2_lft.isHole)
           {
-            PolyPt p, pp;
+            PolyPt p;
             PolyPt bottom1 = PolygonBottom(p1_lft);
             PolyPt bottom2 = PolygonBottom(p2_lft);
             if (bottom1.pt.Y > bottom2.pt.Y) p = p2_lft;
             else if (bottom1.pt.Y < bottom2.pt.Y) p = p1_lft;
             else if (bottom1.pt.X < bottom2.pt.X) p = p2_lft;
             else if (bottom1.pt.X > bottom2.pt.X) p = p1_lft;
-            //todo - the following line still isn't 100% ...
+            //todo - the following line really only a best guess ...
             else if (bottom1.isHole) p = p1_lft; else p = p2_lft;
 
-            bool hole = !p.isHole;
-            pp = p;
-            do
-            {
-              pp.isHole = hole;
-              pp = pp.next;
-            }
-            while (pp != p);
+            SetHoleState(p, !p.isHole);
           }
 
             EdgeSide side;
@@ -1322,6 +1357,20 @@ namespace clipper
             }
             e = e.nextInAEL;
           }
+
+
+          for (int i = 0; i < m_Joins.Count; ++i)
+          {
+              if (m_Joins[i].poly1Idx == ObsoleteIdx) m_Joins[i].poly1Idx = OKIdx;
+              if (m_Joins[i].poly2Idx == ObsoleteIdx) m_Joins[i].poly2Idx = OKIdx;
+          }
+
+          for (int i = 0; i < m_HorizJoins.Count; ++i)
+          {
+              if (m_HorizJoins[i].savedIdx == ObsoleteIdx)
+                m_HorizJoins[i].savedIdx = OKIdx;
+          }
+
         }
         //------------------------------------------------------------------------------
 
@@ -2128,6 +2177,7 @@ namespace clipper
                 pg.Add(new IntPoint(p.pt.X, p.pt.Y));
                 p = p.next;
               } while (p != m_PolyPts[i]);
+              //make sure each polygon has at least 3 vertices ...
               if (pg.Count > 2) polyg.Add(pg); else pg = null;
             }
           }
@@ -2202,28 +2252,61 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
+        PolyPt FixSpikes(PolyPt pp)
+        {
+          PolyPt pp2 = pp, pp3;
+          PolyPt result = pp;
+          do
+          {
+            if (SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt) &&
+              ((((pp2.prev.pt.X < pp2.pt.X) == (pp2.next.pt.X < pp2.pt.X)) &&
+              ((pp2.prev.pt.X != pp2.pt.X) || (pp2.next.pt.X != pp2.pt.X))) ||
+              ((((pp2.prev.pt.Y < pp2.pt.Y) == (pp2.next.pt.Y < pp2.pt.Y))) &&
+              ((pp2.prev.pt.Y != pp2.pt.Y) || (pp2.next.pt.Y != pp2.pt.Y)))))
+            {
+              if (pp2 == result) result = pp2.prev;
+              pp3 = pp2.next;
+              DeletePolyPt(pp2);
+              pp2 = pp3;
+            } else
+              pp2 = pp2.next;
+          }
+          while (pp2 != result);
+          return result;
+        }
+        //------------------------------------------------------------------------------
+        
         private void JoinCommonEdges()
         {
           for (int i = 0; i < m_Joins.Count; i++)
           {
             PolyPt pp1a, pp1b, pp2a, pp2b;
             IntPoint pt1 = new IntPoint(), pt2 = new IntPoint();
-
             JoinRec j = m_Joins[i];
-            if (j.poly1Idx < 0 || j.poly2Idx < 0) 
-                throw new ClipperException("JoinCommonEdges error");
             
             pp1a = m_PolyPts[j.poly1Idx];
             pp2a = m_PolyPts[j.poly2Idx];
-            if (FindSegment(ref pp1a, j.pt1a, j.pt1b) &&
-              FindSegment(ref pp2a, j.pt2a, j.pt2b))
+            bool found = FindSegment(ref pp1a, j.pt1a, j.pt1b);
+            if (found)
+            {
+                if (j.poly1Idx == j.poly2Idx)
+                {
+                    //we're searching the same polygon for overlapping segments so
+                    //we really don't want segment 2 to be the same as segment 1 ...
+                    pp2a = pp1a.next;
+                    found = FindSegment(ref pp2a, j.pt2a, j.pt2b) && (pp2a != pp1a);
+                }
+                else
+                    found = FindSegment(ref pp2a, j.pt2a, j.pt2b);
+            }
+
+            if (found)
             {
               if (PointsEqual(pp1a.next.pt, j.pt1b))
                 pp1b = pp1a.next; else pp1b = pp1a.prev;
               if (PointsEqual(pp2a.next.pt, j.pt2b))
                 pp2b = pp2a.next; else pp2b = pp2a.prev;
-              if (j.poly1Idx != j.poly2Idx &&
-                GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, ref pt1, ref pt2))
+              if (GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, ref pt1, ref pt2))
               {
                 PolyPt p1, p2, p3, p4;
                 //get p1 & p2 polypts - the overlap start & endpoints on poly1
@@ -2284,24 +2367,44 @@ namespace clipper
                 else
                     continue; //an orientation is probably wrong
 
-                //delete duplicate points and obsolete polygon pointer ...
+                //delete duplicate points ...
                 DeletePolyPt(p3);
                 DeletePolyPt(p4);
-                m_PolyPts[j.poly2Idx] = null;
 
-                //cleanup redundant edges too ...
-                if (SlopesEqual(p1.prev.pt, p1.pt, p1.next.pt))
+                if (j.poly2Idx == j.poly1Idx)
                 {
-                    if (p1 == m_PolyPts[j.poly1Idx])
-                        m_PolyPts[j.poly1Idx] = p1.prev;
-                    DeletePolyPt(p1);
+                    //instead of joining two polygons, we've just created
+                    //a new one by splitting one polygon into two.
+                    m_PolyPts[j.poly1Idx] = p1;
+                    m_PolyPts.Add(p2);
+                    j.poly2Idx = m_PolyPts.Count - 1;
+
+                    if (PointInPolygon(p2.pt, p1)) SetHoleState(p2, !p1.isHole);
+                    else if (PointInPolygon(p1.pt, p2)) SetHoleState(p1, !p2.isHole);
+
+                    //now fixup any subsequent m_Joins that match this polygon
+                    for (int k = i + 1; k < m_Joins.Count; k++)
+                    {
+                        JoinRec j2 = m_Joins[k];
+                        if (j2.poly1Idx == j.poly1Idx && PointIsVertex(j2.pt1a, p2))
+                            j2.poly1Idx = j.poly2Idx;
+                        if (j2.poly2Idx == j.poly1Idx && PointIsVertex(j2.pt2a, p2))
+                            j2.poly2Idx = j.poly2Idx;
+                    }
                 }
-
-                if (SlopesEqual(p2.prev.pt, p2.pt, p2.next.pt))
+                else
                 {
-                    if (p2 == m_PolyPts[j.poly1Idx])
-                        m_PolyPts[j.poly1Idx] = p2.prev;
-                    DeletePolyPt(p2);
+                    //having joined 2 polygons together, delete the obsolete pointer ...
+                    m_PolyPts[j.poly2Idx] = null;
+
+                    //now fixup any subsequent fJoins that match this polygon
+                    for (int k = i + 1; k < m_Joins.Count; k++)
+                    {
+                        JoinRec j2 = m_Joins[k];
+                        if (j2.poly1Idx == j.poly2Idx) j2.poly1Idx = j.poly1Idx;
+                        if (j2.poly2Idx == j.poly2Idx) j2.poly2Idx = j.poly1Idx;
+                    }
+                    j.poly2Idx = j.poly1Idx;
                 }
               }
             }
