@@ -360,6 +360,14 @@ begin
 end;
 //---------------------------------------------------------------------------
 
+function SlopesEqual(const pt1, pt2, pt3, pt4: TIntPoint): boolean; overload;
+begin
+  if (pt1.Y = pt2.Y) then result := (pt3.Y = pt4.Y)
+  else if (pt3.Y = pt4.Y) then result := false
+  else result := ((pt1.Y-pt2.Y)*(pt3.X-pt4.X)-(pt1.X-pt2.X)*(pt3.Y-pt4.Y)) = 0;
+end;
+//---------------------------------------------------------------------------
+
 procedure SetDx(e: PEdge);
 begin
   if (e.ybot = e.ytop) then e.dx := horizontal
@@ -2234,8 +2242,6 @@ begin
   //3. Process horizontals at the top of the scanbeam ...
   ProcessHorizontals;
 
-  if not assigned(fActiveEdges) then exit;
-
   //4. Promote intermediate vertices ...
   e := fActiveEdges;
   while assigned(e) do
@@ -2315,7 +2321,7 @@ begin
       exit;
     end;
 
-    //test for duplicate points and for same slope ...
+    //test for duplicate points and for colinear edges ...
     if PointsEqual(pp.pt, pp.next.pt) or
       SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt) then
     begin

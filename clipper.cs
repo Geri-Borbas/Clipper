@@ -2081,8 +2081,6 @@ namespace clipper
           //3. Process horizontals at the top of the scanbeam ...
           ProcessHorizontals();
 
-          if (m_ActiveEdges == null) return;
-
           //4. Promote intermediate vertices ...
           e = m_ActiveEdges;
           while( e != null )
@@ -2406,6 +2404,11 @@ namespace clipper
                     }
                     j.poly2Idx = j.poly1Idx;
                 }
+                //now cleanup redundant edges too ...
+                m_PolyPts[j.poly1Idx] = FixSpikes(p1);
+                if (j.poly2Idx != j.poly1Idx)
+                    m_PolyPts[j.poly2Idx] = FixSpikes(p2);
+
               }
             }
           }

@@ -1883,8 +1883,6 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
   //3. Process horizontals at the top of the scanbeam ...
   ProcessHorizontals();
 
-  if (!m_ActiveEdges) return;
-
   //4. Promote intermediate vertices ...
   e = m_ActiveEdges;
   while( e )
@@ -2231,8 +2229,8 @@ void Clipper::JoinCommonEdges()
           continue; //an orientation is probably wrong
 
         //delete duplicate points  ...
-        if (PointsEqual(p1.pt, p3.pt)) DeletePolyPt(p3);
-        if (PointsEqual(p2.pt, p4.pt)) DeletePolyPt(p4);
+        if (PointsEqual(p1->pt, p3->pt)) DeletePolyPt(p3);
+        if (PointsEqual(p2->pt, p4->pt)) DeletePolyPt(p4);
 
         if (j->poly2Idx == j->poly1Idx)
         {
