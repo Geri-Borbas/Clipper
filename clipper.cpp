@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.0                                                           *
+* Version   :  4.2.1                                                           *
 * Date      :  11 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
@@ -274,11 +274,10 @@ void ReversePolyPtLinks(PolyPt &pp)
 void DisposePolyPts(PolyPt*& pp)
 {
   if (pp == 0) return;
-  PolyPt *tmpPp;
   pp->prev->next = 0;
   while( pp )
   {
-    tmpPp = pp;
+    PolyPt *tmpPp = pp;
     pp = pp->next;
     delete tmpPp ;
   }
@@ -1449,7 +1448,7 @@ bool IsIntermediate(TEdge *e, const long64 Y)
 
 TEdge *GetMaximaPair(TEdge *e)
 {
-  if( !IsMaxima(e->next, e->ytop) || (e->next->xtop != e->xtop) )
+  if( !IsMaxima(e->next, e->ytop) || e->next->xtop != e->xtop )
     return e->prev; else
     return e->next;
 }
@@ -1457,8 +1456,8 @@ TEdge *GetMaximaPair(TEdge *e)
 
 void Clipper::SwapPositionsInAEL(TEdge *edge1, TEdge *edge2)
 {
-  if(  !( edge1->nextInAEL ) &&  !( edge1->prevInAEL ) ) return;
-  if(  !( edge2->nextInAEL ) &&  !( edge2->prevInAEL ) ) return;
+  if(  !edge1->nextInAEL &&  !edge1->prevInAEL ) return;
+  if(  !edge2->nextInAEL &&  !edge2->prevInAEL ) return;
 
   if(  edge1->nextInAEL == edge2 )
   {
