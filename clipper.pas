@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.0                                                           *
-* Date      :  11 April 2011                                                   *
+* Version   :  4.2.4                                                           *
+* Date      :  26 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -133,7 +133,9 @@ type
     fEdgeList      : TList;
     fLmList        : PLocalMinima; //localMinima list
     fCurrLm        : PLocalMinima; //current localMinima node
+    fUseFullRange : boolean;
     procedure DisposeLocalMinimaList;
+    procedure SetUseFullRange(newVal: boolean);
   protected
     procedure Reset; virtual;
     procedure PopLocalMinima;
@@ -144,6 +146,13 @@ type
     function AddPolygon(const polygon: TArrayOfIntPoint; polyType: TPolyType): boolean;
     function AddPolygons(const polygons: TArrayOfArrayOfIntPoint; polyType: TPolyType): boolean;
     procedure Clear; virtual;
+    //UseFullCoordinateRange: When this property is true, polygon coordinates
+    //can have any signed 64bit integer values (ie +/- 2^63). When false,
+    //coordinates must be in the range +/- 1.5E9 otherwise an error will be
+    //thrown on calling the AddPolygon() or AddPolygons() methods. The benefit
+    //of setting this property false is a small (~15%) increase in performance.
+    //(Default value = true.)
+    property UseFullCoordinateRange: boolean read fUseFullRange write SetUseFullRange;
   end;
 
   TClipper = class(TClipperBase)
@@ -197,11 +206,13 @@ type
     function GetResult: TArrayOfArrayOfIntPoint;
     function FixupOutPolygon(outPoly: PPolyPt): PPolyPt;
     function IsHole(e: PEdge): boolean;
-    procedure AddJoin(e1, e2: PEdge; e1OutIdx: integer = -1);
+    procedure AddJoin(e1, e2: PEdge;
+      e1OutIdx: integer = -1; e2OutIdx: integer = -1);
     procedure ClearJoins;
     procedure AddHorzJoin(e: PEdge; idx: integer);
     procedure ClearHorzJoins;
     procedure JoinCommonEdges;
+    function FixSpikes(pp: PPolyPt): PPolyPt;
   protected
     procedure Reset; override;
   public
@@ -213,8 +224,10 @@ type
     destructor Destroy; override;
   end;
 
-function IsClockwise(const pts: TArrayOfIntPoint): boolean;
-function Area(const pts: TArrayOfIntPoint): double;
+function IsClockwise(const pts: TArrayOfIntPoint;
+  UseFullInt64Range: boolean = true): boolean;
+function Area(const pts: TArrayOfIntPoint;
+  UseFullInt64Range: boolean = true): double;
 function OffsetPolygons(const pts: TArrayOfArrayOfIntPoint;
   const delta: single): TArrayOfArrayOfIntPoint;
 function IntPoint(const X, Y: Int64): TIntPoint;
@@ -237,10 +250,244 @@ resourcestring
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsHorizontal = 'ProcessHorizontal error';
   rsInvalidInt = 'Integer exceeds range bounds';
+  reUseFullRange = 'UseFullCoordinateRange() can''t be changed until '+
+  'the Clipper object has been cleared."';
 
 //------------------------------------------------------------------------------
 // Miscellaneous Functions ...
 //------------------------------------------------------------------------------
+
+type
+
+  TInt128 = record
+    lo   : Int64;
+    hi   : Int64;
+  end;
+
+{$OVERFLOWCHECKS OFF}
+procedure Int128Negate(var val: TInt128);
+begin
+  if val.lo = 0 then
+  begin
+    if val.hi = 0 then exit;
+    val.lo := not val.lo;
+    val.hi := not val.hi +1;
+  end else
+  begin
+    val.lo := not val.lo  +1;
+    val.hi := not val.hi;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function Int128(const val: Int64): TInt128; overload;
+begin
+  result.hi := 0;
+  result.lo := abs(val);
+  if val < 0 then Int128Negate(result);
+end;
+//------------------------------------------------------------------------------
+
+function Int128(hi: Int64; lo: Int64): TInt128; overload;
+begin
+  result.lo := abs(lo);
+  result.hi := abs(hi);
+  if (hi < 0) or (lo < 0) then Int128Negate(result);
+end;
+//------------------------------------------------------------------------------
+
+function Int128Equal(const int1, int2: TInt128): boolean;
+begin
+  result := (int1.lo = int2.lo) and (int1.hi = int2.hi);
+end;
+//------------------------------------------------------------------------------
+
+function Int128LessThan(const int1, int2: TInt128): boolean;
+begin
+  if (int1.hi < int2.hi) then result := true
+  else if (int1.hi > int2.hi) then result := false
+  else if (int1.hi >= 0) and (int2.hi >= 0) then
+    result := UInt64(int1.lo) < UInt64(int2.lo)
+  else if (int1.hi < 0) and (int2.hi < 0) then
+    result := UInt64(int1.lo) > UInt64(int2.lo)
+  else result := (int1.hi < 0);
+end;
+//------------------------------------------------------------------------------
+
+function Int128Add(const int1, int2: TInt128): TInt128;
+begin
+  if (int1.lo = 0) and (int1.hi = 0) then result := int2
+  else if (int2.lo = 0) and (int2.hi = 0) then result := int1
+  else
+  begin
+    result.lo := int1.lo + int2.lo;
+    result.hi := int1.hi + int2.hi;
+    if ((int1.lo < 0) and (int2.lo < 0)) or
+      (((int1.lo < 0) <> (int2.lo < 0)) and (result.lo >= 0)) then
+        result.hi := result.hi +1;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function Int128Sub(int1, int2: TInt128): TInt128;
+begin
+  Int128Negate(int2);
+  result := Int128Add(int1, int2);
+end;
+//------------------------------------------------------------------------------
+
+function Int128Mul(int1, int2: Int64): TInt128;
+var
+  a, b, c: Int64;
+  int1Hi, int1Lo, int2Hi, int2Lo: Int64;
+  hiBitSet, negate: boolean;
+begin
+  //save the result's sign before clearing both sign bits ...
+  negate := (int1 < 0) <> (int2 < 0);
+  if int1 < 0 then int1 := -int1;
+  if int2 < 0 then int2 := -int2;
+
+  int1Hi := int1 shr 32;
+  int1Lo := int1 and $FFFFFFFF;
+  int2Hi := int2 shr 32;
+  int2Lo := int2 and $FFFFFFFF;
+
+  //It's safe to multiply 32bit ints in unsigned 64bit space without overflow.
+  //Also, the *result* of the karatsuba equation (see below) can also be
+  //stored in 64bit space given that:
+  //x1*y0 + x0*y1 = (x1+x0) * (y1+y0) - x0*y0 - x1*y1 (karatsuba equation)
+  //and given that x1 (int1Hi below) and y1 (int2Hi below) are now only 31bits,
+  //and also given that (31bit*32bit) + (32bit*31bit) < 64bits.
+  //However, if either (x1+x0) > 32bits or (y1+y0) > 32bits, then we must
+  //either resort to recursion or avoid using karatsuba altogether.
+  //see also - http://en.wikipedia.org/wiki/Karatsuba_algorithm
+
+  a := int1Hi * int2Hi;
+  b := int1Lo * int2Lo;
+  c := int1Hi*int2Lo + int1Lo*int2Hi;
+
+  //given that result = a shl64 + c shl 32 + b ...
+  result.lo := c shl 32;
+  result.hi := a + (c shr 32);
+  hiBitSet := (result.lo < 0); //prepare to test for overflow carry
+  result.lo := result.lo + b;
+  if (hiBitSet and (b < 0)) or
+    ((hiBitSet <> (b < 0)) and (result.lo >= 0)) then inc(result.hi);
+
+  if negate then Int128Negate(result);
+end;
+//------------------------------------------------------------------------------
+
+function Int128Div(num, denom: TInt128): TInt128;
+var
+  i: integer;
+  p, p2: TInt128;
+  negate: boolean;
+begin
+  if (denom.lo = 0) and (denom.hi = 0) then
+    raise Exception.create('int128Div error: divide by zero');
+
+  negate := (denom.hi < 0) <> (num.hi < 0);
+  if num.hi < 0 then Int128Negate(num);
+  if denom.hi < 0 then Int128Negate(denom);
+  if (denom.hi > num.hi) or ((denom.hi = num.hi) and (denom.lo > num.lo)) then
+  begin
+    result := Int128(0); //result is only a fraction of 1
+    exit;
+  end;
+  Int128Negate(denom);
+
+  p := int128(0);
+  result := num;
+  for i := 0 to 127 do
+  begin
+    p.hi := p.hi shl 1;
+    if p.lo < 0 then inc(p.hi);
+    p.lo := p.lo shl 1;
+    if result.hi < 0 then inc(p.lo);
+    result.hi := result.hi shl 1;
+    if result.lo < 0 then inc(result.hi);
+    result.lo := result.lo shl 1;
+    p2 := p;
+    p := Int128Add(p, denom);
+    if p.hi < 0 then
+      p := p2 else
+      inc(result.lo);
+  end;
+  if negate then Int128Negate(result);
+end;
+//---------------------------------------------------------------------------
+
+procedure int128Div10(val: TInt128; out result: TInt128; out remainder: integer);
+var
+  i: integer;
+begin
+  remainder := 0;
+  result.lo := 0;
+  result.hi := 0;
+  for i := 63 downto 0 do
+  begin
+    if (val.hi and (int64(1) shl i)) <> 0 then
+      remainder := remainder * 2 + 1 else
+      remainder := remainder *2;
+    if remainder >= 10 then
+    begin
+      result.hi := result.hi + (int64(1) shl i);
+      dec(remainder, 10);
+    end;
+  end;
+  for i := 63 downto 0 do
+  begin
+    if (val.lo and (int64(1) shl i)) <> 0 then
+      remainder := remainder * 2 + 1 else
+      remainder := remainder *2;
+    if remainder >= 10 then
+    begin
+      result.lo := result.lo + (int64(1) shl i);
+      dec(remainder, 10);
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function Int128AsDouble(val: TInt128): double;
+const
+  shift64: double = 18446744073709551616.0;
+begin
+  if (val.hi < 0) then
+  begin
+    Int128Negate(val);
+    result := -(val.lo + val.hi * shift64);
+  end else
+    result := (val.lo + val.hi * shift64);
+end;
+//------------------------------------------------------------------------------
+
+function int128AsString(val: TInt128): string;
+var
+  valDiv10: TInt128;
+  r: integer;
+  isNeg: boolean;
+begin
+  result := '';
+  if val.hi < 0 then
+  begin
+    Int128Negate(val);
+    isNeg := true;
+  end else
+    isNeg := false;
+  while (val.hi <> 0) or (val.lo <> 0) do
+  begin
+    int128Div10(val, valDiv10, r);
+    result := inttostr(r) + result;
+    val := valDiv10;
+  end;
+  if result = '' then result := '0';
+  if isNeg then result := '-' + result;
+end;
+//------------------------------------------------------------------------------
+
+{$OVERFLOWCHECKS ON}
 
 function PointsEqual(const P1, P2: TIntPoint): Boolean; overload;
 begin
@@ -267,49 +514,89 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function IsClockwise(const pts: TArrayOfIntPoint): boolean; overload;
+function IsClockwise(const pts: TArrayOfIntPoint;
+  UseFullInt64Range: boolean = true): boolean; overload;
 var
   i, highI: integer;
-  area: double;
+  a: double;
+  area: TInt128;
 begin
   result := true;
   highI := high(pts);
   if highI < 2 then exit;
-  area := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
-  for i := 0 to highI-1 do
-    area := area + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-  //area := area/2;
-  result := area > 0; //ie reverse of normal formula because Y axis inverted
+  if UseFullInt64Range then
+  begin
+    area := Int128Sub(Int128Mul(pts[highI].x, pts[0].y),
+      Int128Mul(pts[0].x, pts[highI].y));
+    for i := 0 to highI-1 do
+      area := Int128Add(area, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
+         Int128Mul(pts[i+1].x, pts[i].y)));
+    result := area.hi >= 0; //assumes Y axis is inverted
+  end else
+  begin
+    a := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
+    for i := 0 to highI-1 do
+      a := a + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
+    result := a > 0;     //assumes Y axis is inverted
+  end;
 end;
 //------------------------------------------------------------------------------
 
-function IsClockwise(pt: PPolyPt): boolean; overload;
+function IsClockwise(pt: PPolyPt; UseFullInt64Range: boolean): boolean; overload;
 var
-  area: double;
+  a: double;
+  area: TInt128;
   startPt: PPolyPt;
 begin
-  area := 0;
   startPt := pt;
-  repeat
-    area := area + pt.pt.X * pt.next.pt.Y - pt.next.pt.X * pt.pt.Y;
-    pt := pt.next;
-  until pt = startPt;
-  //area := area /2;
-  result := area > 0; //ie reverse of normal formula because Y axis inverted
+  if UseFullInt64Range then
+  begin
+    area := int128(0);
+    repeat
+      area := int128Add(area, int128Sub(Int128Mul(pt.pt.X, pt.next.pt.Y),
+        Int128Mul(pt.next.pt.X, pt.pt.Y)));
+      pt := pt.next;
+    until pt = startPt;
+    result := area.hi >= 0;
+  end else
+  begin
+    a := 0;
+    repeat
+      a := a + (pt.pt.X)*pt.next.pt.Y - (pt.next.pt.X)*pt.pt.Y;
+      pt := pt.next;
+    until pt = startPt;
+    result := a > 0;
+  end;
 end;
 //------------------------------------------------------------------------------
 
-function Area(const pts: TArrayOfIntPoint): double;
+function Area(const pts: TArrayOfIntPoint;
+  UseFullInt64Range: boolean = true): double;
 var
   i, highI: integer;
+  a: TInt128;
+const
+  leftShift64: double = 18446744073709551616.0;
 begin
   result := 0;
   highI := high(pts);
   if highI < 2 then exit;
-  result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
-  for i := 0 to highI-1 do
-    result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-  result := result / 2;
+  if UseFullInt64Range then
+  begin
+    a := int128(0);
+    a := Int128Add(a, Int128Sub(Int128Mul(pts[highI].x, pts[0].y),
+      Int128Mul(pts[0].x, pts[highI].y)));
+    for i := 0 to highI-1 do
+      a := Int128Add(a, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
+        Int128Mul(pts[i+1].x, pts[i].y)));
+    result := Int128AsDouble(a) / 2;
+  end else
+  begin
+    result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
+    for i := 0 to highI-1 do
+      result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
+    result := result / 2;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -327,44 +614,76 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointInPolygon(const pt: TIntPoint; pp: PPolyPt): Boolean;
+function PointInPolygon(const pt: TIntPoint;
+  pp: PPolyPt; UseFullInt64Range: boolean): Boolean;
 var
   pp2: PPolyPt;
+  a, b: TInt128;
 begin
   Result := False;
   pp2 := pp;
-  repeat
-    if ((((pp2.pt.Y <= pt.Y) and (pt.Y < pp2.prev.pt.Y)) or
-      ((pp2.prev.pt.Y <= pt.Y) and (pt.Y < pp2.pt.Y))) and
-      (pt.X - pp2.pt.X < (pp2.prev.pt.X - pp2.pt.X) * (pt.Y - pp2.pt.Y) /
-      (pp2.prev.pt.Y - pp2.pt.Y))) then result := not result;
-    pp2 := pp2.next;
-  until pp2 = pp;
+  if UseFullInt64Range then
+  begin
+    repeat
+      if (((pp2.pt.Y <= pt.Y) and (pt.Y < pp2.prev.pt.Y)) or
+        ((pp2.prev.pt.Y <= pt.Y) and (pt.Y < pp2.pt.Y))) then
+      begin
+        a := Int128(pt.X - pp2.pt.X);
+        b := Int128Div( Int128Mul(pp2.prev.pt.X - pp2.pt.X,
+          pt.Y - pp2.pt.Y), Int128(pp2.prev.pt.Y - pp2.pt.Y) );
+        if Int128LessThan(a, b) then result := not result;
+      end;
+      pp2 := pp2.next;
+    until pp2 = pp;
+  end else
+  begin
+    repeat
+      if ((((pp2.pt.Y <= pt.Y) and (pt.Y < pp2.prev.pt.Y)) or
+        ((pp2.prev.pt.Y <= pt.Y) and (pt.Y < pp2.pt.Y))) and
+        (pt.X < (pp2.prev.pt.X - pp2.pt.X) * (pt.Y - pp2.pt.Y) /
+        (pp2.prev.pt.Y - pp2.pt.Y) + pp2.pt.X)) then result := not result;
+      pp2 := pp2.next;
+    until pp2 = pp;
+  end;
 end;
 //------------------------------------------------------------------------------
 
-function SlopesEqual(e1, e2: PEdge): boolean; overload;
+function SlopesEqual(e1, e2: PEdge; UseFullInt64Range: boolean): boolean; overload;
 begin
   if (e1.ybot = e1.ytop) then result := (e2.ybot = e2.ytop)
   else if (e2.ybot = e2.ytop) then result := false
-  else result :=
-    ((e1.ytop-e1.ybot)*(e2.xtop-e2.xbot)-(e1.xtop-e1.xbot)*(e2.ytop-e2.ybot)) = 0;
+  else if UseFullInt64Range then
+    result := Int128Equal(Int128Mul(e1.ytop-e1.ybot, e2.xtop-e2.xbot),
+      Int128Mul(e1.xtop-e1.xbot, e2.ytop-e2.ybot))
+  else
+    result := (e1.ytop-e1.ybot)*(e2.xtop-e2.xbot) =
+      (e1.xtop-e1.xbot)*(e2.ytop-e2.ybot);
 end;
 //---------------------------------------------------------------------------
 
-function SlopesEqual(const pt1, pt2, pt3: TIntPoint): boolean; overload;
+function SlopesEqual(const pt1, pt2, pt3: TIntPoint;
+  UseFullInt64Range: boolean): boolean; overload;
 begin
   if (pt1.Y = pt2.Y) then result := (pt2.Y = pt3.Y)
   else if (pt2.Y = pt3.Y) then result := false
-  else result := ((pt1.Y-pt2.Y)*(pt2.X-pt3.X)-(pt1.X-pt2.X)*(pt2.Y-pt3.Y)) = 0;
+  else if UseFullInt64Range then
+    result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X),
+      Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y))
+  else
+    result := (pt1.Y-pt2.Y)*(pt2.X-pt3.X) = (pt1.X-pt2.X)*(pt2.Y-pt3.Y);
 end;
 //---------------------------------------------------------------------------
 
-function SlopesEqual(const pt1, pt2, pt3, pt4: TIntPoint): boolean; overload;
+function SlopesEqual(const pt1, pt2, pt3, pt4: TIntPoint;
+  UseFullInt64Range: boolean): boolean; overload;
 begin
   if (pt1.Y = pt2.Y) then result := (pt3.Y = pt4.Y)
   else if (pt3.Y = pt4.Y) then result := false
-  else result := ((pt1.Y-pt2.Y)*(pt3.X-pt4.X)-(pt1.X-pt2.X)*(pt3.Y-pt4.Y)) = 0;
+  else if UseFullInt64Range then
+    result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt3.X-pt4.X),
+      Int128Mul(pt1.X-pt2.X, pt3.Y-pt4.Y))
+  else
+    result := (pt1.Y-pt2.Y * pt3.X-pt4.X) = (pt1.X-pt2.X * pt3.Y-pt4.Y);
 end;
 //---------------------------------------------------------------------------
 
@@ -403,11 +722,12 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function IntersectPoint(edge1, edge2: PEdge; out ip: TIntPoint): boolean; overload;
+function IntersectPoint(edge1, edge2: PEdge;
+  out ip: TIntPoint; UseFullInt64Range: boolean): boolean; overload;
 var
   b1,b2: double;
 begin
-  if SlopesEqual(edge1, edge2) then
+  if SlopesEqual(edge1, edge2, UseFullInt64Range) then
   begin
     result := false;
     exit;
@@ -471,6 +791,7 @@ begin
   fEdgeList := TList.Create;
   fLmList := nil;
   fCurrLm := nil;
+  fUseFullRange := true;
 end;
 //------------------------------------------------------------------------------
 
@@ -479,6 +800,14 @@ begin
   Clear;
   fEdgeList.Free;
   inherited;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipperBase.SetUseFullRange(newVal: boolean);
+begin
+  if (fEdgeList.Count > 0) and newVal then
+    raise Exception.Create(reUseFullRange);
+  fUseFullRange := newVal;
 end;
 //------------------------------------------------------------------------------
 
@@ -612,7 +941,7 @@ var
   e, eHighest: PEdge;
   pg: TArrayOfIntPoint;
 const
-  MaxVal = 1.5E9; //(2*MaxVal)*(2*MaxVal) < 2^63 - see SlopesEqual() 
+  MaxVal = 1.5E9; //(2*MaxVal)*(2*MaxVal) < 2^63 - see SlopesEqual()
 begin
   {AddPolygon}
   result := false; //ie assume nothing added
@@ -623,10 +952,11 @@ begin
   j := 0;
   for i := 1 to len-1 do
   begin
-    if (abs(polygon[i].X) > MaxVal) or (abs(polygon[i].Y) > MaxVal) then
-      raise exception.Create(rsInvalidInt)
-    else if PointsEqual(pg[j], polygon[i]) then continue
-    else if (j > 0) and SlopesEqual(pg[j-1], pg[j], polygon[i]) then
+    if not fUseFullRange and
+      ((abs(polygon[i].X) > MaxVal) or (abs(polygon[i].Y) > MaxVal)) then
+        raise exception.Create(rsInvalidInt);
+    if PointsEqual(pg[j], polygon[i]) then continue
+    else if (j > 0) and SlopesEqual(pg[j-1], pg[j], polygon[i], fUseFullRange) then
     begin
       if PointsEqual(pg[j-1], polygon[i]) then dec(j);
     end else inc(j);
@@ -639,13 +969,14 @@ begin
   begin
     //nb: test for point equality before testing slopes ...
     if PointsEqual(pg[j], pg[0]) then dec(j)
-    else if PointsEqual(pg[0], pg[1]) or SlopesEqual(pg[j], pg[0], pg[1]) then
+    else if PointsEqual(pg[0], pg[1]) or
+      SlopesEqual(pg[j], pg[0], pg[1], fUseFullRange) then
     begin
       pg[0] := pg[j];
       dec(j);
     end
-    else if SlopesEqual(pg[j-1], pg[j], pg[0]) then dec(j)
-    else if SlopesEqual(pg[0], pg[1], pg[2]) then
+    else if SlopesEqual(pg[j-1], pg[j], pg[0], fUseFullRange) then dec(j)
+    else if SlopesEqual(pg[0], pg[1], pg[2], fUseFullRange) then
     begin
       for i := 2 to j do pg[i-1] := pg[i];
       dec(j);
@@ -1099,7 +1430,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddJoin(e1, e2: PEdge; e1OutIdx: integer = -1);
+procedure TClipper.AddJoin(e1, e2: PEdge;
+  e1OutIdx: integer = -1; e2OutIdx: integer = -1);
 var
   jr: PJoinRec;
 begin
@@ -1112,7 +1444,9 @@ begin
     jr.pt1a := IntPoint(xbot, ybot);
     jr.pt1b := IntPoint(xtop, ytop);
   end;
-  jr.poly2Idx := e2.outIdx;
+  if e2OutIdx >= 0 then
+    jr.poly2Idx := e2OutIdx else
+    jr.poly2Idx := e2.outIdx;
   with e2^ do
   begin
     jr.pt2a := IntPoint(xbot, ybot);
@@ -1204,6 +1538,7 @@ function GetOverlapSegment(pt1a, pt1b, pt2a, pt2b: TIntPoint;
   out pt1, pt2: TIntPoint): boolean;
 begin
   //precondition: segments are colinear.
+  //todo - reconsider whether this should be protected with TInt128's ...
   if (pt1a.Y = pt1b.Y) or (abs((pt1a.X - pt1b.X)/(pt1a.Y - pt1b.Y)) > 1) then
   begin
     if pt1a.X > pt1b.X then SwapPoints(pt1a, pt1b);
@@ -1299,7 +1634,7 @@ begin
     //if output polygons share an edge, they'll need joining later ...
     if (lb.outIdx >= 0) and assigned(lb.prevInAEL) and
        (lb.prevInAEL.outIdx >= 0) and (lb.prevInAEL.xcurr = lb.xbot) and
-       SlopesEqual(lb, lb.prevInAEL) then
+       SlopesEqual(lb, lb.prevInAEL, fUseFullRange) then
          AddJoin(lb, lb.prevInAEL);
 
     //if any output polygons share an edge, they'll need joining later ...
@@ -1566,7 +1901,7 @@ begin
     else if (bottom1.pt.Y < bottom2.pt.Y) then p := p1_lft
     else if (bottom1.pt.X < bottom2.pt.X) then p := p2_lft
     else if (bottom1.pt.X > bottom2.pt.X) then p := p1_lft
-    //todo - the following line really only a best guess ...
+    //todo - the following line really is only a best guess ...
     else if bottom1.isHole then p := p1_lft else p := p2_lft;
 
     SetHoleState(p, not p.isHole);
@@ -1907,7 +2242,7 @@ begin
 
       if (e.xcurr = horzEdge.xtop) and assigned(horzEdge.nextInLML) then
       begin
-        if SlopesEqual(e, horzEdge.nextInLML) then
+        if SlopesEqual(e, horzEdge.nextInLML, fUseFullRange) then
         begin
           //if output polygons share an edge, they'll need joining later ...
           if (horzEdge.outIdx >= 0) and (e.outIdx >= 0) then
@@ -2003,7 +2338,8 @@ begin
 
     //if output polygons share an edge, they'll need joining later ...
     if (e.outIdx >= 0) and assigned(AelPrev) and (AelPrev.outIdx >= 0) and
-      (AelPrev.xbot = e.xcurr) and SlopesEqual(e, AelPrev) then
+      (AelPrev.xbot = e.xcurr) and
+      SlopesEqual(e, AelPrev, fUseFullRange) then
         AddJoin(e, AelPrev);
   end;
 end;
@@ -2070,7 +2406,8 @@ begin
       while assigned(e.nextInSEL) do
       begin
         eNext := e.nextInSEL;
-        if (e.tmpX > eNext.tmpX) and IntersectPoint(e, eNext, pt) then
+        if (e.tmpX > eNext.tmpX) and
+          IntersectPoint(e, eNext, pt, fUseFullRange) then
         begin
           AddIntersectNode(e, eNext, pt);
           SwapPositionsInSEL(e, eNext);
@@ -2182,6 +2519,8 @@ end;
 procedure TClipper.ProcessEdgesAtTopOfScanbeam(const topY: int64);
 var
   e, ePrior: PEdge;
+  hj: PHorzRec;
+  pt, pt2: TIntPoint;
 begin
 (*******************************************************************************
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
@@ -2225,6 +2564,18 @@ begin
         if (e.outIdx >= 0) then
         begin
           AddPolyPt(e, IntPoint(e.xtop, e.ytop));
+
+          hj := fHorizJoins;
+          if assigned(hj) then
+          repeat
+            if GetOverlapSegment(IntPoint(hj.edge.xbot, hj.edge.ybot),
+              IntPoint(hj.edge.xtop, hj.edge.ytop),
+              IntPoint(e.nextInLML.xbot, e.nextInLML.ybot),
+              IntPoint(e.nextInLML.xtop, e.nextInLML.ytop), pt, pt2) then
+                AddJoin(hj.edge, e.nextInLML, hj.savedIdx, e.outIdx);
+            hj := hj.next;
+          until hj = fHorizJoins;
+
           AddHorzJoin(e.nextInLML, e.outIdx);
         end;
         UpdateEdgeIntoAEL(e);
@@ -2268,7 +2619,7 @@ begin
       fPolyPtList[i] := FixupOutPolygon(fPolyPtList[i]);
       //fix orientation ...
       p := fPolyPtList[i];
-      if assigned(p) and (p.isHole = IsClockwise(p)) then
+      if assigned(p) and (p.isHole = IsClockwise(p, fUseFullRange)) then
         ReversePolyPtLinks(p);
     end;
 
@@ -2323,7 +2674,7 @@ begin
 
     //test for duplicate points and for colinear edges ...
     if PointsEqual(pp.pt, pp.next.pt) or
-      SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt) then
+      SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt, fUseFullRange) then
     begin
       //OK, we need to delete a point ...
       lastOK := nil;
@@ -2487,14 +2838,14 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FixSpikes(pp: PPolyPt): PPolyPt;
+function TClipper.FixSpikes(pp: PPolyPt): PPolyPt;
 var
   pp2, pp3: PPolyPt;
 begin
   pp2 := pp;
   result := pp;
   repeat
-    if SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt) and
+    if SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt, fUseFullRange) and
       ((((pp2.prev.pt.X < pp2.pt.X) = (pp2.next.pt.X < pp2.pt.X)) and
       ((pp2.prev.pt.X <> pp2.pt.X) or (pp2.next.pt.X <> pp2.pt.X))) or
       ((((pp2.prev.pt.Y < pp2.pt.Y) = (pp2.next.pt.Y < pp2.pt.Y))) and
@@ -2617,8 +2968,10 @@ begin
           fPolyPtList[j.poly1Idx] := p1;
           j.poly2Idx := fPolyPtList.Add(p2);
 
-          if PointInPolygon(p2.pt, p1) then SetHoleState(p2, not p1.isHole)
-          else if PointInPolygon(p1.pt, p2) then SetHoleState(p1, not p2.isHole);
+          if PointInPolygon(p2.pt, p1, fUseFullRange) then
+            SetHoleState(p2, not p1.isHole)
+          else if PointInPolygon(p1.pt, p2, fUseFullRange) then
+            SetHoleState(p1, not p2.isHole);
 
           //now fixup any subsequent fJoins that match this polygon
           j2 := j.next;

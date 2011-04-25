@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.0                                                           *
-* Date      :  11 April 2011                                                   *
+* Version   :  4.2.4                                                           *
+* Date      :  26 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -38,6 +38,7 @@ enum PolyType { ptSubject, ptClip };
 enum PolyFillType { pftEvenOdd, pftNonZero };
 
 typedef signed long long long64;
+typedef unsigned long long ulong64;
 
 struct IntPoint {
   long64 X;
@@ -48,8 +49,8 @@ struct IntPoint {
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
 
-bool IsClockwise(const Polygon &poly);
-double Area(const Polygon &poly);
+bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
+double Area(const Polygon &poly, bool UseFullInt64Range = true);
 Polygons OffsetPolygons(const Polygons &pts, const float &delta);
 
 //used internally ...
@@ -139,16 +140,19 @@ public:
   bool AddPolygons( const Polygons &ppg, PolyType polyType);
   virtual void Clear();
   IntRect GetBounds();
+  bool UseFullCoordinateRange() {return m_UseFullRange;};
+  void UseFullCoordinateRange(bool newVal);
 protected:
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e);
   void PopLocalMinima();
   virtual void Reset();
   void InsertLocalMinima(LocalMinima *newLm);
-  LocalMinima           *m_CurrentLM;
-  LocalMinima           *m_MinimaList;
+  LocalMinima      *m_CurrentLM;
+  LocalMinima      *m_MinimaList;
+  bool              m_UseFullRange;
 private:
-  EdgeList               m_edges;
+  EdgeList          m_edges;
 };
 
 class Clipper : public virtual ClipperBase
@@ -212,13 +216,14 @@ private:
   void BuildResult(Polygons& polypoly);
   void DisposeIntersectNodes();
   bool FixupIntersections();
+  PolyPt* FixupOutPolygon(PolyPt *p);
+  PolyPt* FixSpikes(PolyPt *pp);
   bool IsHole(TEdge *e);
-  void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1);
+  void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
   void ClearHorzJoins();
   void JoinCommonEdges();
-
 };
 
 //------------------------------------------------------------------------------

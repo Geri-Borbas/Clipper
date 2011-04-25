@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.0                                                           *
-* Date      :  11 April 2011                                                   *
+* Version   :  4.2.4                                                           *
+* Date      :  26 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -32,12 +32,254 @@
 
 using System;
 using System.Collections.Generic;
+//using System.Text; //for Int128.AsString() & StringBuilder
 
 namespace clipper
 {
+
     using Polygon = List<IntPoint>;
     using Polygons = List<List<IntPoint>>;
 
+        
+    //------------------------------------------------------------------------------
+    // Int128 class (enables safe math on signed 64bit integers)
+    // eg Int128 val1((Int64)9223372036854775807); //ie 2^63 -1
+    //    Int128 val2((Int64)9223372036854775807);
+    //    Int128 val3 = val1 * val2;
+    //    val3.AsString => "85070591730234615847396907784232501249" (8.5e+37)
+    //------------------------------------------------------------------------------
+
+    internal class Int128
+    {
+        private Int64 hi;
+        private Int64 lo;
+    
+        public Int128(Int64 _lo = 0)
+        {
+            hi = 0;
+            lo = Math.Abs(_lo);
+            if (_lo < 0) Negate(this);
+        }
+
+        public Int128(Int128 val)
+        {
+            Assign(val);
+        }
+
+        public void Assign(Int128 val)
+        {
+            hi = val.hi; lo = val.lo;
+        }
+
+        static private void Negate(Int128 val)
+        {
+            if (val.lo == 0)
+            {
+            if( val.hi == 0) return;
+            val.lo = ~val.lo;
+            val.hi = ~val.hi +1;
+            }
+            else
+            {
+            val.lo = ~val.lo +1;
+            val.hi = ~val.hi;
+            }
+        }
+
+        public static bool operator== (Int128 val1, Int128 val2)
+        {
+            if ((object)val1 == (object)val2) return true;
+            else if ((object)val1 == null || (object)val2 == null) return false;
+            return (val1.hi == val2.hi && val1.lo == val2.lo);
+        }
+
+        public static bool operator!= (Int128 val1, Int128 val2) 
+        { 
+            return !(val1 == val2); 
+        }
+
+        public override bool Equals(System.Object obj)
+        {
+            if (obj == null) return false;
+            Int128 i128 = obj as Int128;
+            if (i128 == null) return false;
+            return (i128.hi == hi && i128.lo == lo);
+        }
+
+        public override int GetHashCode()
+        {
+            return hi.GetHashCode() ^ lo.GetHashCode();
+        }
+
+        public static bool operator> (Int128 val1, Int128 val2) 
+        {
+            if (System.Object.ReferenceEquals(val1, val2)) return false;
+            else if (val2 == null) return true;
+            else if (val1 == null) return false;
+            else if (val1.hi > val2.hi) return true;
+            else if (val1.hi < val2.hi) return false;
+            else if (val1.hi >= 0 && val2.hi >= 0) return (UInt64)val1.lo > (UInt64)val2.lo;
+            else if (val1.hi < 0 && val2.hi < 0) return (UInt64)val1.lo < (UInt64)val2.lo;
+            else return val1.hi > 0;
+        }
+
+        public static bool operator< (Int128 val1, Int128 val2) 
+        {
+            if (System.Object.ReferenceEquals(val1, val2)) return false;
+            else if (val2 == null) return false;
+            else if (val1 == null) return true;
+            if (val1.hi < val2.hi) return true;
+            else if (val1.hi > val2.hi) return false;
+            else if (val1.hi >= 0 && val2.hi >= 0) return (UInt64)val1.lo < (UInt64)val2.lo;
+            else if (val1.hi < 0 && val2.hi < 0) return (UInt64)val1.lo > (UInt64)val2.lo;
+            else return val1.hi < 0;
+        }
+
+        public static Int128 operator+ (Int128 lhs, Int128 rhs) 
+        {
+            Int64 xlo = lhs.lo;
+            lhs.hi += rhs.hi; lhs.lo += rhs.lo;
+            if((xlo < 0 && rhs.lo < 0) || (((xlo < 0) != (rhs.lo < 0)) && lhs.lo >= 0)) lhs.hi++;
+            return lhs;
+        }
+
+        public static Int128 operator- (Int128 lhs, Int128 rhs) 
+        {
+            Int128 tmp = new Int128(rhs);
+            Negate(tmp);
+            lhs += tmp;
+            return lhs;
+        }
+
+        //nb: Constructing two new Int128 objects every time we want to multiply Int64s  
+        //is slow. So, although calling the Int128Mul method doesn't look as clean, the 
+        //code runs significantly faster than if we'd used the * operator.
+        //public static Int128 operator *(Int128 lhs, Int128 rhs)
+        //{
+        //    if (!(lhs.hi == 0 || lhs.hi == -1) || !(rhs.hi == 0 || rhs.hi == -1))
+        //        throw new Exception("Int128 operator*: overflow error");
+        //    return Int128Mul(lhs.lo, rhs.lo);
+        //}
+
+        public static Int128 Int128Mul(Int64 lhs, Int64 rhs)
+        {
+            bool negate = (lhs < 0) != (rhs < 0);
+            if (lhs < 0) lhs = -lhs;
+            if (rhs < 0) rhs = -rhs;
+            UInt64 int1Hi = (UInt64)lhs >> 32;
+            UInt64 int1Lo = (UInt64)lhs & 0xFFFFFFFF;
+            UInt64 int2Hi = (UInt64)rhs >> 32;
+            UInt64 int2Lo = (UInt64)rhs & 0xFFFFFFFF;
+
+            //nb: see comments in clipper.pas
+            UInt64 a = int1Hi * int2Hi;
+            UInt64 b = int1Lo * int2Lo;
+            UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi; //nb avoid karatsuba
+
+            Int128 result = new Int128();
+            result.lo = (Int64)(c << 32);
+            result.hi = (Int64)(a + (c >> 32));
+            bool hiBitSet = (result.lo < 0);
+            result.lo += (Int64)b;
+            if ((hiBitSet && ((Int64)b < 0)) ||
+            ((hiBitSet != ((Int64)b < 0)) && (result.lo >= 0))) result.hi++;
+            if (negate) Negate(result);
+            return result;
+        }
+
+        public static Int128 operator /(Int128 lhs, Int128 rhs)
+        {
+            if (rhs.lo == 0 && rhs.hi == 0)
+                throw new Exception("Int128 operator/: divide by zero");
+            bool negate = (rhs.hi < 0) != (lhs.hi < 0);
+            Int128 result = new Int128(lhs), denom = new Int128(rhs);
+            if (result.hi < 0) Negate(result);
+            if (denom.hi < 0) Negate(denom);
+            if (denom > result) return new Int128(0); //result is only a fraction of 1
+            Negate(denom);
+
+            Int128 p = new Int128(0), p2 = new Int128(0);
+            for (int i = 0; i < 128; ++i)
+            {
+                p.hi = p.hi << 1;
+                if (p.lo < 0) p.hi++;
+                p.lo = (Int64)p.lo << 1;
+                if (result.hi < 0) p.lo++;
+                result.hi = result.hi << 1;
+                if (result.lo < 0) result.hi++;
+                result.lo = (Int64)result.lo << 1;
+                p2.Assign(p);
+                p += denom;
+                if (p.hi < 0) p.Assign(p2);
+                else result.lo++;
+            }
+            if (negate) Negate(result);
+            return result;
+        }
+
+        public double ToDouble()
+        {
+            const double shift64 = 18446744073709551616.0; //2^64
+            if (hi < 0)
+            {
+                Int128 tmp = new Int128(this);
+                Negate(tmp);
+                return -((double)tmp.lo + (double)tmp.hi * shift64);
+            }
+            else return (double)lo + (double)hi * shift64;
+        }
+
+        ////for bug testing ...
+        //public string ToString()
+        //{
+        //    int r = 0;
+        //    Int128 tmp = new Int128(0), val = new Int128(this);
+        //    if (hi < 0) Negate(val);
+        //    StringBuilder builder = new StringBuilder(50);
+        //    while (val.hi != 0 || val.lo != 0)
+        //    {
+        //        Div10(val, ref tmp, ref r);
+        //        builder.Insert(0, (char)('0' + r));
+        //        val.Assign(tmp);
+        //    }
+        //    if (hi < 0) return '-' + builder.ToString();
+        //    if (builder.Length == 0) return "0";
+        //    return builder.ToString();
+        //}
+
+        ////debugging only ...
+        //private void Div10(Int128 val, ref Int128 result, ref int remainder)
+        //{
+        //    remainder = 0;
+        //    result = new Int128(0);
+        //    for (int i = 63; i >= 0; --i)
+        //    {
+        //    if ((val.hi & ((Int64)1 << i)) != 0)
+        //        remainder = (remainder * 2) + 1; else
+        //        remainder *= 2;
+        //    if (remainder >= 10)
+        //    {
+        //        result.hi += ((Int64)1 << i);
+        //        remainder -= 10;
+        //    }
+        //    }
+        //    for (int i = 63; i >= 0; --i)
+        //    {
+        //    if ((val.lo & ((Int64)1 << i)) != 0)
+        //        remainder = (remainder * 2) + 1; else
+        //        remainder *= 2;
+        //    if (remainder >= 10)
+        //    {
+        //        result.lo += ((Int64)1 << i);
+        //        remainder -= 10;
+        //    }
+        //    }
+        //}
+    };
+
+    //------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------
+   
     public class IntPoint
     {
         public Int64 X { get; set; }
@@ -148,6 +390,7 @@ namespace clipper
         internal LocalMinima m_MinimaList;
         internal LocalMinima m_CurrentLM;
         private List<List<TEdge>> m_edges = new List<List<TEdge>>();
+        internal bool m_UseFullRange;
 
         //------------------------------------------------------------------------------
 
@@ -170,36 +413,60 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        internal bool PointInPolygon(IntPoint pt, PolyPt pp)
+        internal bool PointInPolygon(IntPoint pt, PolyPt pp, bool UseFullInt64Range)
         {
           PolyPt pp2 = pp;
           bool result = false;
-          do
+          if (UseFullInt64Range)
           {
-            if ((((pp2.pt.Y <= pt.Y) && (pt.Y < pp2.prev.pt.Y)) ||
-              ((pp2.prev.pt.Y <= pt.Y) && (pt.Y < pp2.pt.Y))) &&
-              (pt.X - pp2.pt.X < (pp2.prev.pt.X - pp2.pt.X) * (pt.Y - pp2.pt.Y) /
-              (pp2.prev.pt.Y - pp2.pt.Y))) result = !result;
-            pp2 = pp2.next;
+              do
+              {
+                  if ((((pp2.pt.Y <= pt.Y) && (pt.Y < pp2.prev.pt.Y)) ||
+                      ((pp2.prev.pt.Y <= pt.Y) && (pt.Y < pp2.pt.Y))) &&
+                      new Int128(pt.X - pp2.pt.X) < 
+                      Int128.Int128Mul(pp2.prev.pt.X - pp2.pt.X,  pt.Y - pp2.pt.Y) / 
+                      new Int128(pp2.prev.pt.Y - pp2.pt.Y))
+                        result = !result;
+                  pp2 = pp2.next;
+              }
+              while (pp2 != pp);
           }
-          while (pp2 != pp);
+          else
+          {
+              do
+              {
+                  if ((((pp2.pt.Y <= pt.Y) && (pt.Y < pp2.prev.pt.Y)) ||
+                    ((pp2.prev.pt.Y <= pt.Y) && (pt.Y < pp2.pt.Y))) &&
+                    (pt.X - pp2.pt.X < (pp2.prev.pt.X - pp2.pt.X) * (pt.Y - pp2.pt.Y) /
+                    (pp2.prev.pt.Y - pp2.pt.Y))) result = !result;
+                  pp2 = pp2.next;
+              }
+              while (pp2 != pp);
+          }
           return result;
         }
         //------------------------------------------------------------------------------
 
-        internal bool SlopesEqual(TEdge e1, TEdge e2)
+        internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullInt64Range)
         {
           if (e1.ybot == e1.ytop) return (e2.ybot == e2.ytop);
           else if (e2.ybot == e2.ytop) return false;
-          else return (Int64)(e1.ytop - e1.ybot)*(e2.xtop - e2.xbot) -
+          else if (UseFullInt64Range)
+              return Int128.Int128Mul(e1.ytop - e1.ybot, e2.xtop - e2.xbot) ==
+                  Int128.Int128Mul(e1.xtop - e1.xbot, e2.ytop - e2.ybot);
+          else return (Int64)(e1.ytop - e1.ybot) * (e2.xtop - e2.xbot) -
               (Int64)(e1.xtop - e1.xbot)*(e2.ytop - e2.ybot) == 0;
         }
         //------------------------------------------------------------------------------
 
-        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2, IntPoint pt3)
+        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2, 
+            IntPoint pt3, bool UseFullInt64Range)
         {
           if (pt1.Y == pt2.Y) return (pt2.Y == pt3.Y);
           else if (pt2.Y == pt3.Y) return false;
+          else if (UseFullInt64Range)
+              return Int128.Int128Mul(pt1.Y - pt2.Y, pt2.X - pt3.X) ==
+                Int128.Int128Mul(pt1.X - pt2.X, pt2.Y - pt3.Y);
           else return
             (Int64)(pt1.Y-pt2.Y)*(pt2.X-pt3.X) - (Int64)(pt1.X-pt2.X)*(pt2.Y-pt3.Y) == 0;
         }
@@ -209,12 +476,26 @@ namespace clipper
         {
             m_MinimaList = null;
             m_CurrentLM = null;
+            m_UseFullRange = true; //ie default for UseFullCoordinateRange == true
         }
         //------------------------------------------------------------------------------
 
         ~ClipperBase() //destructor
         {
             Clear();
+        }
+        //------------------------------------------------------------------------------
+
+        public bool UseFullCoordinateRange
+        {
+            get { return m_UseFullRange; }
+            set 
+            {
+                if (m_edges.Count > 0 && value == true)
+                    throw new Exception("UseFullCoordinateRange() can't be changed "+      
+                        "until the Clipper object has been cleared.");
+                m_UseFullRange = value; 
+            }
         }
         //------------------------------------------------------------------------------
 
@@ -261,11 +542,12 @@ namespace clipper
             for (int i = 1; i < len; ++i)
             {
                 const Int64 MaxVal = 1500000000; //~ Sqrt(2^63)/2 . 1.5Billion
-                if (Math.Abs(pg[i].X) > MaxVal || Math.Abs(pg[i].Y) > MaxVal)
-                    throw new ClipperException("Integer exceeds range bounds");
+                if (!m_UseFullRange && 
+                    (Math.Abs(pg[i].X) > MaxVal || Math.Abs(pg[i].Y) > MaxVal))
+                        throw new ClipperException("Integer exceeds range bounds");
                 
                 if (PointsEqual(p[j], pg[i])) continue;
-                else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i]))
+                else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
                 {
                     if (PointsEqual(p[j-1], pg[i])) j--;
                 } else j++;
@@ -280,10 +562,10 @@ namespace clipper
             {
             //nb: test for point equality before testing slopes ...
             if (PointsEqual(p[j], p[0])) j--;
-            else if (PointsEqual(p[0], p[1]) || SlopesEqual(p[j], p[0], p[1]))
+            else if (PointsEqual(p[0], p[1]) || SlopesEqual(p[j], p[0], p[1], m_UseFullRange))
                 p[0] = p[j--];
-            else if (SlopesEqual(p[j-1], p[j], p[0])) j--;
-            else if (SlopesEqual(p[0], p[1], p[2]))
+            else if (SlopesEqual(p[j-1], p[j], p[0], m_UseFullRange)) j--;
+            else if (SlopesEqual(p[0], p[1], p[2], m_UseFullRange))
             {
                 for (int i = 2; i <= j; ++i) p[i-1] = p[i];
                 j--;
@@ -697,7 +979,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void AddJoin(TEdge e1, TEdge e2, int e1OutIdx = -1)
+        private void AddJoin(TEdge e1, TEdge e2, int e1OutIdx = -1, int e2OutIdx = -1)
         {
             JoinRec jr = new JoinRec();
             if (e1OutIdx >= 0)
@@ -705,7 +987,9 @@ namespace clipper
             jr.poly1Idx = e1.outIdx;
             jr.pt1a = new IntPoint(e1.xbot, e1.ybot);
             jr.pt1b = new IntPoint(e1.xtop, e1.ytop);
-            jr.poly2Idx = e2.outIdx;
+            if (e2OutIdx >= 0)
+                jr.poly2Idx = e2OutIdx; else
+                jr.poly2Idx = e2.outIdx;
             jr.pt2a = new IntPoint(e2.xbot, e2.ybot);
             jr.pt2b = new IntPoint(e2.xtop, e2.ytop);
             m_Joins.Add(jr);
@@ -759,7 +1043,7 @@ namespace clipper
             //if output polygons share an edge, they'll need joining later ...
             if (lb.outIdx >= 0 && lb.prevInAEL != null &&
               lb.prevInAEL.outIdx >= 0 && lb.prevInAEL.xcurr == lb.xbot &&
-               SlopesEqual(lb, lb.prevInAEL))
+               SlopesEqual(lb, lb.prevInAEL, m_UseFullRange))
                 AddJoin(lb, lb.prevInAEL);
 
             //if any output polygons share an edge, they'll need joining later ...
@@ -1613,7 +1897,7 @@ namespace clipper
                 InsertScanbeam(e.ytop);
                 //if output polygons share an edge, they'll need joining later ...
                 if (e.outIdx >= 0 && AelPrev != null && AelPrev.outIdx >= 0 &&
-                  AelPrev.xbot == e.xcurr && SlopesEqual(e, AelPrev))
+                  AelPrev.xbot == e.xcurr && SlopesEqual(e, AelPrev, m_UseFullRange))
                     AddJoin(e, AelPrev);
             }
         }
@@ -1664,7 +1948,7 @@ namespace clipper
                     //ok, so far it looks like we're still in range of the horizontal edge
                     if (e.xcurr == horzEdge.xtop && horzEdge.nextInLML != null)
                     {
-                        if (SlopesEqual(e, horzEdge.nextInLML))
+                        if (SlopesEqual(e, horzEdge.nextInLML, m_UseFullRange))
                         {
                             //if output polygons share an edge, they'll need joining later ...
                             if (horzEdge.outIdx >= 0 && e.outIdx >= 0)
@@ -1988,7 +2272,7 @@ namespace clipper
         private bool IntersectPoint(TEdge edge1, TEdge edge2, ref IntPoint ip)
         {
           double b1, b2;
-          if (SlopesEqual(edge1, edge2)) return false;
+          if (SlopesEqual(edge1, edge2, m_UseFullRange)) return false;
           else if (edge1.dx == 0)
           {
             ip.X = edge1.xbot;
@@ -2063,6 +2347,18 @@ namespace clipper
                 if (e.outIdx >= 0)
                 {
                     AddPolyPt(e, new IntPoint(e.xtop, e.ytop));
+
+                    for (int i = 0; i < m_HorizJoins.Count; ++i)
+                    {
+                        IntPoint pt = new IntPoint(), pt2 = new IntPoint();
+                        HorzJoinRec hj = m_HorizJoins[i];
+                        if (GetOverlapSegment(new IntPoint(hj.edge.xbot, hj.edge.ybot),
+                            new IntPoint(hj.edge.xtop, hj.edge.ytop),
+                            new IntPoint(e.nextInLML.xbot, e.nextInLML.ybot),
+                            new IntPoint(e.nextInLML.xtop, e.nextInLML.ytop), ref pt, ref pt2))
+                                AddJoin(hj.edge, e.nextInLML, hj.savedIdx, e.outIdx);
+                    }
+
                     AddHorzJoin(e.nextInLML, e.outIdx);
                 }
                 UpdateEdgeIntoAEL(ref e);
@@ -2119,34 +2415,64 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        public static bool IsClockwise(Polygon poly)
+        public static bool IsClockwise(Polygon poly, bool UseFullInt64Range = true)
         {
           int highI = poly.Count -1;
           if (highI < 2) return false;
-          double area;
-          area = (double)poly[highI].X * (double)poly[0].Y -
-              (double)poly[0].X * (double)poly[highI].Y;
-          for (int i = 0; i < highI; ++i)
-              area += (double)poly[i].X * (double)poly[i + 1].Y -
-                  (double)poly[i + 1].X * (double)poly[i].Y;
-          //area := area/2;
-          return area > 0; //reverse of normal formula because assuming Y axis inverted
+          if (UseFullInt64Range)
+          {
+              Int128 area;
+              area = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
+                Int128.Int128Mul(poly[0].X, poly[highI].Y);
+              for (int i = 0; i < highI; ++i)
+                  area += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
+                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
+              return area.ToDouble() > 0;
+          }
+          else
+          {
+
+              double area;
+              area = (double)poly[highI].X * (double)poly[0].Y -
+                  (double)poly[0].X * (double)poly[highI].Y;
+              for (int i = 0; i < highI; ++i)
+                  area += (double)poly[i].X * (double)poly[i + 1].Y -
+                      (double)poly[i + 1].X * (double)poly[i].Y;
+              //area := area/2;
+              return area > 0; //reverse of normal formula because assuming Y axis inverted
+          }
         }
         //------------------------------------------------------------------------------
 
-        private bool IsClockwise(PolyPt pt)
+        private bool IsClockwise(PolyPt pt, bool UseFullInt64Range)
         {
-            double area = 0;
             PolyPt startPt = pt;
-            do
+            if (UseFullInt64Range)
             {
-                area += (double)pt.pt.X * (double)pt.next.pt.Y -
-                    (double)pt.next.pt.X * (double)pt.pt.Y;
-                pt = pt.next;
+                Int128 area = new Int128(0);
+                do
+                {
+                    area += Int128.Int128Mul(pt.pt.X, pt.next.pt.Y) -
+                        Int128.Int128Mul(pt.next.pt.X, pt.pt.Y);
+                    pt = pt.next;
+                }
+                while (pt != startPt);
+                return area.ToDouble() > 0;
             }
-            while (pt != startPt);
-            //area = area /2;
-            return area > 0; //reverse of normal formula because assuming Y axis inverted
+            else
+            {
+
+                double area = 0;
+                do
+                {
+                    area += (double)pt.pt.X * (double)pt.next.pt.Y -
+                        (double)pt.next.pt.X * (double)pt.pt.Y;
+                    pt = pt.next;
+                }
+                while (pt != startPt);
+                //area = area /2;
+                return area > 0; //reverse of normal formula because assuming Y axis inverted
+                }
         }
         //------------------------------------------------------------------------------
 
@@ -2158,7 +2484,7 @@ namespace clipper
                   m_PolyPts[i] = FixupOutPolygon(m_PolyPts[i]);
                   //fix orientation ...
                   PolyPt p = m_PolyPts[i];
-                  if (p != null && p.isHole == IsClockwise(p))
+                  if (p != null && p.isHole == IsClockwise(p, m_UseFullRange))
                       ReversePolyPtLinks(p);
               }
           JoinCommonEdges();
@@ -2198,7 +2524,7 @@ namespace clipper
                 }
                 //test for duplicate points and for same slope (cross-product) ...
                 if (PointsEqual(pp.pt, pp.next.pt) ||
-                  SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt))
+                  SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt, m_UseFullRange))
                 {
                     lastOK = null;
                     pp.prev.next = pp.next;
@@ -2256,7 +2582,7 @@ namespace clipper
           PolyPt result = pp;
           do
           {
-            if (SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt) &&
+              if (SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt, m_UseFullRange) &&
               ((((pp2.prev.pt.X < pp2.pt.X) == (pp2.next.pt.X < pp2.pt.X)) &&
               ((pp2.prev.pt.X != pp2.pt.X) || (pp2.next.pt.X != pp2.pt.X))) ||
               ((((pp2.prev.pt.Y < pp2.pt.Y) == (pp2.next.pt.Y < pp2.pt.Y))) &&
@@ -2377,8 +2703,8 @@ namespace clipper
                     m_PolyPts.Add(p2);
                     j.poly2Idx = m_PolyPts.Count - 1;
 
-                    if (PointInPolygon(p2.pt, p1)) SetHoleState(p2, !p1.isHole);
-                    else if (PointInPolygon(p1.pt, p2)) SetHoleState(p1, !p2.isHole);
+                    if (PointInPolygon(p2.pt, p1, m_UseFullRange)) SetHoleState(p2, !p1.isHole);
+                    else if (PointInPolygon(p1.pt, p2, m_UseFullRange)) SetHoleState(p1, !p2.isHole);
 
                     //now fixup any subsequent m_Joins that match this polygon
                     for (int k = i + 1; k < m_Joins.Count; k++)
@@ -2418,16 +2744,29 @@ namespace clipper
         // OffsetPolygon functions ...
         //------------------------------------------------------------------------------
 
-        public static double Area(Polygon poly)
+        public static double Area(Polygon poly, bool UseFullInt64Range = true)
         {
-          int highI = poly.Count -1;
-          if (highI < 2) return 0;
-          double area = (double)poly[highI].X * (double)poly[0].Y -
-              (double)poly[0].X * (double)poly[highI].Y;
-          for (int i = 0; i < highI; ++i)
-              area += (double)poly[i].X * (double)poly[i + 1].Y -
-                  (double)poly[i + 1].X * (double)poly[i].Y;
-          return area/2;
+            int highI = poly.Count -1;
+            if (highI < 2) return 0;
+            if (UseFullInt64Range)
+            {
+                Int128 a = new Int128(0);
+                a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
+                    Int128.Int128Mul(poly[0].X, poly[highI].Y);
+                for (int i = 0; i < highI; ++i)
+                    a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
+                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
+                return a.ToDouble() / 2;
+            }
+            else
+            {
+                double area = (double)poly[highI].X * (double)poly[0].Y -
+                    (double)poly[0].X * (double)poly[highI].Y;
+                for (int i = 0; i < highI; ++i)
+                    area += (double)poly[i].X * (double)poly[i + 1].Y -
+                        (double)poly[i + 1].X * (double)poly[i].Y;
+                return area / 2;
+            }
         }
         //------------------------------------------------------------------------------
 
@@ -2483,7 +2822,7 @@ namespace clipper
             int highI = pts[j].Count -1;
             //to minimize artefacts, strip out those polygons where
             //it's shrinking and where its area < Sqr(delta) ...
-            double a1 = Area(pts[j]);
+            double a1 = Area(pts[j], true);
             if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0;}
             else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
 
