@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.4                                                           *
-* Date      :  26 April 2011                                                   *
+* Version   :  4.2.5                                                           *
+* Date      :  27 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -288,14 +288,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Int128(hi: Int64; lo: Int64): TInt128; overload;
-begin
-  result.lo := abs(lo);
-  result.hi := abs(hi);
-  if (hi < 0) or (lo < 0) then Int128Negate(result);
-end;
-//------------------------------------------------------------------------------
-
 function Int128Equal(const int1, int2: TInt128): boolean;
 begin
   result := (int1.lo = int2.lo) and (int1.hi = int2.hi);
@@ -306,11 +298,8 @@ function Int128LessThan(const int1, int2: TInt128): boolean;
 begin
   if (int1.hi < int2.hi) then result := true
   else if (int1.hi > int2.hi) then result := false
-  else if (int1.hi >= 0) and (int2.hi >= 0) then
-    result := UInt64(int1.lo) < UInt64(int2.lo)
-  else if (int1.hi < 0) and (int2.hi < 0) then
-    result := UInt64(int1.lo) > UInt64(int2.lo)
-  else result := (int1.hi < 0);
+  else if (int1.hi >= 0) then result := UInt64(int1.lo) < UInt64(int2.lo)
+  else result := UInt64(int1.lo) > UInt64(int2.lo)
 end;
 //------------------------------------------------------------------------------
 

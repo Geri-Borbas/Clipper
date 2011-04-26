@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.4                                                           *
-* Date      :  26 April 2011                                                   *
+* Version   :  4.2.5                                                           *
+* Date      :  27 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -84,18 +84,16 @@ class Int128
     {
       if (hi > val.hi) return true;
       else if (hi < val.hi) return false;
-      else if (hi >= 0 && val.hi >= 0) return ulong64(lo) > ulong64(val.lo);
-      else if (hi < 0 && val.hi < 0) return ulong64(lo) < ulong64(val.lo);
-      else return hi > 0;
+      else if (hi >= 0) return ulong64(lo) > ulong64(val.lo);
+      else return ulong64(lo) < ulong64(val.lo);
     }
 
     bool operator< (const Int128 &val)
     {
       if (hi < val.hi) return true;
       else if (hi > val.hi) return false;
-      else if (hi >= 0 && val.hi >= 0) return ulong64(lo) < ulong64(val.lo);
-      else if (hi < 0 && val.hi < 0) return ulong64(lo) > ulong64(val.lo);
-      else return hi < 0;
+      else if (hi >= 0) return ulong64(lo) < ulong64(val.lo);
+      else return ulong64(lo) > ulong64(val.lo);
     }
 
     Int128& operator+= (const Int128 &rhs)

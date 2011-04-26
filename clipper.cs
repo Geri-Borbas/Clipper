@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.4                                                           *
-* Date      :  26 April 2011                                                   *
+* Version   :  4.2.5                                                           *
+* Date      :  27 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -118,9 +118,8 @@ namespace clipper
             else if (val1 == null) return false;
             else if (val1.hi > val2.hi) return true;
             else if (val1.hi < val2.hi) return false;
-            else if (val1.hi >= 0 && val2.hi >= 0) return (UInt64)val1.lo > (UInt64)val2.lo;
-            else if (val1.hi < 0 && val2.hi < 0) return (UInt64)val1.lo < (UInt64)val2.lo;
-            else return val1.hi > 0;
+            else if (val1.hi >= 0) return (UInt64)val1.lo > (UInt64)val2.lo;
+            else return (UInt64)val1.lo < (UInt64)val2.lo;
         }
 
         public static bool operator< (Int128 val1, Int128 val2) 
@@ -130,9 +129,8 @@ namespace clipper
             else if (val1 == null) return true;
             if (val1.hi < val2.hi) return true;
             else if (val1.hi > val2.hi) return false;
-            else if (val1.hi >= 0 && val2.hi >= 0) return (UInt64)val1.lo < (UInt64)val2.lo;
-            else if (val1.hi < 0 && val2.hi < 0) return (UInt64)val1.lo > (UInt64)val2.lo;
-            else return val1.hi < 0;
+            else if (val1.hi >= 0) return (UInt64)val1.lo < (UInt64)val2.lo;
+            else return (UInt64)val1.lo > (UInt64)val2.lo;
         }
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 

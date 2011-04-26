@@ -6,10 +6,10 @@ v4.2.4 - 26 April 2011
 Input polygon coordinates can now contain the full range of 
 signed 64bit integers (ie +/-9,223,372,036,854,775,807). This 
 means that floating point values can be converted to and from 
-Clipper's 64bit coordinates (IntPoint) and still retain a 
-precision of up to 18 decimal places. However, since the 
-large-integer math that supports this expanded range imposes a 
-small cost on performance (~15%), a new property 
+Clipper's 64bit integer coordinates structure (IntPoint) and  
+still retain a precision of up to 18 decimal places. However, 
+since the large-integer math that supports this expanded range 
+imposes a small cost on performance (~15%), a new property 
 UseFullCoordinateRange has been added to the Clipper class to 
 allow users the choice of whether or not to use this expanded 
 coordinate range. If this property is disabled, coordinate values 
