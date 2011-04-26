@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Text;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -26,17 +26,141 @@ namespace WindowsFormsApplication1
         private Bitmap mybitmap;
         private Polygons subjects;
         private Polygons clips;
+        private Polygons solution;
 
         //Here we are scaling all coordinates up by 100 when they're passed to Clipper 
         //via Polygon (or Polygons) objects because Clipper no longer accepts floating  
         //point values. Likewise when Clipper returns a solution in a Polygons object, 
         //we need to scale down these returned values by the same amount before displaying.
-        //Note: When scaling, keep in mind that integers are only 32bit values, so 
-        //there's a limit to the precision possible before range errors will be encountered.
         private int scale = 100; //or 1 or 10 or 10000 etc for lesser or greater precision.
 
         //---------------------------------------------------------------------
         //---------------------------------------------------------------------
+
+        void PolygonsToSVG(string filename,
+          Polygons subj, Polygons clip, Polygons solution,
+          PolyFillType subjFill = PolyFillType.pftNonZero, 
+          PolyFillType clipFill = PolyFillType.pftNonZero,
+          double scale = 1, int margin = 10)
+        {
+          Polygons [] polys = {subj, clip, solution};
+          //calculate the bounding rect ...
+          IntRect rec = new IntRect();
+          bool firstPending = true;
+          int k = 0;
+          while (k < 3)
+          {
+            if (polys[k] != null)
+              for (int i = 0; i < polys[k].Count; ++i)
+                if (polys[k][i].Count > 2)
+                {
+                  //initialize rec with the very first polygon coordinate ...
+                  rec.left = polys[k][i][0].X;
+                  rec.right = rec.left;
+                  rec.top = polys[k][i][0].Y;
+                  rec.bottom = rec.top;
+                  firstPending = false;
+                }
+            if (firstPending) k++; else break;
+          }
+          if (firstPending) return; //no valid polygons found
+
+          for (; k < 3; ++k)
+            if (polys[k] != null)
+              for (int i = 0; i < polys[k].Count; ++i)
+                for (int j = 0; j < polys[k][i].Count; ++j)
+                {
+                  if (polys[k][i][j].X < rec.left)
+                    rec.left = polys[k][i][j].X;
+                  if (polys[k][i][j].X > rec.right)
+                    rec.right = polys[k][i][j].X;
+                  if (polys[k][i][j].Y < rec.top)
+                    rec.top = polys[k][i][j].Y;
+                  if (polys[k][i][j].Y > rec.bottom)
+                    rec.bottom = polys[k][i][j].Y;
+                }
+
+          if (scale == 0) scale = 1;
+          rec.left = (Int64)((double)rec.left * scale);
+          rec.top = (Int64)((double)rec.top * scale);
+          rec.right = (Int64)((double)rec.right * scale);
+          rec.bottom = (Int64)((double)rec.bottom * scale);
+
+          Int64 offsetX = -rec.left + margin;
+          Int64 offsetY = -rec.top + margin;
+
+          string svg_header = "<?xml version=\"1.0\" standalone=\"no\"?>\n"+
+            "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\"\n"+
+            "\"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n\n"+
+            "<svg width=\"{0}px\" height=\"{1}px\" viewBox=\"0 0 {2} {3}\" "+     
+            "version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n";
+
+          StreamWriter writer = new StreamWriter(filename);
+          if (writer == null) return;
+          writer.Write(svg_header, 
+              (rec.right - rec.left) + margin*2,
+              (rec.bottom - rec.top) + margin*2,
+              (rec.right - rec.left) + margin*2,
+              (rec.bottom - rec.top) + margin*2);
+
+          for (k = 0; k < 3; k++)
+          {
+            if (polys[k] == null) continue;
+            writer.Write(" <path d=\""); 
+            for (int i = 0; i < polys[k].Count; i++)
+            {
+              if (polys[k][i].Count < 3) continue;
+              writer.Write(" M {0:f2} {1:f2}",
+                  (double)((double)polys[k][i][0].X * scale + offsetX),
+                  (double)((double)polys[k][i][0].Y * scale + offsetY));
+              for (int j = 1; j < polys[k][i].Count; j++)
+              {
+                  writer.Write(" L {0:f2} {1:f2}",
+                  (double)((double)polys[k][i][j].X * scale + offsetX),
+                  (double)((double)polys[k][i][j].Y * scale + offsetY));
+              }
+              writer.Write(" z");
+            }
+
+            const string svg_path_format = "\"\n style=\"fill:{0};"+
+                " fill-opacity:{1:f2}; fill-rule:{2}; stroke:{3};"+
+                " stroke-opacity:{4:f2}; stroke-width:{5:f2};\"/>\n\n";
+
+            switch (k) {
+              case 0:
+                writer.Write(svg_path_format,
+                    "#00009C"   /*fill color*/,
+                    0.062       /*fill opacity*/,
+                    (subjFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
+                    "#D3D3DA"   /*stroke color*/,
+                    0.95         /*stroke opacity*/,
+                    0.8         /*stroke width*/);
+                break;
+              case 1:
+                writer.Write(svg_path_format,
+                    "#9C0000"   /*fill color*/,
+                    0.062       /*fill opacity*/,
+                    (clipFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
+                    "#FFA07A"   /*stroke color*/,
+                    0.95         /*stroke opacity*/,
+                    0.8         /*stroke width*/);
+                break;
+              default:
+                writer.Write(svg_path_format,
+                    "#80ff9C"   /*fill color*/,
+                    0.37       /*fill opacity*/,
+                    "nonzero",
+                    "#003300"   /*stroke color*/,
+                    1.0         /*stroke opacity*/,
+                    0.8         /*stroke width*/);
+                break;
+            }
+          }
+          writer.Write("</svg>\n");
+          writer.Close();
+        }
+        //------------------------------------------------------------------------------
+        //------------------------------------------------------------------------------
 
         static private System.Drawing.PointF[] PolygonToPointFArray(Polygon pg, int scale)
         {
@@ -56,7 +180,6 @@ namespace WindowsFormsApplication1
             this.MouseWheel += new MouseEventHandler(Form1_MouseWheel);
         }
         //---------------------------------------------------------------------
-
 
         private void Form1_MouseWheel(object sender, MouseEventArgs e)
         {
@@ -102,14 +225,15 @@ namespace WindowsFormsApplication1
             GraphicsPath path = new GraphicsPath();
             Point pt = new Point();
 
+            const int ellipse_size = 100, margin = 10;
             for (int i = 0; i < count; ++i)
             {
-                int w = pictureBox1.ClientRectangle.Width - 220;
-                int h = pictureBox1.ClientRectangle.Height - 140 - statusStrip1.Height;
+                int w = pictureBox1.ClientRectangle.Width - ellipse_size - margin *2;
+                int h = pictureBox1.ClientRectangle.Height - ellipse_size - margin * 2 - statusStrip1.Height;
 
-                pt.X = rand.Next(w) + panel1.Width + 10;
-                pt.Y = rand.Next(h) + 30;
-                int size = rand.Next(90) + 10;
+                pt.X = rand.Next(w) + margin;
+                pt.Y = rand.Next(h) + margin;
+                int size = rand.Next(ellipse_size - 20) + 20;
                 path.Reset();
                 path.AddEllipse(pt.X, pt.Y, size, size);
                 path.Flatten();
@@ -124,8 +248,8 @@ namespace WindowsFormsApplication1
         private IntPoint GenerateRandomPoint(int l, int t, int r, int b, Random rand)
         {
             IntPoint newPt = new IntPoint();
-            newPt.X = (rand.Next(r / 10) * 10 + l + 10) * scale;
-            newPt.Y = (rand.Next(b / 10) * 10 + t + 10) * scale;
+            newPt.X = (rand.Next(r / 20) * 20 + l + 10) * scale;
+            newPt.Y = (rand.Next(b / 20) * 20 + t + 10) * scale;
             return newPt;
         }
         //---------------------------------------------------------------------
@@ -134,7 +258,7 @@ namespace WindowsFormsApplication1
         {
             Random rand = new Random();
             int l = 10;
-            int t = 0;
+            int t = 10;
             int r = (pictureBox1.ClientRectangle.Width - 20)/10 *10;
             int b = (pictureBox1.ClientRectangle.Height - 20)/10 *10;
 
@@ -153,7 +277,7 @@ namespace WindowsFormsApplication1
         }
         //---------------------------------------------------------------------
 
-        ClipType GeClipType()
+        ClipType GetClipType()
         {
             if (rbIntersect.Checked) return ClipType.ctIntersection;
             if (rbUnion.Checked) return ClipType.ctUnion;
@@ -162,12 +286,67 @@ namespace WindowsFormsApplication1
         }
         //---------------------------------------------------------------------
 
-        PolyFillType GePolyFillType()
+        PolyFillType GetPolyFillType()
         {
             if (rbNonZero.Checked) return PolyFillType.pftNonZero;
             else return PolyFillType.pftEvenOdd;
         }
         //---------------------------------------------------------------------
+
+        bool LoadFromFile(string filename, Polygons ppg, double scale = 0,
+          int xOffset = 0, int yOffset = 0)
+        {
+            double scaling = Math.Pow(10, scale);
+            ppg.Clear();
+            if (!File.Exists(filename)) return false;
+            StreamReader sr = new StreamReader(filename);
+            if (sr == null) return false;
+            string line;
+            if ((line = sr.ReadLine()) == null) return false;
+            int polyCnt, vertCnt;
+            if (!Int32.TryParse(line, out polyCnt) || polyCnt < 0) return false;
+            ppg.Capacity = polyCnt;
+            for (int i = 0; i < polyCnt; i++)
+            {
+                if ((line = sr.ReadLine()) == null) return false;
+                if (!Int32.TryParse(line, out vertCnt) || vertCnt < 0) return false;
+                Polygon pg = new Polygon(vertCnt);
+                ppg.Add(pg);
+                for (int j = 0; j < vertCnt; j++)
+                {
+                    double x, y;
+                    if ((line = sr.ReadLine()) == null) return false;
+                    char[] delimiters = new char[] { ',', ' ' };
+                    string [] vals = line.Split(delimiters);
+                    if (vals.Length < 2) return false;
+                    if (!double.TryParse(vals[0], out x)) return false;
+                    if (!double.TryParse(vals[1], out y))
+                        if (vals.Length < 2 || !double.TryParse(vals[2], out y)) return false;
+                    x = x * scaling + xOffset;
+                    y = y * scaling + yOffset;
+                    pg.Add(new IntPoint((int)Math.Round(x), (int)Math.Round(y)));
+                }
+            }
+            return true;
+        }
+        //------------------------------------------------------------------------------
+
+        void SaveToFile(string filename, Polygons ppg, int scale = 0)
+        {
+            double scaling = Math.Pow(10, scale);
+            StreamWriter writer = new StreamWriter(filename);
+            if (writer == null) return;
+            writer.Write("{0}\n", ppg.Count);
+            for (int i = 0; i < ppg.Count; i++)
+            {
+                writer.Write("{0}\n", ppg[i].Count);
+                for (int j = 0; j < ppg.Count; j++)
+                    writer.Write("{0:0.0000}, {1:0.0000}\n", 
+                        (double)ppg[i][j].X/scaling, (double)ppg[i][j].Y/scaling);
+            }
+            writer.Close();
+        }
+        //---------------------------------------------------------------------------
 
         private void DrawBitmap(bool justClip = false)
         {
@@ -179,12 +358,13 @@ namespace WindowsFormsApplication1
                 else
                     GenerateRandomPolygon((int)nudCount.Value);
             }
+
             Cursor.Current = Cursors.WaitCursor;
             Graphics newgraphic;
             newgraphic = Graphics.FromImage(mybitmap);
             newgraphic.SmoothingMode = SmoothingMode.AntiAlias;
             newgraphic.Clear(Color.WhiteSmoke);
-            Pen myPen = new Pen(Color.LightSlateGray, (float)0.8);
+            Pen myPen = new Pen(Color.FromArgb(32, 0, 0, 0), (float)0.6);
             SolidBrush myBrush = new SolidBrush(Color.FromArgb(16, 0, 0, 156));
             
             GraphicsPath path = new GraphicsPath();
@@ -214,14 +394,15 @@ namespace WindowsFormsApplication1
             //do the clipping ...
             if ((clips.Count > 0 || subjects.Count > 0) && !rbNone.Checked)
             {
-                Polygons solution = new Polygons();
                 clipper.Clipper c = new clipper.Clipper();
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
-                bool succeeded = c.Execute(GeClipType(), solution, GePolyFillType(), GePolyFillType());
-
+                bool succeeded = c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
                 if (succeeded)
                 {
+                    PolygonsToSVG("debug.svg", subjects, clips, solution,
+                        GetPolyFillType(), GetPolyFillType(), 1.0 / scale, 10);
+
                     myBrush.Color = Color.Black;
                     path.Reset();
 
@@ -232,9 +413,13 @@ namespace WindowsFormsApplication1
                     path.FillMode = FillMode.Winding;
 
                     //or for something fancy ...
+                    Polygons solution2;
                     if (nudOffset.Value != 0)
-                        solution = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
-                    foreach (Polygon pg in solution)
+                        solution2 = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
+                    else
+                        solution2 = new Polygons(solution);
+
+                    foreach (Polygon pg in solution2)
                     {
                         PointF[] pts = PolygonToPointFArray(pg, scale);
                         if (pts.Count() > 2)
@@ -242,16 +427,10 @@ namespace WindowsFormsApplication1
                         pts = null;
                     }
                     myBrush.Color = Color.FromArgb(96, 128, 255, 156);
-                    myPen.Color = Color.DarkGreen;
+                    myPen.Color = Color.Black;
+                    myPen.Width = 1.0f;
                     newgraphic.FillPath(myBrush, path);
                     newgraphic.DrawPath(myPen, path);
-
-                    foreach (Polygon pg in solution)
-                    {
-                        PointF[] pts = PolygonToPointFArray(pg, scale);
-                        path.Reset();
-                        path.AddPolygon(pts);
-                    }
 
                     //now do some fancy testing ...
                     Font f = new Font("Arial", 8);
@@ -259,17 +438,17 @@ namespace WindowsFormsApplication1
                     double a1 = 0, a2 = 0, a3 = 0, a4 = 0;
                     c.Clear();
                     c.AddPolygons(subjects, PolyType.ptSubject);
-                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
-                    foreach (Polygon pg in solution) a1 += clipper.Clipper.Area(pg);
+                    c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
+                    foreach (Polygon pg in solution2) a1 += clipper.Clipper.Area(pg);
                     c.Clear();
                     c.AddPolygons(clips, PolyType.ptClip);
-                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
-                    foreach (Polygon pg in solution) a2 += clipper.Clipper.Area(pg);
+                    c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
+                    foreach (Polygon pg in solution2) a2 += clipper.Clipper.Area(pg);
                     c.AddPolygons(subjects, PolyType.ptSubject);
-                    c.Execute(ClipType.ctIntersection, solution, GePolyFillType(), GePolyFillType());
-                    foreach (Polygon pg in solution) a3 += clipper.Clipper.Area(pg);
-                    c.Execute(ClipType.ctUnion, solution, GePolyFillType(), GePolyFillType());
-                    foreach (Polygon pg in solution) a4 += clipper.Clipper.Area(pg);
+                    c.Execute(ClipType.ctIntersection, solution2, GetPolyFillType(), GetPolyFillType());
+                    foreach (Polygon pg in solution2) a3 += clipper.Clipper.Area(pg);
+                    c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
+                    foreach (Polygon pg in solution2) a4 += clipper.Clipper.Area(pg);
 
                     StringFormat lftStringFormat = new StringFormat();
                     lftStringFormat.Alignment = StringAlignment.Near;
@@ -277,7 +456,8 @@ namespace WindowsFormsApplication1
                     StringFormat rtStringFormat = new StringFormat();
                     rtStringFormat.Alignment = StringAlignment.Far;
                     rtStringFormat.LineAlignment = StringAlignment.Near;
-                    Rectangle rec = new Rectangle(pictureBox1.ClientSize.Width - 108, pictureBox1.ClientSize.Height - 116, 104, 106);
+                    Rectangle rec = new Rectangle(pictureBox1.ClientSize.Width - 108, 
+                        pictureBox1.ClientSize.Height - 116, 104, 106);
                     newgraphic.FillRectangle(new SolidBrush(Color.FromArgb(196, Color.WhiteSmoke)), rec);
                     newgraphic.DrawRectangle(myPen, rec);
                     rec.Inflate(new Size(-2, 0));
@@ -321,6 +501,8 @@ namespace WindowsFormsApplication1
 
             subjects = new Polygons(); 
             clips = new Polygons();
+            solution = new Polygons();
+
             toolStripStatusLabel1.Text =
                 "Tip: Use the mouse-wheel (or +,-,0) to adjust the offset of the solution polygons.";
             DrawBitmap();
@@ -361,7 +543,7 @@ namespace WindowsFormsApplication1
                     this.Close();
                     return;
                 case Keys.F1:
-                    MessageBox.Show(this.Text + "\nby Angus Johnson\nCopyright © 2010",
+                    MessageBox.Show(this.Text + "\nby Angus Johnson\nCopyright © 2010, 2011",
                     this.Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
                     e.Handled = true;
                     return;
@@ -405,42 +587,14 @@ namespace WindowsFormsApplication1
         }
         //---------------------------------------------------------------------
 
-        private void b1000Samples_Click(object sender, EventArgs e)
+        private void bSave_Click(object sender, EventArgs e)
         {
-            //calculate the time to do 1000 intersection operations on subject 
-            //and clip polygon where both have nudCount.Value edges ...
-
-            Cursor.Current = Cursors.WaitCursor;
-            Polygons solution = new Polygons();
-            Stopwatch sw = new Stopwatch();
-            sw.Start();
-
-            int errorCnt = 0;
-            clipper.Clipper c = new clipper.Clipper();
-
-            for (int i = 0; i < 1000; i++)
+            //save to SVG ...
+            if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                c.Clear();
-                GenerateRandomPolygon((int)nudCount.Value);
-                c.AddPolygons(subjects, PolyType.ptSubject);
-                c.AddPolygons(clips, PolyType.ptClip);
-                if (!c.Execute(ClipType.ctIntersection, solution, PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd)) errorCnt++;
+                PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
+                    solution, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
             }
-            sw.Stop();
-            TimeSpan ts = sw.Elapsed;
-            Cursor.Current = Cursors.Default;
-            
-            DrawBitmap();
-            Font f = new Font("Arial", 8);
-            SolidBrush b = new SolidBrush(Color.Navy);
-            Graphics newgraphic;
-            newgraphic = Graphics.FromImage(mybitmap);
-            newgraphic.SmoothingMode = SmoothingMode.AntiAlias;
-            newgraphic.DrawString("Time: " + (ts.TotalMilliseconds/1000).ToString("0.00") + " secs.  (Errors: " + errorCnt +")"
-                , f, b, 10, pictureBox1.ClientRectangle.Bottom - 20);
-            pictureBox1.Image = mybitmap;
-            newgraphic.Dispose();
-            
         }
         //---------------------------------------------------------------------
 

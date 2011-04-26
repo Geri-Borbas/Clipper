@@ -51,6 +51,8 @@ type
     rbRandom2: TRadioButton;
     rbEvenOdd: TRadioButton;
     rbNonZero: TRadioButton;
+    bSaveSvg: TButton;
+    SaveDialog1: TSaveDialog;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure ImgView321Resize(Sender: TObject);
@@ -69,6 +71,7 @@ type
     procedure FormKeyPress(Sender: TObject; var Key: Char);
     procedure bStartClick(Sender: TObject);
     procedure bStopClick(Sender: TObject);
+    procedure bSaveSvgClick(Sender: TObject);
   private
     offsetMul2: integer;
     function GetFillTypeI: TPolyFillType;
@@ -95,6 +98,7 @@ const
   solBrushColor: TColor32 = $8066EF7F;
 
 var
+  scale: integer = 1; //scale bitmap to X decimal places
   subj: TArrayOfArrayOfFloatPoint = nil;
   clip: TArrayOfArrayOfFloatPoint = nil;
   subjI: TArrayOfArrayOfIntPoint = nil;
@@ -109,8 +113,143 @@ var
 
 //------------------------------------------------------------------------------
 
+procedure PolygonsToSVG(const filename: string;
+  const subj, clip, solution: TArrayOfArrayOfIntPoint;
+  subjFill, clipFill: TPolyFillType;
+  scale: double = 1.0; margin: integer = 10);
+const
+  pft_string: array[boolean] of string = ('evenodd', 'nonzero');
+  svg_xml_start: array [0..1] of string =
+    ('<?xml version="1.0" standalone="no"?>'+#10+
+     '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"'+#10+
+     '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'+#10+#10+'<svg ',
+     'version="1.1" xmlns="http://www.w3.org/2000/svg">'+#10+#10);
+  poly_start: string = ' <path d="';
+  svg_xml_end: string = '</svg>'+#10;
+var
+  i, j, k: integer;
+  rec: TIntRect;
+  firstPending: boolean;
+  offsetX, offsetY: Int64;
+  ss: TStringStream;
+  polys: array [0..2] of TArrayOfArrayOfIntPoint;
+begin
+  polys[0] := subj; polys[1] := clip; polys[2] := solution;
+
+  firstPending := true;
+  i := 0;
+  while i < 3 do
+  begin
+    if assigned(polys[i]) then
+      for j := 0 to high(polys[i]) do
+        if length(polys[i][j]) > 2 then
+          with polys[i][j][0] do
+          begin
+            rec.left := X;
+            rec.right := X;
+            rec.top := Y;
+            rec.bottom := Y;
+            firstPending := false;
+          end;
+    if firstPending then inc(i) else break;
+  end;
+  if firstPending then exit;
+
+  for i := i to 2 do
+    if assigned(polys[i]) then
+      for j := 0 to high(polys[i]) do
+        for k := 0 to high(polys[i][j]) do
+          with polys[i][j][k] do
+          begin
+            if X < rec.left then rec.left := X;
+            if X > rec.right then rec.right := X;
+            if Y < rec.top then rec.top := Y;
+            if Y > rec.bottom then rec.bottom := Y;
+          end;
+
+  if scale = 0 then scale := 1;
+  offsetX := round(-rec.left * scale)+ margin;
+  offsetY := round(-rec.top * scale)+ margin;
+
+  ss := TStringStream.Create('');
+  try
+    ss.WriteString(
+      format('%s width="%dpx" height="%dpx" viewBox="0 0 %d %d" %s',
+      [svg_xml_start[0],
+      (rec.right - rec.left) + margin*2,
+      (rec.bottom - rec.top) + margin*2,
+      (rec.right - rec.left) + margin*2,
+      (rec.bottom - rec.top) + margin*2,
+      svg_xml_start[1]]));
+
+    for i := 0 to 2 do
+    begin
+      if assigned(polys[i]) then
+      begin
+        ss.WriteString(poly_start);
+        for j := 0 to high(polys[i]) do
+        begin
+          if (length(polys[i][j]) < 3) then continue;
+          with polys[i][j][0] do ss.WriteString( format(' M %1.2f %1.2f',
+            [X * scale + offsetX, Y * scale + offsetY]));
+          for k := 1 to high(polys[i][j]) do
+            with polys[i][j][k] do ss.WriteString( format(' L %1.2f %1.2f',
+              [X * scale + offsetX, Y * scale + offsetY]));
+          ss.WriteString(' z');
+        end;
+
+        case i of
+          0:
+            begin
+              ss.WriteString(format('"'#10+
+                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
+                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
+                  ['#0000ff'{fill color},
+                  0.062     {fill opacity},
+                  pft_string[subjFill = pftNonZero],
+                  '#0099ff' {stroke color},
+                  0.5       {stroke opacity},
+                  0.8       {stroke width} ]));
+            end;
+          1:
+            begin
+              ss.WriteString(format('"'#10+
+                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
+                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
+                  ['#ffff00'{fill color},
+                  0.062     {fill opacity},
+                  pft_string[clipFill = pftNonZero],
+                  '#ff9900' {stroke color},
+                  0.5       {stroke opacity},
+                  0.8       {stroke width} ]));
+            end;
+          2:
+            begin
+              ss.WriteString(format('"'#10+
+                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
+                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
+                  ['#00ff00'{fill color},
+                  0.125     {fill opacity},
+                  'evenodd',
+                  '#006600' {stroke color},
+                  1.0       {stroke opacity},
+                  0.8       {stroke width} ]));
+            end;
+        end;
+      end;
+    end;
+    ss.WriteString(svg_xml_end);
+    //finally write to file ...
+    with TFileStream.Create(filename, fmCreate) do
+    try CopyFrom(ss, 0); finally free; end;
+  finally
+    ss.Free;
+  end;
+end;
+//---------------------------------------------------------------------------
+
 function AAFloatPoint2AAPoint(const a: TArrayOfArrayOfFloatPoint;
-  decimals: integer = 1): TArrayOfArrayOfIntPoint;
+  decimals: integer = 0): TArrayOfArrayOfIntPoint;
 var
   i,j,decScale: integer;
 begin
@@ -129,7 +268,7 @@ end;
 //------------------------------------------------------------------------------
 
 function AAPoint2AAFloatPoint(const a: TArrayOfArrayOfIntPoint;
-  decimals: integer = 1): TArrayOfArrayOfFloatPoint;
+  decimals: integer = 0): TArrayOfArrayOfFloatPoint;
 var
   i,j,decScale: integer;
 begin
@@ -205,6 +344,7 @@ var
   pfm: TPolyFillMode;
   sol: TArrayOfArrayOfFloatPoint;
   solI: TArrayOfArrayOfIntPoint;
+  scaling: single;
 begin
   ImgView321.Bitmap.Clear(clWhite32);
 
@@ -217,13 +357,14 @@ begin
   begin
     if offsetMul2 = 0 then
     begin
-      sol := AAPoint2AAFloatPoint(solutionI);
+      sol := AAPoint2AAFloatPoint(solutionI, scale);
     end else
     begin
-      sol := AAPoint2AAFloatPoint(solutionI);
+      sol := AAPoint2AAFloatPoint(solutionI, scale);
       PolyPolylineFS(ImgView321.Bitmap, sol, clGray32, true);
-      solI := OffsetPolygons(solutionI, offsetMul2*2);
-      sol := AAPoint2AAFloatPoint(solI);
+      scaling := power(10, scale);
+      solI := OffsetPolygons(solutionI, offsetMul2/2 *scaling);
+      sol := AAPoint2AAFloatPoint(solI, scale);
     end;
     PolyPolygonFS(ImgView321.Bitmap, sol, solBrushColor);
 
@@ -375,8 +516,8 @@ begin
   LoadBinaryStreamToArrayOfArrayOfFloatPoint(rs, clip);
   rs.Free;
 
-  subjI := AAFloatPoint2AAPoint(subj);
-  clipI := AAFloatPoint2AAPoint(clip);
+  subjI := AAFloatPoint2AAPoint(subj, scale);
+  clipI := AAFloatPoint2AAPoint(clip, scale);
 
   if not rbNone.Checked then
     with TClipper.Create do
@@ -419,8 +560,8 @@ begin
       clip[0][i] := FloatPoint(10+round(random*w), 10+round(random*h));
   end;
 
-  subjI := AAFloatPoint2AAPoint(subj);
-  clipI := AAFloatPoint2AAPoint(clip);
+  subjI := AAFloatPoint2AAPoint(subj, scale);
+  clipI := AAFloatPoint2AAPoint(clip, scale);
 
   if not rbNone.Checked then
     with TClipper.Create do
@@ -467,8 +608,8 @@ begin
     end;
   end;
 
-  subjI := AAFloatPoint2AAPoint(subj);
-  clipI := AAFloatPoint2AAPoint(clip);
+  subjI := AAFloatPoint2AAPoint(subj, scale);
+  clipI := AAFloatPoint2AAPoint(clip, scale);
 
   if not rbNone.Checked then
     with TClipper.Create do
@@ -510,6 +651,33 @@ begin
     else exit;
   end;
   RePaintBitmapI;
+end;
+//------------------------------------------------------------------------------
+
+function MakeArrayOfIntPoint(const pts: array of integer): TArrayOfIntPoint;
+var
+  i, len: integer;
+begin
+  result := nil;
+  len := length(pts) div 2;
+  if len < 1 then exit;
+  setlength(result, len);
+  for i := 0 to len -1 do
+  begin
+    result[i].X := pts[i*2];
+    result[i].Y := pts[i*2 +1];
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TMainForm.bSaveSvgClick(Sender: TObject);
+var
+  invScale: single;
+begin
+  if not SaveDialog1.Execute then exit;
+  invScale := 1/ power(10, scale);
+  PolygonsToSVG(SaveDialog1.FileName, subjI, clipI, solutionI,
+    GetFillTypeI, GetFillTypeI, invScale);
 end;
 //------------------------------------------------------------------------------
 

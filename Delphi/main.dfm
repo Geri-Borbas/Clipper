@@ -1,13 +1,13 @@
 object MainForm: TMainForm
-  Left = 176
-  Top = 84
+  Left = 164
+  Top = 136
   Width = 843
   Height = 603
   Caption = 'Clipper Demo'
   Color = clBtnFace
   Font.Charset = ARABIC_CHARSET
   Font.Color = clWindowText
-  Font.Height = -13
+  Font.Height = -12
   Font.Name = 'Arial'
   Font.Style = []
   KeyPreview = True
@@ -19,7 +19,7 @@ object MainForm: TMainForm
   OnMouseWheel = FormMouseWheel
   OnResize = FormResize
   PixelsPerInch = 96
-  TextHeight = 16
+  TextHeight = 15
   object Panel1: TPanel
     Left = 0
     Top = 0
@@ -30,16 +30,16 @@ object MainForm: TMainForm
     object lblClipOpacity: TLabel
       Left = 17
       Top = 468
-      Width = 108
-      Height = 16
+      Width = 100
+      Height = 15
       Caption = 'Clip Opacity (255):'
       FocusControl = tbClipOpacity
     end
     object lblSubjOpacity: TLabel
       Left = 17
       Top = 425
-      Width = 112
-      Height = 16
+      Width = 103
+      Height = 15
       Caption = 'Subj &Opacity (255):'
       FocusControl = tbSubjOpacity
     end
@@ -110,9 +110,9 @@ object MainForm: TMainForm
       OnClick = rbStaticClick
     end
     object bExit: TButton
-      Left = 21
+      Left = 109
       Top = 513
-      Width = 136
+      Width = 52
       Height = 25
       Cancel = True
       Caption = 'E&xit'
@@ -128,8 +128,8 @@ object MainForm: TMainForm
       object lblSubjCount: TLabel
         Left = 4
         Top = 40
-        Width = 137
-        Height = 16
+        Width = 129
+        Height = 15
         Caption = 'No. Subject edges: (20)'
         Enabled = False
         FocusControl = tbSubj
@@ -137,8 +137,8 @@ object MainForm: TMainForm
       object lblClipCount: TLabel
         Left = 4
         Top = 87
-        Width = 115
-        Height = 16
+        Width = 110
+        Height = 15
         Caption = 'No. Clip edges (20):'
         Enabled = False
         FocusControl = tbClip
@@ -267,6 +267,16 @@ object MainForm: TMainForm
       TabOrder = 3
       OnClick = rbStaticClick
     end
+    object bSaveSvg: TButton
+      Left = 19
+      Top = 513
+      Width = 82
+      Height = 25
+      Cancel = True
+      Caption = 'S&ave SVG ...'
+      TabOrder = 8
+      OnClick = bSaveSvgClick
+    end
   end
   object StatusBar1: TStatusBar
     Left = 0
@@ -297,6 +307,12 @@ object MainForm: TMainForm
     Enabled = False
     OnTimer = Timer1Timer
     Left = 209
+    Top = 32
+  end
+  object SaveDialog1: TSaveDialog
+    DefaultExt = 'svg'
+    Filter = 'SVG Files (*.svg)|*.svg'
+    Left = 239
     Top = 32
   end
 end

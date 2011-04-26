@@ -31,6 +31,7 @@
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
             this.panel1 = new System.Windows.Forms.Panel();
+            this.bSave = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
             this.rbNone = new System.Windows.Forms.RadioButton();
             this.rbXor = new System.Windows.Forms.RadioButton();
@@ -51,7 +52,7 @@
             this.bCancel = new System.Windows.Forms.Button();
             this.panel2 = new System.Windows.Forms.Panel();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
-            this.b1000Samples = new System.Windows.Forms.Button();
+            this.saveFileDialog1 = new System.Windows.Forms.SaveFileDialog();
             this.statusStrip1.SuspendLayout();
             this.panel1.SuspendLayout();
             this.groupBox3.SuspendLayout();
@@ -82,7 +83,7 @@
             // panel1
             // 
             this.panel1.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
-            this.panel1.Controls.Add(this.b1000Samples);
+            this.panel1.Controls.Add(this.bSave);
             this.panel1.Controls.Add(this.groupBox3);
             this.panel1.Controls.Add(this.groupBox2);
             this.panel1.Controls.Add(this.groupBox1);
@@ -91,8 +92,18 @@
             this.panel1.Dock = System.Windows.Forms.DockStyle.Left;
             this.panel1.Location = new System.Drawing.Point(0, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(109, 543);
+            this.panel1.Size = new System.Drawing.Size(121, 543);
             this.panel1.TabIndex = 5;
+            // 
+            // bSave
+            // 
+            this.bSave.Location = new System.Drawing.Point(9, 417);
+            this.bSave.Name = "bSave";
+            this.bSave.Size = new System.Drawing.Size(100, 27);
+            this.bSave.TabIndex = 9;
+            this.bSave.Text = "S&ave as SVG File";
+            this.bSave.UseVisualStyleBackColor = true;
+            this.bSave.Click += new System.EventHandler(this.bSave_Click);
             // 
             // groupBox3
             // 
@@ -103,7 +114,7 @@
             this.groupBox3.Controls.Add(this.rbIntersect);
             this.groupBox3.Location = new System.Drawing.Point(9, 12);
             this.groupBox3.Name = "groupBox3";
-            this.groupBox3.Size = new System.Drawing.Size(88, 141);
+            this.groupBox3.Size = new System.Drawing.Size(100, 125);
             this.groupBox3.TabIndex = 5;
             this.groupBox3.TabStop = false;
             this.groupBox3.Text = "&Boolean Op:";
@@ -111,7 +122,7 @@
             // rbNone
             // 
             this.rbNone.AutoSize = true;
-            this.rbNone.Location = new System.Drawing.Point(10, 111);
+            this.rbNone.Location = new System.Drawing.Point(14, 100);
             this.rbNone.Name = "rbNone";
             this.rbNone.Size = new System.Drawing.Size(51, 17);
             this.rbNone.TabIndex = 4;
@@ -122,7 +133,7 @@
             // rbXor
             // 
             this.rbXor.AutoSize = true;
-            this.rbXor.Location = new System.Drawing.Point(10, 88);
+            this.rbXor.Location = new System.Drawing.Point(14, 81);
             this.rbXor.Name = "rbXor";
             this.rbXor.Size = new System.Drawing.Size(48, 17);
             this.rbXor.TabIndex = 3;
@@ -133,7 +144,7 @@
             // rbDifference
             // 
             this.rbDifference.AutoSize = true;
-            this.rbDifference.Location = new System.Drawing.Point(10, 65);
+            this.rbDifference.Location = new System.Drawing.Point(14, 60);
             this.rbDifference.Name = "rbDifference";
             this.rbDifference.Size = new System.Drawing.Size(74, 17);
             this.rbDifference.TabIndex = 2;
@@ -144,7 +155,7 @@
             // rbUnion
             // 
             this.rbUnion.AutoSize = true;
-            this.rbUnion.Location = new System.Drawing.Point(10, 42);
+            this.rbUnion.Location = new System.Drawing.Point(14, 39);
             this.rbUnion.Name = "rbUnion";
             this.rbUnion.Size = new System.Drawing.Size(53, 17);
             this.rbUnion.TabIndex = 1;
@@ -156,7 +167,7 @@
             // 
             this.rbIntersect.AutoSize = true;
             this.rbIntersect.Checked = true;
-            this.rbIntersect.Location = new System.Drawing.Point(10, 19);
+            this.rbIntersect.Location = new System.Drawing.Point(14, 19);
             this.rbIntersect.Name = "rbIntersect";
             this.rbIntersect.Size = new System.Drawing.Size(66, 17);
             this.rbIntersect.TabIndex = 0;
@@ -169,9 +180,9 @@
             // 
             this.groupBox2.Controls.Add(this.rbTest2);
             this.groupBox2.Controls.Add(this.rbTest1);
-            this.groupBox2.Location = new System.Drawing.Point(9, 338);
+            this.groupBox2.Location = new System.Drawing.Point(9, 310);
             this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(88, 73);
+            this.groupBox2.Size = new System.Drawing.Size(100, 61);
             this.groupBox2.TabIndex = 7;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "Sample";
@@ -179,7 +190,7 @@
             // rbTest2
             // 
             this.rbTest2.AutoSize = true;
-            this.rbTest2.Location = new System.Drawing.Point(10, 42);
+            this.rbTest2.Location = new System.Drawing.Point(14, 35);
             this.rbTest2.Name = "rbTest2";
             this.rbTest2.Size = new System.Drawing.Size(46, 17);
             this.rbTest2.TabIndex = 1;
@@ -191,7 +202,7 @@
             // 
             this.rbTest1.AutoSize = true;
             this.rbTest1.Checked = true;
-            this.rbTest1.Location = new System.Drawing.Point(10, 21);
+            this.rbTest1.Location = new System.Drawing.Point(14, 17);
             this.rbTest1.Name = "rbTest1";
             this.rbTest1.Size = new System.Drawing.Size(45, 17);
             this.rbTest1.TabIndex = 0;
@@ -208,9 +219,9 @@
             this.groupBox1.Controls.Add(this.nudCount);
             this.groupBox1.Controls.Add(this.rbNonZero);
             this.groupBox1.Controls.Add(this.rbEvenOdd);
-            this.groupBox1.Location = new System.Drawing.Point(9, 159);
+            this.groupBox1.Location = new System.Drawing.Point(9, 144);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(88, 173);
+            this.groupBox1.Size = new System.Drawing.Size(100, 159);
             this.groupBox1.TabIndex = 6;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Options:";
@@ -218,7 +229,7 @@
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(7, 117);
+            this.label2.Location = new System.Drawing.Point(11, 108);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(38, 13);
             this.label2.TabIndex = 4;
@@ -227,7 +238,7 @@
             // nudOffset
             // 
             this.nudOffset.DecimalPlaces = 1;
-            this.nudOffset.Location = new System.Drawing.Point(10, 138);
+            this.nudOffset.Location = new System.Drawing.Point(14, 126);
             this.nudOffset.Maximum = new decimal(new int[] {
             10,
             0,
@@ -246,7 +257,7 @@
             // lblCount
             // 
             this.lblCount.AutoSize = true;
-            this.lblCount.Location = new System.Drawing.Point(7, 67);
+            this.lblCount.Location = new System.Drawing.Point(11, 62);
             this.lblCount.Name = "lblCount";
             this.lblCount.Size = new System.Drawing.Size(71, 13);
             this.lblCount.TabIndex = 2;
@@ -254,7 +265,7 @@
             // 
             // nudCount
             // 
-            this.nudCount.Location = new System.Drawing.Point(10, 88);
+            this.nudCount.Location = new System.Drawing.Point(14, 80);
             this.nudCount.Minimum = new decimal(new int[] {
             3,
             0,
@@ -274,7 +285,7 @@
             // 
             this.rbNonZero.AutoSize = true;
             this.rbNonZero.Checked = true;
-            this.rbNonZero.Location = new System.Drawing.Point(10, 42);
+            this.rbNonZero.Location = new System.Drawing.Point(14, 39);
             this.rbNonZero.Name = "rbNonZero";
             this.rbNonZero.Size = new System.Drawing.Size(67, 17);
             this.rbNonZero.TabIndex = 1;
@@ -286,7 +297,7 @@
             // rbEvenOdd
             // 
             this.rbEvenOdd.AutoSize = true;
-            this.rbEvenOdd.Location = new System.Drawing.Point(10, 21);
+            this.rbEvenOdd.Location = new System.Drawing.Point(14, 21);
             this.rbEvenOdd.Name = "rbEvenOdd";
             this.rbEvenOdd.Size = new System.Drawing.Size(70, 17);
             this.rbEvenOdd.TabIndex = 0;
@@ -296,9 +307,9 @@
             // 
             // bRefresh
             // 
-            this.bRefresh.Location = new System.Drawing.Point(9, 421);
+            this.bRefresh.Location = new System.Drawing.Point(9, 381);
             this.bRefresh.Name = "bRefresh";
-            this.bRefresh.Size = new System.Drawing.Size(88, 27);
+            this.bRefresh.Size = new System.Drawing.Size(100, 27);
             this.bRefresh.TabIndex = 8;
             this.bRefresh.Text = "New &Sample";
             this.bRefresh.UseVisualStyleBackColor = true;
@@ -307,10 +318,10 @@
             // bCancel
             // 
             this.bCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.bCancel.Location = new System.Drawing.Point(9, 499);
+            this.bCancel.Location = new System.Drawing.Point(9, 493);
             this.bCancel.Name = "bCancel";
-            this.bCancel.Size = new System.Drawing.Size(88, 27);
-            this.bCancel.TabIndex = 9;
+            this.bCancel.Size = new System.Drawing.Size(100, 27);
+            this.bCancel.TabIndex = 11;
             this.bCancel.Text = "E&xit";
             this.bCancel.UseVisualStyleBackColor = true;
             this.bCancel.Click += new System.EventHandler(this.bClose_Click);
@@ -320,9 +331,9 @@
             this.panel2.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
             this.panel2.Controls.Add(this.pictureBox1);
             this.panel2.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel2.Location = new System.Drawing.Point(109, 0);
+            this.panel2.Location = new System.Drawing.Point(121, 0);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(649, 543);
+            this.panel2.Size = new System.Drawing.Size(637, 543);
             this.panel2.TabIndex = 6;
             // 
             // pictureBox1
@@ -330,20 +341,15 @@
             this.pictureBox1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pictureBox1.Location = new System.Drawing.Point(0, 0);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(645, 539);
+            this.pictureBox1.Size = new System.Drawing.Size(633, 539);
             this.pictureBox1.TabIndex = 1;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.DoubleClick += new System.EventHandler(this.bRefresh_Click);
             // 
-            // b1000Samples
+            // saveFileDialog1
             // 
-            this.b1000Samples.Location = new System.Drawing.Point(8, 454);
-            this.b1000Samples.Name = "b1000Samples";
-            this.b1000Samples.Size = new System.Drawing.Size(88, 27);
-            this.b1000Samples.TabIndex = 10;
-            this.b1000Samples.Text = "&1000 samples";
-            this.b1000Samples.UseVisualStyleBackColor = true;
-            this.b1000Samples.Click += new System.EventHandler(this.b1000Samples_Click);
+            this.saveFileDialog1.DefaultExt = "svg";
+            this.saveFileDialog1.Filter = "SVG Files (*.svg)|*.svg";
             // 
             // Form1
             // 
@@ -404,7 +410,8 @@
         private System.Windows.Forms.Button bCancel;
         private System.Windows.Forms.Panel panel2;
         private System.Windows.Forms.PictureBox pictureBox1;
-        private System.Windows.Forms.Button b1000Samples;
+        private System.Windows.Forms.Button bSave;
+        private System.Windows.Forms.SaveFileDialog saveFileDialog1;
     }
 }
 
