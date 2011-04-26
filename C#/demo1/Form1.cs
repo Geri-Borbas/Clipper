@@ -400,9 +400,6 @@ namespace WindowsFormsApplication1
                 bool succeeded = c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
                 if (succeeded)
                 {
-                    PolygonsToSVG("debug.svg", subjects, clips, solution,
-                        GetPolyFillType(), GetPolyFillType(), 1.0 / scale, 10);
-
                     myBrush.Color = Color.Black;
                     path.Reset();
 
