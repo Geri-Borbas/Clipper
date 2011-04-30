@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.6                                                           *
-* Date      :  30 April 2011                                                   *
+* Version   :  4.2.5                                                           *
+* Date      :  27 April 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -46,7 +46,7 @@ namespace clipper
     // eg Int128 val1((Int64)9223372036854775807); //ie 2^63 -1
     //    Int128 val2((Int64)9223372036854775807);
     //    Int128 val3 = val1 * val2;
-    //    val3.ToString => "85070591730234615847396907784232501249" (8.5e+37)
+    //    val3.AsString => "85070591730234615847396907784232501249" (8.5e+37)
     //------------------------------------------------------------------------------
 
     internal class Int128
@@ -158,7 +158,7 @@ namespace clipper
         //        throw new Exception("Int128 operator*: overflow error");
         //    return Int128Mul(lhs.lo, rhs.lo);
         //}
-        
+
         public static Int128 Int128Mul(Int64 lhs, Int64 rhs)
         {
             bool negate = (lhs < 0) != (rhs < 0);
@@ -447,39 +447,26 @@ namespace clipper
 
         internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullInt64Range)
         {
-            if (e1.ybot == e1.ytop) return (e2.ybot == e2.ytop);
-            else if (e1.xbot == e1.xtop) return (e2.xbot == e2.xtop);
-            else if (UseFullInt64Range)
+          if (e1.ybot == e1.ytop) return (e2.ybot == e2.ytop);
+          else if (e2.ybot == e2.ytop) return false;
+          else if (UseFullInt64Range)
               return Int128.Int128Mul(e1.ytop - e1.ybot, e2.xtop - e2.xbot) ==
                   Int128.Int128Mul(e1.xtop - e1.xbot, e2.ytop - e2.ybot);
-            else return (Int64)(e1.ytop - e1.ybot) * (e2.xtop - e2.xbot) -
+          else return (Int64)(e1.ytop - e1.ybot) * (e2.xtop - e2.xbot) -
               (Int64)(e1.xtop - e1.xbot)*(e2.ytop - e2.ybot) == 0;
         }
         //------------------------------------------------------------------------------
 
-        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
+        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2, 
             IntPoint pt3, bool UseFullInt64Range)
         {
-            if (pt1.Y == pt2.Y) return (pt2.Y == pt3.Y);
-            else if (pt1.X == pt2.X) return (pt2.X == pt3.X);
-            else if (UseFullInt64Range)
-                return Int128.Int128Mul(pt1.Y - pt2.Y, pt2.X - pt3.X) ==
-                  Int128.Int128Mul(pt1.X - pt2.X, pt2.Y - pt3.Y);
-            else return
-              (Int64)(pt1.Y - pt2.Y) * (pt2.X - pt3.X) - (Int64)(pt1.X - pt2.X) * (pt2.Y - pt3.Y) == 0;
-        }
-        //------------------------------------------------------------------------------
-
-        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
-            IntPoint pt3, IntPoint pt4, bool UseFullInt64Range)
-        {
-            if (pt1.Y == pt2.Y) return (pt3.Y == pt4.Y);
-            else if (pt1.X == pt2.X) return (pt3.X == pt4.X);
-            else if (UseFullInt64Range)
-                return Int128.Int128Mul(pt1.Y - pt2.Y, pt3.X - pt4.X) ==
-                  Int128.Int128Mul(pt1.X - pt2.X, pt3.Y - pt4.Y);
-            else return
-              (Int64)(pt1.Y - pt2.Y) * (pt3.X - pt4.X) - (Int64)(pt1.X - pt2.X) * (pt3.Y - pt4.Y) == 0;
+          if (pt1.Y == pt2.Y) return (pt2.Y == pt3.Y);
+          else if (pt2.Y == pt3.Y) return false;
+          else if (UseFullInt64Range)
+              return Int128.Int128Mul(pt1.Y - pt2.Y, pt2.X - pt3.X) ==
+                Int128.Int128Mul(pt1.X - pt2.X, pt2.Y - pt3.Y);
+          else return
+            (Int64)(pt1.Y-pt2.Y)*(pt2.X-pt3.X) - (Int64)(pt1.X-pt2.X)*(pt2.Y-pt3.Y) == 0;
         }
         //------------------------------------------------------------------------------
 
@@ -552,7 +539,7 @@ namespace clipper
             int j = 0;
             for (int i = 1; i < len; ++i)
             {
-                const Int64 MaxVal = 1500000000; //~ Sqrt(2^63)/2 => 1.5e+9 (see SlopesEqual)
+                const Int64 MaxVal = 1500000000; //~ Sqrt(2^63)/2 . 1.5Billion
                 if (!m_UseFullRange && 
                     (Math.Abs(pg[i].X) > MaxVal || Math.Abs(pg[i].Y) > MaxVal))
                         throw new ClipperException("Integer exceeds range bounds");
@@ -1500,17 +1487,15 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool FindSegment(ref PolyPt pp, IntPoint linePt1, IntPoint linePt2,
-            ref IntPoint outPt1, ref IntPoint outPt2)
+        private bool FindSegment(ref PolyPt pp, IntPoint pt1, IntPoint pt2)
         {
             if (pp == null) return false;
             PolyPt pp2 = pp;
             do
             {
-                if (SlopesEqual(linePt1, linePt2, pp.pt, pp.prev.pt, true) &&
-                    SlopesEqual(linePt1, linePt2, pp.pt, true) &&
-                    GetOverlapSegment(linePt1, linePt2, pp.pt, pp.prev.pt, ref outPt1, ref outPt2))
-                        return true;
+            if (PointsEqual(pp.pt, pt1) &&
+                (PointsEqual(pp.next.pt, pt2) || PointsEqual(pp.prev.pt, pt2)))
+                return true;
             pp = pp.next;
             }
             while (pp != pp2);
@@ -2623,119 +2608,133 @@ namespace clipper
             
             pp1a = m_PolyPts[j.poly1Idx];
             pp2a = m_PolyPts[j.poly2Idx];
-            if (!FindSegment(ref pp1a, j.pt2a, j.pt2b, ref pt1, ref pt2)) continue;
-
-              if (j.poly1Idx == j.poly2Idx)
+            bool found = FindSegment(ref pp1a, j.pt1a, j.pt1b);
+            if (found)
             {
-                //we're searching the same polygon for overlapping segments so
-                //we really don't want segment 2 to be the same as segment 1 ...
-                pp2a = pp1a.next;
-                if (!FindSegment(ref pp2a, j.pt1a, j.pt1b, ref pt1, ref pt2) || pp2a == pp1a) continue;
-            }
-            else if (!FindSegment(ref pp2a, j.pt1a, j.pt1b, ref pt1, ref pt2)) continue;
-
-            PolyPt p1, p2, p3, p4;
-            //get p1 & p2 polypts - the overlap start & endpoints on poly1
-            Position pos1 = GetPosition(pp1a.pt, pp1a.prev.pt, pt1);
-            if (pos1 == Position.pFirst) p1 = pp1a;
-            else if (pos1 == Position.pSecond) p1 = pp1a.prev;
-            else p1 = InsertPolyPtBetween(pp1a, pp1a.prev, pt1);
-            Position pos2 = GetPosition(pp1a.pt, pp1a.prev.pt, pt2);
-            if (pos2 == Position.pMiddle)
-            {
-                if (pos1 == Position.pMiddle)
+                if (j.poly1Idx == j.poly2Idx)
                 {
-                if (Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2))
-                    p2 = InsertPolyPtBetween(pp1a, p1, pt2); else
-                    p2 = InsertPolyPtBetween(p1, pp1a.prev, pt2);
+                    //we're searching the same polygon for overlapping segments so
+                    //we really don't want segment 2 to be the same as segment 1 ...
+                    pp2a = pp1a.next;
+                    found = FindSegment(ref pp2a, j.pt2a, j.pt2b) && (pp2a != pp1a);
+                }
+                else
+                    found = FindSegment(ref pp2a, j.pt2a, j.pt2b);
+            }
+
+            if (found)
+            {
+              if (PointsEqual(pp1a.next.pt, j.pt1b))
+                pp1b = pp1a.next; else pp1b = pp1a.prev;
+              if (PointsEqual(pp2a.next.pt, j.pt2b))
+                pp2b = pp2a.next; else pp2b = pp2a.prev;
+              if (GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, ref pt1, ref pt2))
+              {
+                PolyPt p1, p2, p3, p4;
+                //get p1 & p2 polypts - the overlap start & endpoints on poly1
+                Position pos1 = GetPosition(pp1a.pt, pp1b.pt, pt1);
+                if (pos1 == Position.pFirst) p1 = pp1a;
+                else if (pos1 == Position.pSecond) p1 = pp1b;
+                else p1 = InsertPolyPtBetween(pp1a, pp1b, pt1);
+                Position pos2 = GetPosition(pp1a.pt, pp1b.pt, pt2);
+                if (pos2 == Position.pMiddle)
+                {
+                    if (pos1 == Position.pMiddle)
+                  {
+                    if (Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2))
+                      p2 = InsertPolyPtBetween(pp1a, p1, pt2); else
+                      p2 = InsertPolyPtBetween(p1, pp1b, pt2);
+                  }
+                    else if (pos2 == Position.pFirst) p2 = pp1a;
+                  else p2 = pp1b;
                 }
                 else if (pos2 == Position.pFirst) p2 = pp1a;
-                else p2 = pp1a.prev;
-            }
-            else if (pos2 == Position.pFirst) p2 = pp1a;
-            else p2 = pp1a.prev;
-            //get p3 & p4 polypts - the overlap start & endpoints on poly2
-            pos1 = GetPosition(pp2a.pt, pp2a.prev.pt, pt1);
-            if (pos1 == Position.pFirst) p3 = pp2a;
-            else if (pos1 == Position.pSecond) p3 = pp2a.prev;
-            else p3 = InsertPolyPtBetween(pp2a, pp2a.prev, pt1);
-            pos2 = GetPosition(pp2a.pt, pp2a.prev.pt, pt2);
-            if (pos2 == Position.pMiddle)
-            {
-                if (pos1 == Position.pMiddle)
+                else p2 = pp1b;
+                //get p3 & p4 polypts - the overlap start & endpoints on poly2
+                pos1 = GetPosition(pp2a.pt, pp2b.pt, pt1);
+                if (pos1 == Position.pFirst) p3 = pp2a;
+                else if (pos1 == Position.pSecond) p3 = pp2b;
+                else p3 = InsertPolyPtBetween(pp2a, pp2b, pt1);
+                pos2 = GetPosition(pp2a.pt, pp2b.pt, pt2);
+                if (pos2 == Position.pMiddle)
                 {
-                if (Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2))
-                    p4 = InsertPolyPtBetween(pp2a, p3, pt2); else
-                    p4 = InsertPolyPtBetween(p3, pp2a.prev, pt2);
+                    if (pos1 == Position.pMiddle)
+                  {
+                    if (Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2))
+                      p4 = InsertPolyPtBetween(pp2a, p3, pt2); else
+                      p4 = InsertPolyPtBetween(p3, pp2b, pt2);
+                  }
+                    else if (pos2 == Position.pFirst) p4 = pp2a;
+                  else p4 = pp2b;
                 }
                 else if (pos2 == Position.pFirst) p4 = pp2a;
-                else p4 = pp2a.prev;
-            }
-            else if (pos2 == Position.pFirst) p4 = pp2a;
-            else p4 = pp2a.prev;
+                else p4 = pp2b;
 
-            //p1.pt should equal p3.pt and p2.pt should equal p4.pt here, so ...
-            //join p1 to p3 and p2 to p4 ...
-            if (p1.next == p2 && p3.prev == p4)
-            {
-                p1.next = p3;
-                p3.prev = p1;
-                p2.prev = p4;
-                p4.next = p2;
-            }
-            else if (p1.prev == p2 && p3.next == p4)
-            {
-                p1.prev = p3;
-                p3.next = p1;
-                p2.next = p4;
-                p4.prev = p2;
-            }
-            else
-                continue; //an orientation is probably wrong
-
-            //delete duplicate points ...
-            if (PointsEqual(p1.pt, p3.pt)) DeletePolyPt(p3);
-            if (PointsEqual(p2.pt, p4.pt)) DeletePolyPt(p4);
-
-            if (j.poly2Idx == j.poly1Idx)
-            {
-                //instead of joining two polygons, we've just created
-                //a new one by splitting one polygon into two.
-                m_PolyPts[j.poly1Idx] = p1;
-                m_PolyPts.Add(p2);
-                j.poly2Idx = m_PolyPts.Count - 1;
-
-                if (PointInPolygon(p2.pt, p1, m_UseFullRange)) SetHoleState(p2, !p1.isHole);
-                else if (PointInPolygon(p1.pt, p2, m_UseFullRange)) SetHoleState(p1, !p2.isHole);
-
-                //now fixup any subsequent m_Joins that match this polygon
-                for (int k = i + 1; k < m_Joins.Count; k++)
+                //p1.pt should equal p3.pt and p2.pt should equal p4.pt here, so ...
+                //join p1 to p3 and p2 to p4 ...
+                if (p1.next == p2 && p3.prev == p4)
                 {
-                    JoinRec j2 = m_Joins[k];
-                    if (j2.poly1Idx == j.poly1Idx && PointIsVertex(j2.pt1a, p2))
-                        j2.poly1Idx = j.poly2Idx;
-                    if (j2.poly2Idx == j.poly1Idx && PointIsVertex(j2.pt2a, p2))
-                        j2.poly2Idx = j.poly2Idx;
+                    p1.next = p3;
+                    p3.prev = p1;
+                    p2.prev = p4;
+                    p4.next = p2;
                 }
-            }
-            else
-            {
-                //having joined 2 polygons together, delete the obsolete pointer ...
-                m_PolyPts[j.poly2Idx] = null;
-
-                //now fixup any subsequent fJoins that match this polygon
-                for (int k = i + 1; k < m_Joins.Count; k++)
+                else if (p1.prev == p2 && p3.next == p4)
                 {
-                    JoinRec j2 = m_Joins[k];
-                    if (j2.poly1Idx == j.poly2Idx) j2.poly1Idx = j.poly1Idx;
-                    if (j2.poly2Idx == j.poly2Idx) j2.poly2Idx = j.poly1Idx;
+                    p1.prev = p3;
+                    p3.next = p1;
+                    p2.next = p4;
+                    p4.prev = p2;
                 }
-                j.poly2Idx = j.poly1Idx;
+                else
+                    continue; //an orientation is probably wrong
+
+                //delete duplicate points ...
+                if (PointsEqual(p1.pt, p3.pt)) DeletePolyPt(p3);
+                if (PointsEqual(p2.pt, p4.pt)) DeletePolyPt(p4);
+
+                if (j.poly2Idx == j.poly1Idx)
+                {
+                    //instead of joining two polygons, we've just created
+                    //a new one by splitting one polygon into two.
+                    m_PolyPts[j.poly1Idx] = p1;
+                    m_PolyPts.Add(p2);
+                    j.poly2Idx = m_PolyPts.Count - 1;
+
+                    if (PointInPolygon(p2.pt, p1, m_UseFullRange)) SetHoleState(p2, !p1.isHole);
+                    else if (PointInPolygon(p1.pt, p2, m_UseFullRange)) SetHoleState(p1, !p2.isHole);
+
+                    //now fixup any subsequent m_Joins that match this polygon
+                    for (int k = i + 1; k < m_Joins.Count; k++)
+                    {
+                        JoinRec j2 = m_Joins[k];
+                        if (j2.poly1Idx == j.poly1Idx && PointIsVertex(j2.pt1a, p2))
+                            j2.poly1Idx = j.poly2Idx;
+                        if (j2.poly2Idx == j.poly1Idx && PointIsVertex(j2.pt2a, p2))
+                            j2.poly2Idx = j.poly2Idx;
+                    }
+                }
+                else
+                {
+                    //having joined 2 polygons together, delete the obsolete pointer ...
+                    m_PolyPts[j.poly2Idx] = null;
+
+                    //now fixup any subsequent fJoins that match this polygon
+                    for (int k = i + 1; k < m_Joins.Count; k++)
+                    {
+                        JoinRec j2 = m_Joins[k];
+                        if (j2.poly1Idx == j.poly2Idx) j2.poly1Idx = j.poly1Idx;
+                        if (j2.poly2Idx == j.poly2Idx) j2.poly2Idx = j.poly1Idx;
+                    }
+                    j.poly2Idx = j.poly1Idx;
+                }
+                //now cleanup redundant edges too ...
+                m_PolyPts[j.poly1Idx] = FixSpikes(p1);
+                if (j.poly2Idx != j.poly1Idx)
+                    m_PolyPts[j.poly2Idx] = FixSpikes(p2);
+
+              }
             }
-            //now cleanup redundant edges too ...
-            m_PolyPts[j.poly1Idx] = FixSpikes(p1);
-            if (j.poly2Idx != j.poly1Idx)
-                m_PolyPts[j.poly2Idx] = FixSpikes(p2);
           }
         }
 

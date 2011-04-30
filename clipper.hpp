@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.6                                                           *
-* Date      :  30 April 2011                                                   *
+* Date      :  27 April 2011                                                   *
+* Website   :  http://www.angusj.com                                           *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
