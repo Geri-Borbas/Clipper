@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Date      :  27 April 2011                                                   *
-* Website   :  http://www.angusj.com                                           *
+* Version   :  4.2.6                                                           *
+* Date      :  1 May 2011                                                      *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -217,7 +217,6 @@ private:
   void DisposeIntersectNodes();
   bool FixupIntersections();
   PolyPt* FixupOutPolygon(PolyPt *p);
-  PolyPt* FixSpikes(PolyPt *pp);
   bool IsHole(TEdge *e);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();

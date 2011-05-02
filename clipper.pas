@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.5                                                           *
-* Date      :  27 April 2011                                                   *
+* Version   :  4.2.6                                                           *
+* Date      :  1 May 2011                                                      *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -114,8 +114,6 @@ type
     pt2a     : TIntPoint;
     pt2b     : TIntPoint;
     poly2Idx : integer;
-    next     : PJoinRec;
-    prev     : PJoinRec;
   end;
 
   PHorzRec = ^THorzRec;
@@ -158,6 +156,7 @@ type
   TClipper = class(TClipperBase)
   private
     fPolyPtList    : TList;
+    fJoinList      : TList;
     fClipType      : TClipType;
     fScanbeam      : PScanbeam; //scanbeam list
     fActiveEdges   : PEdge;     //active edge list
@@ -166,7 +165,6 @@ type
     fClipFillType  : TPolyFillType;
     fSubjFillType  : TPolyFillType;
     fExecuteLocked : boolean;
-    fJoins         : PJoinRec;  //circular double linked list
     fHorizJoins    : PHorzRec;
     procedure DisposeScanbeamList;
     procedure InsertScanbeam(const y: int64);
@@ -212,7 +210,6 @@ type
     procedure AddHorzJoin(e: PEdge; idx: integer);
     procedure ClearHorzJoins;
     procedure JoinCommonEdges;
-    function FixSpikes(pp: PPolyPt): PPolyPt;
   protected
     procedure Reset; override;
   public
@@ -235,11 +232,8 @@ function IntPoint(const X, Y: Int64): TIntPoint;
 implementation
 
 type
-  PDoublePoint = ^TDoublePoint;
   TDoublePoint = record X, Y: double; end;
   TArrayOfDoublePoint = array of TDoublePoint;
-
-  TPosition = (pFirst, pMiddle, pSecond);
 
 const
   horizontal: double = -3.4e+38;
@@ -250,15 +244,15 @@ resourcestring
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsHorizontal = 'ProcessHorizontal error';
   rsInvalidInt = 'Integer exceeds range bounds';
-  reUseFullRange = 'UseFullCoordinateRange() can''t be changed until '+
+  rsUseFullRange = 'UseFullCoordinateRange() can''t be changed until '+
   'the Clipper object has been cleared."';
+  rsJoinError = 'Join Output polygons error';
 
 //------------------------------------------------------------------------------
-// Miscellaneous Functions ...
+// Int128 Functions ...
 //------------------------------------------------------------------------------
 
 type
-
   TInt128 = record
     lo   : Int64;
     hi   : Int64;
@@ -475,8 +469,11 @@ begin
   if isNeg then result := '-' + result;
 end;
 //------------------------------------------------------------------------------
-
 {$OVERFLOWCHECKS ON}
+
+//------------------------------------------------------------------------------
+// Miscellaneous Functions ...
+//------------------------------------------------------------------------------
 
 function PointsEqual(const P1, P2: TIntPoint): Boolean; overload;
 begin
@@ -640,7 +637,7 @@ end;
 function SlopesEqual(e1, e2: PEdge; UseFullInt64Range: boolean): boolean; overload;
 begin
   if (e1.ybot = e1.ytop) then result := (e2.ybot = e2.ytop)
-  else if (e2.ybot = e2.ytop) then result := false
+  else if (e1.xbot = e1.xtop) then result := (e2.xbot = e2.xtop)
   else if UseFullInt64Range then
     result := Int128Equal(Int128Mul(e1.ytop-e1.ybot, e2.xtop-e2.xbot),
       Int128Mul(e1.xtop-e1.xbot, e2.ytop-e2.ybot))
@@ -654,7 +651,7 @@ function SlopesEqual(const pt1, pt2, pt3: TIntPoint;
   UseFullInt64Range: boolean): boolean; overload;
 begin
   if (pt1.Y = pt2.Y) then result := (pt2.Y = pt3.Y)
-  else if (pt2.Y = pt3.Y) then result := false
+  else if (pt1.X = pt2.X) then result := (pt2.X = pt3.X)
   else if UseFullInt64Range then
     result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X),
       Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y))
@@ -667,7 +664,7 @@ function SlopesEqual(const pt1, pt2, pt3, pt4: TIntPoint;
   UseFullInt64Range: boolean): boolean; overload;
 begin
   if (pt1.Y = pt2.Y) then result := (pt3.Y = pt4.Y)
-  else if (pt3.Y = pt4.Y) then result := false
+  else if (pt1.X = pt2.X) then result := (pt3.X = pt4.X)
   else if UseFullInt64Range then
     result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt3.X-pt4.X),
       Int128Mul(pt1.X-pt2.X, pt3.Y-pt4.Y))
@@ -795,7 +792,7 @@ end;
 procedure TClipperBase.SetUseFullRange(newVal: boolean);
 begin
   if (fEdgeList.Count > 0) and newVal then
-    raise Exception.Create(reUseFullRange);
+    raise Exception.Create(rsUseFullRange);
   fUseFullRange := newVal;
 end;
 //------------------------------------------------------------------------------
@@ -1093,6 +1090,7 @@ end;
 constructor TClipper.Create;
 begin
   inherited Create;
+  fJoinList := TList.Create;
   fPolyPtList := TList.Create;
 end;
 //------------------------------------------------------------------------------
@@ -1100,6 +1098,7 @@ end;
 destructor TClipper.Destroy;
 begin
   DisposeScanbeamList;
+  fJoinList.Free;
   fPolyPtList.Free;
   inherited;
 end;
@@ -1441,36 +1440,17 @@ begin
     jr.pt2a := IntPoint(xbot, ybot);
     jr.pt2b := IntPoint(xtop, ytop);
   end;
-
-  if fJoins = nil then
-  begin
-    fJoins := jr;
-    jr.next := jr;
-    jr.prev := jr;
-  end else
-  begin
-    jr.next := fJoins;
-    jr.prev := fJoins.prev;
-    fJoins.prev.next := jr;
-    fJoins.prev := jr;
-  end;
+  fJoinList.add(jr);
 end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.ClearJoins;
 var
-  m, m2: PJoinRec;
+  i: integer;
 begin
-  if not assigned(fJoins) then exit;
-  m := fJoins;
-  m.prev.next := nil;
-  while assigned(m) do
-  begin
-    m2 :=m.next;
-    dispose(m);
-    m := m2;
-  end;
-  fJoins := nil;
+  for i := 0 to fJoinList.count -1 do
+    Dispose(PJoinRec(fJoinList[i]));
+  fJoinList.Clear;
 end;
 //------------------------------------------------------------------------------
 
@@ -1648,6 +1628,10 @@ begin
 
     if (lb.nextInAEL <> rb) then
     begin
+      if (rb.outIdx >= 0) and (rb.prevInAEL.outIdx >= 0) and
+        SlopesEqual(rb.prevInAEL, rb, fUseFullRange) then
+          AddJoin(rb, rb.prevInAEL);
+
       e := lb.nextInAEL;
       pt := IntPoint(lb.xcurr,lb.ycurr);
       while e <> rb do
@@ -1869,7 +1853,7 @@ procedure TClipper.AppendPolygon(e1, e2: PEdge);
 var
   p, p1_lft, p1_rt, p2_lft, p2_rt: PPolyPt;
   newSide: TEdgeSide;
-  OKIdx, ObsoleteIdx: integer;
+  i, OKIdx, ObsoleteIdx: integer;
   e: PEdge;
   bottom1, bottom2: PPolyPt;
   j: PJoinRec;
@@ -1959,14 +1943,11 @@ begin
     e := e.nextInAEL;
   end;
 
-  if assigned(fJoins) then
+  for i := 0 to fJoinList.count -1 do
   begin
-    j := fJoins;
-    repeat
-      if j.poly1Idx = ObsoleteIdx then j.poly1Idx := OKIdx;
-      if j.poly2Idx = ObsoleteIdx then j.poly2Idx := OKIdx;
-      j := j.next;
-    until j = fJoins;
+    j := fJoinList[i];
+    if j.poly1Idx = ObsoleteIdx then j.poly1Idx := OKIdx;
+    if j.poly2Idx = ObsoleteIdx then j.poly2Idx := OKIdx;
   end;
   if assigned(fHorizJoins) then
   begin
@@ -2754,30 +2735,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FindSegment(var pp: PPolyPt; const pt1, pt2: TIntPoint): boolean;
+function FindSegment(var pp: PPolyPt; var pt1, pt2: TIntPoint): boolean;
 var
   pp2: PPolyPt;
+  pt1a, pt2a: TIntPoint;
 begin
-  result := false;
-  if not assigned(pp) then exit;
+  if not assigned(pp) then begin result := false; exit; end;
+  result := true;
+  pt1a := pt1; pt2a := pt2;
   pp2 := pp;
   repeat
-    if PointsEqual(pp.pt, pt1) and
-      (PointsEqual(pp.next.pt, pt2) or PointsEqual(pp.prev.pt, pt2)) then
-    begin
-      result := true;
-      break;
-    end;
+    //test for co-linearity before testing for overlap ...
+    if SlopesEqual(pt1a, pt2a, pp.pt, pp.prev.pt, true) and
+      SlopesEqual(pt1a, pt2a, pp.pt, true) and
+        GetOverlapSegment(pt1a, pt2a, pp.pt, pp.prev.pt, pt1, pt2) then exit;
     pp := pp.next;
   until pp = pp2;
-end;
-//------------------------------------------------------------------------------
-
-function GetPosition(const pt1, pt2, pt: TIntPoint): TPosition;
-begin
-  if PointsEqual(pt1, pt) then result := pFirst
-  else if PointsEqual(pt2, pt) then result := pSecond
-  else result := pMiddle;
+  result := false;
 end;
 //------------------------------------------------------------------------------
 
@@ -2792,6 +2766,8 @@ end;
 
 function InsertPolyPtBetween(p1, p2: PPolyPt; const pt: TIntPoint): PPolyPt;
 begin
+  if (p1 = p2) then raise exception.Create(rsJoinError);
+
   new(result);
   result.pt := pt;
   result.isHole := p1.isHole;
@@ -2827,175 +2803,121 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.FixSpikes(pp: PPolyPt): PPolyPt;
-var
-  pp2, pp3: PPolyPt;
-begin
-  pp2 := pp;
-  result := pp;
-  repeat
-    if SlopesEqual(pp2.prev.pt, pp2.pt, pp2.next.pt, fUseFullRange) and
-      ((((pp2.prev.pt.X < pp2.pt.X) = (pp2.next.pt.X < pp2.pt.X)) and
-      ((pp2.prev.pt.X <> pp2.pt.X) or (pp2.next.pt.X <> pp2.pt.X))) or
-      ((((pp2.prev.pt.Y < pp2.pt.Y) = (pp2.next.pt.Y < pp2.pt.Y))) and
-      ((pp2.prev.pt.Y <> pp2.pt.Y) or (pp2.next.pt.Y <> pp2.pt.Y)))) then
-    begin
-      if pp2 = result then result := pp2.prev;
-      pp3 := pp2.next;
-      DeletePolyPt(pp2);
-      pp2 := pp3;
-    end else
-      pp2 := pp2.next;
-  until pp2 = result;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.JoinCommonEdges;
 var
+  i, i2: integer;
   j, j2: PJoinRec;
-  p1, p2, p3, p4, pp1a, pp1b, pp2a, pp2b: PPolyPt;
-  pt1, pt2: TIntPoint;
-  pos1, pos2: TPosition;
-  found: boolean;
+  prev, p1, p2, p3, p4, pp1a, pp2a: PPolyPt;
+  pt1, pt2, pt3, pt4: TIntPoint;
 begin
-  if not assigned(fJoins) then exit;
-  j := fJoins;
-  repeat
+  for i := 0 to fJoinList.count -1 do
+  begin
+    j := fJoinList[i];
     pp1a := PPolyPt(fPolyPtList[j.poly1Idx]);
     pp2a := PPolyPt(fPolyPtList[j.poly2Idx]);
-
-    found := FindSegment(pp1a, j.pt1a, j.pt1b);
-    if found then
+    pt1 := j.pt2a; pt2 := j.pt2b;
+    pt3 := j.pt1a; pt4 := j.pt1b;
+    if not FindSegment(pp1a, pt1, pt2) then continue;
+    if (j.poly1Idx = j.poly2Idx) then
     begin
-      if (j.poly1Idx = j.poly2Idx) then
-      begin
-        //we're searching the same polygon for overlapping segments so
-        //we really don't want segment 2 to be the same as segment 1 ...
-        pp2a := pp1a.next;
-        found := FindSegment(pp2a, j.pt2a, j.pt2b) and (pp2a <> pp1a);
-      end else
-        found := FindSegment(pp2a, j.pt2a, j.pt2b);
-    end;
+      //we're searching the same polygon for overlapping segments so
+      //segment 2 mustn't be the same as segment 1 ...
+      pp2a := pp1a.next;
+      if not FindSegment(pp2a, pt3, pt4) or (pp2a = pp1a) then continue;
+    end else
+      if not FindSegment(pp2a, pt3, pt4) then continue;
 
-    if found then
+    if not GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2) then continue;
+
+    prev := pp1a.prev;
+    if PointsEqual(pp1a.pt, pt1) then p1 := pp1a
+    else if PointsEqual(prev.pt, pt1) then p1 := prev
+    else p1 := InsertPolyPtBetween(pp1a, prev, pt1);
+
+    if PointsEqual(pp1a.pt, pt2) then p2 := pp1a
+    else if PointsEqual(prev.pt, pt2) then p2 := prev
+    else if (p1 = pp1a) or (p1 = prev) then
+      p2 := InsertPolyPtBetween(pp1a, prev, pt2)
+    else if Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2) then
+      p2 := InsertPolyPtBetween(pp1a, p1, pt2) else
+      p2 := InsertPolyPtBetween(p1, prev, pt2);
+
+    prev := pp2a.prev;
+    if PointsEqual(pp2a.pt, pt1) then p3 := pp2a
+    else if PointsEqual(prev.pt, pt1) then p3 := prev
+    else p3 := InsertPolyPtBetween(pp2a, prev, pt1);
+
+    if PointsEqual(pp2a.pt, pt2) then p4 := pp2a
+    else if PointsEqual(prev.pt, pt2) then p4 := prev
+    else if (p3 = pp2a) or (p3 = prev) then
+      p4 := InsertPolyPtBetween(pp2a, prev, pt2)
+    else if Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2) then
+      p4 := InsertPolyPtBetween(pp2a, p3, pt2) else
+      p4 := InsertPolyPtBetween(p3, prev, pt2);
+
+    //p1.pt == p3.pt and p2.pt == p4.pt so join p1 to p3 and p2 to p4 ...
+    if (p1.next = p2) and (p3.prev = p4) then
     begin
-      if PointsEqual(pp1a.next.pt, j.pt1b) then
-        pp1b := pp1a.next else pp1b := pp1a.prev;
-      if PointsEqual(pp2a.next.pt, j.pt2b) then
-        pp2b := pp2a.next else pp2b := pp2a.prev;
-      if GetOverlapSegment(pp1a.pt, pp1b.pt, pp2a.pt, pp2b.pt, pt1, pt2) then
+      p1.next := p3;
+      p3.prev := p1;
+      p2.prev := p4;
+      p4.next := p2;
+    end
+    else if (p1.prev = p2) and (p3.next = p4) then
+    begin
+      p1.prev := p3;
+      p3.next := p1;
+      p2.next := p4;
+      p4.prev := p2;
+    end
+    else
+      continue; //very rare and an orientation is probably wrong
+
+    //delete duplicate points ...
+    if (PointsEqual(p1.pt, p3.pt)) then DeletePolyPt(p3);
+    if (PointsEqual(p2.pt, p4.pt)) then DeletePolyPt(p4);
+
+    if (j.poly2Idx = j.poly1Idx) then
+    begin
+      //instead of joining two polygons, we've just created
+      //a new one by splitting one polygon into two.
+      fPolyPtList[j.poly1Idx] := p1;
+      j.poly2Idx := fPolyPtList.Add(p2);
+
+      if PointInPolygon(p2.pt, p1, fUseFullRange) then
+        SetHoleState(p2, not p1.isHole)
+      else if PointInPolygon(p1.pt, p2, fUseFullRange) then
+        SetHoleState(p1, not p2.isHole);
+
+      //now fixup any subsequent fJoins that match this polygon
+      for i2 := i+1 to fJoinList.count -1 do
       begin
-        //get p1 & p2 polypts - the overlap start & endpoints on poly1
-        pos1 := GetPosition(pp1a.pt, pp1b.pt, pt1);
-        if (pos1 = pFirst) then p1 := pp1a
-        else if (pos1 = pSecond) then p1 := pp1b
-        else p1 := InsertPolyPtBetween(pp1a, pp1b, pt1);
-        pos2 := GetPosition(pp1a.pt, pp1b.pt, pt2);
-        if (pos2 = pMiddle) then
-        begin
-          if (pos1 = pMiddle) then
-          begin
-            if Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2) then
-              p2 := InsertPolyPtBetween(pp1a, p1, pt2) else
-              p2 := InsertPolyPtBetween(p1, pp1b, pt2);
-          end
-          else if (pos2 = pFirst) then p2 := pp1a
-          else p2 := pp1b;
-        end
-        else if (pos2 = pFirst) then p2 := pp1a
-        else p2 := pp1b;
-        //get p3 & p4 polypts - the overlap start & endpoints on poly2
-        pos1 := GetPosition(pp2a.pt, pp2b.pt, pt1);
-        if (pos1 = pFirst) then p3 := pp2a
-        else if (pos1 = pSecond) then p3 := pp2b
-        else p3 := InsertPolyPtBetween(pp2a, pp2b, pt1);
-        pos2 := GetPosition(pp2a.pt, pp2b.pt, pt2);
-        if (pos2 = pMiddle) then
-        begin
-          if (pos1 = pMiddle) then
-          begin
-            if Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2) then
-              p4 := InsertPolyPtBetween(pp2a, p3, pt2) else
-              p4 := InsertPolyPtBetween(p3, pp2b, pt2);
-          end
-          else if (pos2 = pFirst) then p4 := pp2a
-          else p4 := pp2b;
-        end
-        else if (pos2 = pFirst) then p4 := pp2a
-        else p4 := pp2b;
-
-        //p1.pt should equal p3.pt and p2.pt should equal p4.pt here, so ...
-        //join p1 to p3 and p2 to p4 ...
-        if (p1.next = p2) and (p3.prev = p4) then
-        begin
-          p1.next := p3;
-          p3.prev := p1;
-          p2.prev := p4;
-          p4.next := p2;
-        end
-        else if (p1.prev = p2) and (p3.next = p4) then
-        begin
-          p1.prev := p3;
-          p3.next := p1;
-          p2.next := p4;
-          p4.prev := p2;
-        end
-        else
-        begin
-          j := j.next;
-          continue; //an orientation is probably wrong
-        end;
-
-        //delete duplicate points ...
-        if (PointsEqual(p1.pt, p3.pt)) then DeletePolyPt(p3);
-        if (PointsEqual(p2.pt, p4.pt)) then DeletePolyPt(p4);
-
-        if (j.poly2Idx = j.poly1Idx) then
-        begin
-          //instead of joining two polygons, we've just created
-          //a new one by splitting one polygon into two.
-          fPolyPtList[j.poly1Idx] := p1;
-          j.poly2Idx := fPolyPtList.Add(p2);
-
-          if PointInPolygon(p2.pt, p1, fUseFullRange) then
-            SetHoleState(p2, not p1.isHole)
-          else if PointInPolygon(p1.pt, p2, fUseFullRange) then
-            SetHoleState(p1, not p2.isHole);
-
-          //now fixup any subsequent fJoins that match this polygon
-          j2 := j.next;
-          while j2 <> fJoins do
-          begin
-            if (j2.poly1Idx = j.poly1Idx) and PointIsVertex(j2.pt1a, p2) then
-              j2.poly1Idx := j.poly2Idx;
-            if (j2.poly2Idx = j.poly1Idx) and PointIsVertex(j2.pt2a, p2) then
-              j2.poly2Idx := j.poly2Idx;
-            j2 := j2.next;
-          end;
-        end else
-        begin
-          //having joined 2 polygons together, delete the obsolete pointer ...
-          fPolyPtList[j.poly2Idx] := nil;
-
-          //now fixup any subsequent fJoins that match this polygon
-          j2 := j.next;
-          while j2 <> fJoins do
-          begin
-            if (j2.poly1Idx = j.poly2Idx) then j2.poly1Idx := j.poly1Idx;
-            if (j2.poly2Idx = j.poly2Idx) then j2.poly2Idx := j.poly1Idx;
-            j2 := j2.next;
-          end;
-          j.poly2Idx := j.poly1Idx;
-        end;
-
-        //now cleanup redundant edges too ...
-        fPolyPtList[j.poly1Idx] := FixSpikes(p1);
-        if j.poly2Idx <> j.poly1Idx then
-          fPolyPtList[j.poly2Idx] := FixSpikes(p2);
+        j2 := fJoinList[i2];
+        if (j2.poly1Idx = j.poly1Idx) and PointIsVertex(j2.pt1a, p2) then
+          j2.poly1Idx := j.poly2Idx;
+        if (j2.poly2Idx = j.poly1Idx) and PointIsVertex(j2.pt2a, p2) then
+          j2.poly2Idx := j.poly2Idx;
       end;
+    end else
+    begin
+      //having joined 2 polygons together, delete the obsolete pointer ...
+      fPolyPtList[j.poly2Idx] := nil;
+
+      //now fixup any subsequent fJoins ...
+      for i2 := i+1 to fJoinList.count -1 do
+      begin
+        j2 := fJoinList[i2];
+        if (j2.poly1Idx = j.poly2Idx) then j2.poly1Idx := j.poly1Idx;
+        if (j2.poly2Idx = j.poly2Idx) then j2.poly2Idx := j.poly1Idx;
+      end;
+      j.poly2Idx := j.poly1Idx;
     end;
-    j := j.next;
-  until j = fJoins;
+
+    //cleanup redundant edges ...
+    fPolyPtList[j.poly1Idx] := FixupOutPolygon(p1);
+    if j.poly2Idx <> j.poly1Idx then
+      fPolyPtList[j.poly2Idx] := FixupOutPolygon(p2);
+  end;
 end;
 
 //------------------------------------------------------------------------------
@@ -3074,16 +2996,13 @@ begin
   i := 0;
 
   while (i < len) and (length(a[i]) = 0) do inc(i);
-  if i = len then
-  begin
-    result := nullRect;
-    exit;
-  end;
+  if i = len then begin result := nullRect; exit; end;
 
   with result, a[i][0] do
   begin
     Left := X; Top := Y; Right := X; Bottom := X;
   end;
+
   for i := i to len-1 do
     for j := 0 to high(a[i]) do
     begin

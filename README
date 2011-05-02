@@ -2,6 +2,11 @@
 Clipper Change Log
 ============================================================
 
+v4.2.6 - 1 May 2011
+* Bugfix: minor bug in SlopesEqual function.
+* Update: Merging of output polygons sharing common edges 
+  has been significantly inproved
+
 v4.2.4 - 26 April 2011
 Input polygon coordinates can now contain the full range of 
 signed 64bit integers (ie +/-9,223,372,036,854,775,807). This 
