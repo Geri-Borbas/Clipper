@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.6                                                           *
-* Date      :  1 May 2011                                                      *
+* Version   :  4.2.7                                                           *
+* Date      :  15 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -66,7 +66,7 @@ class Int128
 
     Int128(const Int128 &val): hi(val.hi), lo(val.lo){}
 
-    long64 operator= (const long64 &val)
+    long64 operator = (const long64 &val)
     {
       hi = 0;
       lo = std::abs(val);
@@ -74,12 +74,12 @@ class Int128
       return val;
     }
 
-    bool operator== (const Int128 &val)
+    bool operator == (const Int128 &val) const
       {return (hi == val.hi && lo == val.lo);}
 
-    bool operator!= (const Int128 &val) { return !(*this == val);}
+    bool operator != (const Int128 &val) const { return !(*this == val);}
 
-    bool operator> (const Int128 &val)
+    bool operator > (const Int128 &val) const
     {
       if (hi > val.hi) return true;
       else if (hi < val.hi) return false;
@@ -87,7 +87,7 @@ class Int128
       else return ulong64(lo) < ulong64(val.lo);
     }
 
-    bool operator< (const Int128 &val)
+    bool operator < (const Int128 &val) const
     {
       if (hi < val.hi) return true;
       else if (hi > val.hi) return false;
@@ -95,7 +95,7 @@ class Int128
       else return ulong64(lo) > ulong64(val.lo);
     }
 
-    Int128& operator+= (const Int128 &rhs)
+    Int128& operator += (const Int128 &rhs)
     {
       long64 xlo = lo;
       hi += rhs.hi; lo += rhs.lo;
@@ -104,9 +104,14 @@ class Int128
       return *this;
     }
 
-    Int128 operator+ (const Int128 &rhs) {return (*this) += rhs;}
+    Int128 operator + (const Int128 &rhs) const
+    {
+      Int128 result(*this);
+      result+= rhs;
+      return result;
+    }
 
-    Int128& operator-= (const Int128 &rhs)
+    Int128& operator -= (const Int128 &rhs)
     {
       Int128 tmp(rhs);
       Negate(tmp);
@@ -114,9 +119,14 @@ class Int128
       return *this;
     }
 
-    Int128 operator- (const Int128 &rhs) {return (*this)-=rhs;}
+    Int128 operator - (const Int128 &rhs) const
+    {
+      Int128 result(*this);
+      result-= rhs;
+      return result;
+    }
 
-    Int128 operator* (const Int128 &rhs) {
+    Int128 operator * (const Int128 &rhs) const {
       if ( !(hi == 0 || hi == -1) || !(rhs.hi == 0 || rhs.hi == -1))
         throw "Int128 operator*: overflow error";
       bool negate = (hi < 0) != (rhs.hi < 0);
@@ -147,18 +157,18 @@ class Int128
       return tmp;
     }
 
-    Int128 operator/ (const Int128 &rhs)
+    Int128 operator/ (const Int128 &rhs) const
     {
       if (rhs.lo == 0 && rhs.hi == 0)
         throw "Int128 operator/: divide by zero";
       bool negate = (rhs.hi < 0) != (hi < 0);
-      Int128 num(*this), denom(rhs);
-      if (num.hi < 0) Negate(num);
+      Int128 result(*this), denom(rhs);
+      if (result.hi < 0) Negate(result);
       if (denom.hi < 0)  Negate(denom);
-      if (denom > num) return Int128(0); //result is only a fraction of 1
+      if (denom > result) return Int128(0); //result is only a fraction of 1
       Negate(denom);
 
-      Int128 p(0), result(num);
+      Int128 p(0);
       for (int i = 0; i < 128; ++i)
       {
         p.hi = p.hi << 1;
@@ -177,7 +187,7 @@ class Int128
       return result;
     }
 
-    double AsDouble()
+    double AsDouble() const
     {
       const double shift64 = 18446744073709551616.0; //2^64
       if (hi < 0)
@@ -190,7 +200,7 @@ class Int128
     }
 
     //for bug testing ...
-    std::string AsString()
+    std::string AsString() const
     {
       std::string result;
       int r = 0;
@@ -230,7 +240,7 @@ private:
     }
 
     //debugging only ...
-    void Div10(Int128 val, Int128& result, int& remainder)
+    void Div10(const Int128 val, Int128& result, int& remainder) const
     {
       remainder = 0;
       result = 0;
