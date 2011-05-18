@@ -39,6 +39,14 @@
 #include <cstring>
 #include <cstdlib>
 
+//Workaround for older compilers that don't have std::abs
+#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97)|| (defined(BOOST_MSVC) && _MSC_VER <= 1200)
+namespace std
+{
+    long long abs(long long x) { return x < 0 ? -x : x; }
+}
+#endif
+
 namespace clipper {
 
 static double const horizontal = -3.4E+38;
