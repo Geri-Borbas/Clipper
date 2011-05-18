@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.2.6                                                           *
-* Date      :  1 May 2011                                                      *
+* Date      :  15 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3000,7 +3000,7 @@ begin
 
   with result, a[i][0] do
   begin
-    Left := X; Top := Y; Right := X; Bottom := X;
+    Left := X; Top := Y; Right := X; Bottom := Y;
   end;
 
   for i := i to len-1 do

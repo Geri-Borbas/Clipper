@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
 using System.Drawing;
@@ -8,6 +9,7 @@ using System.IO;
 using System.Reflection;
 using System.Linq;
 using System.Windows.Forms;
+using System.Globalization;
 using clipper;
 
 
@@ -95,6 +97,10 @@ namespace WindowsFormsApplication1
             "<svg width=\"{0}px\" height=\"{1}px\" viewBox=\"0 0 {2} {3}\" "+     
             "version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n";
 
+          const string svg_path_format = "\"\n style=\"fill:{0};" +
+              " fill-opacity:{1:f2}; fill-rule:{2}; stroke:{3};" +
+              " stroke-opacity:{4:f2}; stroke-width:{5:f2};\"/>\n\n";
+
           StreamWriter writer = new StreamWriter(filename);
           if (writer == null) return;
           writer.Write(svg_header, 
@@ -110,49 +116,45 @@ namespace WindowsFormsApplication1
             for (int i = 0; i < polys[k].Count; i++)
             {
               if (polys[k][i].Count < 3) continue;
-              writer.Write(" M {0:f2} {1:f2}",
+              writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
                   (double)((double)polys[k][i][0].X * scale + offsetX),
-                  (double)((double)polys[k][i][0].Y * scale + offsetY));
+                  (double)((double)polys[k][i][0].Y * scale + offsetY)));
               for (int j = 1; j < polys[k][i].Count; j++)
               {
-                  writer.Write(" L {0:f2} {1:f2}",
+                  writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " L {0:f2} {1:f2}",
                   (double)((double)polys[k][i][j].X * scale + offsetX),
-                  (double)((double)polys[k][i][j].Y * scale + offsetY));
+                  (double)((double)polys[k][i][j].Y * scale + offsetY)));
               }
               writer.Write(" z");
             }
-
-            const string svg_path_format = "\"\n style=\"fill:{0};"+
-                " fill-opacity:{1:f2}; fill-rule:{2}; stroke:{3};"+
-                " stroke-opacity:{4:f2}; stroke-width:{5:f2};\"/>\n\n";
-
+              
             switch (k) {
               case 0:
-                writer.Write(svg_path_format,
+                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
                     "#00009C"   /*fill color*/,
                     0.062       /*fill opacity*/,
                     (subjFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
                     "#D3D3DA"   /*stroke color*/,
                     0.95         /*stroke opacity*/,
-                    0.8         /*stroke width*/);
+                    0.8         /*stroke width*/));
                 break;
               case 1:
-                writer.Write(svg_path_format,
+                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
                     "#9C0000"   /*fill color*/,
                     0.062       /*fill opacity*/,
                     (clipFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
                     "#FFA07A"   /*stroke color*/,
                     0.95         /*stroke opacity*/,
-                    0.8         /*stroke width*/);
+                    0.8         /*stroke width*/));
                 break;
               default:
-                writer.Write(svg_path_format,
+                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
                     "#80ff9C"   /*fill color*/,
                     0.37       /*fill opacity*/,
                     "nonzero",
                     "#003300"   /*stroke color*/,
                     1.0         /*stroke opacity*/,
-                    0.8         /*stroke width*/);
+                    0.8         /*stroke width*/));
                 break;
             }
           }
@@ -592,6 +594,39 @@ namespace WindowsFormsApplication1
                 PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
                     solution, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
             }
+        }
+        //---------------------------------------------------------------------
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            //calc time taken to 'intersect' two polygons using the specified edge
+            //count, the specified filling rule and boolean operation, and all this
+            //repeated 1000 times ...
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            clipper.Clipper c = new clipper.Clipper();
+            c.UseFullCoordinateRange = false; //////////////////////////////////
+            this.Cursor = Cursors.WaitCursor;
+
+            int EdgeCnt = (int)nudCount.Value;
+            for (int i = 0; i < 1000; i++)
+            {
+                GenerateRandomPolygon(EdgeCnt);
+                c.Clear();
+                c.AddPolygons(subjects, PolyType.ptSubject);
+                c.AddPolygons(clips, PolyType.ptClip);
+                c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
+                if (i % 100 == 0)
+                {
+                    label1.Text =
+                        (i / 10).ToString() + "% done";
+                    label1.Refresh();
+                }
+            }
+            stopwatch.Stop();
+            this.Cursor = Cursors.Default;
+            label1.Text = stopwatch.Elapsed.TotalSeconds.ToString("0.00") + " secs";
+            DrawBitmap(false);
         }
         //---------------------------------------------------------------------
 

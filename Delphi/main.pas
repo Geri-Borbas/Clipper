@@ -131,11 +131,13 @@ var
   rec: TIntRect;
   firstPending: boolean;
   offsetX, offsetY: Int64;
+  ds: char;
   ss: TStringStream;
   polys: array [0..2] of TArrayOfArrayOfIntPoint;
 begin
   polys[0] := subj; polys[1] := clip; polys[2] := solution;
 
+  ds := DecimalSeparator;
   firstPending := true;
   i := 0;
   while i < 3 do
@@ -171,6 +173,7 @@ begin
   offsetX := round(-rec.left * scale)+ margin;
   offsetY := round(-rec.top * scale)+ margin;
 
+  DecimalSeparator := '.';
   ss := TStringStream.Create('');
   try
     ss.WriteString(
@@ -244,6 +247,7 @@ begin
     try CopyFrom(ss, 0); finally free; end;
   finally
     ss.Free;
+    DecimalSeparator := ds;
   end;
 end;
 //---------------------------------------------------------------------------

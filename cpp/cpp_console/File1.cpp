@@ -98,6 +98,7 @@ void PolygonsToSVG(char * filename,
     (rec.right - rec.left) + margin*2 << " " <<
     (rec.bottom - rec.top) + margin*2 << svg_xml_start[3];
 
+  setlocale(LC_NUMERIC, "C");
   file.precision(2);
   for (int k = 0; k < 3; k++)
   {
@@ -145,6 +146,7 @@ void PolygonsToSVG(char * filename,
   }
   file << svg_xml_end;
   file.close();
+  setlocale(LC_NUMERIC, "");
 }
 //------------------------------------------------------------------------------
 

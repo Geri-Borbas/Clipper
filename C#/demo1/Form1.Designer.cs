@@ -31,6 +31,8 @@
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
             this.panel1 = new System.Windows.Forms.Panel();
+            this.label1 = new System.Windows.Forms.Label();
+            this.button1 = new System.Windows.Forms.Button();
             this.bSave = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
             this.rbNone = new System.Windows.Forms.RadioButton();
@@ -83,6 +85,8 @@
             // panel1
             // 
             this.panel1.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
+            this.panel1.Controls.Add(this.label1);
+            this.panel1.Controls.Add(this.button1);
             this.panel1.Controls.Add(this.bSave);
             this.panel1.Controls.Add(this.groupBox3);
             this.panel1.Controls.Add(this.groupBox2);
@@ -95,11 +99,30 @@
             this.panel1.Size = new System.Drawing.Size(121, 543);
             this.panel1.TabIndex = 5;
             // 
+            // label1
+            // 
+            this.label1.Location = new System.Drawing.Point(12, 473);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(97, 17);
+            this.label1.TabIndex = 13;
+            this.label1.Text = "               ";
+            this.label1.TextAlign = System.Drawing.ContentAlignment.TopCenter;
+            // 
+            // button1
+            // 
+            this.button1.Location = new System.Drawing.Point(9, 443);
+            this.button1.Name = "button1";
+            this.button1.Size = new System.Drawing.Size(100, 25);
+            this.button1.TabIndex = 12;
+            this.button1.Text = "&Benchmark 1000";
+            this.button1.UseVisualStyleBackColor = true;
+            this.button1.Click += new System.EventHandler(this.button1_Click);
+            // 
             // bSave
             // 
-            this.bSave.Location = new System.Drawing.Point(9, 417);
+            this.bSave.Location = new System.Drawing.Point(9, 412);
             this.bSave.Name = "bSave";
-            this.bSave.Size = new System.Drawing.Size(100, 27);
+            this.bSave.Size = new System.Drawing.Size(100, 25);
             this.bSave.TabIndex = 9;
             this.bSave.Text = "S&ave as SVG File";
             this.bSave.UseVisualStyleBackColor = true;
@@ -309,7 +332,7 @@
             // 
             this.bRefresh.Location = new System.Drawing.Point(9, 381);
             this.bRefresh.Name = "bRefresh";
-            this.bRefresh.Size = new System.Drawing.Size(100, 27);
+            this.bRefresh.Size = new System.Drawing.Size(100, 25);
             this.bRefresh.TabIndex = 8;
             this.bRefresh.Text = "New &Sample";
             this.bRefresh.UseVisualStyleBackColor = true;
@@ -412,6 +435,8 @@
         private System.Windows.Forms.PictureBox pictureBox1;
         private System.Windows.Forms.Button bSave;
         private System.Windows.Forms.SaveFileDialog saveFileDialog1;
+        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Label label1;
     }
 }
 
