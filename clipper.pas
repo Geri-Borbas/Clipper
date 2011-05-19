@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.7                                                           *
-* Date      :  19 May 2011                                                     *
+* Version   :  4.2.8                                                           *
+* Date      :  20 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1429,7 +1429,7 @@ begin
     jr.poly1Idx := e1.outIdx;
   with e1^ do
   begin
-    jr.pt1a := IntPoint(xbot, ybot);
+    jr.pt1a := IntPoint(xcurr, ycurr);
     jr.pt1b := IntPoint(xtop, ytop);
   end;
   if e2OutIdx >= 0 then
@@ -1437,7 +1437,7 @@ begin
     jr.poly2Idx := e2.outIdx;
   with e2^ do
   begin
-    jr.pt2a := IntPoint(xbot, ybot);
+    jr.pt2a := IntPoint(xcurr, ycurr);
     jr.pt2b := IntPoint(xtop, ytop);
   end;
   fJoinList.add(jr);
@@ -2303,14 +2303,7 @@ begin
   e.prevInAEL := AelPrev;
   e.nextInAEL := AelNext;
   if e.dx <> horizontal then
-  begin
     InsertScanbeam(e.ytop);
-    //if output polygons share an edge, they'll need joining later ...
-    if (e.outIdx >= 0) and assigned(AelPrev) and (AelPrev.outIdx >= 0) and
-      (AelPrev.xcurr = e.xcurr) and (AelPrev.ycurr = e.ycurr) and
-      SlopesEqual(e, AelPrev, fUseFullRange) then
-        AddJoin(e, AelPrev);
-  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -2570,6 +2563,29 @@ begin
     begin
       if (e.outIdx >= 0) then AddPolyPt(e, IntPoint(e.xtop, e.ytop));
       UpdateEdgeIntoAEL(e);
+
+      //if output polygons share an edge, they'll need joining later ...
+      if (e.outIdx >= 0) and assigned(e.prevInAEL) and
+        (e.prevInAEL.outIdx >= 0) and
+        (e.prevInAEL.xcurr = e.xbot) and (e.prevInAEL.ycurr = e.ybot) and
+        SlopesEqual(IntPoint(e.xbot,e.ybot), IntPoint(e.xtop, e.ytop),
+          IntPoint(e.xbot,e.ybot),
+          IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), fUseFullRange) then
+      begin
+        AddPolyPt(e.prevInAEL, IntPoint(e.xbot, e.ybot));
+        AddJoin(e, e.prevInAEL);
+      end
+      else if (e.outIdx >= 0) and assigned(e.nextInAEL) and
+        (e.nextInAEL.outIdx >= 0) and (e.nextInAEL.ycurr > e.nextInAEL.ytop) and
+        (e.nextInAEL.ycurr < e.nextInAEL.ybot) and
+        (e.nextInAEL.xcurr = e.xbot) and (e.nextInAEL.ycurr = e.ybot) and
+        SlopesEqual(IntPoint(e.xbot,e.ybot), IntPoint(e.xtop, e.ytop),
+          IntPoint(e.xbot,e.ybot),
+          IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), fUseFullRange) then
+      begin
+        AddPolyPt(e.nextInAEL, IntPoint(e.xbot, e.ybot));
+        AddJoin(e, e.nextInAEL);
+      end;
     end;
     e := e.nextInAEL;
   end;

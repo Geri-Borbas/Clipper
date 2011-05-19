@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.7                                                           *
-* Date      :  19 May 2011                                                     *
+* Version   :  4.2.8                                                           *
+* Date      :  20 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -999,12 +999,12 @@ namespace clipper
             if (e1OutIdx >= 0)
                 jr.poly1Idx = e1OutIdx; else
             jr.poly1Idx = e1.outIdx;
-            jr.pt1a = new IntPoint(e1.xbot, e1.ybot);
+            jr.pt1a = new IntPoint(e1.xcurr, e1.ycurr);
             jr.pt1b = new IntPoint(e1.xtop, e1.ytop);
             if (e2OutIdx >= 0)
                 jr.poly2Idx = e2OutIdx; else
                 jr.poly2Idx = e2.outIdx;
-            jr.pt2a = new IntPoint(e2.xbot, e2.ybot);
+            jr.pt2a = new IntPoint(e2.xcurr, e2.ycurr);
             jr.pt2b = new IntPoint(e2.xtop, e2.ytop);
             m_Joins.Add(jr);
         }
@@ -1905,15 +1905,7 @@ namespace clipper
             e = e.nextInLML;
             e.prevInAEL = AelPrev;
             e.nextInAEL = AelNext;
-            if (e.dx != horizontal)
-            {
-                InsertScanbeam(e.ytop);
-                //if output polygons share an edge, they'll need joining later ...
-                if (e.outIdx >= 0 && AelPrev != null && AelPrev.outIdx >= 0 &&
-                  AelPrev.xcurr == e.xcurr && AelPrev.ycurr == e.ycurr && 
-                  SlopesEqual(e, AelPrev, m_UseFullRange))
-                    AddJoin(e, AelPrev);
-            }
+            if (e.dx != horizontal) InsertScanbeam(e.ytop);
         }
         //------------------------------------------------------------------------------
 
@@ -2399,6 +2391,29 @@ namespace clipper
             {
                 if (e.outIdx >= 0) AddPolyPt(e, new IntPoint(e.xtop, e.ytop));
               UpdateEdgeIntoAEL(ref e);
+
+              //if output polygons share an edge, they'll need joining later ...
+              if (e.outIdx >= 0 && e.prevInAEL != null && e.prevInAEL.outIdx >= 0 &&
+                e.prevInAEL.xcurr == e.xbot && e.prevInAEL.ycurr == e.ybot &&
+                SlopesEqual(new IntPoint(e.xbot, e.ybot), new IntPoint(e.xtop, e.ytop),
+                  new IntPoint(e.xbot, e.ybot),
+                  new IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), m_UseFullRange))
+              {
+                  AddPolyPt(e.prevInAEL, new IntPoint(e.xbot, e.ybot));
+                  AddJoin(e, e.prevInAEL);
+              }
+              else if (e.outIdx >= 0 && e.nextInAEL != null && e.nextInAEL.outIdx >= 0 &&
+                e.nextInAEL.ycurr > e.nextInAEL.ytop &&
+                e.nextInAEL.ycurr < e.nextInAEL.ybot &&
+                e.nextInAEL.xcurr == e.xbot && e.nextInAEL.ycurr == e.ybot &&
+                SlopesEqual(new IntPoint(e.xbot, e.ybot), new IntPoint(e.xtop, e.ytop),
+                  new IntPoint(e.xbot, e.ybot),
+                  new IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), m_UseFullRange))
+              {
+                  AddPolyPt(e.nextInAEL, new IntPoint(e.xbot, e.ybot));
+                  AddJoin(e, e.nextInAEL);
+              }
+
             }
             e = e.nextInAEL;
           }
