@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.6                                                           *
-* Date      :  1 May 2011                                                      *
+* Version   :  4.2.7                                                           *
+* Date      :  19 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1910,7 +1910,8 @@ namespace clipper
                 InsertScanbeam(e.ytop);
                 //if output polygons share an edge, they'll need joining later ...
                 if (e.outIdx >= 0 && AelPrev != null && AelPrev.outIdx >= 0 &&
-                  AelPrev.xbot == e.xcurr && SlopesEqual(e, AelPrev, m_UseFullRange))
+                  AelPrev.xcurr == e.xcurr && AelPrev.ycurr == e.ycurr && 
+                  SlopesEqual(e, AelPrev, m_UseFullRange))
                     AddJoin(e, AelPrev);
             }
         }

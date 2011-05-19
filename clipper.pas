@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.6                                                           *
-* Date      :  15 May 2011                                                     *
+* Version   :  4.2.7                                                           *
+* Date      :  19 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2305,10 +2305,9 @@ begin
   if e.dx <> horizontal then
   begin
     InsertScanbeam(e.ytop);
-
     //if output polygons share an edge, they'll need joining later ...
     if (e.outIdx >= 0) and assigned(AelPrev) and (AelPrev.outIdx >= 0) and
-      (AelPrev.xbot = e.xcurr) and
+      (AelPrev.xcurr = e.xcurr) and (AelPrev.ycurr = e.ycurr) and
       SlopesEqual(e, AelPrev, fUseFullRange) then
         AddJoin(e, AelPrev);
   end;

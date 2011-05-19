@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.2.7                                                           *
-* Date      :  15 May 2011                                                     *
+* Date      :  19 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -40,7 +40,7 @@
 #include <cstdlib>
 
 //Workaround for older compilers that don't have std::abs
-#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97)|| (defined(BOOST_MSVC) && _MSC_VER <= 1200)
+#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(BOOST_MSVC) && _MSC_VER <= 1200)
 namespace std
 {
     long long abs(long long x) { return x < 0 ? -x : x; }
@@ -1992,7 +1992,8 @@ void Clipper::UpdateEdgeIntoAEL(TEdge *&e)
     InsertScanbeam( e->ytop );
     //if output polygons share an edge, they'll need joining later ...
     if (e->outIdx >= 0 && AelPrev && AelPrev->outIdx >= 0 &&
-      AelPrev->xbot == e->xcurr && SlopesEqual(*e, *AelPrev, m_UseFullRange))
+      AelPrev->xcurr == e->xcurr && AelPrev->ycurr == e->ycurr &&
+      SlopesEqual(*e, *AelPrev, m_UseFullRange))
         AddJoin(e, AelPrev);
   }
 }
