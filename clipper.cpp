@@ -2613,47 +2613,52 @@ DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
 }
 //------------------------------------------------------------------------------
 
-Polygons OffsetPolygons(const Polygons &pts, const float &delta)
+bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delta)
 {
-  if (delta == 0) return pts;
+
+  if (delta == 0)
+  {
+    if (&in_pgs == &out_pgs) return true;
+    out_pgs.assign(in_pgs.begin(), in_pgs.end());
+    return true;
+  }
+
+  Polygons pgs(in_pgs); //in case in_pgs == out_pgs
+  out_pgs.clear();
+  out_pgs.reserve(pgs.size());
 
   double deltaSq = delta*delta;
-  Polygons result(pts.size());
 
-  for (int j = 0; j < (int)pts.size(); ++j)
+  for (int j = 0; j < (int)pgs.size(); ++j)
   {
-    int highI = (int)pts[j].size() -1;
+    int highI = (int)pgs[j].size() -1;
     //to minimize artefacts, strip out those polygons where
     //it's shrinking and where its area < Sqr(delta) ...
-    double a1 = Area(pts[j]);
+    double a1 = Area(pgs[j]);
     if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0;}
     else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
 
     Polygon pg;
     pg.reserve(highI*2+2);
 
-    if (highI < 2)
-    {
-      result.push_back(pg);
-      continue;
-    }
+    if (highI < 2) continue;
 
     std::vector < DoublePoint > normals(highI+1);
-    normals[0] = GetUnitNormal(pts[j][highI], pts[j][0]);
+    normals[0] = GetUnitNormal(pgs[j][highI], pgs[j][0]);
     for (int i = 1; i <= highI; ++i)
-      normals[i] = GetUnitNormal(pts[j][i-1], pts[j][i]);
+      normals[i] = GetUnitNormal(pgs[j][i-1], pgs[j][i]);
 
     for (int i = 0; i < highI; ++i)
     {
-      pg.push_back(IntPoint(pts[j][i].X + Round(delta *normals[i].X),
-        pts[j][i].Y + Round(delta *normals[i].Y)));
-      pg.push_back(IntPoint(pts[j][i].X + Round(delta *normals[i+1].X),
-        pts[j][i].Y + Round(delta *normals[i+1].Y)));
+      pg.push_back(IntPoint(pgs[j][i].X + Round(delta *normals[i].X),
+        pgs[j][i].Y + Round(delta *normals[i].Y)));
+      pg.push_back(IntPoint(pgs[j][i].X + Round(delta *normals[i+1].X),
+        pgs[j][i].Y + Round(delta *normals[i+1].Y)));
     }
-    pg.push_back(IntPoint(pts[j][highI].X + Round(delta *normals[highI].X),
-      pts[j][highI].Y + Round(delta *normals[highI].Y)));
-    pg.push_back(IntPoint(pts[j][highI].X + Round(delta *normals[0].X),
-      pts[j][highI].Y + Round(delta *normals[0].Y)));
+    pg.push_back(IntPoint(pgs[j][highI].X + Round(delta *normals[highI].X),
+      pgs[j][highI].Y + Round(delta *normals[highI].Y)));
+    pg.push_back(IntPoint(pgs[j][highI].X + Round(delta *normals[0].X),
+      pgs[j][highI].Y + Round(delta *normals[0].Y)));
 
     //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
     //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
@@ -2664,7 +2669,7 @@ Polygons OffsetPolygons(const Polygons &pts, const float &delta)
       double a2 = std::atan2(normals[0].Y, normals[0].X);
       if (delta > 0 && a2 < a1) a2 = a2 + pi*2;
       else if (delta < 0 && a2 > a1) a2 = a2 - pi*2;
-      Polygon arc = BuildArc(pts[j][highI], a1, a2, delta);
+      Polygon arc = BuildArc(pgs[j][highI], a1, a2, delta);
       Polygon::iterator it = pg.begin() +highI*2+1;
       pg.insert(it, arc.begin(), arc.end());
     }
@@ -2676,19 +2681,18 @@ Polygons OffsetPolygons(const Polygons &pts, const float &delta)
         double a2 = std::atan2(normals[i].Y, normals[i].X);
         if (delta > 0 && a2 < a1) a2 = a2 + pi*2;
         else if (delta < 0 && a2 > a1) a2 = a2 - pi*2;
-        Polygon arc = BuildArc(pts[j][i-1], a1, a2, delta);
+        Polygon arc = BuildArc(pgs[j][i-1], a1, a2, delta);
         Polygon::iterator it = pg.begin() +(i-1)*2+1;
         pg.insert(it, arc.begin(), arc.end());
       }
-    result.push_back(pg);
+    out_pgs.push_back(pg);
   }
 
   //finally, clean up untidy corners ...
   Clipper c4;
-  c4.AddPolygons(result, ptSubject);
+  c4.AddPolygons(out_pgs, ptSubject);
   if (delta > 0){
-    if(!c4.Execute(ctUnion, result, pftNonZero, pftNonZero))
-      result.clear();
+    return c4.Execute(ctUnion, out_pgs, pftNonZero, pftNonZero);
   }
   else
   {
@@ -2699,15 +2703,14 @@ Polygons OffsetPolygons(const Polygons &pts, const float &delta)
     outer[2] = IntPoint(r.right+10, r.top-10);
     outer[3] = IntPoint(r.left-10, r.top-10);
     c4.AddPolygon(outer, ptSubject);
-    if (c4.Execute(ctUnion, result, pftNonZero, pftNonZero))
+    if (c4.Execute(ctUnion, out_pgs, pftNonZero, pftNonZero))
     {
-      Polygons::iterator it = result.begin();
-      result.erase(it);
+      //erase just the first (outer) polygon
+      out_pgs.erase(out_pgs.begin());
+      return true;
     }
-    else
-      result.clear();
+    else return false;
   }
-  return result;
 }
 //------------------------------------------------------------------------------
 

@@ -51,7 +51,7 @@ typedef std::vector< Polygon > Polygons;
 
 bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
-Polygons OffsetPolygons(const Polygons &pts, const float &delta);
+bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delta);
 
 //used internally ...
 enum EdgeSide { esLeft, esRight };
