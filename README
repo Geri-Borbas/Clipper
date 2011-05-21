@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v4.2.8 - 21 May 2011
+* Update: JoinCommonEdges() improved once more. 
+* BugFix: Several minor bugs fixed. 
+
 v4.2.6 - 1 May 2011
 * Bugfix: minor bug in SlopesEqual function.
 * Update: Merging of output polygons sharing common edges 

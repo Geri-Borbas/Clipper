@@ -168,9 +168,9 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 {
 	switch (pct)
 	{
-		case pctSubject: glColor4f(0.0f, 0.0f, 1.0f, 0.05f); break;
-		case pctClip: glColor4f(1.0f, 0.0f, 0.0f, 0.05f); break;
-		default: glColor4f(0.0f, 1.0f, 0.0f, 0.1f);
+		case pctSubject: glColor4f(0.0f, 0.0f, 1.0f, 0.062f); break;
+		case pctClip: glColor4f(1.0f, 1.0f, 0.0f, 0.062f); break;
+		default: glColor4f(0.0f, 1.0f, 0.0f, 0.25f);
 	}
 
 	GLUtesselator* tess = gluNewTess();
@@ -205,9 +205,9 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 
 	switch (pct)
 	{
-		case pctSubject: glColor4f(0.0f, 0.0f, 0.3f, 0.3f); break;
-		case pctClip: glColor4f(0.3f, 0.0f, 0.0f, 0.3f); break;
-		default: glColor4f(0.0f, 0.2f, 0.0f, 0.5f);
+		case pctSubject: glColor4f(0.0f, 0.6f, 1.0f, 0.5f); break;
+		case pctClip: glColor4f(1.0f, 0.6f, 0.0f, 0.5f); break;
+		default: glColor4f(0.0f, 0.2f, 0.0f, 1.0f);
 	}
 	if (pct == pctSolution) glLineWidth(1.2f); else glLineWidth(1);
 
@@ -243,7 +243,7 @@ void DrawGraphics()
 	SetClassLong(hWnd, GCL_HCURSOR, (DWORD)hWaitCursor);
 
 	//fill background with a light off-gray color ...
-	glClearColor(GLclampf(0.9), GLclampf(0.9), GLclampf(0.85), 1);
+	glClearColor(1,1,1,1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	DrawPolygon(sub, pctSubject);

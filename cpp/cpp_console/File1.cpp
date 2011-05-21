@@ -10,6 +10,7 @@
 #include <string>
 #include <stdio.h>
 #include "clipper.hpp"
+#include <windows.h>
 
 //---------------------------------------------------------------------------
 
@@ -25,37 +26,20 @@ void PolygonsToSVG(char * filename,
   //calculate the bounding rect ...
   IntRect rec;
   bool firstPending = true;
-  int k = 0;
-  while (k < 3)
-  {
-    if (polys[k])
-      for (Polygons::size_type i = 0; i < (*polys[k]).size(); ++i)
-        if ((*polys[k])[i].size() > 2)
-        {
-          //initialize rec with the very first polygon coordinate ...
-          rec.left = (*polys[k])[i][0].X;
-          rec.right = rec.left;
-          rec.top = (*polys[k])[i][0].Y;
-          rec.bottom = rec.top;
-          firstPending = false;
-        }
-    if (firstPending) k++; else break;
-  }
-  if (firstPending) return; //no valid polygons found
-
-  for ( ; k < 3; ++k)
+  for (int k = 0; k < 3; ++k)
     if (polys[k])
       for (Polygons::size_type i = 0; i < (*polys[k]).size(); ++i)
         for (clipper::Polygon::size_type j = 0; j < (*polys[k])[i].size(); ++j)
         {
-          if ((*polys[k])[i][j].X < rec.left)
+          if (firstPending || (*polys[k])[i][j].X < rec.left)
             rec.left = (*polys[k])[i][j].X;
-          if ((*polys[k])[i][j].X > rec.right)
+          if (firstPending || (*polys[k])[i][j].X > rec.right)
             rec.right = (*polys[k])[i][j].X;
-          if ((*polys[k])[i][j].Y < rec.top)
+          if (firstPending || (*polys[k])[i][j].Y < rec.top)
             rec.top = (*polys[k])[i][j].Y;
-          if ((*polys[k])[i][j].Y > rec.bottom)
+          if (firstPending || (*polys[k])[i][j].Y > rec.bottom)
             rec.bottom = (*polys[k])[i][j].Y;
+          firstPending = false;
         }
 
   if (scale == 0) scale = 1;
@@ -74,7 +58,8 @@ void PolygonsToSVG(char * filename,
      "<svg width=\"",
      "\" height=\"",
      "\" viewBox=\"0 0 ",
-     "\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n"};
+     "\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n"
+    };
   const std::string poly_start =
     " <path d=\"\n";
   const std::string poly_end [] =
@@ -84,7 +69,8 @@ void PolygonsToSVG(char * filename,
      ";\n stroke:",
      "; stroke-opacity:",
      "; stroke-width:",
-     ";\"/>\n\n"};
+     ";\"/>\n\n"
+    };
   const std::string svg_xml_end = "</svg>\n";
 
   ofstream file;
@@ -93,11 +79,10 @@ void PolygonsToSVG(char * filename,
   file.setf(ios::fixed);
   file.precision(0);
   file << svg_xml_start[0] <<
-    (rec.right - rec.left) + margin*2 << "px" << svg_xml_start[1] <<
-    (rec.bottom - rec.top) + margin*2 << "px" << svg_xml_start[2] <<
-    (rec.right - rec.left) + margin*2 << " " <<
-    (rec.bottom - rec.top) + margin*2 << svg_xml_start[3];
-
+    (rec.right - rec.left)*scale + margin*2 << "px" << svg_xml_start[1] <<
+    (rec.bottom - rec.top)*scale + margin*2 << "px" << svg_xml_start[2] <<
+    (rec.right - rec.left)*scale + margin*2 << " " <<
+    (rec.bottom - rec.top)*scale + margin*2 << svg_xml_start[3];
   setlocale(LC_NUMERIC, "C");
   file.precision(2);
   for (int k = 0; k < 3; k++)
@@ -202,25 +187,85 @@ void SaveToConsole(const string name, const clipper::Polygons &pp, float scale =
 void SaveToFile(char *filename, clipper::Polygons &pp, float scale = 1)
 {
   FILE *f = fopen(filename, "w");
+  if (!f) return;
   fprintf(f, "%d\n", pp.size());
   for (unsigned i = 0; i < pp.size(); ++i)
   {
     fprintf(f, "%d\n", pp[i].size());
-    for (unsigned j = 0; j < pp[i].size(); ++j)
-      fprintf(f, "%.4lf, %.4lf,\n",
-        (double)pp[i][j].X /scale, (double)pp[i][j].Y /scale);
+    if (scale > 1.01 || scale < 0.99) {
+      for (unsigned j = 0; j < pp[i].size(); ++j)
+        fprintf(f, "%.4lf, %.4lf,\n",
+          (double)pp[i][j].X /scale, (double)pp[i][j].Y /scale);
+    }
+    else
+    {
+      for (unsigned j = 0; j < pp[i].size(); ++j)
+        fprintf(f, "%Ld, %Ld,\n", pp[i][j].X, pp[i][j].Y );
+    }
   }
   fclose(f);
 }
 //---------------------------------------------------------------------------
 
+void MakeRandomPoly(int edgeCount, int width, int height, Polygons & poly)
+{
+  poly.resize(1);
+  poly[0].resize(edgeCount);
+  for (int i = 0; i < edgeCount; i++){
+    poly[0][i].X = random(width);
+    poly[0][i].Y = random(height);
+  }
+}
+//------------------------------------------------------------------------------
+
 #pragma argsused
 int _tmain(int argc, _TCHAR* argv[])
 {
+  if (argc > 1 &&
+    (strcmp(argv[1], "-b") == 0 || strcmp(argv[1], "--benchmark") == 0))
+  {
+    //do a benchmark test that creates a subject and a clip polygon both with
+    //100 vertices randomly placed in a 400 * 400 space. Then perform an
+    //intersection operation based on even-odd filling. Repeat all this X times.
+    int loop_cnt = 100;
+    char * dummy;
+    if (argc > 2) loop_cnt = strtol(argv[2], &dummy, 10);
+
+    cout << "\nPerforming " << loop_cnt << " random intersection operations ... ";
+    randomize();
+    int error_cnt = 0;
+    Polygons subject, clip, solution;
+    Clipper clpr;
+    _LARGE_INTEGER m_qpc1, m_qpc2, m_qpf;
+    QueryPerformanceFrequency(&m_qpf);
+    QueryPerformanceCounter(&m_qpc1);
+    for (int i = 0; i < loop_cnt; i++) {
+      MakeRandomPoly(100, 400, 400, subject);
+      MakeRandomPoly(100, 400, 400, clip);
+      clpr.Clear();
+      clpr.AddPolygons(subject, ptSubject);
+      clpr.AddPolygons(clip, ptClip);
+      if (!clpr.Execute(ctIntersection, solution, pftEvenOdd, pftEvenOdd))
+        error_cnt++;
+    }
+    QueryPerformanceCounter(&m_qpc2);
+    double m_elapsedTime =
+      (double)(m_qpc2.QuadPart - m_qpc1.QuadPart) / m_qpf.QuadPart;
+    cout << "\nFinished in " << m_elapsedTime << " secs with ";
+    cout << error_cnt << " errors.\n\n";
+    //let's save the very last result too ...
+    SaveToFile("Subject.txt", subject);
+    SaveToFile("Clip.txt", clip);
+    SaveToFile("Solution.txt", solution);
+    PolygonsToSVG("solution.svg", &subject, &clip, &solution, pftEvenOdd, pftEvenOdd);
+    return 0;
+  }
 
   if (argc < 3)
   {
     cout << "\nUSAGE:\n"
+      << "clipper.exe --benchmark|-b [loop_count]\n"
+      << "OR\n"
       << "clipper.exe subject_file clip_file "
       << "[INTERSECTION | UNION | DIFFERENCE | XOR] "
       << "[EVENODD | NONZERO] [EVENODD | NONZERO] "
@@ -237,12 +282,13 @@ int _tmain(int argc, _TCHAR* argv[])
     return 1;
   }
 
-  int scaling = 0;
+  int scale_log10 = 0;
   char * dummy;
-  if (argc > 6) scaling = strtol(argv[6], &dummy, 10);
-  float scale = std::pow(double(10), scaling);
+  if (argc > 6) scale_log10 = strtol(argv[6], &dummy, 10);
+  float scale = std::pow(double(10), scale_log10);
 
   Polygons subject, clip;
+
   if (!LoadFromFile(subject, argv[1], scale))
   {
     cerr << "\nCan't open the file " << argv[1]
