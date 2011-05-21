@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.2.8                                                           *
-* Date      :  20 May 2011                                                     *
+* Date      :  21 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2685,9 +2685,9 @@ var
   e1, e2: PEdge;
   int1, int2: PIntersectNode;
 begin
-
   result := not assigned(fIntersectNodes.next);
   if result then exit;
+  //logic: only swap (intersect) adjacent edges ...
   try
     CopyAELToSEL;
     int1 := fIntersectNodes;

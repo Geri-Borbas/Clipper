@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.2.8                                                           *
-* Date      :  20 May 2011                                                     *
+* Date      :  21 May 2011                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -32,9 +32,7 @@
 
 #include "clipper.hpp"
 #include <cmath>
-#include <ctime>
 #include <vector>
-#include <algorithm>
 #include <stdexcept>
 #include <cstring>
 #include <cstdlib>
@@ -2074,12 +2072,12 @@ bool Process1Before2(IntersectNode &node1, IntersectNode &node2)
     if (node1.edge1 == node2.edge1 || node1.edge2 == node2.edge1)
     {
       result = node2.pt.X > node1.pt.X;
-      if (node2.edge1->dx > 0) return result; else return !result;
+      if (node2.edge1->dx > 0) return !result; else return result;
     }
     else if (node1.edge1 == node2.edge2 || node1.edge2 == node2.edge2)
     {
       result = node2.pt.X > node1.pt.X;
-      if (node2.edge2->dx > 0) return result; else return !result;
+      if (node2.edge2->dx > 0) return !result; else return result;
     }
     else return node2.pt.X > node1.pt.X;
   }
