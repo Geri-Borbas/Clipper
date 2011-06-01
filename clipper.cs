@@ -2591,8 +2591,7 @@ namespace clipper
         {
             if (pp.next == pp)
             {
-                pp = null;
-                return null;
+                return pp;
             }
             else
             {
@@ -2800,81 +2799,84 @@ namespace clipper
 
         public static Polygons OffsetPolygons(Polygons pts, double delta)
         {
-          if (delta == 0) return pts;
-          double deltaSq = delta*delta;
-          Polygons result = new Polygons(pts.Count);
+            if (delta == 0) return pts;
+            double deltaSq = delta * delta;
+            Polygons result = new Polygons(pts.Count);
 
-          for (int j = 0; j < pts.Count; ++j)
-          {
-            int highI = pts[j].Count -1;
-            //to minimize artefacts, strip out those polygons where
-            //it's shrinking and where its area < Sqr(delta) ...
-            double a1 = Area(pts[j], true);
-            if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0;}
-            else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
-
-            Polygon pg = new Polygon(highI*2+2);
-
-            if (highI < 2)
+            for (int j = 0; j < pts.Count; ++j)
             {
-              result.Add(pg);
-              continue;
+                int highI = pts[j].Count - 1;
+                //to minimize artefacts, strip out those polygons where
+                //it's shrinking and where its area < Sqr(delta) ...
+                double a1 = Area(pts[j], true);
+                if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0; }
+                else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
+
+                if (highI < 2 && delta <= 0) continue;
+                if (highI == 0)
+                {
+                    Polygon arc = BuildArc(pts[j][highI], 0, 2 * Math.PI, delta);
+                    result.Add(arc);
+                    continue;
+                }
+
+                Polygon pg = new Polygon(highI * 2 + 2);
+
+                List<DoublePoint> normals = new List<DoublePoint>(highI + 1);
+                normals.Add(GetUnitNormal(pts[j][highI], pts[j][0]));
+                for (int i = 1; i <= highI; ++i)
+                    normals.Add(GetUnitNormal(pts[j][i - 1], pts[j][i]));
+
+                for (int i = 0; i < highI; ++i)
+                {
+                    pg.Add(new IntPoint(Round(pts[j][i].X + delta * normals[i].X),
+                      Round(pts[j][i].Y + delta * normals[i].Y)));
+                    pg.Add(new IntPoint(Round(pts[j][i].X + delta * normals[i + 1].X),
+                      Round(pts[j][i].Y + delta * normals[i + 1].Y)));
+                }
+                pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[highI].X),
+                  Round(pts[j][highI].Y + delta * normals[highI].Y)));
+                pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[0].X),
+                  Round(pts[j][highI].Y + delta * normals[0].Y)));
+
+                //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
+                //cross product normals < 0 . reflex angle; dot product normals == 1 . no angle
+                if ((normals[highI].X * normals[0].Y - normals[0].X * normals[highI].Y) * delta >= 0 &&
+                (normals[0].X * normals[highI].X + normals[0].Y * normals[highI].Y) < 0.985)
+                {
+                    double at1 = Math.Atan2(normals[highI].Y, normals[highI].X);
+                    double at2 = Math.Atan2(normals[0].Y, normals[0].X);
+                    if (delta > 0 && at2 < at1) at2 = at2 + Math.PI * 2;
+                    else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI * 2;
+                    Polygon arc = BuildArc(pts[j][highI], at1, at2, delta);
+                    pg.InsertRange(highI * 2 + 1, arc);
+                }
+                for (int i = highI; i > 0; --i)
+                    if ((normals[i - 1].X * normals[i].Y - normals[i].X * normals[i - 1].Y) * delta >= 0 &&
+                    (normals[i].X * normals[i - 1].X + normals[i].Y * normals[i - 1].Y) < 0.985)
+                    {
+                        double at1 = Math.Atan2(normals[i - 1].Y, normals[i - 1].X);
+                        double at2 = Math.Atan2(normals[i].Y, normals[i].X);
+                        if (delta > 0 && at2 < at1) at2 = at2 + Math.PI * 2;
+                        else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI * 2;
+                        Polygon arc = BuildArc(pts[j][i - 1], at1, at2, delta);
+                        pg.InsertRange((i - 1) * 2 + 1, arc);
+                    }
+                result.Add(pg);
             }
 
-            List<DoublePoint> normals = new List<DoublePoint>(highI+1);
-            normals.Add(GetUnitNormal(pts[j][highI], pts[j][0]));
-            for (int i = 1; i <= highI; ++i)
-              normals.Add(GetUnitNormal(pts[j][i-1], pts[j][i]));
-
-            for (int i = 0; i < highI; ++i)
+            //finally, clean up untidy corners ...
+            Clipper clpr = new Clipper();
+            clpr.AddPolygons(result, PolyType.ptSubject);
+            if (delta > 0)
             {
-              pg.Add(new IntPoint(Round(pts[j][i].X + delta *normals[i].X),
-                Round(pts[j][i].Y + delta *normals[i].Y)));
-              pg.Add(new IntPoint(Round(pts[j][i].X + delta * normals[i + 1].X),
-                Round(pts[j][i].Y + delta *normals[i+1].Y)));
+                if (!clpr.Execute(ClipType.ctUnion, result, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                    result.Clear();
             }
-            pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[highI].X),
-              Round(pts[j][highI].Y + delta *normals[highI].Y)));
-            pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[0].X),
-              Round(pts[j][highI].Y + delta *normals[0].Y)));
-
-            //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
-            //cross product normals < 0 . reflex angle; dot product normals == 1 . no angle
-            if ((normals[highI].X *normals[0].Y - normals[0].X *normals[highI].Y) *delta > 0 &&
-            (normals[0].X *normals[highI].X + normals[0].Y *normals[highI].Y) < 0.985)
+            else
             {
-              double at1 = Math.Atan2(normals[highI].Y, normals[highI].X);
-              double at2 = Math.Atan2(normals[0].Y, normals[0].X);
-              if (delta > 0 && at2 < at1) at2 = at2 + Math.PI*2;
-              else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI*2;
-              Polygon arc = BuildArc(pts[j][highI], at1, at2, delta);
-              pg.InsertRange(highI * 2 + 1, arc);
-            }
-            for (int i = highI; i > 0; --i)
-              if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta > 0 &&
-              (normals[i].X*normals[i-1].X + normals[i].Y*normals[i-1].Y) < 0.985)
-              {
-                double at1 = Math.Atan2(normals[i-1].Y, normals[i-1].X);
-                double at2 = Math.Atan2(normals[i].Y, normals[i].X);
-                if (delta > 0 && at2 < at1) at2 = at2 + Math.PI*2;
-                else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI*2;
-                Polygon arc = BuildArc(pts[j][i-1], at1, at2, delta);
-                pg.InsertRange((i - 1) * 2 + 1, arc);
-              }
-            result.Add(pg);
-          }
-
-          //finally, clean up untidy corners ...
-          Clipper clpr = new Clipper();
-          clpr.AddPolygons(result, PolyType.ptSubject);
-          if (delta > 0){
-            if(!clpr.Execute(ClipType.ctUnion, result, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
-              result.Clear();
-          }
-          else
-          {
-            IntRect r = clpr.GetBounds();
-            Polygon outer = new Polygon(4);
+                IntRect r = clpr.GetBounds();
+                Polygon outer = new Polygon(4);
                 outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
                 outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
                 outer.Add(new IntPoint(r.right + 10, r.top - 10));
@@ -2884,8 +2886,8 @@ namespace clipper
                     result.RemoveAt(0);
                 else
                     result.Clear();
-          }
-          return result;
+            }
+            return result;
         }
         //------------------------------------------------------------------------------
 

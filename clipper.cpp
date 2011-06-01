@@ -2440,9 +2440,9 @@ PolyPt* DeletePolyPt(PolyPt* pp)
 {
   if (pp->next == pp)
   {
-    delete pp;
-    return 0;
-  } else
+    return pp;
+  }
+  else
   {
     PolyPt* result = pp->prev;
     pp->next->prev = result;
@@ -2636,10 +2636,16 @@ bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delt
     if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0;}
     else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
 
+   if (highI < 2 && delta <= 0) continue;
+   if (highI == 0)
+   {
+     Polygon arc = BuildArc(pgs[j][highI], 0, 2*pi, delta);
+     out_pgs.push_back(arc);
+     continue;
+   }
+
     Polygon pg;
     pg.reserve(highI*2+2);
-
-    if (highI < 2) continue;
 
     std::vector < DoublePoint > normals(highI+1);
     normals[0] = GetUnitNormal(pgs[j][highI], pgs[j][0]);
@@ -2660,7 +2666,7 @@ bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delt
 
     //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
     //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-    if ((normals[highI].X *normals[0].Y - normals[0].X *normals[highI].Y) *delta > 0 &&
+    if ((normals[highI].X *normals[0].Y - normals[0].X *normals[highI].Y) *delta >= 0 &&
     (normals[0].X *normals[highI].X + normals[0].Y *normals[highI].Y) < 0.985)
     {
       double a1 = std::atan2(normals[highI].Y, normals[highI].X);
@@ -2672,7 +2678,7 @@ bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delt
       pg.insert(it, arc.begin(), arc.end());
     }
     for (int i = highI; i > 0; --i)
-      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta > 0 &&
+      if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta >= 0 &&
       (normals[i].X*normals[i-1].X + normals[i].Y*normals[i-1].Y) < 0.985)
       {
         double a1 = std::atan2(normals[i-1].Y, normals[i-1].X);
