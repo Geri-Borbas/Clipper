@@ -290,10 +290,17 @@ end;
 
 function Int128LessThan(const int1, int2: TInt128): boolean;
 begin
+  //sadly UInt64 typecasts return incorrect results in Delphi 7 ...
   if (int1.hi < int2.hi) then result := true
   else if (int1.hi > int2.hi) then result := false
-  else if (int1.hi >= 0) then result := UInt64(int1.lo) < UInt64(int2.lo)
-  else result := UInt64(int1.lo) > UInt64(int2.lo)
+  else if (int1.hi >= 0) then
+  begin
+    if (int1.lo < 0) = (int2.lo < 0) then
+      result := abs(int1.lo) < abs(int2.lo) else
+      result := (int2.lo < 0);
+  end else if (int1.lo < 0) = (int2.lo < 0) then
+    result := abs(int1.lo) > abs(int2.lo)
+  else result := (int1.lo < 0);
 end;
 //------------------------------------------------------------------------------
 
@@ -2804,16 +2811,10 @@ end;
 
 function DeletePolyPt(pp: PPolyPt): PPolyPt;
 begin
-  if pp.next = pp then
-  begin
-    result := pp; //for simplicity, don't delete single points here
-  end else
-  begin
-    result := pp.prev;
-    pp.next.prev := result;
-    result.next := pp.next;
-    dispose(pp);
-  end;
+  result := pp.prev;
+  pp.next.prev := result;
+  result.next := pp.next;
+  dispose(pp);
 end;
 //------------------------------------------------------------------------------
 
@@ -2888,8 +2889,8 @@ begin
       continue; //very rare and an orientation is probably wrong
 
     //delete duplicate points ...
-    if (PointsEqual(p1.pt, p3.pt)) then DeletePolyPt(p3);
-    if (PointsEqual(p2.pt, p4.pt)) then DeletePolyPt(p4);
+    if PointsEqual(p1.pt, p3.pt) and (p3 <> p3.next) then DeletePolyPt(p3);
+    if PointsEqual(p2.pt, p4.pt) and (p4 <> p4.next) then DeletePolyPt(p4);
 
     if (j.poly2Idx = j.poly1Idx) then
     begin
