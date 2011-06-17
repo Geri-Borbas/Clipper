@@ -1,4 +1,6 @@
-﻿using System;
+﻿//#define UseExPolygons
+
+using System;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
@@ -12,12 +14,12 @@ using System.Windows.Forms;
 using System.Globalization;
 using clipper;
 
-
 namespace WindowsFormsApplication1
 {
 
     using Polygon = List<IntPoint>;
     using Polygons = List<List<IntPoint>>;
+    using ExPolygons = List<ExPolygon>;
 
     public partial class Form1 : Form
     {
@@ -28,8 +30,11 @@ namespace WindowsFormsApplication1
         private Bitmap mybitmap;
         private Polygons subjects;
         private Polygons clips;
+#if UseExPolygons
+        private ExPolygons solution;
+#else
         private Polygons solution;
-
+#endif
         //Here we are scaling all coordinates up by 100 when they're passed to Clipper 
         //via Polygon (or Polygons) objects because Clipper no longer accepts floating  
         //point values. Likewise when Clipper returns a solution in a Polygons object, 
@@ -411,7 +416,31 @@ namespace WindowsFormsApplication1
                     //holes will be stroked (outlined) correctly but filled incorrectly  ...
                     path.FillMode = FillMode.Winding;
 
-                    //or for something fancy ...
+#if UseExPolygons
+                    foreach (ExPolygon epg in solution)
+                    {
+                        //draw each ExPolygon separately so that any errant holes 
+                        //(ie those assigned to the wrong polygon owner) will be filled incorrectly.
+                        //Also, to see holes more easily, we'll draw them with a red outline ...
+                        PointF[] pts = PolygonToPointFArray(epg.outer, scale);
+                        path.AddPolygon(pts);
+                        myPen.Color = Color.FromArgb(255, 0, 100, 0);
+                        newgraphic.DrawPolygon(myPen, pts);
+                        myPen.Color = Color.Red;
+                        foreach (Polygon pg in epg.holes)
+                        {
+                            pts = PolygonToPointFArray(pg, scale);
+                            path.AddPolygon(pts);
+                            newgraphic.DrawPolygon(myPen, pts);
+                        }
+                        myBrush.Color = Color.FromArgb(32, 0, 255, 0);
+                        newgraphic.FillPath(myBrush, path);
+                        path.Reset();
+                    }
+                    //to keep this demo relatively simple there's no offsetting if UseExPolygons is enabled 
+                    Polygons solution2 = new Polygons(solution.Count);
+#else
+                    //some fancy offsetting ...
                     Polygons solution2;
                     if (nudOffset.Value != 0)
                         solution2 = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
@@ -430,8 +459,8 @@ namespace WindowsFormsApplication1
                     myPen.Width = 1.0f;
                     newgraphic.FillPath(myBrush, path);
                     newgraphic.DrawPath(myPen, path);
-
-                    //now do some fancy testing ...
+#endif
+                    //now test if areas of various solution polygons add up ...
                     Font f = new Font("Arial", 8);
                     SolidBrush b = new SolidBrush(Color.Navy);
                     double a1 = 0, a2 = 0, a3 = 0, a4 = 0;
@@ -500,8 +529,11 @@ namespace WindowsFormsApplication1
 
             subjects = new Polygons(); 
             clips = new Polygons();
+#if UseExPolygons
+            solution = new ExPolygons();
+#else
             solution = new Polygons();
-
+#endif
             toolStripStatusLabel1.Text =
                 "Tip: Use the mouse-wheel (or +,-,0) to adjust the offset of the solution polygons.";
             DrawBitmap();
@@ -591,8 +623,21 @@ namespace WindowsFormsApplication1
             //save to SVG ...
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
+#if UseExPolygons
+                //first, convert ExPolygons solution to Polygons tmp ...
+                Polygons tmp = new Polygons(solution.Count);
+                foreach (ExPolygon epg in solution)
+                {
+                    tmp.Add(epg.outer);
+                    foreach (Polygon pg in epg.holes)
+                        tmp.Add(pg);
+                }
+                PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
+                    tmp, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
+#else
                 PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
                     solution, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
+#endif
             }
         }
         //---------------------------------------------------------------------
