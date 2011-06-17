@@ -2,6 +2,13 @@
 Clipper Change Log
 ============================================================
 
+v4.3.0 - 17 June 2011
+* New: ExPolygons structure that explicitly associates 'hole' 
+  polygons with their 'outer' container polygons.
+* New: Execute method overloaded so the solution parameter 
+  can now be either Polygons or ExPolygons.  
+* BugFix: Fixed a rare bug in solution polygons orientation. 
+
 v4.2.8 - 21 May 2011
 * Update: JoinCommonEdges() improved once more. 
 * BugFix: Several minor bugs fixed. 

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.2.8                                                           *
-* Date      :  21 May 2011                                                     *
+* Version   :  4.3.0                                                           *
+* Date      :  16 June 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -49,6 +49,12 @@ struct IntPoint {
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
 
+struct ExPolygon {
+  Polygon  outer;
+  Polygons holes;
+};
+typedef std::vector< ExPolygon > ExPolygons;
+
 bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
 bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delta);
@@ -89,22 +95,33 @@ struct IntersectNode {
 };
 
 struct LocalMinima {
-  long64          Y;
+  long64        Y;
   TEdge        *leftBound;
   TEdge        *rightBound;
   LocalMinima  *next;
 };
 
 struct Scanbeam {
-  long64       Y;
+  long64    Y;
   Scanbeam *next;
 };
 
-struct PolyPt {
+struct OutPt; //forward declaration
+
+struct OutRec {
+  int     idx;
+  bool    isHole;
+  OutRec *FirstLeft;
+  OutRec *AppendLink;
+  OutPt  *pts;
+  OutPt  *bottomPt;
+};
+
+struct OutPt {
+  int     idx;
   IntPoint pt;
-  PolyPt  *next;
-  PolyPt  *prev;
-  bool     isHole;
+  OutPt   *next;
+  OutPt   *prev;
 };
 
 struct JoinRec {
@@ -117,13 +134,13 @@ struct JoinRec {
 };
 
 struct HorzJoinRec {
-  TEdge   *edge;
+  TEdge    *edge;
   int       savedIdx;
 };
 
 struct IntRect { long64 left; long64 top; long64 right; long64 bottom; };
 
-typedef std::vector < PolyPt* > PolyPtList;
+typedef std::vector < OutRec* > PolyOutList;
 typedef std::vector < TEdge* > EdgeList;
 typedef std::vector < JoinRec* > JoinList;
 typedef std::vector < HorzJoinRec* > HorzJoinList;
@@ -151,7 +168,6 @@ protected:
   LocalMinima      *m_CurrentLM;
   LocalMinima      *m_MinimaList;
   bool              m_UseFullRange;
-private:
   EdgeList          m_edges;
 };
 
@@ -164,10 +180,16 @@ public:
     Polygons &solution,
     PolyFillType subjFillType = pftEvenOdd,
     PolyFillType clipFillType = pftEvenOdd);
+  bool Execute(ClipType clipType,
+    ExPolygons &solution,
+    PolyFillType subjFillType = pftEvenOdd,
+    PolyFillType clipFillType = pftEvenOdd);
+  void Clear();
 protected:
   void Reset();
+  virtual bool ExecuteInternal(bool fixHoleLinkages);
 private:
-  PolyPtList        m_PolyPts;
+  PolyOutList       m_PolyOuts;
   JoinList          m_Joins;
   HorzJoinList      m_HorizJoins;
   ClipType          m_ClipType;
@@ -206,18 +228,22 @@ private:
   void DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt);
   void IntersectEdges(TEdge *e1, TEdge *e2,
     const IntPoint &pt, IntersectProtects protects);
-  PolyPt* AddPolyPt(TEdge *e, const IntPoint &pt);
+  void AddOutPt(TEdge *e, const IntPoint &pt);
   void DisposeAllPolyPts();
+  void DisposeOutRec(int index, bool ignorePts = false);
   bool ProcessIntersections( const long64 topY);
   void AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
   void BuildIntersectList(const long64 topY);
   void ProcessIntersectList();
   void ProcessEdgesAtTopOfScanbeam(const long64 topY);
-  void BuildResult(Polygons& polypoly);
+  void BuildResult(Polygons& polys);
+  void BuildResultEx(ExPolygons& polys);
+  void SetHoleState(TEdge *e, OutRec *OutRec);
   void DisposeIntersectNodes();
   bool FixupIntersections();
-  PolyPt* FixupOutPolygon(PolyPt *p);
+  void FixupOutPolygon(OutRec &outRec);
   bool IsHole(TEdge *e);
+  void FixHoleLinkage(OutRec *outRec);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
