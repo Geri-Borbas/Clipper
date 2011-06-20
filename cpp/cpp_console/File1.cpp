@@ -1,16 +1,14 @@
 //---------------------------------------------------------------------------
 
-#pragma hdrstop
-
 #include <cmath>
-#include <stdlib>
+#include <ctime>
+#include <cstdlib>
+#include <cstdio>
 #include <vector>
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <stdio.h>
 #include "clipper.hpp"
-#include <windows.h>
 
 //---------------------------------------------------------------------------
 
@@ -79,10 +77,10 @@ void PolygonsToSVG(char * filename,
   file.setf(ios::fixed);
   file.precision(0);
   file << svg_xml_start[0] <<
-    (rec.right - rec.left)*scale + margin*2 << "px" << svg_xml_start[1] <<
-    (rec.bottom - rec.top)*scale + margin*2 << "px" << svg_xml_start[2] <<
-    (rec.right - rec.left)*scale + margin*2 << " " <<
-    (rec.bottom - rec.top)*scale + margin*2 << svg_xml_start[3];
+    (rec.right - rec.left) + margin*2 << "px" << svg_xml_start[1] <<
+    (rec.bottom - rec.top) + margin*2 << "px" << svg_xml_start[2] <<
+    (rec.right - rec.left) + margin*2 << " " <<
+    (rec.bottom - rec.top) + margin*2 << svg_xml_start[3];
   setlocale(LC_NUMERIC, "C");
   file.precision(2);
   for (int k = 0; k < 3; k++)
@@ -141,7 +139,7 @@ inline long64 Round(double val)
 }
 //------------------------------------------------------------------------------
 
-bool LoadFromFile(clipper::Polygons &ppg, char * filename, float scale= 1,
+bool LoadFromFile(Polygons &ppg, char * filename, float scale= 1,
   int xOffset = 0, int yOffset = 0)
 {
   ppg.clear();
@@ -194,7 +192,7 @@ void SaveToFile(char *filename, clipper::Polygons &pp, float scale = 1)
     fprintf(f, "%d\n", pp[i].size());
     if (scale > 1.01 || scale < 0.99) {
       for (unsigned j = 0; j < pp[i].size(); ++j)
-        fprintf(f, "%.4lf, %.4lf,\n",
+        fprintf(f, "%.6lf, %.6lf,\n",
           (double)pp[i][j].X /scale, (double)pp[i][j].Y /scale);
     }
     else
@@ -212,8 +210,8 @@ void MakeRandomPoly(int edgeCount, int width, int height, Polygons & poly)
   poly.resize(1);
   poly[0].resize(edgeCount);
   for (int i = 0; i < edgeCount; i++){
-    poly[0][i].X = random(width);
-    poly[0][i].Y = random(height);
+    poly[0][i].X = rand() % width;
+    poly[0][i].Y = rand() % height;
   }
 }
 //------------------------------------------------------------------------------
@@ -230,15 +228,13 @@ int _tmain(int argc, _TCHAR* argv[])
     int loop_cnt = 100;
     char * dummy;
     if (argc > 2) loop_cnt = strtol(argv[2], &dummy, 10);
-
+    if (loop_cnt == 0) loop_cnt = 100;
     cout << "\nPerforming " << loop_cnt << " random intersection operations ... ";
-    randomize();
+    srand(time(0));
     int error_cnt = 0;
     Polygons subject, clip, solution;
     Clipper clpr;
-    _LARGE_INTEGER m_qpc1, m_qpc2, m_qpf;
-    QueryPerformanceFrequency(&m_qpf);
-    QueryPerformanceCounter(&m_qpc1);
+    time_t time_start = clock();
     for (int i = 0; i < loop_cnt; i++) {
       MakeRandomPoly(100, 400, 400, subject);
       MakeRandomPoly(100, 400, 400, clip);
@@ -248,10 +244,8 @@ int _tmain(int argc, _TCHAR* argv[])
       if (!clpr.Execute(ctIntersection, solution, pftEvenOdd, pftEvenOdd))
         error_cnt++;
     }
-    QueryPerformanceCounter(&m_qpc2);
-    double m_elapsedTime =
-      (double)(m_qpc2.QuadPart - m_qpc1.QuadPart) / m_qpf.QuadPart;
-    cout << "\nFinished in " << m_elapsedTime << " secs with ";
+    double time_elapsed = double(clock() - time_start)/CLOCKS_PER_SEC;
+    cout << "\nFinished in " << time_elapsed << " secs with ";
     cout << error_cnt << " errors.\n\n";
     //let's save the very last result too ...
     SaveToFile("Subject.txt", subject);
