@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.0                                                           *
-* Date      :  16 June 2011                                                    *
+* Version   :  4.3.1                                                           *
+* Date      :  27 June 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -39,7 +39,7 @@
 #include <cstdlib>
 
 //Workaround for older compilers that don't have std::abs
-#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(_MSC_VER) && _MSC_VER <= 1310)
+#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(_MSC_VER) && _MSC_VER <= 1600)
 namespace std
 {
     long long abs(long long x) { return x < 0 ? -x : x; }
@@ -210,7 +210,7 @@ class Int128
     std::string AsString() const
     {
       std::string result;
-      int r = 0;
+      unsigned char r = 0;
       Int128 tmp(0), val(*this);
       if (hi < 0) Negate(val);
       result.resize(50);
@@ -218,7 +218,7 @@ class Int128
       while (val.hi != 0 || val.lo != 0)
       {
         Div10(val, tmp, r);
-        result[i--] = ('0' + r);
+        result[i--] = '0' + r;
         val = tmp;
       }
       if (hi < 0) result[i--] = '-';
@@ -247,7 +247,7 @@ private:
     }
 
     //debugging only ...
-    void Div10(const Int128 val, Int128& result, int& remainder) const
+    void Div10(const Int128 val, Int128& result, unsigned char & remainder) const
     {
       remainder = 0;
       result = 0;

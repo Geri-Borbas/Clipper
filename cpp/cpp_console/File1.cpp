@@ -41,10 +41,10 @@ void PolygonsToSVG(char * filename,
         }
 
   if (scale == 0) scale = 1;
-  rec.left *= scale;
-  rec.top *= scale;
-  rec.right *= scale;
-  rec.bottom *= scale;
+  rec.left = long64(rec.left * scale);
+  rec.top = long64(rec.top * scale);
+  rec.right = long64(rec.right * scale);
+  rec.bottom = long64(rec.bottom * scale);
 
   long64 offsetX = -rec.left + margin;
   long64 offsetY = -rec.top + margin;
@@ -251,7 +251,8 @@ int _tmain(int argc, _TCHAR* argv[])
     SaveToFile("Subject.txt", subject);
     SaveToFile("Clip.txt", clip);
     SaveToFile("Solution.txt", solution);
-    PolygonsToSVG("solution.svg", &subject, &clip, &solution, pftEvenOdd, pftEvenOdd);
+    PolygonsToSVG("solution.svg", &subject, &clip, &solution,
+      pftEvenOdd, pftEvenOdd);
     return 0;
   }
 
