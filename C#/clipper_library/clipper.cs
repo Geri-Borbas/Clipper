@@ -2941,7 +2941,7 @@ namespace clipper
                 {
                     outRec2.isHole = !outRec1.isHole;
                     outRec2.FirstLeft = outRec1;
-                    if (outRec2.isHole = IsClockwise(outRec2, m_UseFullRange)) 
+                    if (outRec2.isHole == IsClockwise(outRec2, m_UseFullRange)) 
                       ReversePolyPtLinks(outRec2.pts);
                 }
                 else if (PointInPolygon(outRec1.pts.pt, outRec2.pts, m_UseFullRange))
@@ -2950,7 +2950,7 @@ namespace clipper
                     outRec1.isHole = !outRec2.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
                     outRec1.FirstLeft = outRec2;
-                    if (outRec1.isHole = IsClockwise(outRec1, m_UseFullRange))
+                    if (outRec1.isHole == IsClockwise(outRec1, m_UseFullRange))
                       ReversePolyPtLinks(outRec1.pts);
                 }
                 else

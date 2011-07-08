@@ -1,6 +1,4 @@
-﻿//#define UseExPolygons
-
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
@@ -13,6 +11,7 @@ using System.Linq;
 using System.Windows.Forms;
 using System.Globalization;
 using clipper;
+
 
 namespace WindowsFormsApplication1
 {
@@ -30,11 +29,9 @@ namespace WindowsFormsApplication1
         private Bitmap mybitmap;
         private Polygons subjects;
         private Polygons clips;
-#if UseExPolygons
-        private ExPolygons solution;
-#else
         private Polygons solution;
-#endif
+        private ExPolygons exSolution;
+
         //Here we are scaling all coordinates up by 100 when they're passed to Clipper 
         //via Polygon (or Polygons) objects because Clipper no longer accepts floating  
         //point values. Likewise when Clipper returns a solution in a Polygons object, 
@@ -254,20 +251,22 @@ namespace WindowsFormsApplication1
 
         private IntPoint GenerateRandomPoint(int l, int t, int r, int b, Random rand)
         {
+            int Q = 10;
             IntPoint newPt = new IntPoint();
-            newPt.X = (rand.Next(r / 20) * 20 + l + 10) * scale;
-            newPt.Y = (rand.Next(b / 20) * 20 + t + 10) * scale;
+            newPt.X = (rand.Next(r / Q) * Q + l + 10) * scale;
+            newPt.Y = (rand.Next(b / Q) * Q + t + 10) * scale;
             return newPt;
         }
         //---------------------------------------------------------------------
 
         private void GenerateRandomPolygon(int count)
         {
+            int Q = 10;
             Random rand = new Random();
             int l = 10;
             int t = 10;
-            int r = (pictureBox1.ClientRectangle.Width - 20)/10 *10;
-            int b = (pictureBox1.ClientRectangle.Height - 20)/10 *10;
+            int r = (pictureBox1.ClientRectangle.Width - 20) / Q * Q;
+            int b = (pictureBox1.ClientRectangle.Height - 20) / Q * Q;
 
             subjects.Clear();
             clips.Clear();
@@ -344,12 +343,12 @@ namespace WindowsFormsApplication1
             StreamWriter writer = new StreamWriter(filename);
             if (writer == null) return;
             writer.Write("{0}\n", ppg.Count);
-            for (int i = 0; i < ppg.Count; i++)
+            foreach (Polygon pg in ppg)
             {
-                writer.Write("{0}\n", ppg[i].Count);
-                for (int j = 0; j < ppg.Count; j++)
+                writer.Write("{0}\n", pg.Count);
+                foreach (IntPoint ip in pg)
                     writer.Write("{0:0.0000}, {1:0.0000}\n", 
-                        (double)ppg[i][j].X/scaling, (double)ppg[i][j].Y/scaling);
+                        (double)ip.X/scaling, (double)ip.Y/scaling);
             }
             writer.Close();
         }
@@ -360,19 +359,21 @@ namespace WindowsFormsApplication1
 
             if (!justClip)
             {
+                //LoadFromFile("subj.txt", subjects);
+                //LoadFromFile("clip.txt", clips);
                 if (rbTest2.Checked)
                     GenerateAustPlusRandomEllipses((int)nudCount.Value);
                 else
                     GenerateRandomPolygon((int)nudCount.Value);
+                //SaveToFile("clip.txt", clips);
+                //SaveToFile("subj.txt", subjects);
             }
 
             Cursor.Current = Cursors.WaitCursor;
             Graphics newgraphic;
             newgraphic = Graphics.FromImage(mybitmap);
             newgraphic.SmoothingMode = SmoothingMode.AntiAlias;
-            newgraphic.Clear(Color.WhiteSmoke);
-            Pen myPen = new Pen(Color.FromArgb(32, 0, 0, 0), (float)0.6);
-            SolidBrush myBrush = new SolidBrush(Color.FromArgb(16, 0, 0, 156));
+            newgraphic.Clear(Color.White);
             
             GraphicsPath path = new GraphicsPath();
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
@@ -383,9 +384,12 @@ namespace WindowsFormsApplication1
                 path.AddPolygon(pts);
                 pts = null;
             }
+            Pen myPen = new Pen(Color.FromArgb(48, 0, 0, 255), (float)0.6);
+            SolidBrush myBrush = new SolidBrush(Color.FromArgb(32, 0, 0, 255));
             newgraphic.FillPath(myBrush, path);
             newgraphic.DrawPath(myPen, path);
             path.Reset();
+
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
             foreach (Polygon pg in clips)
             {
@@ -393,17 +397,22 @@ namespace WindowsFormsApplication1
                 path.AddPolygon(pts);
                 pts = null;
             }
-            myPen.Color = Color.LightSalmon;
-            myBrush.Color = Color.FromArgb(16, 156, 0, 0);
+            myPen.Color = Color.FromArgb(48, 255, 0, 0);
+            myBrush.Color = Color.FromArgb(32, 255, 255, 0);
             newgraphic.FillPath(myBrush, path);
             newgraphic.DrawPath(myPen, path);
 
             //do the clipping ...
             if ((clips.Count > 0 || subjects.Count > 0) && !rbNone.Checked)
-            {
+            {                
+                Polygons solution2 = new Polygons();
                 clipper.Clipper c = new clipper.Clipper();
+                c.UseFullCoordinateRange = false;
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
+                exSolution.Clear();
+                solution.Clear();
+                //bool succeeded = c.Execute(GetClipType(), exSolution, GetPolyFillType(), GetPolyFillType());
                 bool succeeded = c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
                 if (succeeded)
                 {
@@ -416,37 +425,29 @@ namespace WindowsFormsApplication1
                     //holes will be stroked (outlined) correctly but filled incorrectly  ...
                     path.FillMode = FillMode.Winding;
 
-#if UseExPolygons
-                    foreach (ExPolygon epg in solution)
-                    {
-                        //draw each ExPolygon separately so that any errant holes 
-                        //(ie those assigned to the wrong polygon owner) will be filled incorrectly.
-                        //Also, to see holes more easily, we'll draw them with a red outline ...
-                        PointF[] pts = PolygonToPointFArray(epg.outer, scale);
-                        path.AddPolygon(pts);
-                        myPen.Color = Color.FromArgb(255, 0, 100, 0);
-                        newgraphic.DrawPolygon(myPen, pts);
-                        myPen.Color = Color.Red;
-                        foreach (Polygon pg in epg.holes)
-                        {
-                            pts = PolygonToPointFArray(pg, scale);
-                            path.AddPolygon(pts);
-                            newgraphic.DrawPolygon(myPen, pts);
-                        }
-                        myBrush.Color = Color.FromArgb(32, 0, 255, 0);
-                        newgraphic.FillPath(myBrush, path);
-                        path.Reset();
-                    }
-                    //to keep this demo relatively simple there's no offsetting if UseExPolygons is enabled 
-                    Polygons solution2 = new Polygons(solution.Count);
-#else
-                    //some fancy offsetting ...
-                    Polygons solution2;
+                    //foreach (ExPolygon epg in exSolution)
+                    //{
+                    //    PointF[] pts = PolygonToPointFArray(epg.outer, scale);
+                    //    path.AddPolygon(pts);
+                    //    myPen.Color = Color.FromArgb(255, 0, 100, 0);
+                    //    newgraphic.DrawPolygon(myPen, pts);
+                    //    myPen.Color = Color.Red;
+                    //    foreach (Polygon pg in epg.holes)
+                    //    {
+                    //        pts = PolygonToPointFArray(pg, scale);
+                    //        path.AddPolygon(pts);
+                    //        newgraphic.DrawPolygon(myPen, pts);
+                    //    }
+                    //    myBrush.Color = Color.FromArgb(32, 0, 255, 0);
+                    //    newgraphic.FillPath(myBrush, path);
+                    //    path.Reset();
+                    //}
+
+                    //or for something fancy ...
                     if (nudOffset.Value != 0)
                         solution2 = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
                     else
                         solution2 = new Polygons(solution);
-
                     foreach (Polygon pg in solution2)
                     {
                         PointF[] pts = PolygonToPointFArray(pg, scale);
@@ -459,24 +460,24 @@ namespace WindowsFormsApplication1
                     myPen.Width = 1.0f;
                     newgraphic.FillPath(myBrush, path);
                     newgraphic.DrawPath(myPen, path);
-#endif
-                    //now test if areas of various solution polygons add up ...
+
+                    //now do some fancy testing ...
                     Font f = new Font("Arial", 8);
                     SolidBrush b = new SolidBrush(Color.Navy);
-                    double a1 = 0, a2 = 0, a3 = 0, a4 = 0;
+                    double subj_area = 0, clip_area = 0, int_area = 0, union_area = 0;
                     c.Clear();
                     c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) a1 += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) subj_area += clipper.Clipper.Area(pg);
                     c.Clear();
                     c.AddPolygons(clips, PolyType.ptClip);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) a2 += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) clip_area += clipper.Clipper.Area(pg);
                     c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctIntersection, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) a3 += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) int_area += clipper.Clipper.Area(pg);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) a4 += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) union_area += clipper.Clipper.Area(pg);
 
                     StringFormat lftStringFormat = new StringFormat();
                     lftStringFormat.Alignment = StringAlignment.Near;
@@ -492,23 +493,23 @@ namespace WindowsFormsApplication1
                     newgraphic.DrawString("Areas", f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 14));
                     newgraphic.DrawString("subj: ", f, b, rec, lftStringFormat);
-                    newgraphic.DrawString((a1 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    newgraphic.DrawString((subj_area / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 12));
                     newgraphic.DrawString("clip: ", f, b, rec, lftStringFormat);
-                    newgraphic.DrawString((a2 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    newgraphic.DrawString((clip_area / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 12));
                     newgraphic.DrawString("intersect: ", f, b, rec, lftStringFormat);
-                    newgraphic.DrawString((a3 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    newgraphic.DrawString((int_area / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 12));
                     newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 10));
                     newgraphic.DrawString("s + c - i: ", f, b, rec, lftStringFormat);
-                    newgraphic.DrawString(((a1 + a2 - a3) / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    newgraphic.DrawString(((subj_area + clip_area - int_area) / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 10));
                     newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 10));
                     newgraphic.DrawString("union: ", f, b, rec, lftStringFormat);
-                    newgraphic.DrawString((a4 / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
+                    newgraphic.DrawString((union_area / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 10));
                     newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
                 } //end if succeeded
@@ -529,11 +530,9 @@ namespace WindowsFormsApplication1
 
             subjects = new Polygons(); 
             clips = new Polygons();
-#if UseExPolygons
-            solution = new ExPolygons();
-#else
             solution = new Polygons();
-#endif
+            exSolution = new ExPolygons();
+
             toolStripStatusLabel1.Text =
                 "Tip: Use the mouse-wheel (or +,-,0) to adjust the offset of the solution polygons.";
             DrawBitmap();
@@ -623,21 +622,8 @@ namespace WindowsFormsApplication1
             //save to SVG ...
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
-#if UseExPolygons
-                //first, convert ExPolygons solution to Polygons tmp ...
-                Polygons tmp = new Polygons(solution.Count);
-                foreach (ExPolygon epg in solution)
-                {
-                    tmp.Add(epg.outer);
-                    foreach (Polygon pg in epg.holes)
-                        tmp.Add(pg);
-                }
-                PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
-                    tmp, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
-#else
                 PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
                     solution, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
-#endif
             }
         }
         //---------------------------------------------------------------------
@@ -657,6 +643,8 @@ namespace WindowsFormsApplication1
             for (int i = 0; i < 1000; i++)
             {
                 GenerateRandomPolygon(EdgeCnt);
+                //SaveToFile("clip.txt", clips);
+                //SaveToFile("subj.txt", subjects);
                 c.Clear();
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
