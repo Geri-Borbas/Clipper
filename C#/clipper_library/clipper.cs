@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.0                                                           *
-* Date      :  16 June 2011                                                    *
+* Version   :  4.3.1                                                           *
+* Date      :  20 July 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -118,8 +118,7 @@ namespace clipper
             else if (val1 == null) return false;
             else if (val1.hi > val2.hi) return true;
             else if (val1.hi < val2.hi) return false;
-            else if (val1.hi >= 0) return (UInt64)val1.lo > (UInt64)val2.lo;
-            else return (UInt64)val1.lo < (UInt64)val2.lo;
+            else return (UInt64)val1.lo > (UInt64)val2.lo;
         }
 
         public static bool operator< (Int128 val1, Int128 val2) 
@@ -129,8 +128,7 @@ namespace clipper
             else if (val1 == null) return true;
             if (val1.hi < val2.hi) return true;
             else if (val1.hi > val2.hi) return false;
-            else if (val1.hi >= 0) return (UInt64)val1.lo < (UInt64)val2.lo;
-            else return (UInt64)val1.lo > (UInt64)val2.lo;
+            else return (UInt64)val1.lo < (UInt64)val2.lo;
         }
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 
@@ -228,7 +226,7 @@ namespace clipper
         }
 
         ////for bug testing ...
-        //public string ToString()
+        //public override string ToString()
         //{
         //    int r = 0;
         //    Int128 tmp = new Int128(0), val = new Int128(this);
@@ -252,25 +250,27 @@ namespace clipper
         //    result = new Int128(0);
         //    for (int i = 63; i >= 0; --i)
         //    {
-        //    if ((val.hi & ((Int64)1 << i)) != 0)
-        //        remainder = (remainder * 2) + 1; else
-        //        remainder *= 2;
-        //    if (remainder >= 10)
-        //    {
-        //        result.hi += ((Int64)1 << i);
-        //        remainder -= 10;
-        //    }
+        //        if ((val.hi & ((Int64)1 << i)) != 0)
+        //            remainder = (remainder * 2) + 1;
+        //        else
+        //            remainder *= 2;
+        //        if (remainder >= 10)
+        //        {
+        //            result.hi += ((Int64)1 << i);
+        //            remainder -= 10;
+        //        }
         //    }
         //    for (int i = 63; i >= 0; --i)
         //    {
-        //    if ((val.lo & ((Int64)1 << i)) != 0)
-        //        remainder = (remainder * 2) + 1; else
-        //        remainder *= 2;
-        //    if (remainder >= 10)
-        //    {
-        //        result.lo += ((Int64)1 << i);
-        //        remainder -= 10;
-        //    }
+        //        if ((val.lo & ((Int64)1 << i)) != 0)
+        //            remainder = (remainder * 2) + 1;
+        //        else
+        //            remainder *= 2;
+        //        if (remainder >= 10)
+        //        {
+        //            result.lo += ((Int64)1 << i);
+        //            remainder -= 10;
+        //        }
         //    }
         //}
     };

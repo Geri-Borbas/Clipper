@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.3.1                                                           *
-* Date      :  27 June 2011                                                    *
+* Date      :  20 July 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -39,7 +39,7 @@
 #include <cstdlib>
 
 //Workaround for older compilers that don't have std::abs
-#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(_MSC_VER) && _MSC_VER <= 1600)
+#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(_MSC_VER) && _MSC_VER <= 1500)
 namespace std
 {
     long long abs(long long x) { return x < 0 ? -x : x; }
@@ -90,16 +90,14 @@ class Int128
     {
       if (hi > val.hi) return true;
       else if (hi < val.hi) return false;
-      else if (hi >= 0) return ulong64(lo) > ulong64(val.lo);
-      else return ulong64(lo) < ulong64(val.lo);
+      else return ulong64(lo) > ulong64(val.lo);
     }
 
     bool operator < (const Int128 &val) const
     {
       if (hi < val.hi) return true;
       else if (hi > val.hi) return false;
-      else if (hi >= 0) return ulong64(lo) < ulong64(val.lo);
-      else return ulong64(lo) > ulong64(val.lo);
+      else return ulong64(lo) < ulong64(val.lo);
     }
 
     Int128& operator += (const Int128 &rhs)
@@ -936,9 +934,9 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
 
 bool ClipperBase::AddPolygons(const Polygons &ppg, PolyType polyType)
 {
-  bool result = false;
+  bool result = true;
   for (Polygons::size_type i = 0; i < ppg.size(); ++i)
-    if (AddPolygon(ppg[i], polyType)) result = true;
+    if (AddPolygon(ppg[i], polyType)) result = false;
   return result;
 }
 //------------------------------------------------------------------------------
@@ -1788,9 +1786,12 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
 
   //fixup hole status ...
   if (outRec1->isHole != outRec2->isHole)
+  {
     if (holeStateRec == outRec2)
-      outRec1->isHole = outRec2->isHole; else
+      outRec1->isHole = outRec2->isHole;
+    else
       outRec2->isHole = outRec1->isHole;
+  }
 
   OutPt* p1_lft = outRec1->pts;
   OutPt* p1_rt = p1_lft->prev;
