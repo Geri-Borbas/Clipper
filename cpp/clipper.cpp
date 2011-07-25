@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.1                                                           *
-* Date      :  20 July 2011                                                    *
+* Version   :  4.3.2                                                           *
+* Date      :  25 July 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -325,8 +325,8 @@ bool IsClockwise(OutRec *outRec, bool UseFullInt64Range)
     double a = 0;
     do
     {
-      a += (double)(op->pt.X) * (double)(op->next->pt.Y) -
-        (double)(op->next->pt.X) * (double)(op->pt.Y);
+      a += (double)op->pt.X * op->next->pt.Y -
+        (double)op->next->pt.X * op->pt.Y;
       op = op->next;
     }
     while (op != startPt);
@@ -372,13 +372,25 @@ double Area(const Polygon &poly, bool UseFullInt64Range)
   else
   {
     double a;
-    a = (double)(poly[highI].X) * (double)(poly[0].Y) -
-      (double)(poly[0].X) * (double)(poly[highI].Y);
+    a = (double)poly[highI].X * poly[0].Y - (double)poly[0].X * poly[highI].Y;
     for (int i = 0; i < highI; ++i)
-      a += (double)(poly[i].X) * (double)(poly[i+1].Y) -
-        (double)(poly[i+1].X) * (double)(poly[i].Y);
+      a += (double)poly[i].X * poly[i+1].Y - (double)poly[i+1].X * poly[i].Y;
     return a/2;
   }
+}
+//------------------------------------------------------------------------------
+
+double Area(OutPt *pts)
+{
+  double result = 0.0;
+  if (pts->next == pts->prev) return 0.0;
+  OutPt* p = pts;
+  do {
+    result += (double)p->pt.X * p->next->pt.Y - (double)p->next->pt.X * p->pt.Y;
+    p = p->next;
+  }
+  while (p != pts);
+  return result / 2;
 }
 //------------------------------------------------------------------------------
 
@@ -1019,6 +1031,7 @@ IntRect ClipperBase::GetBounds()
       result.bottom = lm->leftBound->ybot;
     TEdge* e = lm->leftBound;
     for (;;) {
+      TEdge* bottomE = e;
       while (e->nextInLML)
       {
         if (e->xbot < result.left) result.left = e->xbot;
@@ -1031,7 +1044,7 @@ IntRect ClipperBase::GetBounds()
       if (e->xtop > result.right) result.right = e->xtop;
       if (e->ytop < result.top) result.top = e->ytop;
 
-      if (e == lm->leftBound) e = lm->rightBound;
+      if (bottomE == lm->leftBound) e = lm->rightBound;
       else break;
     }
     lm = lm->next;
@@ -2734,9 +2747,9 @@ void Clipper::JoinCommonEdges()
     {
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      //However, make sure the longer (and presumed larger) polygon is attached
+      //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if (PointCount(p1) > PointCount(p2))
+      if (std::fabs(Area(p1)) >= std::fabs(Area(p2)))
       {
           outRec1->pts = PolygonBottom(p1);
           outRec1->bottomPt = outRec1->pts;

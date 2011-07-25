@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.1                                                           *
-* Date      :  20 July 2011                                                    *
+* Version   :  4.3.2                                                           *
+* Date      :  25 July 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -812,37 +812,39 @@ namespace clipper
 
         public IntRect GetBounds()
         {
-          IntRect result = new IntRect();
-          LocalMinima lm = m_MinimaList;
-          if (lm == null) return result;
-          result.left = lm.leftBound.xbot;
-          result.top = lm.leftBound.ybot;
-          result.right = lm.leftBound.xbot;
-          result.bottom = lm.leftBound.ybot;
-          while (lm != null)
-          {
-            if (lm.leftBound.ybot > result.bottom)
-              result.bottom = lm.leftBound.ybot;
-            TEdge e = lm.leftBound;
-            for (;;) {
-              while (e.nextInLML != null)
-              {
-                if (e.xbot < result.left) result.left = e.xbot;
-                if (e.xbot > result.right) result.right = e.xbot;
-                e = e.nextInLML;
-              }
-              if (e.xbot < result.left) result.left = e.xbot;
-              if (e.xbot > result.right) result.right = e.xbot;
-              if (e.xtop < result.left) result.left = e.xtop;
-              if (e.xtop > result.right) result.right = e.xtop;
-              if (e.ytop < result.top) result.top = e.ytop;
+            IntRect result = new IntRect();
+            LocalMinima lm = m_MinimaList;
+            if (lm == null) return result;
+            result.left = lm.leftBound.xbot;
+            result.top = lm.leftBound.ybot;
+            result.right = lm.leftBound.xbot;
+            result.bottom = lm.leftBound.ybot;
+            while (lm != null)
+            {
+                if (lm.leftBound.ybot > result.bottom)
+                    result.bottom = lm.leftBound.ybot;
+                TEdge e = lm.leftBound;
+                for (; ; )
+                {
+                    TEdge bottomE = e;
+                    while (e.nextInLML != null)
+                    {
+                        if (e.xbot < result.left) result.left = e.xbot;
+                        if (e.xbot > result.right) result.right = e.xbot;
+                        e = e.nextInLML;
+                    }
+                    if (e.xbot < result.left) result.left = e.xbot;
+                    if (e.xbot > result.right) result.right = e.xbot;
+                    if (e.xtop < result.left) result.left = e.xtop;
+                    if (e.xtop > result.right) result.right = e.xtop;
+                    if (e.ytop < result.top) result.top = e.ytop;
 
-              if (e == lm.leftBound) e = lm.rightBound;
-              else break;
+                    if (bottomE == lm.leftBound) e = lm.rightBound;
+                    else break;
+                }
+                lm = lm.next;
             }
-            lm = lm.next;
-          }
-          return result;
+            return result;
         }
 
     } //ClipperBase
@@ -2830,7 +2832,22 @@ namespace clipper
             }
         }
         //------------------------------------------------------------------------------
-        
+
+        internal static double Area(OutPt pts)
+        {
+            double result = 0.0;
+            if (pts.next == pts.prev) return 0.0;
+            OutPt p = pts;
+            do
+            {
+                result += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
+                p = p.next;
+            }
+            while (p != pts);
+            return result / 2;
+        }
+        //------------------------------------------------------------------------------
+
         private void JoinCommonEdges()
         {
           for (int i = 0; i < m_Joins.Count; i++)
@@ -2911,9 +2928,9 @@ namespace clipper
             {
                 //instead of joining two polygons, we've just created a new one by
                 //splitting one polygon into two.
-                //However, make sure the longer (and presumed larger) polygon is attached
+                //However, make sure the larger polygon is attached
                 //to outRec1 in case it also owns some holes ...
-                if (PointCount(p1) > PointCount(p2))
+                if (Math.Abs(Area(p1)) >= Math.Abs(Area(p2)))
                 {
                     outRec1.pts = PolygonBottom(p1);
                     outRec1.bottomPt = outRec1.pts;
@@ -2995,14 +3012,11 @@ namespace clipper
             if (j.poly2Idx != j.poly1Idx) FixupOutPolygon(outRec2);
           }
         }
-
-        //------------------------------------------------------------------------------
-        // OffsetPolygon functions ...
         //------------------------------------------------------------------------------
 
         public static double Area(Polygon poly, bool UseFullInt64Range = true)
         {
-            int highI = poly.Count -1;
+            int highI = poly.Count - 1;
             if (highI < 2) return 0;
             if (UseFullInt64Range)
             {
@@ -3024,6 +3038,9 @@ namespace clipper
                 return area / 2;
             }
         }
+
+        //------------------------------------------------------------------------------
+        // OffsetPolygon functions ...
         //------------------------------------------------------------------------------
 
         internal class DoublePoint

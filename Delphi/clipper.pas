@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.0                                                           *
-* Date      :  16 June 2011                                                    *
+* Version   :  4.3.2                                                           *
+* Date      :  25 July 2011                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -280,6 +280,9 @@ resourcestring
 // Int128 Functions ...
 //------------------------------------------------------------------------------
 
+const
+  Mask32Bits = $FFFFFFFF;
+
 type
   TInt128 = record
     lo   : Int64;
@@ -338,11 +341,11 @@ begin
   else if (int2.lo = 0) and (int2.hi = 0) then result := int1
   else
   begin
-    result.lo := int1.lo + int2.lo;
+    result.lo := int1.lo + int2.lo; //nb: overflow checking off here
     result.hi := int1.hi + int2.hi;
     if ((int1.lo < 0) and (int2.lo < 0)) or
       (((int1.lo < 0) <> (int2.lo < 0)) and (result.lo >= 0)) then
-        result.hi := result.hi +1;
+        result.hi := result.hi +1;  //ie: fixup for overflow
   end;
 end;
 //------------------------------------------------------------------------------
@@ -366,9 +369,9 @@ begin
   if int2 < 0 then int2 := -int2;
 
   int1Hi := int1 shr 32;
-  int1Lo := int1 and $FFFFFFFF;
+  int1Lo := int1 and Mask32Bits;
   int2Hi := int2 shr 32;
-  int2Lo := int2 and $FFFFFFFF;
+  int2Lo := int2 and Mask32Bits;
 
   //It's safe to multiply 32bit ints in unsigned 64bit space without overflow.
   //Also, the *result* of the karatsuba equation (see below) can also be
@@ -606,7 +609,7 @@ end;
 //------------------------------------------------------------------------------
 
 function Area(const pts: TPolygon;
-  UseFullInt64Range: boolean = true): double;
+  UseFullInt64Range: boolean = true): double; overload;
 var
   i, highI: integer;
   a: TInt128;
@@ -632,6 +635,21 @@ begin
       result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
     result := result / 2;
   end;
+end;
+//------------------------------------------------------------------------------
+
+function Area(pts: POutPt): double; overload;
+var
+  p: POutPt;
+begin
+  result := 0;
+  if pts.next = pts.prev then Exit;
+  p := pts;
+  repeat
+    result := result + p.pt.X * p.next.pt.y - p.next.pt.x * p.pt.Y;
+    p := p.next;
+  until p = pts;
+  result := result / 2;
 end;
 //------------------------------------------------------------------------------
 
@@ -702,8 +720,8 @@ begin
   if (pt1.Y = pt2.Y) then result := (pt2.Y = pt3.Y)
   else if (pt1.X = pt2.X) then result := (pt2.X = pt3.X)
   else if UseFullInt64Range then
-    result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X),
-      Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y))
+    result := Int128Equal(
+      Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X), Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y))
   else
     result := (pt1.Y-pt2.Y)*(pt2.X-pt3.X) = (pt1.X-pt2.X)*(pt2.Y-pt3.Y);
 end;
@@ -1079,9 +1097,9 @@ function TClipperBase.AddPolygons(const polygons: TPolygons;
 var
   i: integer;
 begin
-  result := false;
+  result := true;
   for i := 0 to high(polygons) do
-    if AddPolygon(polygons[i], polyType) then result := true;
+    if AddPolygon(polygons[i], polyType) then result := false;
 end;
 //------------------------------------------------------------------------------
 
@@ -1268,6 +1286,7 @@ begin
       else result := 0;
       Exit;
     end;
+
     if p1.isHole then
       i1 := p1.FirstLeft.idx else
       i1 := p1.idx;
@@ -1803,13 +1822,13 @@ begin
     if IsContributing(lb) then
       AddLocalMinPoly(lb, rb, IntPoint(lb.xcurr, CurrentLm.y));
 
-    //if output polygons share an edge, they'll need joining later ...
+    //if output polygons share an edge with lb, they'll need joining later ...
     if (lb.outIdx >= 0) and assigned(lb.prevInAEL) and
        (lb.prevInAEL.outIdx >= 0) and (lb.prevInAEL.xcurr = lb.xbot) and
        SlopesEqual(lb, lb.prevInAEL, fUseFullRange) then
          AddJoin(lb, lb.prevInAEL);
 
-    //if any output polygons share an edge, they'll need joining later ...
+    //if output polygons share an edge with rb, they'll need joining later ...
     if (rb.outIdx >= 0) then
     begin
       if (rb.dx = horizontal) then
@@ -2465,7 +2484,6 @@ begin
           //if output polygons share an edge, they'll need joining later ...
           if (horzEdge.outIdx >= 0) and (e.outIdx >= 0) then
             AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx);
-
           break; //we've reached the end of the horizontal line
         end
         else if (e.dx < horzEdge.nextInLML.dx) then
@@ -3162,15 +3180,17 @@ begin
       p4.prev := p2;
     end
     else
-      continue; //very rare and an orientation is probably wrong
-
+      //it's very rare to get here, and when we do almost invariably
+      //p1.idx == p2.idx, otherwise it's an orientation error.
+      continue;
+      
     if (j.poly2Idx = j.poly1Idx) then
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      //However, make sure the longer (and presumed larger) polygon is attached
+      //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if PointCount(p1) > PointCount(p2) then
+      if abs(Area(p1)) >= abs(Area(p2)) then
       begin
         outRec1.pts := PolygonBottom(p1);
         outRec1.bottomPt := outRec1.pts;
