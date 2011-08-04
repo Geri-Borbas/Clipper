@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.2                                                           *
-* Date      :  25 July 2011                                                    *
+* Version   :  4.3.3                                                           *
+* Date      :  5 August 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -275,6 +275,7 @@ resourcestring
   rsUseFullRange = 'UseFullCoordinateRange() can''t be changed until '+
   'the Clipper object has been cleared."';
   rsJoinError = 'Join Output polygons error';
+  rsHoleLinkError = 'HoleLinkage error';
 
 //------------------------------------------------------------------------------
 // Int128 Functions ...
@@ -1314,16 +1315,10 @@ var
   tmp: POutRec;
 begin
   if assigned(outRec.bottomPt) then
-    tmp := POutRec(fPolyOutList[outRec.bottomPt.idx]).FirstLeft else
+    tmp := POutRec(fPolyOutList[outRec.bottomPt.idx]).FirstLeft
+  else
     tmp := outRec.FirstLeft;
-  //avoid a very rare endless loop (via recursion) ...
-  if outRec = tmp then
-  begin
-    outRec.FirstLeft := nil;
-    outRec.AppendLink := nil;
-    outRec.isHole := false;
-    Exit;
-  end;
+  if outRec = tmp then raise exception.Create(rsHoleLinkError);
 
   if assigned(tmp) then
   begin
@@ -2001,14 +1996,11 @@ begin
     end
     else if (abs(e1.windCnt) < 2) then DoEdge2;
   end
-  else
+  else if (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2) and
+    not e1stops and not e2stops then
   begin
-    //neither edge is currently contributing ...
-    if (abs(e1.windCnt) > 1) and (abs(e2.windCnt) > 1) then
-      // do nothing
-    else if (e1.polytype <> e2.polytype) and
-      not e1stops and not e2stops and
-      (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2)then
+    //nb: neither edge is currently contributing ...
+    if (e1.polytype <> e2.polytype) then
       AddLocalMinPoly(e1, e2, pt)
     else if (abs(e1.windCnt) = 1) and (abs(e2.windCnt) = 1) then
       case fClipType of
@@ -2027,7 +2019,7 @@ begin
         ctXor:
           AddLocalMinPoly(e1, e2, pt);
       end
-    else if (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2) then
+    else
       swapsides(e1,e2);
   end;
 
@@ -2107,7 +2099,7 @@ var
   newSide: TEdgeSide;
   i, OKIdx, ObsoleteIdx: integer;
   e: PEdge;
-  j: PJoinRec;
+  jr: PJoinRec;
   h: PHorzRec;
   dx1, dx2: double;
 begin
@@ -2196,7 +2188,12 @@ begin
   end;
 
   if holeStateRec = outRec2 then
+  begin
     outRec1.bottomPt := outRec2.bottomPt;
+    outRec1.bottomPt.idx := outRec1.idx;
+    if outRec2.FirstLeft <> outRec1 then
+      outRec1.FirstLeft := outRec2.FirstLeft;
+  end;
   outRec2.pts := nil;
   outRec2.bottomPt := nil;
   outRec2.AppendLink := outRec1;
@@ -2220,9 +2217,9 @@ begin
 
   for i := 0 to fJoinList.count -1 do
   begin
-    j := fJoinList[i];
-    if j.poly1Idx = ObsoleteIdx then j.poly1Idx := OKIdx;
-    if j.poly2Idx = ObsoleteIdx then j.poly2Idx := OKIdx;
+    jr := fJoinList[i];
+    if jr.poly1Idx = ObsoleteIdx then jr.poly1Idx := OKIdx;
+    if jr.poly2Idx = ObsoleteIdx then jr.poly2Idx := OKIdx;
   end;
   if assigned(fHorizJoins) then
   begin
@@ -2457,11 +2454,13 @@ begin
 
   if horzEdge.xcurr < horzEdge.xtop then
   begin
-    horzLeft := horzEdge.xcurr; horzRight := horzEdge.xtop;
+    horzLeft := horzEdge.xcurr;
+    horzRight := horzEdge.xtop;
     Direction := dLeftToRight;
   end else
   begin
-    horzLeft := horzEdge.xtop; horzRight := horzEdge.xcurr;
+    horzLeft := horzEdge.xtop;
+    horzRight := horzEdge.xcurr;
     Direction := dRightToLeft;
   end;
 
@@ -2473,11 +2472,13 @@ begin
   while assigned(e) do
   begin
     eNext := GetNextInAEL(e, Direction);
-    if (e.xcurr >= horzLeft) and (e.xcurr <= horzRight) then
+    if assigned(eMaxPair) or
+       ((Direction = dLeftToRight) and (e.xcurr <= horzRight)) or
+      ((Direction = dRightToLeft) and (e.xcurr >= horzLeft)) then
     begin
       //ok, so far it looks like we're still in range of the horizontal edge
 
-      if (e.xcurr = horzEdge.xtop) and assigned(horzEdge.nextInLML) then
+      if (e.xcurr = horzEdge.xtop) and not assigned(eMaxPair) then
       begin
         if SlopesEqual(e, horzEdge.nextInLML, fUseFullRange) then
         begin
@@ -2498,6 +2499,8 @@ begin
         if Direction = dLeftToRight then
           IntersectEdges(horzEdge, e, IntPoint(e.xcurr, horzEdge.ycurr)) else
           IntersectEdges(e, horzEdge, IntPoint(e.xcurr, horzEdge.ycurr));
+
+        if (eMaxPair.outIdx >= 0) then raise exception.Create(rsHorizontal);
         exit;
       end
       else if (e.dx = horizontal) and not IsMinima(e) and not (e.xcurr > e.xtop) then
@@ -2514,20 +2517,18 @@ begin
             ProtectLeft[not IsTopHorz(e.xcurr)]);
       end
       else if (Direction = dLeftToRight) then
-      begin
         IntersectEdges(horzEdge, e, IntPoint(e.xcurr, horzEdge.ycurr),
           ProtectRight[not IsTopHorz(e.xcurr)])
-      end else
-      begin
+      else
         IntersectEdges(e, horzEdge, IntPoint(e.xcurr, horzEdge.ycurr),
           ProtectLeft[not IsTopHorz(e.xcurr)]);
-      end;
       SwapPositionsInAEL(horzEdge, e);
     end
-    else if (Direction = dLeftToRight) and
-      (e.xcurr > horzRight) and assigned(fSortedEdges) then break
-    else if (Direction = dRightToLeft) and
-      (e.xcurr < horzLeft) and assigned(fSortedEdges) then break;
+    else if ((Direction = dLeftToRight) and
+      (e.xcurr > horzRight) and assigned(fSortedEdges)) or
+      ((Direction = dRightToLeft) and
+      (e.xcurr < horzLeft) and assigned(fSortedEdges)) then
+        break;
     e := eNext;
   end;
 
@@ -2541,6 +2542,7 @@ begin
     if horzEdge.outIdx >= 0 then
       IntersectEdges(horzEdge, eMaxPair,
         IntPoint(horzEdge.xtop, horzEdge.ycurr), [ipLeft,ipRight]);
+
     if eMaxPair.outIdx >= 0 then raise exception.Create(rsHorizontal);
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
@@ -2740,7 +2742,7 @@ begin
   begin
     IntersectEdges(e, eMaxPair, IntPoint(X, topY));
   end
-  else raise exception.Create(rsDoMaxima);
+    else raise exception.Create(rsDoMaxima);
 end;
 //------------------------------------------------------------------------------
 
@@ -2969,6 +2971,7 @@ begin
           outRec.bottomPt := tmp.prev else
           outRec.bottomPt := tmp.next;
         outRec.pts := outRec.bottomPt;
+        outRec.bottomPt.idx := outRec.idx;
       end;
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
@@ -3209,6 +3212,8 @@ begin
         outRec2.pts := PolygonBottom(p1);
         outRec2.bottomPt := outRec2.pts;
       end;
+      outRec1.bottomPt.idx := outRec1.idx;
+      outRec2.bottomPt.idx := outRec2.idx;
 
       if PointInPolygon(outRec2.pts.pt, outRec1.pts, fUseFullRange) then
       begin

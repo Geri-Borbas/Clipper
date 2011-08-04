@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.2                                                           *
-* Date      :  25 July 2011                                                    *
+* Version   :  4.3.3                                                           *
+* Date      :  5 August 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1019,16 +1019,10 @@ namespace clipper
         {
             OutRec tmp;
             if (outRec.bottomPt != null) 
-                tmp = m_PolyOuts[outRec.bottomPt.idx].FirstLeft; else
+                tmp = m_PolyOuts[outRec.bottomPt.idx].FirstLeft; 
+            else
                 tmp = outRec.FirstLeft;
-            //avoid a very rare endless loop (via recursion) ...
-            if (outRec == tmp) 
-            {
-                outRec.FirstLeft = null;
-                outRec.AppendLink = null;
-                outRec.isHole = false;
-                return;
-            }
+            if (outRec == tmp) throw new ClipperException("HoleLinkage error");
 
             if (tmp != null) 
             {
@@ -1841,7 +1835,12 @@ namespace clipper
           }
 
           if (holeStateRec == outRec2)
-            outRec1.bottomPt = outRec2.bottomPt;
+          {
+              outRec1.bottomPt = outRec2.bottomPt;
+              outRec1.bottomPt.idx = outRec1.idx;
+              if (outRec2.FirstLeft != outRec1)
+                  outRec1.FirstLeft = outRec2.FirstLeft;
+          }
           outRec2.pts = null;
           outRec2.bottomPt = null;
           outRec2.AppendLink = outRec1;
@@ -2009,11 +2008,10 @@ namespace clipper
                         DoEdge2(e1, e2, pt);
                 }
             }
-            else if (Math.Abs(e1.windCnt) < 2 && Math.Abs(e2.windCnt) < 2)
+            else if (Math.Abs(e1.windCnt) < 2 && Math.Abs(e2.windCnt) < 2 && !e1stops && !e2stops)
             {
-                //neither edge is currently contributing ...
-                if (e1.polyType != e2.polyType && !e1stops && !e2stops &&
-                  Math.Abs(e1.windCnt) < 2 && Math.Abs(e2.windCnt) < 2)
+                //nb: neither edge is currently contributing ...
+                if (e1.polyType != e2.polyType)
                     AddLocalMinPoly(e1, e2, pt);
                 else if (Math.Abs(e1.windCnt) == 1 && Math.Abs(e2.windCnt) == 1)
                     switch (m_ClipType)
@@ -2045,7 +2043,7 @@ namespace clipper
                                 break;
                             }
                     }
-                else if (Math.Abs(e1.windCnt) < 2 && Math.Abs(e2.windCnt) < 2)
+                else 
                     SwapSides(e1, e2);
             }
 
@@ -2157,10 +2155,12 @@ namespace clipper
             while (e != null)
             {
                 TEdge eNext = GetNextInAEL(e, Direction);
-                if (e.xcurr >= horzLeft && e.xcurr <= horzRight)
+                if (eMaxPair != null ||
+                  ((Direction == Direction.dLeftToRight) && (e.xcurr <= horzRight)) ||
+                  ((Direction == Direction.dRightToLeft) && (e.xcurr >= horzLeft)))
                 {
                     //ok, so far it looks like we're still in range of the horizontal edge
-                    if (e.xcurr == horzEdge.xtop && horzEdge.nextInLML != null)
+                    if (e.xcurr == horzEdge.xtop && eMaxPair == null)
                     {
                         if (SlopesEqual(e, horzEdge.nextInLML, m_UseFullRange))
                         {
@@ -2182,6 +2182,7 @@ namespace clipper
                             IntersectEdges(horzEdge, e, new IntPoint(e.xcurr, horzEdge.ycurr), 0);
                         else
                             IntersectEdges(e, horzEdge, new IntPoint(e.xcurr, horzEdge.ycurr), 0);
+                        if (eMaxPair.outIdx >= 0) throw new ClipperException("ProcessHorizontal error");
                         return;
                     }
                     else if (e.dx == horizontal && !IsMinima(e) && !(e.xcurr > e.xtop))
@@ -2205,10 +2206,10 @@ namespace clipper
                     }
                     SwapPositionsInAEL(horzEdge, e);
                 }
-                else if (Direction == Direction.dLeftToRight && 
-                      e.xcurr > horzRight && horzEdge.nextInSEL == null) break;
-                else if ((Direction == Direction.dRightToLeft) &&
-                  e.xcurr < horzLeft && horzEdge.nextInSEL == null) break;
+                else if ( (Direction == Direction.dLeftToRight && 
+                    e.xcurr > horzRight && horzEdge.nextInSEL == null) || 
+                    (Direction == Direction.dRightToLeft && 
+                    e.xcurr < horzLeft && horzEdge.nextInSEL == null) ) break;
                 e = eNext;
             } //end while ( e )
 
@@ -2817,6 +2818,7 @@ namespace clipper
                           outRec.bottomPt = tmp.prev; else
                           outRec.bottomPt = tmp.next;
                         outRec.pts = outRec.bottomPt;
+                        outRec.bottomPt.idx = outRec.idx;
                     }
                     pp.prev.next = pp.next;
                     pp.next.prev = pp.prev;
@@ -2952,7 +2954,8 @@ namespace clipper
                     outRec2.pts = PolygonBottom(p1);
                     outRec2.bottomPt = outRec2.pts;
                 }
-
+                outRec1.bottomPt.idx = outRec1.idx;
+                outRec2.bottomPt.idx = outRec2.idx;
 
                 if (PointInPolygon(outRec2.pts.pt, outRec1.pts, m_UseFullRange))
                 {

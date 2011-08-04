@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.2                                                           *
-* Date      :  25 July 2011                                                    *
+* Version   :  4.3.3                                                           *
+* Date      :  5 August 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1179,16 +1179,10 @@ void Clipper::FixHoleLinkage(OutRec *outRec)
 {
   OutRec *tmp;
   if (outRec->bottomPt)
-    tmp = m_PolyOuts[outRec->bottomPt->idx]->FirstLeft; else
+    tmp = m_PolyOuts[outRec->bottomPt->idx]->FirstLeft;
+  else
     tmp = outRec->FirstLeft;
-  //avoid a very rare endless loop (via recursion) ...
-  if (outRec == tmp)
-  {
-    outRec->FirstLeft = 0;
-    outRec->AppendLink = 0;
-    outRec->isHole = false;
-    return;
-  }
+  if (outRec == tmp) throw clipperException("HoleLinkage error");
 
   if (tmp)
   {
@@ -1683,12 +1677,11 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     else
       if (std::abs(e1->windCnt) < 2) DoEdge2( e1, e2, pt );
 
-  } else
+  } else if ( std::abs(e1->windCnt) < 2 && std::abs(e2->windCnt) < 2 &&
+      !e1stops && !e2stops )
   {
-    //neither edge is currently contributing ...
-    if ( std::abs(e1->windCnt) > 1 && std::abs(e2->windCnt) > 1 ) ;// do nothing
-    else if ( e1->polyType != e2->polyType && !e1stops && !e2stops &&
-      std::abs(e1->windCnt) < 2 && std::abs(e2->windCnt) < 2 )
+    //nb: neither edge is currently contributing ...
+    if ( e1->polyType != e2->polyType )
         AddLocalMinPoly(e1, e2, pt);
     else if ( std::abs(e1->windCnt) == 1 && std::abs(e2->windCnt) == 1 )
       switch( m_ClipType ) {
@@ -1710,7 +1703,7 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
         case ctXor:
           AddLocalMinPoly(e1, e2, pt);
       }
-    else if ( std::abs(e1->windCnt) < 2 && std::abs(e2->windCnt) < 2 )
+    else
       SwapSides( *e1, *e2 );
   }
 
@@ -1856,7 +1849,12 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
   }
 
   if (holeStateRec == outRec2)
+  {
     outRec1->bottomPt = outRec2->bottomPt;
+    outRec1->bottomPt->idx = outRec1->idx;
+    if (outRec2->FirstLeft != outRec1)
+      outRec1->FirstLeft = outRec2->FirstLeft;
+  }
   outRec2->pts = 0;
   outRec2->bottomPt = 0;
   outRec2->AppendLink = outRec1;
@@ -2105,10 +2103,13 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   while( e )
   {
     TEdge* eNext = GetNextInAEL( e, dir );
-    if( e->xcurr >= horzLeft && e->xcurr <= horzRight )
+
+    if (eMaxPair ||
+      ((dir == dLeftToRight) && (e->xcurr <= horzRight)) ||
+      ((dir == dRightToLeft) && (e->xcurr >= horzLeft)))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
-      if ( e->xcurr == horzEdge->xtop && horzEdge->nextInLML)
+      if ( e->xcurr == horzEdge->xtop && !eMaxPair )
       {
         if (SlopesEqual(*e, *horzEdge->nextInLML, m_UseFullRange))
         {
@@ -2130,6 +2131,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
           IntersectEdges(horzEdge, e, IntPoint(e->xcurr, horzEdge->ycurr), ipNone);
         else
           IntersectEdges(e, horzEdge, IntPoint(e->xcurr, horzEdge->ycurr), ipNone);
+        if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
         return;
       }
       else if( e->dx == horizontal &&  !IsMinima(e) && !(e->xcurr > e->xtop) )
@@ -2157,10 +2159,8 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       }
       SwapPositionsInAEL( horzEdge, e );
     }
-    else if( dir == dLeftToRight &&
-      e->xcurr > horzRight  && m_SortedEdges ) break;
-    else if( dir == dRightToLeft &&
-      e->xcurr < horzLeft && m_SortedEdges ) break;
+    else if( (dir == dLeftToRight && e->xcurr > horzRight  && m_SortedEdges) ||
+     (dir == dRightToLeft && e->xcurr < horzLeft && m_SortedEdges) ) break;
     e = eNext;
   } //end while
 
@@ -2480,6 +2480,7 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
             outRec.bottomPt = tmp->prev; else
             outRec.bottomPt = tmp->next;
           outRec.pts = outRec.bottomPt;
+          outRec.bottomPt->idx = outRec.idx;
       }
       pp->prev->next = pp->next;
       pp->next->prev = pp->prev;
@@ -2771,6 +2772,8 @@ void Clipper::JoinCommonEdges()
           outRec2->pts = PolygonBottom(p1);
           outRec2->bottomPt = outRec2->pts;
       }
+      outRec1->bottomPt->idx = outRec1->idx;
+      outRec2->bottomPt->idx = outRec2->idx;
 
       if (PointInPolygon(outRec2->pts->pt, outRec1->pts, m_UseFullRange))
       {
