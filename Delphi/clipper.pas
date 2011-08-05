@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.3                                                           *
-* Date      :  5 August 2011                                                   *
+* Version   :  4.4.0                                                           *
+* Date      :  6 August 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2091,30 +2091,20 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AppendPolygon(e1, e2: PEdge);
+function GetLowermostRec(outRec1, outRec2: POutRec): POutRec;
 var
-  holeStateRec, outRec1, outRec2: POutRec;
-  bPt1, bPt2, p1_lft, p1_rt, p2_lft, p2_rt: POutPt;
+  bPt1, bPt2: POutPt;
   next1, prev1, next2, prev2: POutPt;
-  newSide: TEdgeSide;
-  i, OKIdx, ObsoleteIdx: integer;
-  e: PEdge;
-  jr: PJoinRec;
-  h: PHorzRec;
   dx1, dx2: double;
 begin
-  outRec1 := fPolyOutList[e1.outIdx];
-  outRec2 := fPolyOutList[e2.outIdx];
-
-  //work out which polygon fragment has the correct hole state ...
   bPt1 := outRec1.bottomPt;
   bPt2 := outRec2.bottomPt;
-  if (bPt1.pt.Y > bPt2.pt.Y) then holeStateRec := outRec1
-  else if (bPt1.pt.Y < bPt2.pt.Y) then holeStateRec := outRec2
-  else if (bPt1.pt.X < bPt2.pt.X) then holeStateRec := outRec1
-  else if (bPt1.pt.X > bPt2.pt.X) then holeStateRec := outRec2
-  else if not GetNextNonDupOutPt(bPt1, next1) then holeStateRec := outRec2
-  else if not GetNextNonDupOutPt(bPt2, next2) then holeStateRec := outRec1
+  if (bPt1.pt.Y > bPt2.pt.Y) then result := outRec1
+  else if (bPt1.pt.Y < bPt2.pt.Y) then result := outRec2
+  else if (bPt1.pt.X < bPt2.pt.X) then result := outRec1
+  else if (bPt1.pt.X > bPt2.pt.X) then result := outRec2
+  else if not GetNextNonDupOutPt(bPt1, next1) then result := outRec2
+  else if not GetNextNonDupOutPt(bPt2, next2) then result := outRec1
   else
   begin
     GetPrevNonDupOutPt(bPt1, prev1);
@@ -2123,14 +2113,32 @@ begin
     dx2 := GetDx(bPt1.pt, prev1.pt);
     if dx2 > dx1 then dx1 := dx2;
     dx2 := GetDx(bPt2.pt, next2.pt);
-    if dx2 > dx1 then holeStateRec := outRec2
+    if dx2 > dx1 then result := outRec2
     else
     begin
       dx2 := GetDx(bPt2.pt, prev2.pt);
-      if dx2 > dx1 then holeStateRec := outRec2
-      else holeStateRec := outRec1;
+      if dx2 > dx1 then result := outRec2
+      else result := outRec1;
     end;
   end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.AppendPolygon(e1, e2: PEdge);
+var
+  holeStateRec, outRec1, outRec2: POutRec;
+  p1_lft, p1_rt, p2_lft, p2_rt: POutPt;
+  newSide: TEdgeSide;
+  i, OKIdx, ObsoleteIdx: integer;
+  e: PEdge;
+  jr: PJoinRec;
+  h: PHorzRec;
+begin
+  outRec1 := fPolyOutList[e1.outIdx];
+  outRec2 := fPolyOutList[e2.outIdx];
+
+  //work out which polygon fragment has the correct hole state ...
+  holeStateRec := GetLowermostRec(outRec1, outRec2);
 
   //fixup hole status ...
   if (outRec1.isHole <> outRec2.isHole) then
@@ -3112,25 +3120,26 @@ end;
 
 procedure TClipper.JoinCommonEdges;
 var
-  i, i2: integer;
-  j, j2: PJoinRec;
+  i, j, OKIdx, ObsoleteIdx: integer;
+  a1, a2: double;
+  jr, jr2: PJoinRec;
   outRec1, outRec2: POutRec;
   prev, p1, p2, p3, p4, pp1a, pp2a: POutPt;
   pt1, pt2, pt3, pt4: TIntPoint;
 begin
   for i := 0 to fJoinList.count -1 do
   begin
-    j := fJoinList[i];
-    outRec1 := fPolyOutList[j.poly1Idx];
+    jr := fJoinList[i];
+    outRec1 := fPolyOutList[jr.poly1Idx];
     if not assigned(outRec1) then Continue;
     pp1a := outRec1.pts;
-    outRec2 := fPolyOutList[j.poly2Idx];
+    outRec2 := fPolyOutList[jr.poly2Idx];
     if not assigned(outRec2) then Continue;
     pp2a := outRec2.pts;
-    pt1 := j.pt2a; pt2 := j.pt2b;
-    pt3 := j.pt1a; pt4 := j.pt1b;
+    pt1 := jr.pt2a; pt2 := jr.pt2b;
+    pt3 := jr.pt1a; pt4 := jr.pt1b;
     if not FindSegment(pp1a, pt1, pt2) then continue;
-    if (j.poly1Idx = j.poly2Idx) then
+    if (jr.poly1Idx = jr.poly2Idx) then
     begin
       //we're searching the same polygon for overlapping segments so
       //segment 2 mustn't be the same as segment 1 ...
@@ -3140,6 +3149,15 @@ begin
       if not FindSegment(pp2a, pt3, pt4) then continue;
 
     if not GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2) then continue;
+
+    if (jr.poly1Idx = jr.poly2Idx) then
+    begin
+      a1 := 0.0; a2 := 0.0; //ignored, but stops warnings.
+    end else
+    begin
+      a1 := Area(outRec1.pts);
+      a2 := Area(outRec2.pts);
+    end;
 
     prev := pp1a.prev;
     if PointsEqual(pp1a.pt, pt1) then p1 := pp1a
@@ -3187,7 +3205,7 @@ begin
       //p1.idx == p2.idx, otherwise it's an orientation error.
       continue;
       
-    if (j.poly2Idx = j.poly1Idx) then
+    if (jr.poly2Idx = jr.poly1Idx) then
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
@@ -3199,7 +3217,7 @@ begin
         outRec1.bottomPt := outRec1.pts;
         outRec2 := CreateOutRec;
         outRec2.idx := fPolyOutList.Add(outRec2);
-        j.poly2Idx := outRec2.idx;
+        jr.poly2Idx := outRec2.idx;
         outRec2.pts := PolygonBottom(p2);
         outRec2.bottomPt := outRec2.pts;
       end else
@@ -3208,7 +3226,7 @@ begin
         outRec1.bottomPt := outRec1.pts;
         outRec2 := CreateOutRec;
         outRec2.idx := fPolyOutList.Add(outRec2);
-        j.poly2Idx := outRec2.idx;
+        jr.poly2Idx := outRec2.idx;
         outRec2.pts := PolygonBottom(p1);
         outRec2.bottomPt := outRec2.pts;
       end;
@@ -3240,36 +3258,58 @@ begin
       end;
 
       //now fixup any subsequent joins that match this polygon
-      for i2 := i+1 to fJoinList.count -1 do
+      for j := i+1 to fJoinList.count -1 do
       begin
-        j2 := fJoinList[i2];
-        if (j2.poly1Idx = j.poly1Idx) and PointIsVertex(j2.pt1a, p2) then
-          j2.poly1Idx := j.poly2Idx;
-        if (j2.poly2Idx = j.poly1Idx) and PointIsVertex(j2.pt2a, p2) then
-          j2.poly2Idx := j.poly2Idx;
+        jr2 := fJoinList[j];
+        if (jr2.poly1Idx = jr.poly1Idx) and PointIsVertex(jr2.pt1a, p2) then
+          jr2.poly1Idx := jr.poly2Idx;
+        if (jr2.poly2Idx = jr.poly1Idx) and PointIsVertex(jr2.pt2a, p2) then
+          jr2.poly2Idx := jr.poly2Idx;
       end;
+
+      //cleanup edges ...
+      FixupOutPolygon(outRec1);
+      FixupOutPolygon(outRec2);
     end else
     begin
       //having joined 2 polygons together, delete the obsolete pointer ...
-      outRec2.pts := nil;
-      outRec2.bottomPt := nil;
-      outRec2.AppendLink := outRec1;
-      //holes are practically always joined to outers, not vice versa ...
-      if outRec1.isHole and not outRec2.isHole then outRec1.isHole := false;
+
+      //assume the polygon with the largest area is the one
+      //(and only one) that contains any holes ...
+      if a1 >= a2 then
+      begin
+        OKIdx := outRec1.idx;
+        ObsoleteIdx := outRec2.idx;
+        outRec2.pts := nil;
+        outRec2.bottomPt := nil;
+        outRec2.AppendLink := outRec1;
+        //holes are practically always joined to outers, not vice versa ...
+        if outRec1.isHole and not outRec2.isHole then outRec1.isHole := false;
+      end else
+      begin
+        OKIdx := outRec2.idx;
+        ObsoleteIdx := outRec1.idx;
+        outRec2.pts := outRec1.pts;
+        outRec1.pts := nil;
+        outRec1.bottomPt := nil;
+        outRec1.AppendLink := outRec2;
+        //holes are practically always joined to outers, not vice versa ...
+        if outRec2.isHole and not outRec1.isHole then outRec2.isHole := false;
+      end;
 
       //now fixup any subsequent joins ...
-      for i2 := i+1 to fJoinList.count -1 do
+      for j := i+1 to fJoinList.count -1 do
       begin
-        j2 := fJoinList[i2];
-        if (j2.poly1Idx = j.poly2Idx) then j2.poly1Idx := j.poly1Idx;
-        if (j2.poly2Idx = j.poly2Idx) then j2.poly2Idx := j.poly1Idx;
+        jr2 := fJoinList[j];
+        if (jr2.poly1Idx = ObsoleteIdx) then jr2.poly1Idx := OKIdx;
+        if (jr2.poly2Idx = ObsoleteIdx) then jr2.poly2Idx := OKIdx;
       end;
-      j.poly2Idx := j.poly1Idx;
-    end;
 
-    //cleanup edges ...
-    FixupOutPolygon(outRec1);
-    if j.poly2Idx <> j.poly1Idx then FixupOutPolygon(outRec2);
+      //cleanup edges ...
+      if assigned(outRec1.pts) then
+        FixupOutPolygon(outRec1) else
+        FixupOutPolygon(outRec2);
+    end;
   end;
 end;
 

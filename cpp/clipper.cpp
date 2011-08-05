@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.3.3                                                           *
-* Date      :  5 August 2011                                                   *
+* Version   :  4.4.0                                                           *
+* Date      :  6 August 2011                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1756,23 +1756,18 @@ bool GetPrevNonDupOutPt(OutPt* pp, OutPt*& prev)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
+OutRec* GetLowermostRec(OutRec *outRec1, OutRec *outRec2)
 {
-  //get the start and ends of both output polygons ...
-  OutRec *outRec1 = m_PolyOuts[e1->outIdx];
-  OutRec *outRec2 = m_PolyOuts[e2->outIdx];
-
   //work out which polygon fragment has the correct hole state ...
   OutPt *bPt1 = outRec1->bottomPt;
   OutPt *bPt2 = outRec2->bottomPt;
-  OutRec *holeStateRec;
   OutPt *next1, *next2, *prev1, *prev2;
-  if (bPt1->pt.Y > bPt2->pt.Y) holeStateRec = outRec1;
-  else if (bPt1->pt.Y < bPt2->pt.Y) holeStateRec = outRec2;
-  else if (bPt1->pt.X < bPt2->pt.X) holeStateRec = outRec1;
-  else if (bPt1->pt.X > bPt2->pt.X) holeStateRec = outRec2;
-  else if (!GetNextNonDupOutPt(bPt1, next1)) holeStateRec = outRec2;
-  else if (!GetNextNonDupOutPt(bPt2, next2)) holeStateRec = outRec1;
+  if (bPt1->pt.Y > bPt2->pt.Y) return outRec1;
+  else if (bPt1->pt.Y < bPt2->pt.Y) return outRec2;
+  else if (bPt1->pt.X < bPt2->pt.X) return outRec1;
+  else if (bPt1->pt.X > bPt2->pt.X) return outRec2;
+  else if (!GetNextNonDupOutPt(bPt1, next1)) return outRec2;
+  else if (!GetNextNonDupOutPt(bPt2, next2)) return outRec1;
   else
   {
     GetPrevNonDupOutPt(bPt1, prev1);
@@ -1781,14 +1776,24 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     double dx2 = GetDx(bPt1->pt, prev1->pt);
     if (dx2 > dx1) dx1 = dx2;
     dx2 = GetDx(bPt2->pt, next2->pt);
-    if (dx2 > dx1) holeStateRec = outRec2;
+    if (dx2 > dx1) return outRec2;
     else
     {
       dx2 = GetDx(bPt2->pt, prev2->pt);
-      if (dx2 > dx1) holeStateRec = outRec2;
-      else holeStateRec = outRec1;
+      if (dx2 > dx1) return outRec2;
+      else return outRec1;
     }
   }
+}
+//------------------------------------------------------------------------------
+
+void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
+{
+  //get the start and ends of both output polygons ...
+  OutRec *outRec1 = m_PolyOuts[e1->outIdx];
+  OutRec *outRec2 = m_PolyOuts[e2->outIdx];
+
+  OutRec *holeStateRec = GetLowermostRec(outRec1, outRec2);
 
   //fixup hole status ...
   if (outRec1->isHole != outRec2->isHole)
@@ -2697,6 +2702,14 @@ void Clipper::JoinCommonEdges()
 
     if (!GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2)) continue;
 
+
+    double a1 = 0.0, a2 = 0.0;
+    if (j->poly1Idx != j->poly2Idx)
+    {
+      a1 = Area(outRec1->pts);
+      a2 = Area(outRec2->pts);
+    }
+
     OutPt *p1, *p2, *p3, *p4;
     OutPt *prev = pp1a->prev;
     //get p1 & p2 polypts - the overlap start & endpoints on poly1
@@ -2808,26 +2821,52 @@ void Clipper::JoinCommonEdges()
         if (j2->poly2Idx == j->poly1Idx && PointIsVertex(j2->pt2a, p2))
           j2->poly2Idx = j->poly2Idx;
       }
+
+      //now cleanup redundant edges too ...
+      FixupOutPolygon(*outRec1);
+      FixupOutPolygon(*outRec2);
     } else
     {
       //having joined 2 polygons together, delete the obsolete pointer ...
-      outRec2->pts = 0;
-      outRec2->bottomPt = 0;
-      outRec2->AppendLink = outRec1;
+
+      int OKIdx, ObsoleteIdx;
+      //assume the polygon with the largest area is the one
+      //(and only one) that contains any holes ...
+      if (a1 >= a2)
+      {
+        OKIdx = outRec1->idx;
+        ObsoleteIdx = outRec2->idx;
+        outRec2->pts = 0;
+        outRec2->bottomPt = 0;
+        outRec2->AppendLink = outRec1;
+        //holes are practically always joined to outers, not vice versa ...
+        if (outRec1->isHole && !outRec2->isHole) outRec1->isHole = false;
+      } else
+      {
+        OKIdx = outRec2->idx;
+        ObsoleteIdx = outRec1->idx;
+        outRec2->pts = outRec1->pts;
+        outRec1->pts = 0;
+        outRec1->bottomPt = 0;
+        outRec1->AppendLink = outRec2;
+        //holes are practically always joined to outers, not vice versa ...
+        if (outRec2->isHole && !outRec1->isHole) outRec2->isHole = false;
+      }
 
       //now fixup any subsequent Joins that match this polygon
       for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)
       {
         JoinRec* j2 = m_Joins[k];
-        if (j2->poly1Idx == j->poly2Idx) j2->poly1Idx = j->poly1Idx;
-        if (j2->poly2Idx == j->poly2Idx) j2->poly2Idx = j->poly1Idx;
+        if (j2->poly1Idx == ObsoleteIdx) j2->poly1Idx = OKIdx;
+        if (j2->poly2Idx == ObsoleteIdx) j2->poly2Idx = OKIdx;
       }
-      j->poly2Idx = j->poly1Idx;
-    }
 
-    //now cleanup redundant edges too ...
-    FixupOutPolygon(*outRec1);
-    if (j->poly2Idx != j->poly1Idx) FixupOutPolygon(*outRec2);
+      //now cleanup redundant edges too ...
+      if (outRec1->pts)
+        FixupOutPolygon(*outRec1);
+      else
+        FixupOutPolygon(*outRec2);
+    }
   }
 }
 
