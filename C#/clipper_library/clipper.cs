@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.0                                                           *
-* Date      :  6 August 2011                                                   *
+* Version   :  4.4.1                                                           *
+* Date      :  14 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -133,9 +133,9 @@ namespace clipper
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 
         {
-            Int64 xlo = lhs.lo;
-            lhs.hi += rhs.hi; lhs.lo += rhs.lo;
-            if((xlo < 0 && rhs.lo < 0) || (((xlo < 0) != (rhs.lo < 0)) && lhs.lo >= 0)) lhs.hi++;
+            lhs.hi += rhs.hi;
+            lhs.lo += rhs.lo;
+            if ( (UInt64)lhs.lo < (UInt64)rhs.lo) lhs.hi++;
             return lhs;
         }
 
@@ -147,15 +147,9 @@ namespace clipper
             return lhs;
         }
 
-        //nb: Constructing two new Int128 objects every time we want to multiply Int64s  
+        //nb: Constructing two new Int128 objects every time we want to multiply longs  
         //is slow. So, although calling the Int128Mul method doesn't look as clean, the 
         //code runs significantly faster than if we'd used the * operator.
-        //public static Int128 operator *(Int128 lhs, Int128 rhs)
-        //{
-        //    if (!(lhs.hi == 0 || lhs.hi == -1) || !(rhs.hi == 0 || rhs.hi == -1))
-        //        throw new Exception("Int128 operator*: overflow error");
-        //    return Int128Mul(lhs.lo, rhs.lo);
-        //}
         
         public static Int128 Int128Mul(Int64 lhs, Int64 rhs)
         {
@@ -170,15 +164,14 @@ namespace clipper
             //nb: see comments in clipper.pas
             UInt64 a = int1Hi * int2Hi;
             UInt64 b = int1Lo * int2Lo;
-            UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi; //nb avoid karatsuba
+            UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi; 
 
             Int128 result = new Int128();
-            result.lo = (Int64)(c << 32);
             result.hi = (Int64)(a + (c >> 32));
-            bool hiBitSet = (result.lo < 0);
+
+            result.lo = (Int64)(c << 32);
             result.lo += (Int64)b;
-            if ((hiBitSet && ((Int64)b < 0)) ||
-            ((hiBitSet != ((Int64)b < 0)) && (result.lo >= 0))) result.hi++;
+            if ((UInt64)result.lo < b) result.hi++;
             if (negate) Negate(result);
             return result;
         }
@@ -216,13 +209,20 @@ namespace clipper
         public double ToDouble()
         {
             const double shift64 = 18446744073709551616.0; //2^64
+            const double bit64 = 9223372036854775808.0; 
             if (hi < 0)
             {
                 Int128 tmp = new Int128(this);
                 Negate(tmp);
-                return -((double)tmp.lo + (double)tmp.hi * shift64);
+                if (tmp.lo < 0)
+                    return (double)tmp.lo - bit64 - tmp.hi * shift64;
+                else
+                    return -(double)tmp.lo - tmp.hi * shift64;
             }
-            else return (double)lo + (double)hi * shift64;
+            else if (lo < 0)
+                return -(double)lo + bit64 + hi * shift64;
+            else
+                return (double)lo + (double)hi * shift64;
         }
 
         ////for bug testing ...
@@ -376,6 +376,8 @@ namespace clipper
         public OutRec AppendLink;
         public OutPt pts;
         public OutPt bottomPt;
+        public TEdge bottomE1;
+        public TEdge bottomE2;
     };
 
     internal class OutPt
@@ -431,11 +433,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        internal bool PointInPolygon(IntPoint pt, OutPt pp, bool UseFullInt64Range)
+        internal bool PointInPolygon(IntPoint pt, OutPt pp, bool UseFulllongRange)
         {
           OutPt pp2 = pp;
           bool result = false;
-          if (UseFullInt64Range)
+          if (UseFulllongRange)
           {
               do
               {
@@ -465,11 +467,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullInt64Range)
+        internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFulllongRange)
         {
             if (e1.ybot == e1.ytop) return (e2.ybot == e2.ytop);
             else if (e1.xbot == e1.xtop) return (e2.xbot == e2.xtop);
-            else if (UseFullInt64Range)
+            else if (UseFulllongRange)
               return Int128.Int128Mul(e1.ytop - e1.ybot, e2.xtop - e2.xbot) ==
                   Int128.Int128Mul(e1.xtop - e1.xbot, e2.ytop - e2.ybot);
             else return (Int64)(e1.ytop - e1.ybot) * (e2.xtop - e2.xbot) -
@@ -478,11 +480,11 @@ namespace clipper
         //------------------------------------------------------------------------------
 
         protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
-            IntPoint pt3, bool UseFullInt64Range)
+            IntPoint pt3, bool UseFulllongRange)
         {
             if (pt1.Y == pt2.Y) return (pt2.Y == pt3.Y);
             else if (pt1.X == pt2.X) return (pt2.X == pt3.X);
-            else if (UseFullInt64Range)
+            else if (UseFulllongRange)
                 return Int128.Int128Mul(pt1.Y - pt2.Y, pt2.X - pt3.X) ==
                   Int128.Int128Mul(pt1.X - pt2.X, pt2.Y - pt3.Y);
             else return
@@ -491,11 +493,11 @@ namespace clipper
         //------------------------------------------------------------------------------
 
         protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
-            IntPoint pt3, IntPoint pt4, bool UseFullInt64Range)
+            IntPoint pt3, IntPoint pt4, bool UseFulllongRange)
         {
             if (pt1.Y == pt2.Y) return (pt3.Y == pt4.Y);
             else if (pt1.X == pt2.X) return (pt3.X == pt4.X);
-            else if (UseFullInt64Range)
+            else if (UseFulllongRange)
                 return Int128.Int128Mul(pt1.Y - pt2.Y, pt3.X - pt4.X) ==
                   Int128.Int128Mul(pt1.X - pt2.X, pt3.Y - pt4.Y);
             else return
@@ -507,7 +509,7 @@ namespace clipper
         {
             m_MinimaList = null;
             m_CurrentLM = null;
-            m_UseFullRange = true; //ie default for UseFullCoordinateRange == true
+            m_UseFullRange = false;
         }
         //------------------------------------------------------------------------------
 
@@ -1054,7 +1056,7 @@ namespace clipper
                     m_HorizJoins.Clear();
                     ProcessHorizontals();
                     Int64 topY = PopScanbeam();
-                    succeeded = ProcessIntersections(topY);
+                    succeeded = ProcessIntersections(botY, topY);
                     if (!succeeded) break;
                     ProcessEdgesAtTopOfScanbeam(topY);
                     botY = topY;
@@ -1531,7 +1533,7 @@ namespace clipper
 
         private void AddLocalMaxPoly(TEdge e1, TEdge e2, IntPoint pt)
         {
-            AddOutPt(e1, pt);
+            AddOutPt(e1, null, pt);
             if (e1.outIdx == e2.outIdx)
             {
                 e1.outIdx = -1;
@@ -1545,14 +1547,14 @@ namespace clipper
         {
             if (e2.dx == horizontal || (e1.dx > e2.dx))
             {
-                AddOutPt(e1, pt);
+                AddOutPt(e1, e2, pt);
                 e2.outIdx = e1.outIdx;
                 e1.side = EdgeSide.esLeft;
                 e2.side = EdgeSide.esRight;
             }
             else
             {
-                AddOutPt(e2, pt);
+                AddOutPt(e2, e1, pt);
                 e1.outIdx = e2.outIdx;
                 e1.side = EdgeSide.esRight;
                 e2.side = EdgeSide.esLeft;
@@ -1568,11 +1570,12 @@ namespace clipper
           result.FirstLeft = null;
           result.AppendLink = null;
           result.pts = null;
+          result.bottomPt = null;
           return result;
         }
         //------------------------------------------------------------------------------
 
-        private void AddOutPt(TEdge e, IntPoint pt)
+        private void AddOutPt(TEdge e, TEdge altE, IntPoint pt)
         {
           bool ToFront = (e.side == EdgeSide.esLeft);
           if(  e.outIdx < 0 )
@@ -1584,6 +1587,8 @@ namespace clipper
               OutPt op = new OutPt();
               outRec.pts = op;
               outRec.bottomPt = op;
+              outRec.bottomE1 = e;
+              outRec.bottomE2 = altE;
               op.pt = pt;
               op.idx = outRec.idx;
               op.next = op;
@@ -1599,7 +1604,12 @@ namespace clipper
               op2.pt = pt;
               op2.idx = outRec.idx;
               if (op2.pt.Y == outRec.bottomPt.pt.Y &&
-                op2.pt.X < outRec.bottomPt.pt.X) outRec.bottomPt = op2;
+                op2.pt.X < outRec.bottomPt.pt.X)
+              {
+                  outRec.bottomPt = op2;
+                  outRec.bottomE1 = e;
+                  outRec.bottomE2 = altE;
+              }
               op2.next = op;
               op2.prev = op.prev;
               op2.prev.next = op2;
@@ -1727,51 +1737,22 @@ namespace clipper
         }
         //---------------------------------------------------------------------------
 
-        private bool GetNextNonDupOutPt(OutPt pp, out OutPt next)
-        {
-            next = pp.next;
-            while (next != pp && PointsEqual(pp.pt, next.pt))
-            next = next.next;
-            return next != pp;
-        }
-        //------------------------------------------------------------------------------
-
-        private bool GetPrevNonDupOutPt(OutPt pp, out OutPt prev)
-        {
-            prev = pp.prev;
-            while (prev != pp && PointsEqual(pp.pt, prev.pt))
-            prev = prev.prev;
-            return prev != pp;
-        }
-        //------------------------------------------------------------------------------
-
         private OutRec GetLowermostRec(OutRec outRec1, OutRec outRec2)
         {
             //work out which polygon fragment has the correct hole state ...
             OutPt bPt1 = outRec1.bottomPt;
             OutPt bPt2 = outRec2.bottomPt;
-            OutPt next1, next2, prev1, prev2;
             if (bPt1.pt.Y > bPt2.pt.Y) return outRec1;
             else if (bPt1.pt.Y < bPt2.pt.Y) return outRec2;
             else if (bPt1.pt.X < bPt2.pt.X) return outRec1;
             else if (bPt1.pt.X > bPt2.pt.X) return outRec2;
-            else if (!GetNextNonDupOutPt(bPt1, out next1)) return outRec2;
-            else if (!GetNextNonDupOutPt(bPt2, out next2)) return outRec1;
+            else if (outRec1.bottomE2 == null) return outRec2;
+            else if (outRec2.bottomE2 == null) return outRec1;
             else
             {
-                GetPrevNonDupOutPt(bPt1, out prev1);
-                GetPrevNonDupOutPt(bPt2, out prev2);
-            double dx1 = GetDx(bPt1.pt, next1.pt);
-            double dx2 = GetDx(bPt1.pt, prev1.pt);
-            if (dx2 > dx1) dx1 = dx2;
-            dx2 = GetDx(bPt2.pt, next2.pt);
-            if (dx2 > dx1) return outRec2;
-            else
-            {
-                dx2 = GetDx(bPt2.pt, prev2.pt);
-                if (dx2 > dx1) return outRec2;
-                else return outRec1;
-            }
+                double dx1 = Math.Max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
+                double dx2 = Math.Max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
+                if (dx2 > dx1) return outRec2; else return outRec1;
             }
         }
         //------------------------------------------------------------------------------
@@ -1844,6 +1825,8 @@ namespace clipper
           {
               outRec1.bottomPt = outRec2.bottomPt;
               outRec1.bottomPt.idx = outRec1.idx;
+              outRec1.bottomE1 = outRec2.bottomE1;
+              outRec1.bottomE2 = outRec2.bottomE2;
               if (outRec2.FirstLeft != outRec1)
                   outRec1.FirstLeft = outRec2.FirstLeft;
           }
@@ -1917,7 +1900,7 @@ namespace clipper
 
         private void DoEdge1(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge1, pt);
+            AddOutPt(edge1, edge2, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -1925,7 +1908,7 @@ namespace clipper
 
         private void DoEdge2(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge2, pt);
+            AddOutPt(edge2, edge1, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -1933,8 +1916,8 @@ namespace clipper
 
         private void DoBothEdges(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge1, pt);
-            AddOutPt(edge2, pt);
+            AddOutPt(edge1, edge2, pt);
+            AddOutPt(edge2, edge1, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -2222,7 +2205,7 @@ namespace clipper
             if (horzEdge.nextInLML != null)
             {
                 if (horzEdge.outIdx >= 0)
-                    AddOutPt(horzEdge, new IntPoint(horzEdge.xtop, horzEdge.ytop));
+                    AddOutPt(horzEdge, null, new IntPoint(horzEdge.xtop, horzEdge.ytop));
                 UpdateEdgeIntoAEL(ref horzEdge);
             }
             else
@@ -2282,11 +2265,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool ProcessIntersections(Int64 topY)
+        private bool ProcessIntersections(Int64 botY, Int64 topY)
         {
           if( m_ActiveEdges == null ) return true;
           try {
-            BuildIntersectList(topY);
+            BuildIntersectList(botY, topY);
             if ( m_IntersectNodes == null) return true;
             if ( FixupIntersections() ) ProcessIntersectList();
             else return false;
@@ -2300,7 +2283,7 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private void BuildIntersectList(Int64 topY)
+        private void BuildIntersectList(Int64 botY, Int64 topY)
         {
           if ( m_ActiveEdges == null ) return;
 
@@ -2331,7 +2314,8 @@ namespace clipper
               IntPoint pt = new IntPoint();
               if(e.tmpX > eNext.tmpX && IntersectPoint(e, eNext, ref pt))
               {
-                AddIntersectNode( e, eNext, pt );
+                if (pt.Y > botY) pt.Y = botY;
+                AddIntersectNode(e, eNext, pt);
                 SwapPositionsInSEL(e, eNext);
                 isModified = true;
               }
@@ -2567,7 +2551,7 @@ namespace clipper
               {
                 if (e.outIdx >= 0)
                 {
-                    AddOutPt(e, new IntPoint(e.xtop, e.ytop));
+                    AddOutPt(e, null, new IntPoint(e.xtop, e.ytop));
 
                     for (int i = 0; i < m_HorizJoins.Count; ++i)
                     {
@@ -2604,7 +2588,7 @@ namespace clipper
           {
             if( IsIntermediate( e, topY ) )
             {
-                if (e.outIdx >= 0) AddOutPt(e, new IntPoint(e.xtop, e.ytop));
+                if (e.outIdx >= 0) AddOutPt(e, null, new IntPoint(e.xtop, e.ytop));
               UpdateEdgeIntoAEL(ref e);
 
               //if output polygons share an edge, they'll need joining later ...
@@ -2614,7 +2598,7 @@ namespace clipper
                   new IntPoint(e.xbot, e.ybot),
                   new IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), m_UseFullRange))
               {
-                  AddOutPt(e.prevInAEL, new IntPoint(e.xbot, e.ybot));
+                  AddOutPt(e.prevInAEL, null, new IntPoint(e.xbot, e.ybot));
                   AddJoin(e, e.prevInAEL);
               }
               else if (e.outIdx >= 0 && e.nextInAEL != null && e.nextInAEL.outIdx >= 0 &&
@@ -2625,7 +2609,7 @@ namespace clipper
                   new IntPoint(e.xbot, e.ybot),
                   new IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), m_UseFullRange))
               {
-                  AddOutPt(e.nextInAEL, new IntPoint(e.xbot, e.ybot));
+                  AddOutPt(e.nextInAEL, null, new IntPoint(e.xbot, e.ybot));
                   AddJoin(e, e.nextInAEL);
               }
 
@@ -2659,11 +2643,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        public static bool IsClockwise(Polygon poly, bool UseFullInt64Range = true)
+        public static bool IsClockwise(Polygon poly, bool UseFulllongRange = true)
         {
           int highI = poly.Count -1;
           if (highI < 2) return false;
-          if (UseFullInt64Range)
+          if (UseFulllongRange)
           {
               Int128 area;
               area = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
@@ -2688,11 +2672,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        private bool IsClockwise(OutRec outRec, bool UseFullInt64Range)
+        private bool IsClockwise(OutRec outRec, bool UseFulllongRange)
         {
             OutPt startPt = outRec.pts;
             OutPt op = startPt;
-            if (UseFullInt64Range)
+            if (UseFulllongRange)
             {
                 Int128 area = new Int128(0);
                 do
@@ -3057,11 +3041,11 @@ namespace clipper
         }
         //------------------------------------------------------------------------------
 
-        public static double Area(Polygon poly, bool UseFullInt64Range = true)
+        public static double Area(Polygon poly, bool UseFulllongRange = true)
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            if (UseFullInt64Range)
+            if (UseFulllongRange)
             {
                 Int128 a = new Int128(0);
                 a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -

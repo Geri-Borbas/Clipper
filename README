@@ -3,7 +3,7 @@ Clipper Change Log
 ============================================================
 
 v4.4.0 - 6 August 2011
-* BugFix: A number of minor bug have been fixes that mostly 
+* BugFix: A number of minor bugs have been fixed that mostly 
   affected the new ExPolygons structure. 
 
 v4.3.0 - 17 June 2011

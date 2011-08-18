@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.0                                                           *
-* Date      :  6 August 2011                                                   *
+* Version   :  4.4.1                                                           *
+* Date      :  14 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -38,6 +38,10 @@ type
 
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
+  //By far the most widely used winding rules for polygon filling are
+  //EvenOdd & NonZero (GDI, GDI+, XLib, OpenGL, Cairo, AGG, Quartz, SVG, Gr32)
+  //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
+  //see http://www.songho.ca/opengl/gl_tessellation.html#winding_rules
   TPolyFillType = (pftEvenOdd, pftNonZero);
 
   //used internally ...
@@ -101,10 +105,13 @@ type
   end;
 
   POutPt = ^TOutPt;
+
   POutRec = ^TOutRec;
   TOutRec = record
     idx         : integer;
     bottomPt    : POutPt;
+    bottomE1    : PEdge;
+    bottomE2    : PEdge;
     isHole      : boolean;
     FirstLeft   : POutRec;
     AppendLink  : POutRec;
@@ -168,7 +175,7 @@ type
     //coordinates must be in the range +/- 1.5E9 otherwise an error will be
     //thrown on calling the AddPolygon() or AddPolygons() methods. The benefit
     //of setting this property false is a small (~15%) increase in performance.
-    //(Default value = true.)
+    //(Default value = false.)
     property UseFullCoordinateRange: boolean read fUseFullRange write SetUseFullRange;
   end;
 
@@ -200,8 +207,8 @@ type
     procedure ProcessHorizontal(horzEdge: PEdge);
     procedure ProcessHorizontals;
     procedure AddIntersectNode(e1, e2: PEdge; const pt: TIntPoint);
-    function ProcessIntersections(const topY: int64): boolean;
-    procedure BuildIntersectList(const topY: int64);
+    function ProcessIntersections(const botY, topY: int64): boolean;
+    procedure BuildIntersectList(const botY, topY: int64);
     procedure ProcessIntersectList;
     procedure DeleteFromAEL(e: PEdge);
     procedure DeleteFromSEL(e: PEdge);
@@ -213,7 +220,8 @@ type
     procedure SwapIntersectNodes(int1, int2: PIntersectNode);
     procedure ProcessEdgesAtTopOfScanbeam(const topY: int64);
     function IsContributing(edge: PEdge): boolean;
-    procedure AddOutPt(e: PEdge; const pt: TIntPoint);
+    function CreateOutRec: POutRec;
+    procedure AddOutPt(e, altE: PEdge; const pt: TIntPoint);
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TIntPoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TIntPoint);
     procedure AppendPolygon(e1, e2: PEdge);
@@ -322,7 +330,6 @@ end;
 
 function Int128LessThan(const int1, int2: TInt128): boolean;
 begin
-  //sadly UInt64 typecasts return incorrect results in Delphi 7 ...
   if (int1.hi < int2.hi) then result := true
   else if (int1.hi > int2.hi) then result := false
   else if (int1.hi >= 0) then
@@ -336,17 +343,27 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+//With addition - to test for overflow of signed integers, let sum = lhs + rhs.
+//If lhs is negative and sum > rhs, an overflow has occurred.
+//Similarly, if lhs is non-negative and sum < rhs, an overflow has occurred.
+//However, to test for overflow of *unsigned* integers ...
+//if the sum is smaller than either operand, an overflow has occurred.
+//http://ptgmedia.pearsoncmg.com/images/0321335724/samplechapter/seacord_ch05.pdf
+
 function Int128Add(const int1, int2: TInt128): TInt128;
 begin
   if (int1.lo = 0) and (int1.hi = 0) then result := int2
   else if (int2.lo = 0) and (int2.hi = 0) then result := int1
   else
   begin
-    result.lo := int1.lo + int2.lo; //nb: overflow checking off here
+    result.lo := int1.lo + int2.lo;
     result.hi := int1.hi + int2.hi;
-    if ((int1.lo < 0) and (int2.lo < 0)) or
-      (((int1.lo < 0) <> (int2.lo < 0)) and (result.lo >= 0)) then
-        result.hi := result.hi +1;  //ie: fixup for overflow
+
+    if (int1.lo < 0) then
+    begin
+      if result.lo > int2.lo then result.hi := result.hi +1;
+    end else
+      if result.lo < int2.lo then result.hi := result.hi +1;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -374,27 +391,29 @@ begin
   int2Hi := int2 shr 32;
   int2Lo := int2 and Mask32Bits;
 
-  //It's safe to multiply 32bit ints in unsigned 64bit space without overflow.
-  //Also, the *result* of the karatsuba equation (see below) can also be
-  //stored in 64bit space given:
-  //1. x1*y0 + x0*y1 = (x1+x0) * (y1+y0) - x0*y0 - x1*y1 (karatsuba equation)
-  //2. if x1 and y1 (int1Hi and int2Hi above respectively) are only 31bits,
-  //   then (31bit*32bit) *2 < 64bits.
-  //However if either (x1+x0) > 32bits or (y1+y0) > 32bits, then we must
-  //either avoid using the karatsuba equation or resort to recursion.
-  //see also - http://en.wikipedia.org/wiki/Karatsuba_algorithm
-
   a := int1Hi * int2Hi;
   b := int1Lo * int2Lo;
-  c := int1Hi*int2Lo + int1Lo*int2Hi;
+  //because the high (sign) bits in both int1Hi & int2Hi have been zeroed,
+  //there's no risk of 64 bit overflow in the following assignment
+  //(ie: $7FFFFFFF*$FFFFFFFF + $7FFFFFFF*$FFFFFFFF < 64bits)
+  c := int1Hi*int2Lo + int2Hi*int1Lo;
 
-  //given that result = a shl64 + c shl 32 + b ...
-  result.lo := c shl 32;
+  //result = a shl 64 + c shl 32 + b ...
   result.hi := a + (c shr 32);
-  hiBitSet := (result.lo < 0); //prepare to test for overflow carry
+
+  //Overflow carry would've been a little easier to detect if I'd used UInt64s.
+  //Nevertheless, I've used Int64s here so the code will compile in Delphi 7.
+  //To test for overflow of *signed* integers, let sum = lhs + rhs.
+  //If lhs is negative and sum > rhs, an overflow has occurred.
+  //Similarly, if lhs is non-negative and sum < rhs, an overflow has occurred.
+  result.lo := c shl 32;
+  hiBitSet := (result.lo < 0); //if hiBitSet then lhs == negative
   result.lo := result.lo + b;
-  if (hiBitSet and (b < 0)) or
-    ((hiBitSet <> (b < 0)) and (result.lo >= 0)) then inc(result.hi);
+  if hiBitSet then
+  begin
+    if (result.lo > b) then inc(result.hi);
+  end
+  else if (result.lo < b) then inc(result.hi);
 
   if negate then Int128Negate(result);
 end;
@@ -475,13 +494,20 @@ end;
 function Int128AsDouble(val: TInt128): double;
 const
   shift64: double = 18446744073709551616.0;
+  bit64  : double =  9223372036854775808.0; //ie high (sign) bit of Int64
 begin
   if (val.hi < 0) then
   begin
     Int128Negate(val);
-    result := -(val.lo + val.hi * shift64);
+    if val.lo < 0 then
+      result := val.lo - bit64 - (val.hi * shift64) else
+      result := -val.lo - (val.hi * shift64);
   end else
-    result := (val.lo + val.hi * shift64);
+  begin
+    if val.lo < 0 then
+      result := -val.lo + bit64 + (val.hi * shift64) else
+      result := val.lo + (val.hi * shift64);
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -842,16 +868,6 @@ begin
     pp1 := pp2;
   until pp1 = pp;
 end;
-//------------------------------------------------------------------------------
-
-function CreateOutRec: POutRec;
-begin
-  new(result);
-  result.isHole := false;
-  result.FirstLeft := nil;
-  result.AppendLink := nil;
-  result.pts := nil;
-end;
 
 //------------------------------------------------------------------------------
 // TClipperBase methods ...
@@ -862,7 +878,7 @@ begin
   fEdgeList := TList.Create;
   fLmList := nil;
   fCurrLm := nil;
-  fUseFullRange := true;
+  fUseFullRange := false; //ie default is false
 end;
 //------------------------------------------------------------------------------
 
@@ -1358,7 +1374,7 @@ begin
       ClearHorzJoins;
       ProcessHorizontals;
       topY := PopScanbeam;
-      if not ProcessIntersections(topY) then Exit;
+      if not ProcessIntersections(botY, topY) then Exit;
       ProcessEdgesAtTopOfScanbeam(topY);
       botY := topY;
     until fScanbeam = nil;
@@ -1570,13 +1586,13 @@ procedure TClipper.AddLocalMinPoly(e1, e2: PEdge; const pt: TIntPoint);
 begin
   if (e2.dx = horizontal) or (e1.dx > e2.dx) then
   begin
-    AddOutPt(e1, pt);
+    AddOutPt(e1, e2, pt);
     e2.outIdx := e1.outIdx;
     e1.side := esLeft;
     e2.side := esRight;
   end else
   begin
-    AddOutPt(e2, pt);
+    AddOutPt(e2, e1, pt);
     e1.outIdx := e2.outIdx;
     e1.side := esRight;
     e2.side := esLeft;
@@ -1586,7 +1602,7 @@ end;
 
 procedure TClipper.AddLocalMaxPoly(e1, e2: PEdge; const pt: TIntPoint);
 begin
-  AddOutPt(e1, pt);
+  AddOutPt(e1, nil, pt);
   if (e1.outIdx = e2.outIdx) then
   begin
     e1.outIdx := -1;
@@ -1902,7 +1918,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge1;
   begin
-    AddOutPt(e1, pt);
+    AddOutPt(e1, e2, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1910,7 +1926,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge2;
   begin
-    AddOutPt(e2, pt);
+    AddOutPt(e2, e1, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -1918,8 +1934,8 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoBothEdges;
   begin
-    AddOutPt(e1, pt);
-    AddOutPt(e2, pt);
+    AddOutPt(e1, e2, pt);
+    AddOutPt(e2, e1, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -2060,7 +2076,7 @@ begin
   e2 := e.prevInAEL;
   while assigned(e2) do
   begin
-    if e2.outIdx >= 0 then
+    if (e2.outIdx >= 0) then
     begin
       isHole := not isHole;
       if not assigned(outRec.FirstLeft) then
@@ -2073,53 +2089,24 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetNextNonDupOutPt(pp: POutPt; out next: POutPt): boolean;
-begin
-  next := pp.next;
-  while (next <> pp) and PointsEqual(pp.pt, next.pt) do
-    next := next.next;
-  result := next <> pp;
-end;
-//------------------------------------------------------------------------------
-
-function GetPrevNonDupOutPt(pp: POutPt; out prev: POutPt): boolean;
-begin
-  prev := pp.prev;
-  while (prev <> pp) and PointsEqual(pp.pt, prev.pt) do
-    prev := prev.prev;
-  result := prev <> pp;
-end;
-//------------------------------------------------------------------------------
-
 function GetLowermostRec(outRec1, outRec2: POutRec): POutRec;
 var
-  bPt1, bPt2: POutPt;
-  next1, prev1, next2, prev2: POutPt;
+  outPt1, outPt2: POutPt;
   dx1, dx2: double;
 begin
-  bPt1 := outRec1.bottomPt;
-  bPt2 := outRec2.bottomPt;
-  if (bPt1.pt.Y > bPt2.pt.Y) then result := outRec1
-  else if (bPt1.pt.Y < bPt2.pt.Y) then result := outRec2
-  else if (bPt1.pt.X < bPt2.pt.X) then result := outRec1
-  else if (bPt1.pt.X > bPt2.pt.X) then result := outRec2
-  else if not GetNextNonDupOutPt(bPt1, next1) then result := outRec2
-  else if not GetNextNonDupOutPt(bPt2, next2) then result := outRec1
+  outPt1 := outRec1.bottomPt;
+  outPt2 := outRec2.bottomPt;
+  if (outPt1.pt.Y > outPt2.pt.Y) then result := outRec1
+  else if (outPt1.pt.Y < outPt2.pt.Y) then result := outRec2
+  else if (outPt1.pt.X < outPt2.pt.X) then result := outRec1
+  else if (outPt1.pt.X > outPt2.pt.X) then result := outRec2
+  else if (outRec1.bottomE2 = nil) then result := outRec2
+  else if (outRec2.bottomE2 = nil) then result := outRec1
   else
   begin
-    GetPrevNonDupOutPt(bPt1, prev1);
-    GetPrevNonDupOutPt(bPt2, prev2);
-    dx1 := GetDx(bPt1.pt, next1.pt);
-    dx2 := GetDx(bPt1.pt, prev1.pt);
-    if dx2 > dx1 then dx1 := dx2;
-    dx2 := GetDx(bPt2.pt, next2.pt);
-    if dx2 > dx1 then result := outRec2
-    else
-    begin
-      dx2 := GetDx(bPt2.pt, prev2.pt);
-      if dx2 > dx1 then result := outRec2
-      else result := outRec1;
-    end;
+    dx1 := max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
+    dx2 := max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
+    if dx2 > dx1 then result := outRec2 else result := outRec1;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2199,6 +2186,8 @@ begin
   begin
     outRec1.bottomPt := outRec2.bottomPt;
     outRec1.bottomPt.idx := outRec1.idx;
+    outRec1.bottomE1 := outRec2.bottomE1;
+    outRec1.bottomE2 := outRec2.bottomE2;
     if outRec2.FirstLeft <> outRec1 then
       outRec1.FirstLeft := outRec2.FirstLeft;
   end;
@@ -2240,7 +2229,18 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddOutPt(e: PEdge; const pt: TIntPoint);
+function TClipper.CreateOutRec: POutRec;
+begin
+  new(result);
+  result.isHole := false;
+  result.FirstLeft := nil;
+  result.AppendLink := nil;
+  result.pts := nil;
+  result.bottomPt := nil;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.AddOutPt(e, altE: PEdge; const pt: TIntPoint);
 var
   outRec: POutRec;
   op, op2: POutPt;
@@ -2254,7 +2254,11 @@ begin
     e.outIdx := outRec.idx;
     new(op);
     outRec.pts := op;
+
+    outRec.bottomE1 := e;
+    outRec.bottomE2 := altE;
     outRec.bottomPt := op;
+
     op.pt := pt;
     op.next := op;
     op.prev := op;
@@ -2270,7 +2274,12 @@ begin
     op2.pt := pt;
     op2.idx := outRec.idx;
     if (op2.pt.Y = outRec.bottomPt.pt.Y) and
-      (op2.pt.X < outRec.bottomPt.pt.X) then outRec.bottomPt := op2;
+      (op2.pt.X < outRec.bottomPt.pt.X) then
+    begin
+      outRec.bottomPt := op2;
+      outRec.bottomE1 := e;
+      outRec.bottomE2 := altE;
+    end;
     op2.next := op;
     op2.prev := op.prev;
     op.prev.next := op2;
@@ -2543,7 +2552,7 @@ begin
   if assigned(horzEdge.nextInLML) then
   begin
     if (horzEdge.outIdx >= 0) then
-      AddOutPt(horzEdge, IntPoint(horzEdge.xtop, horzEdge.ytop));
+      AddOutPt(horzEdge, nil, IntPoint(horzEdge.xtop, horzEdge.ytop));
     UpdateEdgeIntoAEL(horzEdge);
   end else
   begin
@@ -2583,11 +2592,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.ProcessIntersections(const topY: int64): boolean;
+function TClipper.ProcessIntersections(const botY, topY: int64): boolean;
 begin
   result := true;
   try
-    BuildIntersectList(topY);
+    BuildIntersectList(botY, topY);
     if fIntersectNodes = nil then exit;
     if FixupIntersections then ProcessIntersectList
     else result := false;
@@ -2611,7 +2620,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.BuildIntersectList(const topY: int64);
+procedure TClipper.BuildIntersectList(const botY, topY: int64);
 var
   e, eNext: PEdge;
   pt: TIntPoint;
@@ -2647,6 +2656,7 @@ begin
         if (e.tmpX > eNext.tmpX) and
           IntersectPoint(e, eNext, pt, fUseFullRange) then
         begin
+          if pt.Y > botY then pt.Y := botY;
           AddIntersectNode(e, eNext, pt);
           SwapPositionsInSEL(e, eNext);
           isModified := true;
@@ -2801,7 +2811,7 @@ begin
       begin
         if (e.outIdx >= 0) then
         begin
-          AddOutPt(e, IntPoint(e.xtop, e.ytop));
+          AddOutPt(e, nil, IntPoint(e.xtop, e.ytop));
 
           hj := fHorizJoins;
           if assigned(hj) then
@@ -2837,7 +2847,7 @@ begin
   begin
     if IsIntermediate(e, topY) then
     begin
-      if (e.outIdx >= 0) then AddOutPt(e, IntPoint(e.xtop, e.ytop));
+      if (e.outIdx >= 0) then AddOutPt(e, nil, IntPoint(e.xtop, e.ytop));
       UpdateEdgeIntoAEL(e);
 
       //if output polygons share an edge, they'll need joining later ...
@@ -2848,7 +2858,7 @@ begin
           IntPoint(e.xbot,e.ybot),
           IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), fUseFullRange) then
       begin
-        AddOutPt(e.prevInAEL, IntPoint(e.xbot, e.ybot));
+        AddOutPt(e.prevInAEL, nil, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.prevInAEL);
       end
       else if (e.outIdx >= 0) and assigned(e.nextInAEL) and
@@ -2859,7 +2869,7 @@ begin
           IntPoint(e.xbot,e.ybot),
           IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), fUseFullRange) then
       begin
-        AddOutPt(e.nextInAEL, IntPoint(e.xbot, e.ybot));
+        AddOutPt(e.nextInAEL, nil, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.nextInAEL);
       end;
     end;
@@ -2955,7 +2965,7 @@ begin
   lastOK := nil;
 
   outRec.pts := outRec.bottomPt;
-  pp := outRec.bottomPt;
+  pp := outRec.pts;
   while true do
   begin
     if (pp.prev = pp) or (pp.next = pp.prev) then
@@ -3204,7 +3214,7 @@ begin
       //it's very rare to get here, and when we do almost invariably
       //p1.idx == p2.idx, otherwise it's an orientation error.
       continue;
-      
+
     if (jr.poly2Idx = jr.poly1Idx) then
     begin
       //instead of joining two polygons, we've just created a new one by
