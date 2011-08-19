@@ -57,8 +57,11 @@ namespace clipper
         public Int128(Int64 _lo = 0)
         {
             hi = 0;
-            lo = Math.Abs(_lo);
-            if (_lo < 0) Negate(this);
+            if (_lo < 0) {
+                lo = -_lo;
+                Negate(this);
+            } else
+                lo = _lo;
         }
 
         public Int128(Int128 val)

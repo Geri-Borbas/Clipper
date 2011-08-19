@@ -317,8 +317,12 @@ end;
 function Int128(const val: Int64): TInt128; overload;
 begin
   result.hi := 0;
-  result.lo := abs(val);
-  if val < 0 then Int128Negate(result);
+  if val < 0 then
+  begin
+    result.lo := -val;
+    Int128Negate(result);
+  end else
+    result.lo := val;
 end;
 //------------------------------------------------------------------------------
 
@@ -343,27 +347,17 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-//With addition - to test for overflow of signed integers, let sum = lhs + rhs.
-//If lhs is negative and sum > rhs, an overflow has occurred.
-//Similarly, if lhs is non-negative and sum < rhs, an overflow has occurred.
-//However, to test for overflow of *unsigned* integers ...
-//if the sum is smaller than either operand, an overflow has occurred.
-//http://ptgmedia.pearsoncmg.com/images/0321335724/samplechapter/seacord_ch05.pdf
-
 function Int128Add(const int1, int2: TInt128): TInt128;
 begin
   if (int1.lo = 0) and (int1.hi = 0) then result := int2
   else if (int2.lo = 0) and (int2.hi = 0) then result := int1
   else
   begin
-    result.lo := int1.lo + int2.lo;
+    result.lo := int1.lo + int2.lo; //nb: overflow checking off here
     result.hi := int1.hi + int2.hi;
-
-    if (int1.lo < 0) then
-    begin
-      if result.lo > int2.lo then result.hi := result.hi +1;
-    end else
-      if result.lo < int2.lo then result.hi := result.hi +1;
+    if ((int1.lo < 0) and (int2.lo < 0)) or
+      (((int1.lo < 0) <> (int2.lo < 0)) and (result.lo >= 0)) then
+        inc(result.hi);  //ie: fixup for overflow
   end;
 end;
 //------------------------------------------------------------------------------
@@ -379,7 +373,7 @@ function Int128Mul(int1, int2: Int64): TInt128;
 var
   a, b, c: Int64;
   int1Hi, int1Lo, int2Hi, int2Lo: Int64;
-  hiBitSet, negate: boolean;
+  negate: boolean;
 begin
   //save the result's sign before clearing both sign bits ...
   negate := (int1 < 0) <> (int2 < 0);
@@ -397,24 +391,12 @@ begin
   //there's no risk of 64 bit overflow in the following assignment
   //(ie: $7FFFFFFF*$FFFFFFFF + $7FFFFFFF*$FFFFFFFF < 64bits)
   c := int1Hi*int2Lo + int2Hi*int1Lo;
-
   //result = a shl 64 + c shl 32 + b ...
   result.hi := a + (c shr 32);
-
-  //Overflow carry would've been a little easier to detect if I'd used UInt64s.
-  //Nevertheless, I've used Int64s here so the code will compile in Delphi 7.
-  //To test for overflow of *signed* integers, let sum = lhs + rhs.
-  //If lhs is negative and sum > rhs, an overflow has occurred.
-  //Similarly, if lhs is non-negative and sum < rhs, an overflow has occurred.
-  result.lo := c shl 32;
-  hiBitSet := (result.lo < 0); //if hiBitSet then lhs == negative
-  result.lo := result.lo + b;
-  if hiBitSet then
-  begin
-    if (result.lo > b) then inc(result.hi);
-  end
-  else if (result.lo < b) then inc(result.hi);
-
+  a := c shl 32;
+  result.lo := a + b;
+  if ((a < 0) and (b < 0)) or
+    (((a < 0) <> (b < 0)) and (result.lo >= 0)) then inc(result.hi);
   if negate then Int128Negate(result);
 end;
 //------------------------------------------------------------------------------
@@ -440,7 +422,7 @@ begin
 
   p := int128(0);
   result := num;
-  for i := 0 to 127 do
+  for i := 0 to 127 do //long division
   begin
     p.hi := p.hi shl 1;
     if p.lo < 0 then inc(p.hi);
@@ -459,22 +441,32 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-procedure int128Div10(val: TInt128; out result: TInt128; out remainder: integer);
+procedure int128DivBase(val: TInt128; base: cardinal; out result: TInt128; out remainder: Int64);
 var
   i: integer;
+  negate: boolean;
 begin
-  remainder := 0;
+  negate := (val.hi < 0);
+  if negate then Int128Negate(val);
+
   result.lo := 0;
   result.hi := 0;
+  if (val.hi = 0) and (val.lo >= 0) and (base > val.lo) then
+  begin
+    if negate then remainder := -val.lo else remainder := val.lo;
+    Exit;
+  end;
+
+  remainder := 0;
   for i := 63 downto 0 do
   begin
     if (val.hi and (int64(1) shl i)) <> 0 then
       remainder := remainder * 2 + 1 else
       remainder := remainder *2;
-    if remainder >= 10 then
+    if remainder >= base then
     begin
       result.hi := result.hi + (int64(1) shl i);
-      dec(remainder, 10);
+      dec(remainder, base);
     end;
   end;
   for i := 63 downto 0 do
@@ -482,12 +474,13 @@ begin
     if (val.lo and (int64(1) shl i)) <> 0 then
       remainder := remainder * 2 + 1 else
       remainder := remainder *2;
-    if remainder >= 10 then
+    if remainder >= base then
     begin
       result.lo := result.lo + (int64(1) shl i);
-      dec(remainder, 10);
+      dec(remainder, base);
     end;
   end;
+  if negate then Int128Negate(result);
 end;
 //------------------------------------------------------------------------------
 
@@ -514,7 +507,7 @@ end;
 function int128AsString(val: TInt128): string;
 var
   valDiv10: TInt128;
-  r: integer;
+  r: Int64;
   isNeg: boolean;
 begin
   result := '';
@@ -526,7 +519,7 @@ begin
     isNeg := false;
   while (val.hi <> 0) or (val.lo <> 0) do
   begin
-    int128Div10(val, valDiv10, r);
+    int128DivBase(val, 10, valDiv10, r);
     result := inttostr(r) + result;
     val := valDiv10;
   end;
