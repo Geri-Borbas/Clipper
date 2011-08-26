@@ -269,7 +269,7 @@ function IntPoint(const X, Y: Int64): TIntPoint;
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
 function OffsetPolygons(const pts: TPolygons; const delta: double;
-  JoinType: TJoinType; MiterLimit: double): TPolygons;
+  JoinType: TJoinType; MiterLimit: double = 2): TPolygons;
 
 implementation
 
@@ -3403,7 +3403,7 @@ end;
 //------------------------------------------------------------------------------
 
 function OffsetPolygons(const pts: TPolygons; const delta: double;
-  JoinType: TJoinType; MiterLimit: double): TPolygons;
+  JoinType: TJoinType; MiterLimit: double = 2): TPolygons;
 var
   i, j, k, highI, len, out_len: integer;
   normals: TArrayOfDoublePoint;
@@ -3446,28 +3446,17 @@ const
     pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
     if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta >= 0) then
     begin
-      if (normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) > 0 then
-      begin
-        //convex angle > 90degrees
-        R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
-        R := delta / R;
-        pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
-          round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
-        AddPoint(pt1);
-      end else
-      begin
-        a1 := ArcTan2(normals[j].Y, normals[j].X);
-        a2 := ArcTan2(-normals[k].Y, -normals[k].X);
-        a1 := abs(a2 - a1);
-        if a1 > pi then a1 := pi*2 - a1;
-        dx := tan((pi - a1)/4) *abs(delta*mul); ////
-        pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
-          round(pt1.Y + normals[j].X *dx));
-        AddPoint(pt1);
-        pt2 := IntPoint(round(pt2.X + normals[k].Y *dx),
-          round(pt2.Y -normals[k].X *dx));
-        AddPoint(pt2);
-      end;
+      a1 := ArcTan2(normals[j].Y, normals[j].X);
+      a2 := ArcTan2(-normals[k].Y, -normals[k].X);
+      a1 := abs(a2 - a1);
+      if a1 > pi then a1 := pi*2 - a1;
+      dx := tan((pi - a1)/4) *abs(delta*mul); ////
+      pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
+        round(pt1.Y + normals[j].X *dx));
+      AddPoint(pt1);
+      pt2 := IntPoint(round(pt2.X + normals[k].Y *dx),
+        round(pt2.Y -normals[k].X *dx));
+      AddPoint(pt2);
     end else
     begin
       AddPoint(pt1);

@@ -2,6 +2,11 @@
 Clipper Change Log
 ============================================================
 
+v4.4.2 - 26 August 2011
+* BugFix: minor bugfixes in Clipper. 
+* Update: the OffsetPolygons function has been significantly 
+  improved by offering 4 different join styles. 
+
 v4.4.0 - 6 August 2011
 * BugFix: A number of minor bugs have been fixed that mostly 
   affected the new ExPolygons structure. 

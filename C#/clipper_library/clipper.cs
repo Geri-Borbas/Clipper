@@ -3254,29 +3254,17 @@ namespace polyonclipping
                     (Int64)(pts[i][j].Y + normals[k].Y * delta));
                 if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0)
                 {
-                    if ((normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) > 0)
-                    {
-                        //convex angle > 90degrees
-                        double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
-                        R = delta / R;
-                        pt1.X = (Int64)(pts[i][j].X + (normals[j].X + normals[k].X) * R);
-                        pt1.Y = (Int64)(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R);
-                        AddPoint(pt1);
-                    }
-                    else
-                    {
-                        double a1 = Math.Atan2(normals[j].Y, normals[j].X);
-                        double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
-                        a1 = Math.Abs(a2 - a1);
-                        if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                        double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta * mul); ////
-                        pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
-                          (Int64)(pt1.Y + normals[j].X *dx));
-                        AddPoint(pt1);
-                        pt2 = new IntPoint((Int64)(pt2.X + normals[k].Y *dx),
-                          (Int64)(pt2.Y -normals[k].X *dx));
-                        AddPoint(pt2);
-                    }
+                    double a1 = Math.Atan2(normals[j].Y, normals[j].X);
+                    double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
+                    a1 = Math.Abs(a2 - a1);
+                    if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
+                    double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta * mul); ////
+                    pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
+                        (Int64)(pt1.Y + normals[j].X *dx));
+                    AddPoint(pt1);
+                    pt2 = new IntPoint((Int64)(pt2.X + normals[k].Y *dx),
+                        (Int64)(pt2.Y -normals[k].X *dx));
+                    AddPoint(pt2);
                 }
                 else
                 {
@@ -3333,7 +3321,7 @@ namespace polyonclipping
         }
         //------------------------------------------------------------------------------
 
-        public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype, double MiterLimit)
+        public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype, double MiterLimit = 2)
         {
             Polygons result = new Polygons(poly.Count);
             new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit);

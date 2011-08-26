@@ -2938,7 +2938,7 @@ private:
 
 public:
 
-PolyOffsetBuilder(Polygons& in_polys, Polygons& out_polys,
+PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
   double delta, JoinType jointype, double MiterLimit)
 {
     //nb precondition - out_polys != ptsin_polys
@@ -3064,29 +3064,17 @@ void PolyOffsetBuilder::DoSquare(int i, int j, double mul)
         (long64)(m_p[i][j].Y + normals[k].Y * m_delta));
     if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta >= 0)
     {
-        if ((normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) > 0)
-        {
-            //convex angle > 90degrees
-            double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
-            R = m_delta / R;
-            pt1.X = (long64)(m_p[i][j].X + (normals[j].X + normals[k].X) * R);
-            pt1.Y = (long64)(m_p[i][j].Y + (normals[j].Y + normals[k].Y) * R);
-            AddPoint(pt1);
-        }
-        else
-        {
-              double a1 = std::atan2(normals[j].Y, normals[j].X);
-              double a2 = std::atan2(-normals[k].Y, -normals[k].X);
-              a1 = std::fabs(a2 - a1);
-              if (a1 > pi) a1 = pi * 2 - a1;
-              double dx = std::tan((pi - a1)/4) *std::fabs(m_delta * mul); ////
-              pt1 = IntPoint((long64)(pt1.X -normals[j].Y *dx),
-                (long64)(pt1.Y + normals[j].X *dx));
-              AddPoint(pt1);
-              pt2 = IntPoint((long64)(pt2.X + normals[k].Y *dx),
-                (long64)(pt2.Y -normals[k].X *dx));
-              AddPoint(pt2);
-        }
+        double a1 = std::atan2(normals[j].Y, normals[j].X);
+        double a2 = std::atan2(-normals[k].Y, -normals[k].X);
+        a1 = std::fabs(a2 - a1);
+        if (a1 > pi) a1 = pi * 2 - a1;
+        double dx = std::tan((pi - a1)/4) *std::fabs(m_delta * mul); ////
+        pt1 = IntPoint((long64)(pt1.X -normals[j].Y *dx),
+          (long64)(pt1.Y + normals[j].X *dx));
+        AddPoint(pt1);
+        pt2 = IntPoint((long64)(pt2.X + normals[k].Y *dx),
+          (long64)(pt2.Y -normals[k].X *dx));
+        AddPoint(pt2);
     }
     else
     {
@@ -3147,7 +3135,7 @@ void PolyOffsetBuilder::DoRound(int i, int j)
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-void OffsetPolygons(Polygons &in_polys, Polygons &out_polys,
+void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
   double delta, JoinType jointype, double MiterLimit)
 {
   if (&out_polys == &in_polys)
