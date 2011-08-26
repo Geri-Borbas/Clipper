@@ -3185,13 +3185,13 @@ namespace polyonclipping
                             for (int j = 0; j < len; ++j) DoButt(i, j);
                             break;
                         case JoinType.jtMiter:
-                            for (int j = 0; j < len; ++j) DoMiter(i, j);
+                            for (int j = 0; j < len; ++j) DoMiter(i, j, MiterLimit);
                             break;
                         case JoinType.jtRound:
                             for (int j = 0; j < len; ++j) DoRound(i, j);
                             break;
                         case JoinType.jtSquare:
-                            for (int j = 0; j < len; ++j) DoSquare(i, j);
+                            for (int j = 0; j < len; ++j) DoSquare(i, j, 1.0);
                             break;
                     }
                     solution.Add(currentPoly);
@@ -3244,7 +3244,7 @@ namespace polyonclipping
             }
             //------------------------------------------------------------------------------
 
-            internal void DoSquare(int i, int j)
+            internal void DoSquare(int i, int j, double mul)
             {
                 int k;
                 if (j == highJ) k = 0; else k = j + 1;
@@ -3269,7 +3269,7 @@ namespace polyonclipping
                         double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
                         a1 = Math.Abs(a2 - a1);
                         if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                        double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta); ////
+                        double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta * mul); ////
                         pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
                           (Int64)(pt1.Y + normals[j].X *dx));
                         AddPoint(pt1);
@@ -3286,7 +3286,7 @@ namespace polyonclipping
             }
             //------------------------------------------------------------------------------
 
-            internal void DoMiter(int i, int j)
+            internal void DoMiter(int i, int j, double mul)
             {
                 int k;
                 if (j == highJ) k = 0; else k = j + 1;
@@ -3299,7 +3299,7 @@ namespace polyonclipping
                     AddPoint(pt1);
                 }
                 else
-                    DoSquare(i, j);
+                    DoSquare(i, j, mul);
             }
             //------------------------------------------------------------------------------
 

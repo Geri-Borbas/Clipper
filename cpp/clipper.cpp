@@ -2993,13 +2993,13 @@ PolyOffsetBuilder(Polygons& in_polys, Polygons& out_polys,
                 for (int j = 0; j < len; ++j) DoButt(i, j);
                 break;
             case jtMiter:
-                for (int j = 0; j < len; ++j) DoMiter(i, j);
+                for (int j = 0; j < len; ++j) DoMiter(i, j, MiterLimit);
                 break;
             case jtRound:
                 for (int j = 0; j < len; ++j) DoRound(i, j);
                 break;
             case jtSquare:
-                for (int j = 0; j < len; ++j) DoSquare(i, j);
+                for (int j = 0; j < len; ++j) DoSquare(i, j, 1.0);
                 break;
         }
     }
@@ -3054,7 +3054,7 @@ void PolyOffsetBuilder::DoButt(int i, int j)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoSquare(int i, int j)
+void PolyOffsetBuilder::DoSquare(int i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3079,7 +3079,7 @@ void PolyOffsetBuilder::DoSquare(int i, int j)
               double a2 = std::atan2(-normals[k].Y, -normals[k].X);
               a1 = std::fabs(a2 - a1);
               if (a1 > pi) a1 = pi * 2 - a1;
-              double dx = std::tan((pi - a1)/4) *std::fabs(m_delta); ////
+              double dx = std::tan((pi - a1)/4) *std::fabs(m_delta * mul); ////
               pt1 = IntPoint((long64)(pt1.X -normals[j].Y *dx),
                 (long64)(pt1.Y + normals[j].X *dx));
               AddPoint(pt1);
@@ -3096,7 +3096,7 @@ void PolyOffsetBuilder::DoSquare(int i, int j)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoMiter(int i, int j)
+void PolyOffsetBuilder::DoMiter(int i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3110,7 +3110,7 @@ void PolyOffsetBuilder::DoMiter(int i, int j)
         AddPoint(pt1);
     }
     else
-        DoSquare(i, j);
+        DoSquare(i, j, mul);
 }
 //------------------------------------------------------------------------------
 

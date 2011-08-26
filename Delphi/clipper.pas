@@ -3436,7 +3436,7 @@ const
     AddPoint(pt2);
   end;
 
-  procedure DoSquare;
+  procedure DoSquare(mul: double);
   var
     dx: double;
   begin
@@ -3460,7 +3460,7 @@ const
         a2 := ArcTan2(-normals[k].Y, -normals[k].X);
         a1 := abs(a2 - a1);
         if a1 > pi then a1 := pi*2 - a1;
-        dx := tan((pi - a1)/4) *abs(delta); ////
+        dx := tan((pi - a1)/4) *abs(delta*mul); ////
         pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
           round(pt1.Y + normals[j].X *dx));
         AddPoint(pt1);
@@ -3486,7 +3486,7 @@ const
       AddPoint(pt1);
     end
     else
-      DoSquare;
+      DoSquare(MiterLimit);
   end;
 
   procedure DoRound;
@@ -3567,7 +3567,7 @@ begin
       case JoinType of
         jtButt: DoButt;
         jtMiter: DoMiter;
-        jtSquare: DoSquare;
+        jtSquare: DoSquare(1.0);
         jtRound: DoRound;
       end;
     end;
