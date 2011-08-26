@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.1                                                           *
-* Date      :  14 August 2011                                                  *
+* Version   :  4.4.2                                                           *
+* Date      :  23 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -43,6 +43,9 @@ type
   //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
   //see http://www.songho.ca/opengl/gl_tessellation.html#winding_rules
   TPolyFillType = (pftEvenOdd, pftNonZero);
+
+  //TJoinType - is used by the OffsetPolygons function
+  TJoinType = (jtButt, jtMiter, jtSquare, jtRound);
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
@@ -261,9 +264,12 @@ function IsClockwise(const pts: TPolygon;
   UseFullInt64Range: boolean = true): boolean;
 function Area(const pts: TPolygon;
   UseFullInt64Range: boolean = true): double;
-function OffsetPolygons(const pts: TPolygons;
-  const delta: single): TPolygons;
 function IntPoint(const X, Y: Int64): TIntPoint;
+
+//OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
+//and inner 'hole' polygons must be oriented counter-clockwise ...
+function OffsetPolygons(const pts: TPolygons; const delta: double;
+  JoinType: TJoinType; MiterLimit: double): TPolygons;
 
 implementation
 
@@ -2649,7 +2655,11 @@ begin
         if (e.tmpX > eNext.tmpX) and
           IntersectPoint(e, eNext, pt, fUseFullRange) then
         begin
-          if pt.Y > botY then pt.Y := botY;
+          if pt.Y > botY then
+          begin
+            pt.Y := botY;
+            pt.X := TopX(e, pt.Y);
+          end;
           AddIntersectNode(e, eNext, pt);
           SwapPositionsInSEL(e, eNext);
           isModified := true;
@@ -3364,24 +3374,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function InsertPoints(const existingPts, newPts: TPolygon;
-  position: integer): TPolygon; overload;
-var
-  lenE, lenN: integer;
-begin
-  result := existingPts;
-  lenE := length(existingPts);
-  lenN := length(newPts);
-  if lenN = 0 then exit;
-  if position < 0 then position := 0
-  else if position > lenE then position := lenE;
-  setlength(result, lenE + lenN);
-  Move(result[position],
-    result[position+lenN],(lenE-position)*sizeof(TIntPoint));
-  Move(newPts[0], result[position], lenN*sizeof(TIntPoint));
-end;
-//------------------------------------------------------------------------------
-
 function GetBounds(const a: TPolygons): TIntRect;
 var
   i,j,len: integer;
@@ -3410,92 +3402,185 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function OffsetPolygons(const pts: TPolygons; const delta: single): TPolygons;
+function OffsetPolygons(const pts: TPolygons; const delta: double;
+  JoinType: TJoinType; MiterLimit: double): TPolygons;
 var
-  j, i, highI: integer;
+  i, j, k, highI, len, out_len: integer;
   normals: TArrayOfDoublePoint;
-  a1, a2, deltaSq: double;
-  arc, outer: TPolygon;
+  a1, a2, deltaSq, R, RMin: double;
+  pt1, pt2: TIntPoint;
+  clipper: TClipper;
+  outer: TPolygon;
   bounds: TIntRect;
-  c: TClipper;
-begin
-  deltaSq := delta*delta;
-  setLength(result, length(pts));
-  for j := 0 to high(pts) do
+const
+  buffLength: integer = 128;
+
+  procedure AddPoint(const pt: TIntPoint);
+  var
+    len: integer;
   begin
-    highI := high(pts[j]);
+    len := length(result[i]);
+    if out_len = len then
+      setlength(result[i], len + buffLength);
+    result[i][out_len] := pt;
+    inc(out_len);
+  end;
 
-    //to minimize artefacts, strip out those polygons where
-    //it's shrinking and where its area < Sqr(delta) ...
-    a1 := Area(pts[j]);
-    if (delta < 0) then
+  procedure DoButt;
+  begin
+    pt1.X := round(pts[i][j].X + normals[j].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[k].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    AddPoint(pt1);
+    AddPoint(pt2);
+  end;
+
+  procedure DoSquare;
+  var
+    dx: double;
+  begin
+    pt1.X := round(pts[i][j].X + normals[j].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[k].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta >= 0) then
     begin
-      if (a1 > 0) and (a1 < deltaSq) then highI := 0;
+      if (normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) > 0 then
+      begin
+        //convex angle > 90degrees
+        R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
+        R := delta / R;
+        pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
+          round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
+        AddPoint(pt1);
+      end else
+      begin
+        a1 := ArcTan2(normals[j].Y, normals[j].X);
+        a2 := ArcTan2(-normals[k].Y, -normals[k].X);
+        a1 := abs(a2 - a1);
+        if a1 > pi then a1 := pi*2 - a1;
+        dx := tan((pi - a1)/4) *abs(delta); ////
+        pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
+          round(pt1.Y + normals[j].X *dx));
+        AddPoint(pt1);
+        pt2 := IntPoint(round(pt2.X + normals[k].Y *dx),
+          round(pt2.Y -normals[k].X *dx));
+        AddPoint(pt2);
+      end;
     end else
-      if (a1 < 0) and (-a1 < deltaSq) then highI := 0; //nb: a hole if area < 0
-
-    if (highI < 2) and (delta <= 0) then
     begin
-      result[j] := nil;
-      continue;
+      AddPoint(pt1);
+      AddPoint(pt2);
     end;
+  end;
 
-    if highI = 0 then
+  procedure DoMiter;
+  begin
+    R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
+    if (R >= RMin) then
     begin
-      result[j] := BuildArc(pts[j][0], 0, 2*pi, delta);
-      continue;
-    end;
+      R := delta / R;
+      pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
+        round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
+      AddPoint(pt1);
+    end
+    else
+      DoSquare;
+  end;
 
-    setLength(normals, highI+1);
-    normals[0] := GetUnitNormal(pts[j][highI], pts[j][0]);
-    for i := 1 to highI do
-      normals[i] := GetUnitNormal(pts[j][i-1], pts[j][i]);
-
-    setLength(result[j], (highI+1)*2);
-    for i := 0 to highI-1 do
+  procedure DoRound;
+  var
+    m: integer;
+    arc: TPolygon;
+  begin
+    pt1.X := round(pts[i][j].X + normals[j].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[k].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    AddPoint(pt1);
+    //round off reflex angles (ie > 180 deg) unless it's
+    //almost flat (ie < 10deg angle).
+    //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
+    //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
+    //dot product normals == 1 -> no angle
+    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) and
+       ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
     begin
-      result[j][i*2].X := round(pts[j][i].X +delta *normals[i].X);
-      result[j][i*2].Y := round(pts[j][i].Y +delta *normals[i].Y);
-      result[j][i*2+1].X := round(pts[j][i].X +delta *normals[i+1].X);
-      result[j][i*2+1].Y := round(pts[j][i].Y +delta *normals[i+1].Y);
-    end;
-    result[j][highI*2].X := round(pts[j][highI].X +delta *normals[highI].X);
-    result[j][highI*2].Y := round(pts[j][highI].Y +delta *normals[highI].Y);
-    result[j][highI*2+1].X := round(pts[j][highI].X +delta *normals[0].X);
-    result[j][highI*2+1].Y := round(pts[j][highI].Y +delta *normals[0].Y);
-
-    //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
-    //cross product normals < 0 -> reflex angle; dot product normals == 1 -> no angle
-    if ((normals[highI].X*normals[0].Y-normals[0].X*normals[highI].Y)*delta >= 0) and
-      ((normals[0].X*normals[highI].X+normals[0].Y*normals[highI].Y) < 0.985) then
-    begin
-      a1 := ArcTan2(normals[highI].Y, normals[highI].X);
-      a2 := ArcTan2(normals[0].Y, normals[0].X);
+      a1 := ArcTan2(normals[j].Y, normals[j].X);
+      a2 := ArcTan2(normals[k].Y, normals[k].X);
       if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
       else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
-      arc := BuildArc(pts[j][highI],a1,a2,delta);
-      result[j] := InsertPoints(result[j],arc,highI*2+1);
+      arc := BuildArc(pts[i][j], a1, a2, delta);
+      for m := 0 to high(arc) do
+        AddPoint(arc[m]);
     end;
-    for i := highI downto 1 do
-      if ((normals[i-1].X*normals[i].Y-normals[i].X*normals[i-1].Y)*delta >= 0) and
-         ((normals[i].X*normals[i-1].X+normals[i].Y*normals[i-1].Y) < 0.985) then
-      begin
-        a1 := ArcTan2(normals[i-1].Y, normals[i-1].X);
-        a2 := ArcTan2(normals[i].Y, normals[i].X);
-        if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
-        else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
-        arc := BuildArc(pts[j][i-1],a1,a2,delta);
-        result[j] := InsertPoints(result[j],arc,(i-1)*2+1);
+    AddPoint(pt2);
+  end;
+
+begin
+  deltaSq := delta*delta;
+  //MiterLimit defaults to twice delta's width ...
+  if MiterLimit <= 0 then MiterLimit := 2;
+  RMin := 2/(sqr(MiterLimit));
+
+  setLength(result, length(pts));
+  for i := 0 to high(pts) do
+  begin
+    len := length(pts[i]);
+    if (len > 1) and (pts[i][0].X = pts[i][len - 1].X) and
+        (pts[i][0].Y = pts[i][len - 1].Y) then dec(len);
+    highI := len -1;
+
+    //when 'shrinking' polygons, to minimize artefacts,
+    //strip those that have an area < Sqr(delta) ...
+    a1 := Area(pts[i]);
+    if (delta < 0) then
+    begin
+      if (a1 > 0) and (a1 < deltaSq) then len := 1;
+    end else
+      if (a1 < 0) and (-a1 < deltaSq) then len := 1; //ie: a hole if area < 0
+
+    //allow the 'expansion' of single lines and points ...
+    if (len < 3) and (delta <= 0) then
+    begin
+      result[i] := nil;
+      continue;
+    end;
+
+    if len = 1 then
+    begin
+      result[i] := BuildArc(pts[i][0], 0, 2*pi, delta);
+      continue;
+    end;
+
+    //build normals ...
+    setLength(normals, len);
+    normals[0] := GetUnitNormal(pts[i][highI], pts[i][0]);
+    for j := 1 to highI do
+      normals[j] := GetUnitNormal(pts[i][j-1], pts[i][j]);
+
+    out_len := 0;
+    for j := 0 to highI do
+    begin
+      if j = highI then k := 0 else k := j +1;
+      case JoinType of
+        jtButt: DoButt;
+        jtMiter: DoMiter;
+        jtSquare: DoSquare;
+        jtRound: DoRound;
       end;
+    end;
+    setLength(result[i], out_len);
   end;
 
   //finally, clean up untidy corners ...
-  c := TClipper.Create;
+  clipper := TClipper.Create;
   try
-    c.AddPolygons(result, ptSubject);
+    clipper.AddPolygons(result, ptSubject);
     if delta > 0 then
     begin
-      if not c.Execute(ctUnion, result, pftNonZero, pftNonZero) then
+      if not clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
         result := nil;
     end else
     begin
@@ -3505,18 +3590,18 @@ begin
       outer[1] := IntPoint(bounds.right+10, bounds.bottom+10);
       outer[2] := IntPoint(bounds.right+10, bounds.top-10);
       outer[3] := IntPoint(bounds.left-10, bounds.top-10);
-      c.AddPolygon(outer, ptSubject);
-      if c.Execute(ctUnion, result, pftNonZero, pftNonZero) then
+      clipper.AddPolygon(outer, ptSubject);
+      if clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
       begin
         //delete the outer rectangle ...
         highI := high(result);
-        for i := 1 to highI do result[i-1] := result[i];
+        for j := 1 to highI do result[j-1] := result[j];
         setlength(result, highI);
       end else
         result := nil;
     end;
   finally
-    c.free;
+    clipper.free;
   end;
 end;
 //------------------------------------------------------------------------------

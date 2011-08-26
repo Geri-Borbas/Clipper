@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.1                                                           *
-* Date      :  14 August 2011                                                  *
+* Version   :  4.4.2                                                           *
+* Date      :  23 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -32,7 +32,7 @@
 #include <cstdlib>
 #include <ostream>
 
-namespace clipper {
+namespace polygonclipping {
 
 enum ClipType { ctIntersection, ctUnion, ctDifference, ctXor };
 enum PolyType { ptSubject, ptClip };
@@ -60,9 +60,12 @@ struct ExPolygon {
 };
 typedef std::vector< ExPolygon > ExPolygons;
 
+enum JoinType { jtSquare, jtButt, jtMiter, jtRound };
+
 bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
-bool OffsetPolygons(const Polygons &in_pgs, Polygons &out_pgs, const float &delta);
+void OffsetPolygons(Polygons &in_polys, Polygons &out_polys,
+  double delta, JoinType jointype, double MiterLimit = 0);
 
 //used internally ...
 enum EdgeSide { esLeft, esRight };
@@ -273,13 +276,13 @@ class clipperException : public std::exception
     std::string m_description;
 };
 //------------------------------------------------------------------------------
-} //clipper namespace
+} //polygonclipping namespace
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-static std::ostream& operator <<(std::ostream &s, clipper::IntPoint &p);
-static std::ostream& operator <<(std::ostream &s, clipper::Polygon &p);
-static std::ostream& operator <<(std::ostream &s, clipper::Polygons &p);
+static std::ostream& operator <<(std::ostream &s, polygonclipping::IntPoint &p);
+static std::ostream& operator <<(std::ostream &s, polygonclipping::Polygon &p);
+static std::ostream& operator <<(std::ostream &s, polygonclipping::Polygons &p);
 //------------------------------------------------------------------------------
 
 #endif //clipper_hpp

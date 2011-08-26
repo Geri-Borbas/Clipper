@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.1                                                           *
-* Date      :  14 August 2011                                                  *
+* Version   :  4.4.2                                                           *
+* Date      :  23 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -34,7 +34,7 @@ using System;
 using System.Collections.Generic;
 //using System.Text; //for Int128.AsString() & StringBuilder
 
-namespace clipper
+namespace polyonclipping
 {
 
     using Polygon = List<IntPoint>;
@@ -2317,10 +2317,14 @@ namespace clipper
               IntPoint pt = new IntPoint();
               if(e.tmpX > eNext.tmpX && IntersectPoint(e, eNext, ref pt))
               {
-                if (pt.Y > botY) pt.Y = botY;
-                AddIntersectNode(e, eNext, pt);
-                SwapPositionsInSEL(e, eNext);
-                isModified = true;
+                  if (pt.Y > botY)
+                  {
+                      pt.Y = botY;
+                      pt.X = TopX(e, pt.Y);
+                  }
+                  AddIntersectNode(e, eNext, pt);
+                  SwapPositionsInSEL(e, eNext);
+                  isModified = true;
               }
               else
                 e = eNext;
@@ -3073,6 +3077,35 @@ namespace clipper
         // OffsetPolygon functions ...
         //------------------------------------------------------------------------------
 
+        internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
+        {
+            int steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
+            Polygon result = new Polygon(steps);
+            int n = steps - 1;
+            double da = (a2 - a1) / n;
+            double a = a1;
+            for (int i = 0; i < steps; ++i)
+            {
+                result.Add(new IntPoint(pt.X + Round(Math.Cos(a) * r), pt.Y + Round(Math.Sin(a) * r)));
+                a += da;
+            }
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        internal static DoublePoint GetUnitNormal(IntPoint pt1, IntPoint pt2)
+        {
+            double dx = (pt2.X - pt1.X);
+            double dy = (pt2.Y - pt1.Y);
+            if ((dx == 0) && (dy == 0)) return new DoublePoint();
+
+            double f = 1 * 1.0 / Math.Sqrt(dx * dx + dy * dy);
+            dx *= f;
+            dy *= f;
+            return new DoublePoint(dy, -dx);
+        }
+        //------------------------------------------------------------------------------
+
         internal class DoublePoint
         {
             public double X { get; set; }
@@ -3084,131 +3117,231 @@ namespace clipper
         };
         //------------------------------------------------------------------------------
 
+        public enum JoinType { jtSquare, jtButt, jtMiter, jtRound };
 
-        internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
+        private class PolyOffsetBuilder
         {
-          int steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
-          Polygon result = new Polygon(steps);
-          int n = steps - 1;
-          double da = (a2 - a1) / n;
-          double a = a1;
-          for (int i = 0; i < steps; ++i)
-          {
-              result.Add(new IntPoint(pt.X + Round(Math.Cos(a) * r), pt.Y + Round(Math.Sin(a) * r)));
-            a += da;
-          }
-          return result;
-        }
-        //------------------------------------------------------------------------------
+            private Polygons pts; 
+            private Polygon currentPoly;
+            private List<DoublePoint> normals;
+            private double delta;
+            private int highJ;
+            private double RMin;
+            private const int buffLength = 128;
 
-        internal static DoublePoint GetUnitNormal(IntPoint pt1, IntPoint pt2)
-        {
-          double dx = ( pt2.X - pt1.X );
-          double dy = ( pt2.Y - pt1.Y );
-          if(  ( dx == 0 ) && ( dy == 0 ) ) return new DoublePoint();
-
-          double f = 1 *1.0/ Math.Sqrt( dx*dx + dy*dy );
-          dx *= f;
-          dy *= f;
-          return new DoublePoint(dy, -dx);
-        }
-        //------------------------------------------------------------------------------
-
-        public static Polygons OffsetPolygons(Polygons pts, double delta)
-        {
-          if (delta == 0) return pts;
-          double deltaSq = delta*delta;
-          Polygons result = new Polygons(pts.Count);
-
-          for (int j = 0; j < pts.Count; ++j)
-          {
-            int highI = pts[j].Count -1;
-            //to minimize artefacts, strip out those polygons where
-            //it's shrinking and where its area < Sqr(delta) ...
-            double a1 = Area(pts[j], true);
-            if (delta < 0) { if (a1 > 0 && a1 < deltaSq) highI = 0;}
-            else if (a1 < 0 && -a1 < deltaSq) highI = 0; //nb: a hole if area < 0
-
-            if (highI < 2 && delta <= 0) continue;
-            if (highI == 0)
+            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit)
             {
-                Polygon arc = BuildArc(pts[j][highI], 0, 2 * Math.PI, delta);
-                result.Add(arc);
-                continue;
-            }
+                //precondtion: solution != pts
 
-            Polygon pg = new Polygon(highI * 2 + 2);
+                if (delta == 0)
+                {
+                    solution = pts;
+                    return;
+                }
 
-            List<DoublePoint> normals = new List<DoublePoint>(highI+1);
-            normals.Add(GetUnitNormal(pts[j][highI], pts[j][0]));
-            for (int i = 1; i <= highI; ++i)
-              normals.Add(GetUnitNormal(pts[j][i-1], pts[j][i]));
+                this.pts = pts;
+                this.delta = delta;
+                //MiterLimit defaults to twice delta's width ...
+                if (MiterLimit <= 0) MiterLimit = 2;
+                RMin = 2/(MiterLimit*MiterLimit);
 
-            for (int i = 0; i < highI; ++i)
-            {
-              pg.Add(new IntPoint(Round(pts[j][i].X + delta *normals[i].X),
-                Round(pts[j][i].Y + delta *normals[i].Y)));
-              pg.Add(new IntPoint(Round(pts[j][i].X + delta * normals[i + 1].X),
-                Round(pts[j][i].Y + delta *normals[i+1].Y)));
-            }
-            pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[highI].X),
-              Round(pts[j][highI].Y + delta *normals[highI].Y)));
-            pg.Add(new IntPoint(Round(pts[j][highI].X + delta * normals[0].X),
-              Round(pts[j][highI].Y + delta *normals[0].Y)));
+                normals = new List<DoublePoint>();
 
-            //round off reflex angles (ie > 180 deg) unless it's almost flat (ie < 10deg angle) ...
-            //cross product normals < 0 . reflex angle; dot product normals == 1 . no angle
-            if ((normals[highI].X *normals[0].Y - normals[0].X *normals[highI].Y) *delta >= 0 &&
-            (normals[0].X *normals[highI].X + normals[0].Y *normals[highI].Y) < 0.985)
-            {
-              double at1 = Math.Atan2(normals[highI].Y, normals[highI].X);
-              double at2 = Math.Atan2(normals[0].Y, normals[0].X);
-              if (delta > 0 && at2 < at1) at2 = at2 + Math.PI*2;
-              else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI*2;
-              Polygon arc = BuildArc(pts[j][highI], at1, at2, delta);
-              pg.InsertRange(highI * 2 + 1, arc);
-            }
-            for (int i = highI; i > 0; --i)
-              if ((normals[i-1].X*normals[i].Y - normals[i].X*normals[i-1].Y) *delta >= 0 &&
-              (normals[i].X*normals[i-1].X + normals[i].Y*normals[i-1].Y) < 0.985)
-              {
-                double at1 = Math.Atan2(normals[i-1].Y, normals[i-1].X);
-                double at2 = Math.Atan2(normals[i].Y, normals[i].X);
-                if (delta > 0 && at2 < at1) at2 = at2 + Math.PI*2;
-                else if (delta < 0 && at2 > at1) at2 = at2 - Math.PI*2;
-                Polygon arc = BuildArc(pts[j][i-1], at1, at2, delta);
-                pg.InsertRange((i - 1) * 2 + 1, arc);
-              }
-            result.Add(pg);
-          }
+                double deltaSq = delta*delta;
+                solution.Clear();
+                solution.Capacity = pts.Count;
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    int len = pts[i].Count;
+                    if (len > 1 && pts[i][0].X == pts[i][len - 1].X &&
+                        pts[i][0].Y == pts[i][len - 1].Y) len--;
+                    this.highJ = len - 1;
 
-          //finally, clean up untidy corners ...
-          Clipper clpr = new Clipper();
-          clpr.AddPolygons(result, PolyType.ptSubject);
-          if (delta > 0){
-            if(!clpr.Execute(ClipType.ctUnion, result, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
-              result.Clear();
-          }
-          else
-          {
-            IntRect r = clpr.GetBounds();
-            Polygon outer = new Polygon(4);
-                outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
-                outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
-                outer.Add(new IntPoint(r.right + 10, r.top - 10));
-                outer.Add(new IntPoint(r.left - 10, r.top - 10));
-                clpr.AddPolygon(outer, PolyType.ptSubject);
-                if (clpr.Execute(ClipType.ctUnion, result, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
-                    result.RemoveAt(0);
+                    //to minimize artefacts, strip out those polygons where
+                    //it's being shrunk and where its area < Sqr(delta) ...
+                    double a1 = Area(pts[i], true);
+                    if (delta < 0) { if (a1 > 0 && a1 < deltaSq) len = 0; }
+                    else if (a1 < 0 && -a1 < deltaSq) len = 0; //nb: a hole if area < 0
+
+                    if (len == 0 || (len < 3 && delta <= 0)) continue;
+                    if (len == 1)
+                    {
+                        Polygon arc = BuildArc(pts[i][highJ], 0, 2 * Math.PI, delta);
+                        solution.Add(arc);
+                        continue;
+                    }
+
+                    //build normals ...
+                    normals.Clear();
+                    normals.Capacity = len;
+                    normals.Add(GetUnitNormal(pts[i][highJ], pts[i][0]));
+                    for (int j = 1; j < len; ++j)
+                        normals.Add(GetUnitNormal(pts[i][j - 1], pts[i][j]));
+
+                    currentPoly = new Polygon();
+                    switch (jointype)
+                    {
+                        case JoinType.jtButt:
+                            for (int j = 0; j < len; ++j) DoButt(i, j);
+                            break;
+                        case JoinType.jtMiter:
+                            for (int j = 0; j < len; ++j) DoMiter(i, j);
+                            break;
+                        case JoinType.jtRound:
+                            for (int j = 0; j < len; ++j) DoRound(i, j);
+                            break;
+                        case JoinType.jtSquare:
+                            for (int j = 0; j < len; ++j) DoSquare(i, j);
+                            break;
+                    }
+                    solution.Add(currentPoly);
+                }
+
+                //finally, clean up untidy corners ...
+                Clipper clpr = new Clipper();
+                clpr.AddPolygons(solution, PolyType.ptSubject);
+                if (delta > 0)
+                {
+                    if (!clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                        solution.Clear();
+                }
                 else
-                    result.Clear();
-          }
-          return result;
+                {
+                    IntRect r = clpr.GetBounds();
+                    Polygon outer = new Polygon(4);
+                    outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
+                    outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
+                    outer.Add(new IntPoint(r.right + 10, r.top - 10));
+                    outer.Add(new IntPoint(r.left - 10, r.top - 10));
+                    clpr.AddPolygon(outer, PolyType.ptSubject);
+                    if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                        solution.RemoveAt(0);
+                    else
+                        solution.Clear();
+                }
+            }
+            //------------------------------------------------------------------------------
+            
+            internal void AddPoint(IntPoint pt)
+            {
+                int len = currentPoly.Count;
+                if (len == currentPoly.Capacity)
+                    currentPoly.Capacity = len + buffLength;
+                currentPoly.Add(pt);
+            }
+            //------------------------------------------------------------------------------
+
+            internal void DoButt(int i, int j)
+            {
+                int k;
+                if (j == highJ) k = 0; else k = j + 1;
+                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
+                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
+                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                AddPoint(pt1);
+                AddPoint(pt2);
+            }
+            //------------------------------------------------------------------------------
+
+            internal void DoSquare(int i, int j)
+            {
+                int k;
+                if (j == highJ) k = 0; else k = j + 1;
+                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
+                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
+                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0)
+                {
+                    if ((normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) > 0)
+                    {
+                        //convex angle > 90degrees
+                        double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
+                        R = delta / R;
+                        pt1.X = (Int64)(pts[i][j].X + (normals[j].X + normals[k].X) * R);
+                        pt1.Y = (Int64)(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R);
+                        AddPoint(pt1);
+                    }
+                    else
+                    {
+                        double a1 = Math.Atan2(normals[j].Y, normals[j].X);
+                        double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
+                        a1 = Math.Abs(a2 - a1);
+                        if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
+                        double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta); ////
+                        pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
+                          (Int64)(pt1.Y + normals[j].X *dx));
+                        AddPoint(pt1);
+                        pt2 = new IntPoint((Int64)(pt2.X + normals[k].Y *dx),
+                          (Int64)(pt2.Y -normals[k].X *dx));
+                        AddPoint(pt2);
+                    }
+                }
+                else
+                {
+                    AddPoint(pt1);
+                    AddPoint(pt2);
+                }
+            }
+            //------------------------------------------------------------------------------
+
+            internal void DoMiter(int i, int j)
+            {
+                int k;
+                if (j == highJ) k = 0; else k = j + 1;
+                double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
+                if (R >= RMin)
+                {
+                    R = delta / R;
+                    IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + (normals[j].X + normals[k].X) * R),
+                      (Int64)(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
+                    AddPoint(pt1);
+                }
+                else
+                    DoSquare(i, j);
+            }
+            //------------------------------------------------------------------------------
+
+            internal void DoRound(int i, int j)
+            {
+                int k;
+                if (j == highJ) k = 0; else k = j + 1;
+                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
+                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
+                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                AddPoint(pt1);
+                //round off reflex angles (ie > 180 deg) unless it's
+                //almost flat (ie < 10deg angle).
+                //cross product normals < 0 -> angle > 180 deg.
+                //dot product normals == 1 -> no angle
+                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0 &&
+                   (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985) 
+                {
+                  double a1 = Math.Atan2(normals[j].Y, normals[j].X);
+                  double a2 = Math.Atan2(normals[k].Y, normals[k].X);
+                  if (delta > 0 && a2 < a1) a2 += Math.PI *2;
+                  else if (delta < 0 && a2 > a1) a2 -= Math.PI *2;
+                  Polygon arc = BuildArc(pts[i][j], a1, a2, delta);
+                  for (int m = 0; m < arc.Count; m++)
+                      AddPoint(arc[m]);
+                  }
+                AddPoint(pt2);
+            }
+            //------------------------------------------------------------------------------
         }
         //------------------------------------------------------------------------------
 
+        public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype, double MiterLimit)
+        {
+            Polygons result = new Polygons(poly.Count);
+            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit);
+            return result;
+        }
+        //------------------------------------------------------------------------------
 
-    } //clipper namespace
+    } //polyonclipping namespace
   
     class ClipperException : Exception
     {
