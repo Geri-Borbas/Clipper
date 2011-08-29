@@ -22,10 +22,10 @@ interface
 uses
   types,
   math,
-  clipper ,
   agg_basics ,
   agg_array ,
-  agg_vertex_source ;
+  agg_vertex_source ,
+  clipper;
 
 type
   clipper_op_e = (

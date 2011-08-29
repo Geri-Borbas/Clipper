@@ -19,7 +19,7 @@
 
 typedef struct _cairo cairo_t;
 
-namespace clipper {
+namespace ClipperLib {
   namespace cairo {
 
     enum Transform {
@@ -33,11 +33,11 @@ namespace clipper {
 //accomplished by setting the scaling factor (10^x) in the following functions.
 //When scaling, remember that on most platforms, integer is only a 32bit value.
     void cairo_to_clipper(cairo_t* cr,
-                          clipper::Polygons &pg,
+                          ClipperLib::Polygons &pg,
                           int scaling_factor = 0,
                           Transform transform = tNone);
 
-    void clipper_to_cairo(const clipper::Polygons &pg,
+    void clipper_to_cairo(const ClipperLib::Polygons &pg,
                           cairo_t* cr,
                           int scaling_factor = 0,
                           Transform transform = tNone);

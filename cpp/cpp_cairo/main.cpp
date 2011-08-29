@@ -77,7 +77,7 @@ void OnPaint(HWND hWnd, HDC dc)
   cairo_set_source_rgba(cr, 1, 1, 1, 1);
   cairo_fill(cr);
 
-  using namespace clipper;
+  using namespace ClipperLib;
 
   const scaling = 2;
 
@@ -113,7 +113,7 @@ void OnPaint(HWND hWnd, HDC dc)
 
   clpr.Execute(ctIntersection, pg, pftNonZero, pftNonZero);
   //now do something fancy with the returned polygons ...
-  pg = OffsetPolygons(pg, offsetVal * std::pow((double)10,scaling));
+  OffsetPolygons(pg, pg, offsetVal * std::pow((double)10,scaling), jtMiter);
 
   //finally copy the clipped path back to the cairo context and draw it ...
   cairo::clipper_to_cairo(pg, cr, scaling);

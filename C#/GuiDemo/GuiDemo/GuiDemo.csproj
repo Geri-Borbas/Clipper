@@ -122,9 +122,9 @@
     <EmbeddedResource Include="australia.bin" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\clipper_library\clipper.csproj">
-      <Project>{4E74771D-BFE8-40D6-AF62-B561B497093A}</Project>
-      <Name>clipper</Name>
+    <ProjectReference Include="..\..\clipper_library\clipper_library.csproj">
+      <Project>{9B062971-A88E-4A3D-B3C9-12B78D15FA66}</Project>
+      <Name>clipper_library</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -3,7 +3,7 @@ object MainForm: TMainForm
   Top = 136
   Width = 843
   Height = 603
-  Caption = 'Clipper Demo'
+  Caption = 'Clipper Delphi Demo'
   Color = clBtnFace
   Font.Charset = ARABIC_CHARSET
   Font.Color = clWindowText

@@ -1,17 +1,16 @@
 ﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Resources;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Clipper .NET library")]
-[assembly: AssemblyDescription("Clipper .NET library")]
+[assembly: AssemblyTitle("clipper_library")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Angus Johnson")]
-[assembly: AssemblyProduct("")]
-[assembly: AssemblyCopyright("Copyright © Angus Johnson 2010")]
+[assembly: AssemblyCompany("Microsoft")]
+[assembly: AssemblyProduct("clipper_library")]
+[assembly: AssemblyCopyright("Copyright © Microsoft 2011")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -21,7 +20,7 @@ using System.Resources;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("f1c5a431-521e-497c-b9c3-b0d6c6f584fd")]
+[assembly: Guid("51a6bdca-bc4e-4b2c-ae69-36e2497204f2")]
 
 // Version information for an assembly consists of the following four values:
 //
@@ -30,6 +29,8 @@ using System.Resources;
 //      Build Number
 //      Revision
 //
-[assembly: AssemblyVersion("2.6.0.0")]
+// You can specify all the values or you can default the Build and Revision Numbers 
+// by using the '*' as shown below:
+// [assembly: AssemblyVersion("1.0.*")]
+[assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: NeutralResourcesLanguageAttribute("en")]

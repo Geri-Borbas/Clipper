@@ -10,7 +10,7 @@ using System.Reflection;
 using System.Linq;
 using System.Windows.Forms;
 using System.Globalization;
-using clipper;
+using ClipperLib;
 
 
 namespace WindowsFormsApplication1
@@ -41,128 +41,151 @@ namespace WindowsFormsApplication1
         //---------------------------------------------------------------------
         //---------------------------------------------------------------------
 
-        void PolygonsToSVG(string filename,
-          Polygons subj, Polygons clip, Polygons solution,
-          PolyFillType subjFill = PolyFillType.pftNonZero, 
-          PolyFillType clipFill = PolyFillType.pftNonZero,
-          double scale = 1, int margin = 10)
+        //a very simple class that builds an SVG file with any number of 
+        //polygons of the specified formats ...
+        class SVGBuilder
         {
-          Polygons [] polys = {subj, clip, solution};
-          //calculate the bounding rect ...
-          IntRect rec = new IntRect();
-          bool firstPending = true;
-          int k = 0;
-          while (k < 3)
-          {
-            if (polys[k] != null)
-              for (int i = 0; i < polys[k].Count; ++i)
-                if (polys[k][i].Count > 2)
-                {
-                  //initialize rec with the very first polygon coordinate ...
-                  rec.left = polys[k][i][0].X;
-                  rec.right = rec.left;
-                  rec.top = polys[k][i][0].Y;
-                  rec.bottom = rec.top;
-                  firstPending = false;
-                }
-            if (firstPending) k++; else break;
-          }
-          if (firstPending) return; //no valid polygons found
-
-          for (; k < 3; ++k)
-            if (polys[k] != null)
-              for (int i = 0; i < polys[k].Count; ++i)
-                for (int j = 0; j < polys[k][i].Count; ++j)
-                {
-                  if (polys[k][i][j].X < rec.left)
-                    rec.left = polys[k][i][j].X;
-                  if (polys[k][i][j].X > rec.right)
-                    rec.right = polys[k][i][j].X;
-                  if (polys[k][i][j].Y < rec.top)
-                    rec.top = polys[k][i][j].Y;
-                  if (polys[k][i][j].Y > rec.bottom)
-                    rec.bottom = polys[k][i][j].Y;
-                }
-
-          if (scale == 0) scale = 1;
-          rec.left = (Int64)((double)rec.left * scale);
-          rec.top = (Int64)((double)rec.top * scale);
-          rec.right = (Int64)((double)rec.right * scale);
-          rec.bottom = (Int64)((double)rec.bottom * scale);
-
-          Int64 offsetX = -rec.left + margin;
-          Int64 offsetY = -rec.top + margin;
-
-          string svg_header = "<?xml version=\"1.0\" standalone=\"no\"?>\n"+
-            "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\"\n"+
-            "\"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n\n"+
-            "<svg width=\"{0}px\" height=\"{1}px\" viewBox=\"0 0 {2} {3}\" "+     
-            "version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n";
-
-          const string svg_path_format = "\"\n style=\"fill:{0};" +
-              " fill-opacity:{1:f2}; fill-rule:{2}; stroke:{3};" +
-              " stroke-opacity:{4:f2}; stroke-width:{5:f2};\"/>\n\n";
-
-          StreamWriter writer = new StreamWriter(filename);
-          if (writer == null) return;
-          writer.Write(svg_header, 
-              (rec.right - rec.left) + margin*2,
-              (rec.bottom - rec.top) + margin*2,
-              (rec.right - rec.left) + margin*2,
-              (rec.bottom - rec.top) + margin*2);
-
-          for (k = 0; k < 3; k++)
-          {
-            if (polys[k] == null) continue;
-            writer.Write(" <path d=\""); 
-            for (int i = 0; i < polys[k].Count; i++)
+            class PolyInfo
             {
-              if (polys[k][i].Count < 3) continue;
-              writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
-                  (double)((double)polys[k][i][0].X * scale + offsetX),
-                  (double)((double)polys[k][i][0].Y * scale + offsetY)));
-              for (int j = 1; j < polys[k][i].Count; j++)
-              {
-                  writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " L {0:f2} {1:f2}",
-                  (double)((double)polys[k][i][j].X * scale + offsetX),
-                  (double)((double)polys[k][i][j].Y * scale + offsetY)));
-              }
-              writer.Write(" z");
+                public Polygons polygons;
+                public PolyFillType pft;
+                public string brushClr;
+                public double brushOpacity;
+                public string penClr;
+                public double penOpacity;
+                public double penWidth;
+                public Boolean showCoords;
+                public PolyInfo(Polygons polygons, PolyFillType pft, string brushClrHtml,
+                    int brushOpacity, string penClrHtml, int penOpacity, double penWidth, Boolean showCoords)
+                {
+                    this.polygons = polygons;
+                    this.pft = pft;
+                    this.brushClr = brushClrHtml;
+                    if (brushOpacity < 0) brushOpacity = 0; else if (brushOpacity > 100) brushOpacity = 100;
+                    this.brushOpacity = (double)brushOpacity / 100;
+                    this.penClr = penClrHtml;
+                    if (penOpacity < 0) penOpacity = 0; else if (penOpacity > 100) penOpacity = 100;
+                    this.penOpacity = (double)penOpacity / 100;
+                    if (penWidth < 0) penWidth = 0; else if (penWidth > 100) penWidth = 100;
+                    this.penWidth = penWidth;
+                    this.showCoords = showCoords;
+                }
             }
-              
-            switch (k) {
-              case 0:
-                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
-                    "#00009C"   /*fill color*/,
-                    0.062       /*fill opacity*/,
-                    (subjFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
-                    "#D3D3DA"   /*stroke color*/,
-                    0.95         /*stroke opacity*/,
-                    0.8         /*stroke width*/));
-                break;
-              case 1:
-                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
-                    "#9C0000"   /*fill color*/,
-                    0.062       /*fill opacity*/,
-                    (clipFill == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
-                    "#FFA07A"   /*stroke color*/,
-                    0.95         /*stroke opacity*/,
-                    0.8         /*stroke width*/));
-                break;
-              default:
-                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
-                    "#80ff9C"   /*fill color*/,
-                    0.37       /*fill opacity*/,
-                    "nonzero",
-                    "#003300"   /*stroke color*/,
-                    1.0         /*stroke opacity*/,
-                    0.8         /*stroke width*/));
-                break;
+
+            private List<PolyInfo> PolyInfoList;
+            const string svg_header = "<?xml version=\"1.0\" standalone=\"no\"?>\n" +
+              "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.0//EN\"\n" +
+              "\"http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd\">\n\n" +
+              "<svg width=\"{0}px\" height=\"{1}px\" viewBox=\"0 0 {2} {3}\" " +
+              "version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n\n";
+            const string svg_path_format = "\"\n style=\"fill:{0};" +
+                " fill-opacity:{1:f2}; fill-rule:{2}; stroke:{3};" +
+                " stroke-opacity:{4:f2}; stroke-width:{5:f2};\"/>\n\n";
+
+            public SVGBuilder()
+            {
+                PolyInfoList = new List<PolyInfo>();
             }
-          }
-          writer.Write("</svg>\n");
-          writer.Close();
+
+            public void AddPolygons(Polygons poly, PolyFillType pft, string brushClrHtml,
+                int brushOpacityPercent, string penClrHtml, int penOpacityPercent, double penWidth, Boolean showCoords)
+            {
+                for (int i = poly.Count -1; i >= 0; i--)
+                    if (poly[i].Count == 0) poly.Remove(poly[i]);
+                if (poly.Count == 0) return;
+                PolyInfoList.Add(new PolyInfo(poly, pft, brushClrHtml,
+                    brushOpacityPercent, penClrHtml, penOpacityPercent, penWidth, showCoords));
+            }
+
+            public Boolean SaveToFile(string filename, double scale = 1.0, int margin = 10)
+            {
+                if (PolyInfoList.Count == 0) return false;
+                if (scale == 0) scale = 1.0;
+                if (margin < 0) margin = 0;
+                //calculate the bounding rect ...
+                IntRect rec = new IntRect();
+                rec.left = PolyInfoList[0].polygons[0][0].X;
+                rec.right = rec.left;
+                rec.top = PolyInfoList[0].polygons[0][0].Y;
+                rec.bottom = rec.top;
+                foreach (PolyInfo pi in PolyInfoList)
+                {
+                    foreach (Polygon pg in pi.polygons)
+                        foreach (IntPoint pt in pg)
+                        {
+                            if (pt.X < rec.left) rec.left = pt.X;
+                            else if (pt.X > rec.right) rec.right = pt.X;
+                            if (pt.Y < rec.top) rec.top = pt.Y;
+                            else if (pt.Y > rec.bottom) rec.bottom = pt.Y;
+                        }
+                }
+
+                rec.left = (Int64)((double)rec.left * scale);
+                rec.top = (Int64)((double)rec.top * scale);
+                rec.right = (Int64)((double)rec.right * scale);
+                rec.bottom = (Int64)((double)rec.bottom * scale);
+                Int64 offsetX = -rec.left + margin;
+                Int64 offsetY = -rec.top + margin;
+
+                StreamWriter writer = new StreamWriter(filename);
+                if (writer == null) return false;
+                writer.Write(svg_header,
+                    (rec.right - rec.left) + margin * 2,
+                    (rec.bottom - rec.top) + margin * 2,
+                    (rec.right - rec.left) + margin * 2,
+                    (rec.bottom - rec.top) + margin * 2);
+
+                foreach (PolyInfo pi in PolyInfoList)
+                {
+                    writer.Write(" <path d=\"");
+                    foreach (Polygon p in pi.polygons)
+                    {
+                        if (p.Count < 3) continue;
+                        writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
+                            (double)((double)p[0].X * scale + offsetX),
+                            (double)((double)p[0].Y * scale + offsetY)));
+                        for (int j = 1; j < p.Count; j++)
+                        {
+                            writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " L {0:f2} {1:f2}",
+                            (double)((double)p[j].X * scale + offsetX),
+                            (double)((double)p[j].Y * scale + offsetY)));
+                        }
+                        writer.Write(" z");
+                    }
+
+                    writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
+                    pi.brushClr,
+                    pi.brushOpacity,
+                    (pi.pft == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
+                    pi.penClr,
+                    pi.penOpacity,
+                    pi.penWidth));
+
+                    if (pi.showCoords)
+                    {
+                        writer.Write("<g font-family=\"Verdana\" font-size=\"11\" fill=\"black\">\n\n");
+                        foreach (Polygon p in pi.polygons)
+                        {
+                            foreach (IntPoint pt in p)
+                            {
+                                Int64 x = pt.X;
+                                Int64 y = pt.Y;
+                                writer.Write(String.Format(
+                                    "<text x=\"{0}\" y=\"{1}\">{2},{3}</text>\n",
+                                    (int)(x * scale + offsetX), (int)(y * scale + offsetY), x, y));
+
+                            }
+                            writer.Write("\n");
+                        }
+                        writer.Write("</g>\n");
+                    }
+                }
+                writer.Write("</svg>\n");
+                writer.Close();
+                return true;
+            }
         }
+
         //------------------------------------------------------------------------------
         //------------------------------------------------------------------------------
 
@@ -203,7 +226,7 @@ namespace WindowsFormsApplication1
             subjects.Clear();
             //load map of Australia from resource ...
             _assembly = Assembly.GetExecutingAssembly();
-            polyStream = _assembly.GetManifestResourceStream("ClipperCSharpDemo1.australia.bin");
+            polyStream = _assembly.GetManifestResourceStream("GuiDemo.australia.bin");
             int len = (int)polyStream.Length;
             byte[] b = new byte[len];
             polyStream.Read(b, 0, len);
@@ -359,14 +382,10 @@ namespace WindowsFormsApplication1
 
             if (!justClip)
             {
-                //LoadFromFile("subj.txt", subjects);
-                //LoadFromFile("clip.txt", clips);
                 if (rbTest2.Checked)
                     GenerateAustPlusRandomEllipses((int)nudCount.Value);
                 else
                     GenerateRandomPolygon((int)nudCount.Value);
-                //SaveToFile("clip.txt", clips);
-                //SaveToFile("subj.txt", subjects);
             }
 
             Cursor.Current = Cursors.WaitCursor;
@@ -406,13 +425,12 @@ namespace WindowsFormsApplication1
             if ((clips.Count > 0 || subjects.Count > 0) && !rbNone.Checked)
             {                
                 Polygons solution2 = new Polygons();
-                clipper.Clipper c = new clipper.Clipper();
+                Clipper c = new Clipper();
                 c.UseFullCoordinateRange = false;
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
                 exSolution.Clear();
                 solution.Clear();
-                //bool succeeded = c.Execute(GetClipType(), exSolution, GetPolyFillType(), GetPolyFillType());
                 bool succeeded = c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
                 if (succeeded)
                 {
@@ -425,27 +443,9 @@ namespace WindowsFormsApplication1
                     //holes will be stroked (outlined) correctly but filled incorrectly  ...
                     path.FillMode = FillMode.Winding;
 
-                    //foreach (ExPolygon epg in exSolution)
-                    //{
-                    //    PointF[] pts = PolygonToPointFArray(epg.outer, scale);
-                    //    path.AddPolygon(pts);
-                    //    myPen.Color = Color.FromArgb(255, 0, 100, 0);
-                    //    newgraphic.DrawPolygon(myPen, pts);
-                    //    myPen.Color = Color.Red;
-                    //    foreach (Polygon pg in epg.holes)
-                    //    {
-                    //        pts = PolygonToPointFArray(pg, scale);
-                    //        path.AddPolygon(pts);
-                    //        newgraphic.DrawPolygon(myPen, pts);
-                    //    }
-                    //    myBrush.Color = Color.FromArgb(32, 0, 255, 0);
-                    //    newgraphic.FillPath(myBrush, path);
-                    //    path.Reset();
-                    //}
-
                     //or for something fancy ...
                     if (nudOffset.Value != 0)
-                        solution2 = clipper.Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale);
+                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, Clipper.JoinType.jtMiter);
                     else
                         solution2 = new Polygons(solution);
                     foreach (Polygon pg in solution2)
@@ -468,16 +468,16 @@ namespace WindowsFormsApplication1
                     c.Clear();
                     c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) subj_area += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) subj_area += Clipper.Area(pg);
                     c.Clear();
                     c.AddPolygons(clips, PolyType.ptClip);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) clip_area += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) clip_area += Clipper.Area(pg);
                     c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctIntersection, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) int_area += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) int_area += Clipper.Area(pg);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Polygon pg in solution2) union_area += clipper.Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) union_area += Clipper.Area(pg);
 
                     StringFormat lftStringFormat = new StringFormat();
                     lftStringFormat.Alignment = StringAlignment.Near;
@@ -622,8 +622,12 @@ namespace WindowsFormsApplication1
             //save to SVG ...
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                PolygonsToSVG(saveFileDialog1.FileName, subjects, clips, 
-                    solution, GetPolyFillType(), GetPolyFillType(), 1.0 / scale);
+                PolyFillType pft = GetPolyFillType();
+                SVGBuilder svg = new SVGBuilder();
+                svg.AddPolygons(subjects, pft, "#00009C", 6, "#D3D3DA", 95, 0.8, false);
+                svg.AddPolygons(clips, pft, "#9C0000", 6, "#FFA07A", 95, 0.8, false);
+                svg.AddPolygons(solution, PolyFillType.pftNonZero, "#80ff9C", 37, "#003300", 100, 0.8, false);
+                svg.SaveToFile(saveFileDialog1.FileName, 1.0 / scale);
             }
         }
         //---------------------------------------------------------------------
@@ -635,7 +639,7 @@ namespace WindowsFormsApplication1
             //repeated 1000 times ...
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
-            clipper.Clipper c = new clipper.Clipper();
+            Clipper c = new Clipper();
             c.UseFullCoordinateRange = false; //////////////////////////////////
             this.Cursor = Cursors.WaitCursor;
 
@@ -643,8 +647,6 @@ namespace WindowsFormsApplication1
             for (int i = 0; i < 1000; i++)
             {
                 GenerateRandomPolygon(EdgeCnt);
-                //SaveToFile("clip.txt", clips);
-                //SaveToFile("subj.txt", subjects);
                 c.Clear();
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.2                                                           *
-* Date      :  23 August 2011                                                  *
+* Version   :  4.4.3                                                           *
+* Date      :  29 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -46,7 +46,7 @@ namespace std
 }
 #endif
 
-namespace polygonclipping {
+namespace ClipperLib {
 
 static double const horizontal = -3.4E+38;
 static double const pi = 3.141592653589793238;
@@ -3032,7 +3032,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
 private:
 
-void PolyOffsetBuilder::AddPoint(IntPoint& pt)
+void AddPoint(IntPoint& pt)
 {
     Polygon::size_type len = m_curr_poly->size();
     if (len == m_curr_poly->capacity())
@@ -3041,7 +3041,7 @@ void PolyOffsetBuilder::AddPoint(IntPoint& pt)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoButt(int i, int j)
+void DoButt(int i, int j)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3054,7 +3054,7 @@ void PolyOffsetBuilder::DoButt(int i, int j)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoSquare(int i, int j, double mul)
+void DoSquare(int i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3084,7 +3084,7 @@ void PolyOffsetBuilder::DoSquare(int i, int j, double mul)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoMiter(int i, int j, double mul)
+void DoMiter(int i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3102,7 +3102,7 @@ void PolyOffsetBuilder::DoMiter(int i, int j, double mul)
 }
 //------------------------------------------------------------------------------
 
-void PolyOffsetBuilder::DoRound(int i, int j)
+void DoRound(int i, int j)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3147,16 +3147,16 @@ void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
 }
 //------------------------------------------------------------------------------
 
-}; //polygonclipping namespace
+}; //ClipperLib namespace
 
-static std::ostream& operator <<(std::ostream &s, polygonclipping::IntPoint& p)
+static std::ostream& operator <<(std::ostream &s, ClipperLib::IntPoint& p)
 {
 	s << p.X << ' ' << p.Y << "\n";
 	return s;
 };
 //------------------------------------------------------------------------------
 
-static std::ostream& operator <<(std::ostream &s, polygonclipping::Polygon& p)
+static std::ostream& operator <<(std::ostream &s, ClipperLib::Polygon& p)
 {
   for (unsigned i=0; i < p.size(); i++)
     s << p[i];
@@ -3165,7 +3165,7 @@ static std::ostream& operator <<(std::ostream &s, polygonclipping::Polygon& p)
 };
 //------------------------------------------------------------------------------
 
-static std::ostream& operator <<(std::ostream &s, polygonclipping::Polygons& p)
+static std::ostream& operator <<(std::ostream &s, ClipperLib::Polygons& p)
 {
   for (unsigned i=0; i < p.size(); i++)
     s << p[i];

@@ -2,6 +2,16 @@
 Clipper Change Log
 ============================================================
 
+v4.4.3 - 29 August 2011
+* BugFix: fixed a minor rounding issue in OffsetPolygons 
+  function (affected C# translation only). 
+* BugFix: fixed a minor bug in OffsetPolygons' function 
+  declaration (affected C++ translation only). 
+* Change: 'clipper' namespace changed to 'ClipperLib' 
+  namespace in both C++ and C# code to remove the ambiguity 
+  between the Clipper class and the namespace. (This also 
+  required numerous updates to the accompanying demos.)
+
 v4.4.2 - 26 August 2011
 * BugFix: minor bugfixes in Clipper. 
 * Update: the OffsetPolygons function has been significantly 

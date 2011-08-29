@@ -6,10 +6,10 @@
 #include <cmath>
 #include <cstring>
 #include <sstream>
-#include "clipper.hpp"
+#include "../clipper.hpp"
 
 using namespace std;
-using namespace clipper;
+using namespace ClipperLib;
 
 enum poly_color_type { pctSubject, pctClip, pctSolution };
 
@@ -164,7 +164,7 @@ void CALLBACK ErrorCallback(GLenum errorCode)
 }   
 //------------------------------------------------------------------------------
 
-void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
+void DrawPolygon(Polygons &pgs, poly_color_type pct)
 {
 	switch (pct)
 	{
@@ -186,10 +186,10 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 
 	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_FALSE); //GL_FALSE
 	gluTessBeginPolygon(tess, NULL); 
-	for (clipper::Polygons::size_type i = 0; i < pgs.size(); ++i)
+	for (Polygons::size_type i = 0; i < pgs.size(); ++i)
 	{
 		gluTessBeginContour(tess);
-		for (clipper::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
+		for (ClipperLib::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
 			GLdouble *vert = new GLdouble[3];
 			vert[0] = (GLdouble)pgs[i][j].X;
@@ -213,10 +213,10 @@ void DrawPolygon(clipper::Polygons &pgs, poly_color_type pct)
 
 	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_TRUE); //GL_FALSE
 	gluTessBeginPolygon(tess, NULL); 
-	for (clipper::Polygons::size_type i = 0; i < pgs.size(); ++i)
+	for (Polygons::size_type i = 0; i < pgs.size(); ++i)
 	{
 		gluTessBeginContour(tess);
-		for (clipper::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
+		for (ClipperLib::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
 			GLdouble *vert = new GLdouble[3];
 			vert[0] = (GLdouble)pgs[i][j].X;

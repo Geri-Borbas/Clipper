@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.2                                                           *
-* Date      :  23 August 2011                                                  *
+* Version   :  4.4.3                                                           *
+* Date      :  29 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *

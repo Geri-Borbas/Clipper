@@ -6,9 +6,9 @@ uses
   Messages,
   Graphics,
   Math,
-  clipper,
-  Cairo in 'cairo.pas',
-  CairoWin32 in 'cairowin32.pas',
+  clipper in '../clipper.pas',
+  Cairo in '../cairo/cairo.pas',
+  CairoWin32 in '../cairo/cairowin32.pas',
   cairo_clipper in 'cairo_clipper.pas';
 
 {$R *.res}
@@ -78,7 +78,7 @@ begin
 
   cairo_set_line_width(cr, 2.0);
   if offsetVal <> 0 then
-    ppa := OffsetPolygons(ppa, offsetVal*power(10,scaling));
+    ppa := OffsetPolygons(ppa, offsetVal*power(10,scaling), jtRound);
   PointArrayToCairo(ppa, cr, scaling);
   cairo_set_source_rgba(cr, 1, 1, 0, 1);
   cairo_fill_preserve(cr);

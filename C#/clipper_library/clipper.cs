@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.2                                                           *
-* Date      :  23 August 2011                                                  *
+* Version   :  4.4.3                                                           *
+* Date      :  29 August 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -34,7 +34,7 @@ using System;
 using System.Collections.Generic;
 //using System.Text; //for Int128.AsString() & StringBuilder
 
-namespace polyonclipping
+namespace ClipperLib
 {
 
     using Polygon = List<IntPoint>;
@@ -2417,7 +2417,7 @@ namespace polyonclipping
           else
           {
             double q = (pt1.X-pt2.X)/(pt1.Y-pt2.Y);
-            return (Int64)(pt1.X + (currentY - pt1.Y) * q);
+            return (Int64)Round(pt1.X + (currentY - pt1.Y) * q);
           }
         }
         //------------------------------------------------------------------------------
@@ -3142,7 +3142,7 @@ namespace polyonclipping
                 this.pts = pts;
                 this.delta = delta;
                 //MiterLimit defaults to twice delta's width ...
-                if (MiterLimit <= 0) MiterLimit = 2;
+                if (MiterLimit <= 2) MiterLimit = 2;
                 RMin = 2/(MiterLimit*MiterLimit);
 
                 normals = new List<DoublePoint>();
@@ -3235,10 +3235,10 @@ namespace polyonclipping
             {
                 int k;
                 if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
-                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
-                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
+                    (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
+                    (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
                 AddPoint(pt1);
                 AddPoint(pt2);
             }
@@ -3248,10 +3248,10 @@ namespace polyonclipping
             {
                 int k;
                 if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
-                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
-                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
+                    (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
+                    (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
                 if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0)
                 {
                     double a1 = Math.Atan2(normals[j].Y, normals[j].X);
@@ -3282,8 +3282,8 @@ namespace polyonclipping
                 if (R >= RMin)
                 {
                     R = delta / R;
-                    IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + (normals[j].X + normals[k].X) * R),
-                      (Int64)(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
+                    IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + (normals[j].X + normals[k].X) * R),
+                      (Int64)Round(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
                     AddPoint(pt1);
                 }
                 else
@@ -3295,10 +3295,10 @@ namespace polyonclipping
             {
                 int k;
                 if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint((Int64)(pts[i][j].X + normals[j].X * delta),
-                    (Int64)(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)(pts[i][j].X + normals[k].X * delta),
-                    (Int64)(pts[i][j].Y + normals[k].Y * delta));
+                IntPoint pt1 = new IntPoint(Round(pts[i][j].X + normals[j].X * delta),
+                    Round(pts[i][j].Y + normals[j].Y * delta));
+                IntPoint pt2 = new IntPoint(Round(pts[i][j].X + normals[k].X * delta),
+                    Round(pts[i][j].Y + normals[k].Y * delta));
                 AddPoint(pt1);
                 //round off reflex angles (ie > 180 deg) unless it's
                 //almost flat (ie < 10deg angle).
@@ -3329,7 +3329,7 @@ namespace polyonclipping
         }
         //------------------------------------------------------------------------------
 
-    } //polyonclipping namespace
+    } //ClipperLib namespace
   
     class ClipperException : Exception
     {
