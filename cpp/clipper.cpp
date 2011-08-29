@@ -542,7 +542,7 @@ long64 TopX(const IntPoint pt1, const IntPoint pt2, const long64 currentY)
   else
   {
     double q = (double)(pt1.X-pt2.X)/(double)(pt1.Y-pt2.Y);
-    return static_cast<long64>(pt1.X + (currentY - pt1.Y) *q);
+    return Round(pt1.X + (currentY - pt1.Y) *q);
   }
 }
 //------------------------------------------------------------------------------
@@ -3045,10 +3045,10 @@ void DoButt(int i, int j)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
-    IntPoint pt1 = IntPoint((long64)(m_p[i][j].X + normals[j].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)(m_p[i][j].X + normals[k].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[k].Y * m_delta));
+    IntPoint pt1 = IntPoint((long64)Round(m_p[i][j].X + normals[j].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
+    IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
     AddPoint(pt1);
     AddPoint(pt2);
 }
@@ -3058,10 +3058,10 @@ void DoSquare(int i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
-    IntPoint pt1 = IntPoint((long64)(m_p[i][j].X + normals[j].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)(m_p[i][j].X + normals[k].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[k].Y * m_delta));
+    IntPoint pt1 = IntPoint((long64)Round(m_p[i][j].X + normals[j].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
+    IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
     if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta >= 0)
     {
         double a1 = std::atan2(normals[j].Y, normals[j].X);
@@ -3093,8 +3093,8 @@ void DoMiter(int i, int j, double mul)
     {
         R = m_delta / R;
         IntPoint pt1 =
-          IntPoint((long64)(m_p[i][j].X + (normals[j].X + normals[k].X) *R),
-          (long64)(m_p[i][j].Y + (normals[j].Y + normals[k].Y) *R));
+          IntPoint((long64)Round(m_p[i][j].X + (normals[j].X + normals[k].X) *R),
+          (long64)Round(m_p[i][j].Y + (normals[j].Y + normals[k].Y) *R));
         AddPoint(pt1);
     }
     else
@@ -3106,10 +3106,10 @@ void DoRound(int i, int j)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
-    IntPoint pt1 = IntPoint((long64)(m_p[i][j].X + normals[j].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)(m_p[i][j].X + normals[k].X * m_delta),
-        (long64)(m_p[i][j].Y + normals[k].Y * m_delta));
+    IntPoint pt1 = IntPoint((long64)Round(m_p[i][j].X + normals[j].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
+    IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
+        (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
     AddPoint(pt1);
     //round off reflex angles (ie > 180 deg) unless it's
     //almost flat (ie < 10deg angle).
