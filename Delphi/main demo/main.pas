@@ -22,6 +22,31 @@ uses
   GR32_Misc, clipper;
 
 type
+
+  TPolyInfo = record
+    polygons: TPolygons;
+    pft: TPolyFillType;
+    brushClr: string;
+    brushOpacity: double;
+    penClr: string;
+    penOpacity: double;
+    penWidth: double;
+    showCoords: boolean;
+  end;
+  TPolyInfos = array of TPolyInfo;
+
+  TSvgBuilder = class
+  private
+    infoList: TPolyInfos;
+  public
+    procedure AddPolygons(const poly: TPolygons; pft: TPolyFillType;
+      const brushClrHtml: string; brushOpacityPercent: integer;
+      const penClrHtml: string; penOpacityPercent: integer; penWidth: double;
+      showCoords: boolean);
+    function SaveToFile(filename: string;
+      scale: double = 1.0; margin: integer = 10): boolean;
+  end;
+
   TMainForm = class(TForm)
     Panel1: TPanel;
     StatusBar1: TStatusBar;
@@ -98,7 +123,7 @@ const
   solBrushColor: TColor32 = $8066EF7F;
 
 var
-  scale: integer = 1; //scale bitmap to X decimal places
+  scale: integer = 1; //scale bitmap to 10 decimal places
   subj: TArrayOfArrayOfFloatPoint = nil;
   clip: TArrayOfArrayOfFloatPoint = nil;
   subjI: TArrayOfArrayOfIntPoint = nil;
@@ -112,145 +137,6 @@ var
 {$R polygons.res}
 
 //------------------------------------------------------------------------------
-
-procedure PolygonsToSVG(const filename: string;
-  const subj, clip, solution: TArrayOfArrayOfIntPoint;
-  subjFill, clipFill: TPolyFillType;
-  scale: double = 1.0; margin: integer = 10);
-const
-  pft_string: array[boolean] of string = ('evenodd', 'nonzero');
-  svg_xml_start: array [0..1] of string =
-    ('<?xml version="1.0" standalone="no"?>'+#10+
-     '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"'+#10+
-     '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'+#10+#10+'<svg ',
-     'version="1.1" xmlns="http://www.w3.org/2000/svg">'+#10+#10);
-  poly_start: string = ' <path d="';
-  svg_xml_end: string = '</svg>'+#10;
-var
-  i, j, k: integer;
-  rec: TIntRect;
-  firstPending: boolean;
-  offsetX, offsetY: Int64;
-  ds: char;
-  ss: TStringStream;
-  polys: array [0..2] of TArrayOfArrayOfIntPoint;
-begin
-  polys[0] := subj; polys[1] := clip; polys[2] := solution;
-
-  ds := DecimalSeparator;
-  firstPending := true;
-  i := 0;
-  while i < 3 do
-  begin
-    if assigned(polys[i]) then
-      for j := 0 to high(polys[i]) do
-        if length(polys[i][j]) > 2 then
-          with polys[i][j][0] do
-          begin
-            rec.left := X;
-            rec.right := X;
-            rec.top := Y;
-            rec.bottom := Y;
-            firstPending := false;
-          end;
-    if firstPending then inc(i) else break;
-  end;
-  if firstPending then exit;
-
-  for i := i to 2 do
-    if assigned(polys[i]) then
-      for j := 0 to high(polys[i]) do
-        for k := 0 to high(polys[i][j]) do
-          with polys[i][j][k] do
-          begin
-            if X < rec.left then rec.left := X;
-            if X > rec.right then rec.right := X;
-            if Y < rec.top then rec.top := Y;
-            if Y > rec.bottom then rec.bottom := Y;
-          end;
-
-  if scale = 0 then scale := 1;
-  offsetX := round(-rec.left * scale)+ margin;
-  offsetY := round(-rec.top * scale)+ margin;
-
-  DecimalSeparator := '.';
-  ss := TStringStream.Create('');
-  try
-    ss.WriteString(
-      format('%s width="%dpx" height="%dpx" viewBox="0 0 %d %d" %s',
-      [svg_xml_start[0],
-      (rec.right - rec.left) + margin*2,
-      (rec.bottom - rec.top) + margin*2,
-      (rec.right - rec.left) + margin*2,
-      (rec.bottom - rec.top) + margin*2,
-      svg_xml_start[1]]));
-
-    for i := 0 to 2 do
-    begin
-      if assigned(polys[i]) then
-      begin
-        ss.WriteString(poly_start);
-        for j := 0 to high(polys[i]) do
-        begin
-          if (length(polys[i][j]) < 3) then continue;
-          with polys[i][j][0] do ss.WriteString( format(' M %1.2f %1.2f',
-            [X * scale + offsetX, Y * scale + offsetY]));
-          for k := 1 to high(polys[i][j]) do
-            with polys[i][j][k] do ss.WriteString( format(' L %1.2f %1.2f',
-              [X * scale + offsetX, Y * scale + offsetY]));
-          ss.WriteString(' z');
-        end;
-
-        case i of
-          0:
-            begin
-              ss.WriteString(format('"'#10+
-                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
-                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
-                  ['#0000ff'{fill color},
-                  0.062     {fill opacity},
-                  pft_string[subjFill = pftNonZero],
-                  '#0099ff' {stroke color},
-                  0.5       {stroke opacity},
-                  0.8       {stroke width} ]));
-            end;
-          1:
-            begin
-              ss.WriteString(format('"'#10+
-                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
-                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
-                  ['#ffff00'{fill color},
-                  0.062     {fill opacity},
-                  pft_string[clipFill = pftNonZero],
-                  '#ff9900' {stroke color},
-                  0.5       {stroke opacity},
-                  0.8       {stroke width} ]));
-            end;
-          2:
-            begin
-              ss.WriteString(format('"'#10+
-                ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
-                ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
-                  ['#00ff00'{fill color},
-                  0.125     {fill opacity},
-                  'evenodd',
-                  '#006600' {stroke color},
-                  1.0       {stroke opacity},
-                  0.8       {stroke width} ]));
-            end;
-        end;
-      end;
-    end;
-    ss.WriteString(svg_xml_end);
-    //finally write to file ...
-    with TFileStream.Create(filename, fmCreate) do
-    try CopyFrom(ss, 0); finally free; end;
-  finally
-    ss.Free;
-    DecimalSeparator := ds;
-  end;
-end;
-//---------------------------------------------------------------------------
 
 function AAFloatPoint2AAPoint(const a: TArrayOfArrayOfFloatPoint;
   decimals: integer = 0): TArrayOfArrayOfIntPoint;
@@ -367,7 +253,7 @@ begin
       sol := AAPoint2AAFloatPoint(solutionI, scale);
       PolyPolylineFS(ImgView321.Bitmap, sol, clGray32, true);
       scaling := power(10, scale);
-      solI := OffsetPolygons(solutionI, offsetMul2/2 *scaling);
+      solI := OffsetPolygons(solutionI, offsetMul2/2 *scaling, jtRound);
       sol := AAPoint2AAFloatPoint(solI, scale);
     end;
     PolyPolygonFS(ImgView321.Bitmap, sol, solBrushColor);
@@ -680,8 +566,161 @@ var
 begin
   if not SaveDialog1.Execute then exit;
   invScale := 1/ power(10, scale);
-  PolygonsToSVG(SaveDialog1.FileName, subjI, clipI, solutionI,
-    GetFillTypeI, GetFillTypeI, invScale);
+  with TSvgBuilder.Create do
+  try
+    AddPolygons(subjI, GetFillTypeI, '#0000ff', 6, '#0099ff', 50, 0.8, false);
+    AddPolygons(clipI, GetFillTypeI, '#ffff00', 6, '#ff9900', 50, 0.8, false);
+    AddPolygons(solutionI, GetFillTypeI, '#00ff00', 12, '#006600', 100, 0.8, false);
+    SaveToFile(SaveDialog1.FileName, invScale);
+  finally
+    free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TSvgBuilder.AddPolygons(const poly: TPolygons; pft: TPolyFillType;
+  const brushClrHtml: string; brushOpacityPercent: integer;
+  const penClrHtml: string; penOpacityPercent: integer; penWidth: double;
+  showCoords: boolean);
+var
+  len: integer;
+begin
+  len := length(infoList);
+  setlength(infoList, len +1);
+  infoList[len].polygons := poly;
+  infoList[len].pft := pft;
+  infoList[len].brushClr := brushClrHtml;
+  if brushOpacityPercent < 0 then brushOpacityPercent := 0
+  else if brushOpacityPercent > 100 then brushOpacityPercent := 100;
+  infoList[len].brushOpacity := brushOpacityPercent/100;
+  infoList[len].penClr := penClrHtml;
+  if penOpacityPercent < 0 then penOpacityPercent := 0
+  else if penOpacityPercent > 100 then penOpacityPercent := 100;
+  infoList[len].penOpacity := penOpacityPercent/100;
+  if penWidth < 0 then penWidth := 0
+  else if penWidth > 100 then penWidth := 100;
+  infoList[len].penWidth := penWidth;
+  infoList[len].showCoords := showCoords;
+end;
+//------------------------------------------------------------------------------
+
+function TSvgBuilder.SaveToFile(filename: string;
+  scale: double = 1.0; margin: integer = 10): boolean;
+const
+  pft_string: array[TPolyFillType] of string = ('evenodd', 'nonzero');
+  svg_xml_start: array [0..1] of string =
+    ('<?xml version="1.0" standalone="no"?>'+#10+
+     '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"'+#10+
+     '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'+#10+#10+'<svg ',
+     'version="1.1" xmlns="http://www.w3.org/2000/svg">'+#10+#10);
+  poly_start: string = ' <path d="';
+  svg_xml_end: string = '</svg>'+#10;
+var
+  i,j,k,len,len2: integer;
+  offsetX, offsetY: Int64;
+  rec: TIntRect;
+  ds: char;
+  ss: TStringStream;
+begin
+  result := false;
+  len := length(infoList);
+  if len = 0 then Exit;
+
+  if (scale = 0) then scale := 1.0;
+  if (margin < 0) then margin := 0;
+  i := 0; j := 0;
+  //calculate the bounding rect (skipping empty polygons) ...
+  while i < len do
+  begin
+    len2 := length(infoList[i].polygons);
+    j := 0;
+    while (j < len2) and (length(infoList[i].polygons[j]) < 3) do inc(j);
+    if j < len2 then Break;
+  end;
+  if i = len then Exit;
+  rec.left := infoList[i].polygons[j][0].X;
+  rec.right := rec.left;
+  rec.top := infoList[i].polygons[j][0].Y;
+  rec.bottom := rec.top;
+  for i := i to len -1 do
+    for j := 0 to length(infoList[i].polygons) -1 do
+      for k := 0 to length(infoList[i].polygons[j]) -1 do
+        with infoList[i].polygons[j][k] do
+      begin
+        if X < rec.left then rec.left := X
+        else if X > rec.right then rec.right := X;
+        if Y < rec.top then rec.top := Y
+        else if Y > rec.bottom then rec.bottom := Y;
+      end;
+  rec.left := round(rec.left * scale);
+  rec.top := round(rec.top * scale);
+  rec.right := round(rec.right * scale);
+  rec.bottom := round(rec.bottom * scale);
+  offsetX := -rec.left + margin;
+  offsetY := -rec.top + margin;
+
+  ds := DecimalSeparator;
+  DecimalSeparator := '.';
+  ss := TStringStream.Create('');
+  try
+    ss.WriteString(
+      format('%s width="%dpx" height="%dpx" viewBox="0 0 %d %d" %s',
+      [svg_xml_start[0],
+      (rec.right - rec.left) + margin*2,
+      (rec.bottom - rec.top) + margin*2,
+      (rec.right - rec.left) + margin*2,
+      (rec.bottom - rec.top) + margin*2,
+      svg_xml_start[1]]));
+
+    for i := 0 to len -1 do
+      if assigned(infoList[i].polygons) then
+      begin
+        ss.WriteString(poly_start);
+        for j := 0 to high(infoList[i].polygons) do
+        begin
+          if (length(infoList[i].polygons[j]) < 3) then continue;
+          with infoList[i].polygons[j][0] do
+            ss.WriteString( format(' M %1.2f %1.2f',
+            [X * scale + offsetX, Y * scale + offsetY]));
+          for k := 1 to high(infoList[i].polygons[j]) do
+            with infoList[i].polygons[j][k] do
+              ss.WriteString( format(' L %1.2f %1.2f',
+                [X * scale + offsetX, Y * scale + offsetY]));
+          ss.WriteString(' z');
+        end;
+
+        with infoList[i] do
+          ss.WriteString(format('"'#10+
+            ' style="fill:%s; fill-opacity:%1.2n; fill-rule:%s;'#10+
+            ' stroke:%s; stroke-opacity:%1.2n; stroke-width:%1.2n;"/>'#10#10,
+              [brushClr, brushOpacity, pft_string[pft], penClr,
+              penOpacity, penWidth]));
+
+        if infoList[i].showCoords then
+        begin
+          ss.WriteString('<g font-family="Verdana" font-size="11" fill="black">'#10#10);
+          for j := 0 to high(infoList[i].polygons) do
+          begin
+            if (length(infoList[i].polygons[j]) < 3) then continue;
+            for k := 0 to high(infoList[i].polygons[j]) do
+              with infoList[i].polygons[j][k] do
+                ss.WriteString(format('<text x="%1.0n" y="%1.0n">%1.0n,%1.0n</text>'#10,
+                  [X * scale + offsetX,  Y * scale + offsetY, X, Y]));
+            ss.WriteString(#10);
+          end;
+          ss.WriteString('</g>'#10);
+        end;
+      end;
+
+    ss.WriteString(svg_xml_end);
+    //finally write to file ...
+    with TFileStream.Create(filename, fmCreate) do
+    try CopyFrom(ss, 0); finally free; end;
+  finally
+    ss.Free;
+    DecimalSeparator := ds;
+  end;
+
 end;
 //------------------------------------------------------------------------------
 
