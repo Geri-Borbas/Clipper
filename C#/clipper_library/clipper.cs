@@ -3117,7 +3117,7 @@ namespace ClipperLib
         };
         //------------------------------------------------------------------------------
 
-        public enum JoinType { jtSquare, jtButt, jtMiter, jtRound };
+        public enum JoinType { jtSquare, jtMiter, jtRound };
 
         private class PolyOffsetBuilder
         {
@@ -3129,7 +3129,7 @@ namespace ClipperLib
             private double RMin;
             private const int buffLength = 128;
 
-            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit)
+            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit = 2)
             {
                 //precondtion: solution != pts
 
@@ -3141,8 +3141,7 @@ namespace ClipperLib
 
                 this.pts = pts;
                 this.delta = delta;
-                //MiterLimit defaults to twice delta's width ...
-                if (MiterLimit <= 2) MiterLimit = 2;
+                if (MiterLimit <= 1) MiterLimit = 1;
                 RMin = 2/(MiterLimit*MiterLimit);
 
                 normals = new List<DoublePoint>();
@@ -3181,9 +3180,6 @@ namespace ClipperLib
                     currentPoly = new Polygon();
                     switch (jointype)
                     {
-                        case JoinType.jtButt:
-                            for (int j = 0; j < len; ++j) DoButt(i, j);
-                            break;
                         case JoinType.jtMiter:
                             for (int j = 0; j < len; ++j) DoMiter(i, j, MiterLimit);
                             break;
@@ -3228,19 +3224,6 @@ namespace ClipperLib
                 if (len == currentPoly.Capacity)
                     currentPoly.Capacity = len + buffLength;
                 currentPoly.Add(pt);
-            }
-            //------------------------------------------------------------------------------
-
-            internal void DoButt(int i, int j)
-            {
-                int k;
-                if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
-                    (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
-                    (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
-                AddPoint(pt1);
-                AddPoint(pt2);
             }
             //------------------------------------------------------------------------------
 

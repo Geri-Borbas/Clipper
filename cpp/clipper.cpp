@@ -2951,8 +2951,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     this->m_p = in_polys;
     this->m_delta = delta;
     this->m_jointype = jointype;
-    //MiterLimit defaults to 2 times delta's size ...
-    if (MiterLimit <= 0) MiterLimit = 2;
+    if (MiterLimit <= 1) MiterLimit = 1;
     m_RMin = 2/(MiterLimit*MiterLimit);
 
     double deltaSq = delta*delta;
@@ -2989,9 +2988,6 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
         switch (jointype)
         {
-            case jtButt:
-                for (int j = 0; j < len; ++j) DoButt(i, j);
-                break;
             case jtMiter:
                 for (int j = 0; j < len; ++j) DoMiter(i, j, MiterLimit);
                 break;
@@ -3038,19 +3034,6 @@ void AddPoint(IntPoint& pt)
     if (len == m_curr_poly->capacity())
         m_curr_poly->reserve(len + buffLength);
     m_curr_poly->push_back(pt);
-}
-//------------------------------------------------------------------------------
-
-void DoButt(int i, int j)
-{
-    int k;
-    if (j == m_highJ) k = 0; else k = j + 1;
-    IntPoint pt1 = IntPoint((long64)Round(m_p[i][j].X + normals[j].X * m_delta),
-        (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
-        (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
-    AddPoint(pt1);
-    AddPoint(pt2);
 }
 //------------------------------------------------------------------------------
 

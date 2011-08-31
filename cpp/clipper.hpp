@@ -60,12 +60,12 @@ struct ExPolygon {
 };
 typedef std::vector< ExPolygon > ExPolygons;
 
-enum JoinType { jtSquare, jtButt, jtMiter, jtRound };
+enum JoinType { jtSquare, jtMiter, jtRound };
 
 bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double MiterLimit = 0);
+  double delta, JoinType jointype, double MiterLimit = 2);
 
 //used internally ...
 enum EdgeSide { esLeft, esRight };
