@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.3                                                           *
-* Date      :  29 August 2011                                                  *
+* Version   :  4.4.4                                                           *
+* Date      :  4 September 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -46,13 +46,18 @@ typedef signed long long long64;
 typedef unsigned long long ulong64;
 
 struct IntPoint {
+public:
   long64 X;
   long64 Y;
   IntPoint(long64 x = 0, long64 y = 0): X(x), Y(y) {};
+  friend std::ostream& operator <<(std::ostream &s, IntPoint &p);
 };
 
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
+
+std::ostream& operator <<(std::ostream &s, Polygon &p);
+std::ostream& operator <<(std::ostream &s, Polygons &p);
 
 struct ExPolygon {
   Polygon  outer;
@@ -66,6 +71,9 @@ bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
   double delta, JoinType jointype, double MiterLimit = 2);
+
+void ReversePoints(Polygon& p);
+void ReversePoints(Polygons& p);
 
 //used internally ...
 enum EdgeSide { esLeft, esRight };
@@ -276,14 +284,8 @@ class clipperException : public std::exception
     std::string m_description;
 };
 //------------------------------------------------------------------------------
-} //ClipperLib namespace
 
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-static std::ostream& operator <<(std::ostream &s, ClipperLib::IntPoint &p);
-static std::ostream& operator <<(std::ostream &s, ClipperLib::Polygon &p);
-static std::ostream& operator <<(std::ostream &s, ClipperLib::Polygons &p);
-//------------------------------------------------------------------------------
+} //ClipperLib namespace
 
 #endif //clipper_hpp
 

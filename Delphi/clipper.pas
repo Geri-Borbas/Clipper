@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.3                                                           *
-* Date      :  29 August 2011                                                  *
+* Version   :  4.4.4                                                           *
+* Date      :  4 September 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -45,7 +45,7 @@ type
   TPolyFillType = (pftEvenOdd, pftNonZero);
 
   //TJoinType - is used by the OffsetPolygons function
-  TJoinType = (jtButt, jtMiter, jtSquare, jtRound);
+  TJoinType = (jtMiter, jtSquare, jtRound);
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
@@ -265,6 +265,8 @@ function IsClockwise(const pts: TPolygon;
 function Area(const pts: TPolygon;
   UseFullInt64Range: boolean = true): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
+function ReversePoints(const pts: TPolygon): TPolygon; overload;
+function ReversePoints(const pts: TPolygons): TPolygons; overload;
 
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
@@ -676,6 +678,33 @@ begin
     p := p.next;
   until p = pts;
   result := result / 2;
+end;
+//------------------------------------------------------------------------------
+
+function ReversePoints(const pts: TPolygon): TPolygon; overload;
+var
+  i, highI: integer;
+begin
+  highI := high(pts);
+  SetLength(result, highI +1);
+  for i := 0 to highI do
+    result[i] := pts[highI - i];
+end;
+//------------------------------------------------------------------------------
+
+function ReversePoints(const pts: TPolygons): TPolygons; overload;
+var
+  i, j, highJ: integer;
+begin
+  i := length(pts);
+  SetLength(result, i);
+  for i := 0 to i -1 do
+  begin
+    highJ := high(pts[i]);
+    SetLength(result[i], highJ+1);
+    for j := 0 to highJ do
+      result[i][j] := pts[i][highJ - j];
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -3426,16 +3455,6 @@ const
     inc(out_len);
   end;
 
-  procedure DoButt;
-  begin
-    pt1.X := round(pts[i][j].X + normals[j].X * delta);
-    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    pt2.X := round(pts[i][j].X + normals[k].X * delta);
-    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
-    AddPoint(pt1);
-    AddPoint(pt2);
-  end;
-
   procedure DoSquare(mul: double);
   var
     dx: double;
@@ -3510,7 +3529,7 @@ const
 begin
   deltaSq := delta*delta;
   //MiterLimit defaults to twice delta's width ...
-  if MiterLimit <= 0 then MiterLimit := 2;
+  if MiterLimit <= 1 then MiterLimit := 1;
   RMin := 2/(sqr(MiterLimit));
 
   setLength(result, length(pts));
@@ -3554,7 +3573,6 @@ begin
     begin
       if j = highI then k := 0 else k := j +1;
       case JoinType of
-        jtButt: DoButt;
         jtMiter: DoMiter;
         jtSquare: DoSquare(1.0);
         jtRound: DoRound;
@@ -3586,6 +3604,8 @@ begin
         highI := high(result);
         for j := 1 to highI do result[j-1] := result[j];
         setlength(result, highI);
+        //restore polygon orientation ...
+        result := ReversePoints(result);
       end else
         result := nil;
     end;

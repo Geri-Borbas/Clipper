@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.3                                                           *
-* Date      :  29 August 2011                                                  *
+* Version   :  4.4.4                                                           *
+* Date      :  4 September 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3072,6 +3072,19 @@ namespace ClipperLib
                 return area / 2;
             }
         }
+        //------------------------------------------------------------------------------
+
+        public static void ReversePoints(Polygon p)
+        {
+            p.Reverse();
+        }
+        //------------------------------------------------------------------------------
+
+        public static void ReversePoints(Polygons p)
+        {
+            for (int i = 0; i < p.Count; ++i)
+              ReversePoints(p[i]);
+        }
 
         //------------------------------------------------------------------------------
         // OffsetPolygon functions ...
@@ -3211,7 +3224,10 @@ namespace ClipperLib
                     outer.Add(new IntPoint(r.left - 10, r.top - 10));
                     clpr.AddPolygon(outer, PolyType.ptSubject);
                     if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                    {
                         solution.RemoveAt(0);
+                        ReversePoints(solution);
+                    } 
                     else
                         solution.Clear();
                 }
