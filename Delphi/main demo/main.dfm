@@ -1,6 +1,6 @@
 object MainForm: TMainForm
-  Left = 164
-  Top = 136
+  Left = 167
+  Top = 60
   Width = 843
   Height = 603
   Caption = 'Clipper Delphi Demo'
@@ -273,7 +273,7 @@ object MainForm: TMainForm
       Width = 82
       Height = 25
       Cancel = True
-      Caption = 'S&ave SVG ...'
+      Caption = 'Save SV&G ...'
       TabOrder = 8
       OnClick = bSaveSvgClick
     end

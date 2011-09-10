@@ -7,8 +7,8 @@ uses
   Graphics,
   Math,
   clipper in '../clipper.pas',
-  Cairo in '../cairo/cairo.pas',
-  CairoWin32 in '../cairo/cairowin32.pas',
+  Cairo in '../cairo_src/cairo.pas',
+  CairoWin32 in '../cairo_src/cairowin32.pas',
   cairo_clipper in 'cairo_clipper.pas';
 
 {$R *.res}
