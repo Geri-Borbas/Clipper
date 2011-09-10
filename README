@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+v4.4.4 - 10 September 2011
+* Change: Deleted jtButt from JoinType (used by the 
+  OffsetPolygons function). 
+* BugFix: Fixed another minor bug in OffsetPolygons function. 
+* Update: Further improvements to the help file
+
 v4.4.3 - 29 August 2011
 * BugFix: fixed a minor rounding issue in OffsetPolygons 
   function (affected C++ & C# translations). 
