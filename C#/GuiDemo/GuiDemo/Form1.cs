@@ -226,7 +226,7 @@ namespace WindowsFormsApplication1
             subjects.Clear();
             //load map of Australia from resource ...
             _assembly = Assembly.GetExecutingAssembly();
-            polyStream = _assembly.GetManifestResourceStream("GuiDemo.australia.bin");
+            polyStream = _assembly.GetManifestResourceStream("GuiDemo.aust.bin");
             int len = (int)polyStream.Length;
             byte[] b = new byte[len];
             polyStream.Read(b, 0, len);
@@ -397,18 +397,20 @@ namespace WindowsFormsApplication1
             GraphicsPath path = new GraphicsPath();
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
 
+            //draw subjects ...
             foreach (Polygon pg in subjects)
             {
                 PointF[] pts = PolygonToPointFArray(pg, scale);
                 path.AddPolygon(pts);
                 pts = null;
             }
-            Pen myPen = new Pen(Color.FromArgb(48, 0, 0, 255), (float)0.6);
-            SolidBrush myBrush = new SolidBrush(Color.FromArgb(32, 0, 0, 255));
+            Pen myPen = new Pen(Color.FromArgb(196, 0xC3, 0xC9, 0xCF), (float)0.6);
+            SolidBrush myBrush = new SolidBrush(Color.FromArgb(127, 0xDD, 0xDD, 0xF0));
             newgraphic.FillPath(myBrush, path);
             newgraphic.DrawPath(myPen, path);
             path.Reset();
 
+            //draw clips ...
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
             foreach (Polygon pg in clips)
             {
@@ -416,8 +418,8 @@ namespace WindowsFormsApplication1
                 path.AddPolygon(pts);
                 pts = null;
             }
-            myPen.Color = Color.FromArgb(48, 255, 0, 0);
-            myBrush.Color = Color.FromArgb(32, 255, 255, 0);
+            myPen.Color = Color.FromArgb(196, 0xF9, 0xBE, 0xA6);
+            myBrush.Color = Color.FromArgb(127, 0xFF, 0xE0, 0xE0);
             newgraphic.FillPath(myBrush, path);
             newgraphic.DrawPath(myPen, path);
 
@@ -455,8 +457,8 @@ namespace WindowsFormsApplication1
                             path.AddPolygon(pts);
                         pts = null;
                     }
-                    myBrush.Color = Color.FromArgb(96, 128, 255, 156);
-                    myPen.Color = Color.Black;
+                    myBrush.Color = Color.FromArgb(127, 0x66, 0xEF, 0x7F);
+                    myPen.Color = Color.FromArgb(255, 0, 0x33, 0);
                     myPen.Width = 1.0f;
                     newgraphic.FillPath(myBrush, path);
                     newgraphic.DrawPath(myPen, path);
@@ -629,39 +631,6 @@ namespace WindowsFormsApplication1
                 svg.AddPolygons(solution, PolyFillType.pftNonZero, "#80ff9C", 37, "#003300", 100, 0.8, false);
                 svg.SaveToFile(saveFileDialog1.FileName, 1.0 / scale);
             }
-        }
-        //---------------------------------------------------------------------
-
-        private void button1_Click(object sender, EventArgs e)
-        {
-            //calc time taken to 'intersect' two polygons using the specified edge
-            //count, the specified filling rule and boolean operation, and all this
-            //repeated 1000 times ...
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-            Clipper c = new Clipper();
-            c.UseFullCoordinateRange = false; //////////////////////////////////
-            this.Cursor = Cursors.WaitCursor;
-
-            int EdgeCnt = (int)nudCount.Value;
-            for (int i = 0; i < 1000; i++)
-            {
-                GenerateRandomPolygon(EdgeCnt);
-                c.Clear();
-                c.AddPolygons(subjects, PolyType.ptSubject);
-                c.AddPolygons(clips, PolyType.ptClip);
-                c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
-                if (i % 100 == 0)
-                {
-                    label1.Text =
-                        (i / 10).ToString() + "% done";
-                    label1.Refresh();
-                }
-            }
-            stopwatch.Stop();
-            this.Cursor = Cursors.Default;
-            label1.Text = stopwatch.Elapsed.TotalSeconds.ToString("0.00") + " secs";
-            DrawBitmap(false);
         }
         //---------------------------------------------------------------------
 

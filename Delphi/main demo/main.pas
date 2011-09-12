@@ -80,7 +80,6 @@ type
     rbXOR: TRadioButton;
     rbStatic: TRadioButton;
     bExit: TButton;
-    Timer1: TTimer;
     rbNone: TRadioButton;
     gbRandom: TGroupBox;
     lblSubjCount: TLabel;
@@ -89,8 +88,6 @@ type
     tbClip: TTrackBar;
     rbRandom1: TRadioButton;
     bNext: TButton;
-    bStart: TButton;
-    bStop: TButton;
     tbClipOpacity: TTrackBar;
     lblClipOpacity: TLabel;
     lblSubjOpacity: TLabel;
@@ -101,13 +98,11 @@ type
     bSaveSvg: TButton;
     SaveDialog1: TSaveDialog;
     procedure FormCreate(Sender: TObject);
-    procedure FormDestroy(Sender: TObject);
     procedure ImgView321Resize(Sender: TObject);
     procedure rbIntersectionClick(Sender: TObject);
     procedure FormResize(Sender: TObject);
     procedure tbSubjChange(Sender: TObject);
     procedure bNextClick(Sender: TObject);
-    procedure Timer1Timer(Sender: TObject);
     procedure bExitClick(Sender: TObject);
     procedure tbClipOpacityChange(Sender: TObject);
     procedure rbStaticClick(Sender: TObject);
@@ -116,8 +111,6 @@ type
     procedure FormMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure FormKeyPress(Sender: TObject; var Key: Char);
-    procedure bStartClick(Sender: TObject);
-    procedure bStopClick(Sender: TObject);
     procedure bSaveSvgClick(Sender: TObject);
   private
     offsetMul2: integer;
@@ -352,6 +345,7 @@ begin
 end;
 
 //------------------------------------------------------------------------------
+// Miscellaneous functions ...
 //------------------------------------------------------------------------------
 
 const
@@ -451,14 +445,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TMainForm.FormDestroy(Sender: TObject);
-begin
-end;
-//------------------------------------------------------------------------------
-
 procedure TMainForm.bExitClick(Sender: TObject);
 begin
-  Timer1.Enabled := false;
   close;
 end;
 //------------------------------------------------------------------------------
@@ -546,10 +534,8 @@ end;
 procedure TMainForm.rbStaticClick(Sender: TObject);
 begin
   if rbStatic.Checked then
-  begin
-    Timer1.Enabled := false;
-    ShowStaticPolys;
-  end else if rbRandom1.Checked then
+    ShowStaticPolys
+  else if rbRandom1.Checked then
     ShowRandomPolys1(true)
   else
     ShowRandomPolys2(true);
@@ -560,10 +546,6 @@ begin
   tbSubj.Enabled := rbRandom1.Checked;
   tbClip.Enabled := not rbStatic.Checked;
   lblClipCount.Enabled := not rbStatic.Checked;
-
-  bNext.Enabled := not rbStatic.Checked and not Timer1.Enabled;
-  bStart.Enabled := bNext.Enabled;
-  bStop.Enabled := Timer1.Enabled;
 end;
 //------------------------------------------------------------------------------
 
@@ -578,31 +560,6 @@ end;
 procedure TMainForm.bNextClick(Sender: TObject);
 begin
   if not bNext.Enabled then exit;
-  if rbRandom1.Checked then ShowRandomPolys1(true)
-  else ShowRandomPolys2(true);
-end;
-//------------------------------------------------------------------------------
-
-procedure TMainForm.bStartClick(Sender: TObject);
-begin
-  Timer1.Enabled := true;
-  bStart.Enabled := false;
-  bStop.Enabled := true;
-  bNext.Enabled := false;
-end;
-//------------------------------------------------------------------------------
-
-procedure TMainForm.bStopClick(Sender: TObject);
-begin
-  Timer1.Enabled := false;
-  bStart.Enabled := true;
-  bStop.Enabled := false;
-  bNext.Enabled := true;
-end;
-//------------------------------------------------------------------------------
-
-procedure TMainForm.Timer1Timer(Sender: TObject);
-begin
   if rbRandom1.Checked then ShowRandomPolys1(true)
   else ShowRandomPolys2(true);
 end;
@@ -823,7 +780,6 @@ begin
     style.penClr := $FF006600;
     AddPolygons(solutionI);
 
-    AddText(extractfilename(SaveDialog1.FileName),200,1800);
     SaveToFile(SaveDialog1.FileName, invScale);
   finally
     free;

@@ -59,5 +59,12 @@ namespace GuiDemo.Properties {
                 resourceCulture = value;
             }
         }
+        
+        internal static byte[] aust {
+            get {
+                object obj = ResourceManager.GetObject("aust", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
     }
 }

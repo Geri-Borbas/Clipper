@@ -31,8 +31,6 @@
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
             this.panel1 = new System.Windows.Forms.Panel();
-            this.label1 = new System.Windows.Forms.Label();
-            this.button1 = new System.Windows.Forms.Button();
             this.bSave = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
             this.rbNone = new System.Windows.Forms.RadioButton();
@@ -71,9 +69,9 @@
             this.statusStrip1.GripStyle = System.Windows.Forms.ToolStripGripStyle.Visible;
             this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.toolStripStatusLabel1});
-            this.statusStrip1.Location = new System.Drawing.Point(0, 543);
+            this.statusStrip1.Location = new System.Drawing.Point(0, 459);
             this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(758, 22);
+            this.statusStrip1.Size = new System.Drawing.Size(716, 22);
             this.statusStrip1.TabIndex = 4;
             // 
             // toolStripStatusLabel1
@@ -85,8 +83,6 @@
             // panel1
             // 
             this.panel1.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
-            this.panel1.Controls.Add(this.label1);
-            this.panel1.Controls.Add(this.button1);
             this.panel1.Controls.Add(this.bSave);
             this.panel1.Controls.Add(this.groupBox3);
             this.panel1.Controls.Add(this.groupBox2);
@@ -96,27 +92,8 @@
             this.panel1.Dock = System.Windows.Forms.DockStyle.Left;
             this.panel1.Location = new System.Drawing.Point(0, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(121, 543);
+            this.panel1.Size = new System.Drawing.Size(121, 459);
             this.panel1.TabIndex = 5;
-            // 
-            // label1
-            // 
-            this.label1.Location = new System.Drawing.Point(12, 473);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(97, 17);
-            this.label1.TabIndex = 13;
-            this.label1.Text = "               ";
-            this.label1.TextAlign = System.Drawing.ContentAlignment.TopCenter;
-            // 
-            // button1
-            // 
-            this.button1.Location = new System.Drawing.Point(9, 443);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(100, 25);
-            this.button1.TabIndex = 12;
-            this.button1.Text = "&Benchmark 1000";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
             // 
             // bSave
             // 
@@ -230,7 +207,7 @@
             this.rbTest1.Size = new System.Drawing.Size(45, 17);
             this.rbTest1.TabIndex = 0;
             this.rbTest1.TabStop = true;
-            this.rbTest1.Text = "O&ne";
+            this.rbTest1.Text = "&One";
             this.rbTest1.UseVisualStyleBackColor = true;
             this.rbTest1.Click += new System.EventHandler(this.rbTest1_Click);
             // 
@@ -256,7 +233,7 @@
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(38, 13);
             this.label2.TabIndex = 4;
-            this.label2.Text = "&Offset:";
+            this.label2.Text = "O&ffset:";
             // 
             // nudOffset
             // 
@@ -334,14 +311,14 @@
             this.bRefresh.Name = "bRefresh";
             this.bRefresh.Size = new System.Drawing.Size(100, 25);
             this.bRefresh.TabIndex = 8;
-            this.bRefresh.Text = "New &Sample";
+            this.bRefresh.Text = "&New Sample";
             this.bRefresh.UseVisualStyleBackColor = true;
             this.bRefresh.Click += new System.EventHandler(this.bRefresh_Click);
             // 
             // bCancel
             // 
             this.bCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.bCancel.Location = new System.Drawing.Point(9, 493);
+            this.bCancel.Location = new System.Drawing.Point(9, 458);
             this.bCancel.Name = "bCancel";
             this.bCancel.Size = new System.Drawing.Size(100, 27);
             this.bCancel.TabIndex = 11;
@@ -356,7 +333,7 @@
             this.panel2.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel2.Location = new System.Drawing.Point(121, 0);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(637, 543);
+            this.panel2.Size = new System.Drawing.Size(595, 459);
             this.panel2.TabIndex = 6;
             // 
             // pictureBox1
@@ -364,7 +341,7 @@
             this.pictureBox1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pictureBox1.Location = new System.Drawing.Point(0, 0);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(633, 539);
+            this.pictureBox1.Size = new System.Drawing.Size(591, 455);
             this.pictureBox1.TabIndex = 1;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.DoubleClick += new System.EventHandler(this.bRefresh_Click);
@@ -378,7 +355,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(758, 565);
+            this.ClientSize = new System.Drawing.Size(716, 481);
             this.Controls.Add(this.panel2);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.statusStrip1);
@@ -435,8 +412,6 @@
         private System.Windows.Forms.PictureBox pictureBox1;
         private System.Windows.Forms.Button bSave;
         private System.Windows.Forms.SaveFileDialog saveFileDialog1;
-        private System.Windows.Forms.Button button1;
-        private System.Windows.Forms.Label label1;
     }
 }
 

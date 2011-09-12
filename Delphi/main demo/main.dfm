@@ -1,8 +1,8 @@
 object MainForm: TMainForm
-  Left = 167
-  Top = 60
-  Width = 843
-  Height = 603
+  Left = 235
+  Top = 110
+  Width = 731
+  Height = 547
   Caption = 'Clipper Delphi Demo'
   Color = clBtnFace
   Font.Charset = ARABIC_CHARSET
@@ -14,7 +14,6 @@ object MainForm: TMainForm
   OldCreateOrder = False
   Position = poDesktopCenter
   OnCreate = FormCreate
-  OnDestroy = FormDestroy
   OnKeyPress = FormKeyPress
   OnMouseWheel = FormMouseWheel
   OnResize = FormResize
@@ -24,12 +23,12 @@ object MainForm: TMainForm
     Left = 0
     Top = 0
     Width = 183
-    Height = 557
+    Height = 501
     Align = alLeft
     TabOrder = 0
     object lblClipOpacity: TLabel
       Left = 17
-      Top = 468
+      Top = 408
       Width = 100
       Height = 15
       Caption = 'Clip Opacity (255):'
@@ -37,7 +36,7 @@ object MainForm: TMainForm
     end
     object lblSubjOpacity: TLabel
       Left = 17
-      Top = 425
+      Top = 365
       Width = 103
       Height = 15
       Caption = 'Subj &Opacity (255):'
@@ -111,7 +110,7 @@ object MainForm: TMainForm
     end
     object bExit: TButton
       Left = 109
-      Top = 513
+      Top = 453
       Width = 52
       Height = 25
       Cancel = True
@@ -123,7 +122,7 @@ object MainForm: TMainForm
       Left = 11
       Top = 184
       Width = 159
-      Height = 233
+      Height = 169
       TabOrder = 4
       object lblSubjCount: TLabel
         Left = 4
@@ -176,31 +175,9 @@ object MainForm: TMainForm
         Top = 132
         Width = 134
         Height = 25
-        Caption = '&Next Random'
-        Enabled = False
+        Caption = '&New Polygons'
         TabOrder = 4
         OnClick = bNextClick
-      end
-      object bStart: TButton
-        Left = 10
-        Top = 162
-        Width = 134
-        Height = 25
-        Caption = 'S&tart Loop'
-        Enabled = False
-        TabOrder = 5
-        OnClick = bStartClick
-      end
-      object bStop: TButton
-        Left = 10
-        Top = 195
-        Width = 134
-        Height = 25
-        Cancel = True
-        Caption = 'Stop Loop'
-        Enabled = False
-        TabOrder = 6
-        OnClick = bStopClick
       end
       object rbEvenOdd: TRadioButton
         Left = 5
@@ -236,7 +213,7 @@ object MainForm: TMainForm
     end
     object tbClipOpacity: TTrackBar
       Left = 12
-      Top = 485
+      Top = 425
       Width = 158
       Height = 28
       Max = 255
@@ -248,7 +225,7 @@ object MainForm: TMainForm
     end
     object tbSubjOpacity: TTrackBar
       Left = 12
-      Top = 442
+      Top = 382
       Width = 158
       Height = 28
       Max = 255
@@ -269,19 +246,19 @@ object MainForm: TMainForm
     end
     object bSaveSvg: TButton
       Left = 19
-      Top = 513
+      Top = 453
       Width = 82
       Height = 25
       Cancel = True
-      Caption = 'Save SV&G ...'
+      Caption = 'Save S&VG ...'
       TabOrder = 8
       OnClick = bSaveSvgClick
     end
   end
   object StatusBar1: TStatusBar
     Left = 0
-    Top = 557
-    Width = 835
+    Top = 501
+    Width = 723
     Height = 19
     Panels = <>
     SimplePanel = True
@@ -289,8 +266,8 @@ object MainForm: TMainForm
   object ImgView321: TImgView32
     Left = 183
     Top = 0
-    Width = 652
-    Height = 557
+    Width = 540
+    Height = 501
     Align = alClient
     Bitmap.ResamplerClassName = 'TNearestResampler'
     BitmapAlign = baCustom
@@ -302,12 +279,6 @@ object MainForm: TMainForm
     TabOrder = 2
     OnDblClick = bNextClick
     OnResize = ImgView321Resize
-  end
-  object Timer1: TTimer
-    Enabled = False
-    OnTimer = Timer1Timer
-    Left = 209
-    Top = 32
   end
   object SaveDialog1: TSaveDialog
     DefaultExt = 'svg'
