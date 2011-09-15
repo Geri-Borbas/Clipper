@@ -21,33 +21,44 @@ namespace ClipperTest1
         //polygons of the specified formats ...
         class SVGBuilder
         {
-            class PolyInfo
+
+            public class StyleInfo
             {
-                public Polygons polygons;
                 public PolyFillType pft;
-                public string brushClr;
-                public double brushOpacity;
-                public string penClr;
-                public double penOpacity;
+                public Color brushClr;
+                public Color penClr;
                 public double penWidth;
+                public int[] dashArray;
                 public Boolean showCoords;
-                public PolyInfo(Polygons polygons, PolyFillType pft, string brushClrHtml,
-                    int brushOpacity, string penClrHtml, int penOpacity, double penWidth, Boolean showCoords)
+                public StyleInfo Clone()
                 {
-                    this.polygons = polygons;
-                    this.pft = pft;
-                    this.brushClr = brushClrHtml;
-                    if (brushOpacity < 0) brushOpacity = 0; else if (brushOpacity > 100) brushOpacity = 100;
-                    this.brushOpacity = (double)brushOpacity / 100;
-                    this.penClr = penClrHtml;
-                    if (penOpacity < 0) penOpacity = 0; else if (penOpacity > 100) penOpacity = 100;
-                    this.penOpacity = (double)penOpacity / 100;
-                    if (penWidth < 0) penWidth = 0; else if (penWidth > 100) penWidth = 100;
-                    this.penWidth = penWidth;
-                    this.showCoords = showCoords;
+                    StyleInfo si = new StyleInfo();
+                    si.pft = this.pft;
+                    si.brushClr = this.brushClr;
+                    si.dashArray = this.dashArray;
+                    si.penClr = this.penClr;
+                    si.penWidth = this.penWidth;
+                    si.showCoords = this.showCoords;
+                    return si;
+                }
+                public StyleInfo() 
+                {
+                    pft = PolyFillType.pftNonZero;
+                    brushClr = Color.AntiqueWhite;
+                    dashArray = null;
+                    penClr = Color.Black;
+                    penWidth = 0.8;
+                    showCoords = false;
                 }
             }
 
+            public class PolyInfo
+            {
+                public Polygons polygons;
+                public StyleInfo si;
+            }
+
+            public StyleInfo style;
             private List<PolyInfo> PolyInfoList;
             const string svg_header = "<?xml version=\"1.0\" standalone=\"no\"?>\n" +
               "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.0//EN\"\n" +
@@ -61,32 +72,43 @@ namespace ClipperTest1
             public SVGBuilder()
             {
                 PolyInfoList = new List<PolyInfo>();
+                style = new StyleInfo();
             }
 
-            public void AddPolygons(Polygons poly, PolyFillType pft, string brushClrHtml,
-                int brushOpacityPercent, string penClrHtml, int penOpacityPercent, double penWidth, Boolean showCoords)
+            public void AddPolygons(Polygons poly)
             {
-                for (int i = poly.Count -1; i >= 0; i--)
-                    if (poly[i].Count == 0) poly.Remove(poly[i]);
                 if (poly.Count == 0) return;
-                PolyInfoList.Add(new PolyInfo(poly, pft, brushClrHtml,
-                    brushOpacityPercent, penClrHtml, penOpacityPercent, penWidth, showCoords));
+                PolyInfo pi = new PolyInfo();
+                pi.polygons = poly;
+                pi.si = style.Clone();
+                PolyInfoList.Add(pi);
             }
 
             public Boolean SaveToFile(string filename, double scale = 1.0, int margin = 10)
             {
-                if (PolyInfoList.Count == 0) return false;
                 if (scale == 0) scale = 1.0;
                 if (margin < 0) margin = 0;
+                
                 //calculate the bounding rect ...
-                IntRect rec = new IntRect();
-                rec.left = PolyInfoList[0].polygons[0][0].X;
-                rec.right = rec.left;
-                rec.top = PolyInfoList[0].polygons[0][0].Y;
-                rec.bottom = rec.top;
-                foreach (PolyInfo pi in PolyInfoList)
+                int i = 0, j = 0;
+                while (i < PolyInfoList.Count)
                 {
-                    foreach (Polygon pg in pi.polygons)
+                    j = 0;
+                    while (j < PolyInfoList[i].polygons.Count && 
+                        PolyInfoList[i].polygons[j].Count == 0) j++;
+                    if (j < PolyInfoList[i].polygons.Count) break;
+                    i++;
+                }
+                if (i == PolyInfoList.Count) return false;
+                IntRect rec = new IntRect();
+                rec.left = PolyInfoList[i].polygons[j][0].X;
+                rec.right = rec.left;
+                rec.top = PolyInfoList[0].polygons[j][0].Y;
+                rec.bottom = rec.top;
+
+                for ( ; i < PolyInfoList.Count; i++ )
+                {
+                    foreach (Polygon pg in PolyInfoList[i].polygons)
                         foreach (IntPoint pt in pg)
                         {
                             if (pt.X < rec.left) rec.left = pt.X;
@@ -120,24 +142,24 @@ namespace ClipperTest1
                         writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
                             (double)((double)p[0].X * scale + offsetX),
                             (double)((double)p[0].Y * scale + offsetY)));
-                        for (int j = 1; j < p.Count; j++)
+                        for (int k = 1; k < p.Count; k++)
                         {
                             writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " L {0:f2} {1:f2}",
-                            (double)((double)p[j].X * scale + offsetX),
-                            (double)((double)p[j].Y * scale + offsetY)));
+                            (double)((double)p[k].X * scale + offsetX),
+                            (double)((double)p[k].Y * scale + offsetY)));
                         }
                         writer.Write(" z");
                     }
 
                     writer.Write(String.Format(NumberFormatInfo.InvariantInfo, svg_path_format,
-                    pi.brushClr,
-                    pi.brushOpacity,
-                    (pi.pft == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
-                    pi.penClr,
-                    pi.penOpacity,
-                    pi.penWidth));
+                    ColorTranslator.ToHtml(pi.si.brushClr),
+                    (float)pi.si.brushClr.A /255,
+                    (pi.si.pft == PolyFillType.pftEvenOdd ? "evenodd" : "nonzero"),
+                    ColorTranslator.ToHtml(pi.si.penClr),
+                    (float)pi.si.penClr.A / 255,
+                    pi.si.penWidth));
 
-                    if (pi.showCoords)
+                    if (pi.si.showCoords)
                     {
                         writer.Write("<g font-family=\"Verdana\" font-size=\"11\" fill=\"black\">\n\n");
                         foreach (Polygon p in pi.polygons)
@@ -265,6 +287,35 @@ namespace ClipperTest1
         }
 
         ////////////////////////////////////////////////
+        static Polygons IntsToPolygons(int[,] ints)
+        {
+            int len2 = (ints.GetUpperBound(1) +1) /2;
+            int len1 = (ints.Length / len2) /2;
+            Polygons result = new Polygons(len1);
+            for (int i = 0; i < len1; i++)
+            {  
+                Polygon p = new Polygon(len2);
+                for (int j = 0; j < len2; j++)
+                {
+                    p.Add(new IntPoint(ints[i, j * 2], ints[i, j * 2 +1]));
+                }
+                result.Add(p);
+            }
+            return result;
+        }
+
+        ////////////////////////////////////////////////
+
+        static Polygon IntsToPolygon(int[] ints)
+        {
+            int len1 = ints.Length /2;
+            Polygon result = new Polygon(len1);
+            for (int i = 0; i < len1; i++)
+              result.Add(new IntPoint(ints[i * 2], ints[i * 2 +1]));
+            return result;
+        }
+
+        ////////////////////////////////////////////////
 
         static void Main(string[] args)
         {
@@ -373,15 +424,25 @@ namespace ClipperTest1
             cp.AddPolygons(clips, PolyType.ptClip);
 
             Polygons solution = new Polygons();
+            //Polygons solution = new Polygons();
             if (cp.Execute(ct, solution, pftSubj, pftClip))
             {
                 SaveToFile("solution.txt", solution, decimal_places);
 
+                solution = Clipper.OffsetPolygons(solution, -6, Clipper.JoinType.jtRound);
+
                 SVGBuilder svg = new SVGBuilder();
-                svg.AddPolygons(subjs, pftSubj, "#00009C", 6, "#D3D3DA", 95, 0.8, false);
-                svg.AddPolygons(clips, pftClip, "#9C0000", 6, "#FFA07A", 95, 0.8, false);
-                svg.AddPolygons(solution, PolyFillType.pftNonZero, "#80ff9C", 37, "#003300", 100, 0.8, false);
+                svg.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);
+                svg.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
+                svg.AddPolygons(subjs);
+                svg.style.brushClr = Color.FromArgb(0x20, 0x9c, 0, 0);
+                svg.style.penClr = Color.FromArgb(0xff, 0xa0, 0x7a);
+                svg.AddPolygons(clips);
+                svg.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
+                svg.style.penClr = Color.FromArgb(0, 0x33, 0);
+                svg.AddPolygons(solution);
                 svg.SaveToFile("solution.svg", svg_scale);
+
                 Console.WriteLine("finished!");
             }
             else
