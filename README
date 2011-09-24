@@ -2,6 +2,15 @@
 Clipper Change Log
 ============================================================
 
+v4.5.0 - 24 September 2011
+* Added:  YAxisInverted - global boolean
+* BugFix: Minor bug in OffsetPolygon mitering
+* Change: C# JoinType enum moved from Clipper class to 
+  ClipperLib namespace
+* Change: Area function now returns the absolute area 
+* Update: Documentation on UseFullCoordinateRange
+* Update: Documentation on IsClockwise
+
 v4.4.4 - 10 September 2011
 * Change: Deleted jtButt from JoinType (used by the 
   OffsetPolygons function). 

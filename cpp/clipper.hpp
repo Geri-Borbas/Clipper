@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.4                                                           *
-* Date      :  4 September 2011                                                *
+* Version   :  4.5                                                             *
+* Date      :  24 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -25,6 +25,10 @@
 
 #ifndef clipper_hpp
 #define clipper_hpp
+
+//If compiling to displays with Y-axis positive upward, comment out the
+//following line. Otherwise, call static method - Clipper.YAxisInverted(false).
+#define UseYAxisInverted
 
 #include <vector>
 #include <stdexcept>
@@ -70,7 +74,7 @@ enum JoinType { jtSquare, jtMiter, jtRound };
 bool IsClockwise(const Polygon &poly, bool UseFullInt64Range = true);
 double Area(const Polygon &poly, bool UseFullInt64Range = true);
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double MiterLimit = 2);
+  double delta, JoinType jointype = jtSquare, double MiterLimit = 2);
 
 void ReversePoints(Polygon& p);
 void ReversePoints(Polygons& p);
@@ -175,7 +179,14 @@ public:
   bool AddPolygons( const Polygons &ppg, PolyType polyType);
   virtual void Clear();
   IntRect GetBounds();
-  bool UseFullCoordinateRange() {return m_UseFullRange;}; //default = false
+  //UseFullCoordinateRange: When this property is false (default = false),
+  //polygon coordinates must be between +/- MAX_INT32 /2 (approx. 1.5e+9 or
+  //exactly sqrt(2^63 -1)/2). When this property is true, coordinates
+  //must be between +/- MAX_INT64 /2 (approx. 6.5e+18 or exactly
+  //sqrt(2^127 -1)/2). If these ranges are exceeded, an error will be thrown
+  //when the polygon is added to a Clipper object. The benefit of leaving
+  //this property false is a small increase in performance (roughly 15-20%).
+  bool UseFullCoordinateRange() {return m_UseFullRange;};
   void UseFullCoordinateRange(bool newVal);
 protected:
   void DisposeLocalMinimaList();
@@ -203,6 +214,8 @@ public:
     PolyFillType subjFillType = pftEvenOdd,
     PolyFillType clipFillType = pftEvenOdd);
   void Clear();
+  static bool YAxisInverted();
+  static void YAxisInverted(bool value);
 protected:
   void Reset();
   virtual bool ExecuteInternal(bool fixHoleLinkages);

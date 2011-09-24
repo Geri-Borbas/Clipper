@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.4                                                           *
-* Date      :  4 September 2011                                                *
+* Version   :  4.5                                                             *
+* Date      :  24 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -27,11 +27,12 @@ unit clipper;
 
 interface
 
+{$define UseYAxisInverted} //comment out if using classic Y-axis positive upward.
+
 uses
   SysUtils, Types, Classes, Math;
 
 type
-
   PIntPoint = ^TIntPoint;
   TIntPoint = record X, Y: int64; end;
   TIntRect = record left, top, right, bottom: int64; end;
@@ -45,17 +46,17 @@ type
   TPolyFillType = (pftEvenOdd, pftNonZero);
 
   //TJoinType - is used by the OffsetPolygons function
-  TJoinType = (jtMiter, jtSquare, jtRound);
+  TJoinType = (jtSquare, jtRound, jtMiter);
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
   TDirection = (dRightToLeft, dLeftToRight);
-  TArrayOfIntPoint = array of TIntPoint;
-  TArrayOfArrayOfIntPoint = array of TArrayOfIntPoint;
-  TPolygon = TArrayOfIntPoint;
-  TPolygons = TArrayOfArrayOfIntPoint;
+  //TArrayOfIntPoint = array of TIntPoint;
+  //TArrayOfArrayOfIntPoint = array of TArrayOfIntPoint;
+  TPolygon = array of TIntPoint;
+  TPolygons = array of TPolygon;
 
   PEdge = ^TEdge;
   TEdge = record
@@ -160,7 +161,7 @@ type
     fEdgeList      : TList;
     fLmList        : PLocalMinima; //localMinima list
     fCurrLm        : PLocalMinima; //current localMinima node
-    fUseFullRange : boolean;
+    fUse64BitRange : boolean;
     procedure DisposeLocalMinimaList;
     procedure SetUseFullRange(newVal: boolean);
   protected
@@ -173,13 +174,14 @@ type
     function AddPolygon(const polygon: TPolygon; polyType: TPolyType): boolean;
     function AddPolygons(const polygons: TPolygons; polyType: TPolyType): boolean;
     procedure Clear; virtual;
-    //UseFullCoordinateRange: When this property is true, polygon coordinates
-    //can have any signed 64bit integer values (ie +/- 2^63). When false,
-    //coordinates must be in the range +/- 1.5E9 otherwise an error will be
-    //thrown on calling the AddPolygon() or AddPolygons() methods. The benefit
-    //of setting this property false is a small (~15%) increase in performance.
-    //(Default value = false.)
-    property UseFullCoordinateRange: boolean read fUseFullRange write SetUseFullRange;
+    //UseFullCoordinateRange: When this property is false (default = false),
+    //polygon coordinates must be between +/- MAX_INT32 /2 (approx. 1.5e+9 or
+    //exactly sqrt(2^63 -1)/2). When this property is true, coordinates
+    //must be between +/- MAX_INT64 /2 (approx. 6.5e+18 or exactly
+    //sqrt(2^127 -1)/2). If these ranges are exceeded, an error will be thrown
+    //when the polygon is added to a Clipper object. The benefit of leaving
+    //this property false is a small increase in performance (roughly 15-20%).
+    property UseFullCoordinateRange: boolean read fUse64BitRange write SetUseFullRange;
   end;
 
   TClipper = class(TClipperBase)
@@ -258,10 +260,12 @@ type
     constructor Create; override;
     destructor Destroy; override;
     procedure Clear; override;
+    //YAxisInverted is needed to make sense of polygon orientation.
+    class procedure YAxisInverted(value: boolean); overload;
+    class function YAxisInverted: boolean; overload;
   end;
 
-function IsClockwise(const pts: TPolygon;
-  UseFullInt64Range: boolean = true): boolean;
+function IsClockwise(const pts: TPolygon; UseFullInt64Range: boolean = true): boolean;
 function Area(const pts: TPolygon;
   UseFullInt64Range: boolean = true): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
@@ -271,7 +275,7 @@ function ReversePoints(const pts: TPolygons): TPolygons; overload;
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
 function OffsetPolygons(const pts: TPolygons; const delta: double;
-  JoinType: TJoinType; MiterLimit: double = 2): TPolygons;
+  JoinType: TJoinType = jtSquare; MiterLimit: double = 2): TPolygons;
 
 implementation
 
@@ -281,14 +285,20 @@ type
 
 const
   horizontal: double = -3.4e+38;
+var
+{$ifdef UseYAxisInverted}
+  YAxisInverted: boolean = true;
+{$else}
+  YAxisInverted: boolean = false;
+{$endif}
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsHorizontal = 'ProcessHorizontal error';
-  rsInvalidInt = 'Integer exceeds range bounds';
-  rsUseFullRange = 'UseFullCoordinateRange() can''t be changed until '+
+  rsInvalidInt = 'Coordinate exceeds range bounds';
+  rsUseFullRange = 'Use64BitRange() can''t be changed until '+
   'the Clipper object has been cleared."';
   rsJoinError = 'Join Output polygons error';
   rsHoleLinkError = 'HoleLinkage error';
@@ -596,18 +606,23 @@ begin
     for i := 0 to highI-1 do
       area := Int128Add(area, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
          Int128Mul(pts[i+1].x, pts[i].y)));
-    result := area.hi >= 0; //assumes Y axis is inverted
+    if YAxisInverted then
+      result := area.hi >= 0 else
+      result := area.hi <= 0;
   end else
   begin
     a := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
     for i := 0 to highI-1 do
       a := a + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    result := a > 0;     //assumes Y axis is inverted
+    if YAxisInverted then
+      result := a >= 0 else
+      result := a <= 0;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function IsClockwise(outRec: POutRec; UseFullInt64Range: boolean): boolean; overload;
+function IsClockwise(outRec: POutRec;
+  UseFullInt64Range: boolean): boolean; overload;
 var
   a: double;
   area: TInt128;
@@ -623,7 +638,9 @@ begin
         Int128Mul(op.next.pt.X, op.pt.Y)));
       op := op.next;
     until op = startOp;
-    result := area.hi >= 0;
+    if YAxisInverted then
+      result := area.hi >= 0 else
+      result := area.hi <= 0;
   end else
   begin
     a := 0;
@@ -631,7 +648,9 @@ begin
       a := a + (op.pt.X)*op.next.pt.Y - (op.next.pt.X)*op.pt.Y;
       op := op.next;
     until op = startOp;
-    result := a > 0;
+    if YAxisInverted then
+      result := a >= 0 else
+      result := a <= 0;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -655,29 +674,44 @@ begin
     for i := 0 to highI-1 do
       a := Int128Add(a, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
         Int128Mul(pts[i+1].x, pts[i].y)));
-    result := Int128AsDouble(a) / 2;
+    result := abs(Int128AsDouble(a)) / 2;
   end else
   begin
     result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
     for i := 0 to highI-1 do
       result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    result := result / 2;
+    result := abs(result) / 2;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function Area(pts: POutPt): double; overload;
+function Area(pts: POutPt; UseFullInt64Range: boolean): double; overload;
 var
   p: POutPt;
+  a: TInt128;
 begin
   result := 0;
   if pts.next = pts.prev then Exit;
-  p := pts;
-  repeat
-    result := result + p.pt.X * p.next.pt.y - p.next.pt.x * p.pt.Y;
-    p := p.next;
-  until p = pts;
-  result := result / 2;
+  if UseFullInt64Range then
+  begin
+    a := int128(0);
+    p := pts;
+    repeat
+      a := Int128Add(a, Int128Sub(Int128Mul(p.pt.X, p.next.pt.y),
+         Int128Mul(p.next.pt.x, p.pt.Y)));
+      p := p.next;
+    until p = pts;
+    result := abs(result) / 2;
+  end else
+  begin
+    if pts.next = pts.prev then Exit;
+    p := pts;
+    repeat
+      result := result + p.pt.X * p.next.pt.y - p.next.pt.x * p.pt.Y;
+      p := p.next;
+    until p = pts;
+    result := abs(result) / 2;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -906,7 +940,7 @@ begin
   fEdgeList := TList.Create;
   fLmList := nil;
   fCurrLm := nil;
-  fUseFullRange := false; //ie default is false
+  fUse64BitRange := false; //ie default is false
 end;
 //------------------------------------------------------------------------------
 
@@ -922,7 +956,7 @@ procedure TClipperBase.SetUseFullRange(newVal: boolean);
 begin
   if (fEdgeList.Count > 0) and newVal then
     raise Exception.Create(rsUseFullRange);
-  fUseFullRange := newVal;
+  fUse64BitRange := newVal;
 end;
 //------------------------------------------------------------------------------
 
@@ -1055,8 +1089,14 @@ var
   edges: PEdgeArray;
   e, eHighest: PEdge;
   pg: TPolygon;
+  maxVal: int64;
 const
-  MaxVal = 1.5E9; //(2*MaxVal)*(2*MaxVal) < 2^63 - see SlopesEqual()
+  //The SlopesEqual function places the most limits on max. coordinate values.
+  //Given that MaxInt32 = 2^31 -1 and MaxInt64 = 2^63 -1 and the SlopesEqual()
+  //algorithm requires:  Sqr(IntVal - IntVal) < MaxInt, then
+  //IntVal must not exceed the following values ...
+  loRange: int64 = 1518500249;          //sqrt(2^63 -1)/2
+  hiRange: int64 = 6521908912666391106; //sqrt(2^127 -1)/2
 begin
   {AddPolygon}
   result := false; //ie assume nothing added
@@ -1065,13 +1105,13 @@ begin
   setlength(pg, len);
   pg[0] := polygon[0];
   j := 0;
+  if fUse64BitRange then maxVal := hiRange else maxVal := loRange;
   for i := 1 to len-1 do
   begin
-    if not fUseFullRange and
-      ((abs(polygon[i].X) > MaxVal) or (abs(polygon[i].Y) > MaxVal)) then
-        raise exception.Create(rsInvalidInt);
+    if ((abs(polygon[i].X) > maxVal) or (abs(polygon[i].Y) > maxVal)) then
+      raise exception.Create(rsInvalidInt);
     if PointsEqual(pg[j], polygon[i]) then continue
-    else if (j > 0) and SlopesEqual(pg[j-1], pg[j], polygon[i], fUseFullRange) then
+    else if (j > 0) and SlopesEqual(pg[j-1], pg[j], polygon[i], fUse64BitRange) then
     begin
       if PointsEqual(pg[j-1], polygon[i]) then dec(j);
     end else inc(j);
@@ -1085,13 +1125,13 @@ begin
     //nb: test for point equality before testing slopes ...
     if PointsEqual(pg[j], pg[0]) then dec(j)
     else if PointsEqual(pg[0], pg[1]) or
-      SlopesEqual(pg[j], pg[0], pg[1], fUseFullRange) then
+      SlopesEqual(pg[j], pg[0], pg[1], fUse64BitRange) then
     begin
       pg[0] := pg[j];
       dec(j);
     end
-    else if SlopesEqual(pg[j-1], pg[j], pg[0], fUseFullRange) then dec(j)
-    else if SlopesEqual(pg[0], pg[1], pg[2], fUseFullRange) then
+    else if SlopesEqual(pg[j-1], pg[j], pg[0], fUse64BitRange) then dec(j)
+    else if SlopesEqual(pg[0], pg[1], pg[2], fUse64BitRange) then
     begin
       for i := 2 to j do pg[i-1] := pg[i];
       dec(j);
@@ -1230,6 +1270,18 @@ begin
   DisposeScanbeamList;
   fJoinList.Free;
   fPolyOutList.Free;
+end;
+//------------------------------------------------------------------------------
+
+class procedure TClipper.YAxisInverted(value: boolean);
+begin
+  clipper.YAxisInverted := value;
+end;
+//------------------------------------------------------------------------------
+
+class function TClipper.YAxisInverted: boolean;
+begin
+  result := YAxisInverted;
 end;
 //------------------------------------------------------------------------------
 
@@ -1415,7 +1467,7 @@ begin
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then FixHoleLinkage(outRec);
-      if (outRec.isHole = IsClockwise(outRec, fUseFullRange)) then
+      if (outRec.isHole = IsClockwise(outRec, fUse64BitRange)) then
         ReversePolyPtLinks(outRec.pts);
     end;
 
@@ -1864,7 +1916,7 @@ begin
     //if output polygons share an edge with lb, they'll need joining later ...
     if (lb.outIdx >= 0) and assigned(lb.prevInAEL) and
        (lb.prevInAEL.outIdx >= 0) and (lb.prevInAEL.xcurr = lb.xbot) and
-       SlopesEqual(lb, lb.prevInAEL, fUseFullRange) then
+       SlopesEqual(lb, lb.prevInAEL, fUse64BitRange) then
          AddJoin(lb, lb.prevInAEL);
 
     //if output polygons share an edge with rb, they'll need joining later ...
@@ -1890,7 +1942,7 @@ begin
     if (lb.nextInAEL <> rb) then
     begin
       if (rb.outIdx >= 0) and (rb.prevInAEL.outIdx >= 0) and
-        SlopesEqual(rb.prevInAEL, rb, fUseFullRange) then
+        SlopesEqual(rb.prevInAEL, rb, fUse64BitRange) then
           AddJoin(rb, rb.prevInAEL);
 
       e := lb.nextInAEL;
@@ -2525,7 +2577,7 @@ begin
 
       if (e.xcurr = horzEdge.xtop) and not assigned(eMaxPair) then
       begin
-        if SlopesEqual(e, horzEdge.nextInLML, fUseFullRange) then
+        if SlopesEqual(e, horzEdge.nextInLML, fUse64BitRange) then
         begin
           //if output polygons share an edge, they'll need joining later ...
           if (horzEdge.outIdx >= 0) and (e.outIdx >= 0) then
@@ -2682,7 +2734,7 @@ begin
       begin
         eNext := e.nextInSEL;
         if (e.tmpX > eNext.tmpX) and
-          IntersectPoint(e, eNext, pt, fUseFullRange) then
+          IntersectPoint(e, eNext, pt, fUse64BitRange) then
         begin
           if pt.Y > botY then
           begin
@@ -2888,7 +2940,7 @@ begin
         (e.prevInAEL.xcurr = e.xbot) and (e.prevInAEL.ycurr = e.ybot) and
         SlopesEqual(IntPoint(e.xbot,e.ybot), IntPoint(e.xtop, e.ytop),
           IntPoint(e.xbot,e.ybot),
-          IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), fUseFullRange) then
+          IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), fUse64BitRange) then
       begin
         AddOutPt(e.prevInAEL, nil, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.prevInAEL);
@@ -2899,7 +2951,7 @@ begin
         (e.nextInAEL.xcurr = e.xbot) and (e.nextInAEL.ycurr = e.ybot) and
         SlopesEqual(IntPoint(e.xbot,e.ybot), IntPoint(e.xtop, e.ytop),
           IntPoint(e.xbot,e.ybot),
-          IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), fUseFullRange) then
+          IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), fUse64BitRange) then
       begin
         AddOutPt(e.nextInAEL, nil, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.nextInAEL);
@@ -3010,7 +3062,7 @@ begin
 
     //test for duplicate points and for colinear edges ...
     if PointsEqual(pp.pt, pp.next.pt) or
-      SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt, fUseFullRange) then
+      SlopesEqual(pp.prev.pt, pp.pt, pp.next.pt, fUse64BitRange) then
     begin
       //OK, we need to delete a point ...
       lastOK := nil;
@@ -3197,8 +3249,8 @@ begin
       a1 := 0.0; a2 := 0.0; //ignored, but stops warnings.
     end else
     begin
-      a1 := Area(outRec1.pts);
-      a2 := Area(outRec2.pts);
+      a1 := Area(outRec1.pts, fUse64BitRange);
+      a2 := Area(outRec2.pts, fUse64BitRange);
     end;
 
     prev := pp1a.prev;
@@ -3253,7 +3305,7 @@ begin
       //splitting one polygon into two.
       //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if abs(Area(p1)) >= abs(Area(p2)) then
+      if Area(p1, fUse64BitRange) >= Area(p2, fUse64BitRange) then
       begin
         outRec1.pts := PolygonBottom(p1);
         outRec1.bottomPt := outRec1.pts;
@@ -3275,19 +3327,19 @@ begin
       outRec1.bottomPt.idx := outRec1.idx;
       outRec2.bottomPt.idx := outRec2.idx;
 
-      if PointInPolygon(outRec2.pts.pt, outRec1.pts, fUseFullRange) then
+      if PointInPolygon(outRec2.pts.pt, outRec1.pts, fUse64BitRange) then
       begin
         outRec2.isHole := not outRec1.isHole;
         outRec2.FirstLeft := outRec1;
-        if (outRec2.isHole = IsClockwise(outRec2, fUseFullRange)) then
+        if (outRec2.isHole = IsClockwise(outRec2, fUse64BitRange)) then
           ReversePolyPtLinks(outRec2.pts);
-      end else if PointInPolygon(outRec1.pts.pt, outRec2.pts, fUseFullRange) then
+      end else if PointInPolygon(outRec1.pts.pt, outRec2.pts, fUse64BitRange) then
       begin
         outRec2.isHole := outRec1.isHole;
         outRec1.isHole := not outRec2.isHole;
         outRec2.FirstLeft := outRec1.FirstLeft;
         outRec1.FirstLeft := outRec2;
-        if (outRec1.isHole = IsClockwise(outRec1, fUseFullRange)) then
+        if (outRec1.isHole = IsClockwise(outRec1, fUse64BitRange)) then
           ReversePolyPtLinks(outRec1.pts);
       end else
       begin
@@ -3376,8 +3428,15 @@ begin
     dx := dx * f;
     dy := dy * f;
   end;
-  Result.X := dy;
-  Result.Y := -dx;
+  if YAxisInverted then
+  begin
+    Result.X := dy;
+    Result.Y := -dx
+  end else
+  begin
+    Result.X := -dy;
+    Result.Y := dx;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -3432,7 +3491,7 @@ end;
 //------------------------------------------------------------------------------
 
 function OffsetPolygons(const pts: TPolygons; const delta: double;
-  JoinType: TJoinType; MiterLimit: double = 2): TPolygons;
+  JoinType: TJoinType = jtSquare; MiterLimit: double = 2): TPolygons;
 var
   i, j, k, highI, len, out_len: integer;
   normals: TArrayOfDoublePoint;
@@ -3441,6 +3500,7 @@ var
   clipper: TClipper;
   outer: TPolygon;
   bounds: TIntRect;
+  orientSign: integer;
 const
   buffLength: integer = 128;
 
@@ -3463,18 +3523,18 @@ const
     pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
     pt2.X := round(pts[i][j].X + normals[k].X * delta);
     pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
-    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta >= 0) then
+    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta*orientSign >= 0) then
     begin
       a1 := ArcTan2(normals[j].Y, normals[j].X);
       a2 := ArcTan2(-normals[k].Y, -normals[k].X);
       a1 := abs(a2 - a1);
       if a1 > pi then a1 := pi*2 - a1;
-      dx := tan((pi - a1)/4) *abs(delta*mul); ////
+      dx := tan((pi - a1)/4) *abs(delta*mul) * orientSign; ////
       pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
         round(pt1.Y + normals[j].X *dx));
       AddPoint(pt1);
       pt2 := IntPoint(round(pt2.X + normals[k].Y *dx),
-        round(pt2.Y -normals[k].X *dx));
+        round(pt2.Y - normals[k].X *dx));
       AddPoint(pt2);
     end else
     begin
@@ -3488,10 +3548,22 @@ const
     R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
     if (R >= RMin) then
     begin
-      R := delta / R;
-      pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
-        round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
-      AddPoint(pt1);
+      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)
+        * delta * orientSign >= 0) then //ie angle > 180
+      begin
+        R := delta / R;
+        pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
+          round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
+        AddPoint(pt1);
+      end else
+      begin
+        pt1.X := round(pts[i][j].X + normals[j].X * delta);
+        pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
+        pt2.X := round(pts[i][j].X + normals[k].X * delta);
+        pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+        AddPoint(pt1);
+        AddPoint(pt2);
+      end;
     end
     else
       DoSquare(MiterLimit);
@@ -3512,13 +3584,13 @@ const
     //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
     //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
     //dot product normals == 1 -> no angle
-    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) and
+    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta*orientSign >= 0) and
        ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
     begin
       a1 := ArcTan2(normals[j].Y, normals[j].X);
       a2 := ArcTan2(normals[k].Y, normals[k].X);
-      if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
-      else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
+      if (delta*orientSign > 0) and (a2 < a1) then a2 := a2 + pi*2
+      else if (delta*orientSign < 0) and (a2 > a1) then a2 := a2 - pi*2;
       arc := BuildArc(pts[i][j], a1, a2, delta);
       for m := 0 to high(arc) do
         AddPoint(arc[m]);
@@ -3527,6 +3599,7 @@ const
   end;
 
 begin
+  if YAxisInverted then orientSign := 1 else orientSign := -1;
   deltaSq := delta*delta;
   //MiterLimit defaults to twice delta's width ...
   if MiterLimit <= 1 then MiterLimit := 1;
@@ -3558,7 +3631,9 @@ begin
 
     if len = 1 then
     begin
-      result[i] := BuildArc(pts[i][0], 0, 2*pi, delta);
+      if YAxisInverted then
+        result[i] := BuildArc(pts[i][0], 0, 2*pi, delta) else
+        result[i] := BuildArc(pts[i][0], 2*pi, 0, delta);
       continue;
     end;
 
@@ -3580,6 +3655,7 @@ begin
     end;
     setLength(result[i], out_len);
   end;
+  //exit;
 
   //finally, clean up untidy corners ...
   clipper := TClipper.Create;
@@ -3593,10 +3669,19 @@ begin
     begin
       bounds := GetBounds(result);
       setlength(outer, 4);
-      outer[0] := IntPoint(bounds.left-10, bounds.bottom+10);
-      outer[1] := IntPoint(bounds.right+10, bounds.bottom+10);
-      outer[2] := IntPoint(bounds.right+10, bounds.top-10);
-      outer[3] := IntPoint(bounds.left-10, bounds.top-10);
+      if YAxisInverted then
+      begin
+        outer[0] := IntPoint(bounds.left-10, bounds.bottom+10);
+        outer[1] := IntPoint(bounds.right+10, bounds.bottom+10);
+        outer[2] := IntPoint(bounds.right+10, bounds.top-10);
+        outer[3] := IntPoint(bounds.left-10, bounds.top-10);
+      end else
+      begin
+        outer[3] := IntPoint(bounds.left-10, bounds.bottom+10);
+        outer[2] := IntPoint(bounds.right+10, bounds.bottom+10);
+        outer[1] := IntPoint(bounds.right+10, bounds.top-10);
+        outer[0] := IntPoint(bounds.left-10, bounds.top-10);
+      end;
       clipper.AddPolygon(outer, ptSubject);
       if clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
       begin

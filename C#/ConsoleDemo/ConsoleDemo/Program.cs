@@ -287,25 +287,6 @@ namespace ClipperTest1
         }
 
         ////////////////////////////////////////////////
-        static Polygons IntsToPolygons(int[,] ints)
-        {
-            int len2 = (ints.GetUpperBound(1) +1) /2;
-            int len1 = (ints.Length / len2) /2;
-            Polygons result = new Polygons(len1);
-            for (int i = 0; i < len1; i++)
-            {  
-                Polygon p = new Polygon(len2);
-                for (int j = 0; j < len2; j++)
-                {
-                    p.Add(new IntPoint(ints[i, j * 2], ints[i, j * 2 +1]));
-                }
-                result.Add(p);
-            }
-            return result;
-        }
-
-        ////////////////////////////////////////////////
-
         static Polygon IntsToPolygon(int[] ints)
         {
             int len1 = ints.Length /2;
@@ -319,6 +300,8 @@ namespace ClipperTest1
 
         static void Main(string[] args)
         {
+            //Clipper.YAxisInverted = false;
+
             if (args.Length < 5)
             {
                 string appname = System.Environment.GetCommandLineArgs()[0];
@@ -334,19 +317,18 @@ namespace ClipperTest1
                 Console.WriteLine("  both S_FILL and C_FILL are optional. The default is EVENODD.");
                 Console.WriteLine("Example:");
                 Console.WriteLine("  Intersect polygons, rnd to 4 dec places, SVG is 1/100 normal size ...");
-                Console.WriteLine("  {0} INTERSECTION subjs.txt clips.txt 4 -2 NONZERO NONZERO", appname);
+                Console.WriteLine("  {0} INTERSECTION subj.txt clip.txt 0 0 NONZERO NONZERO", appname);
                 return;
             }
 
-            ClipType ct = ClipType.ctIntersection;
-            if (String.Compare(args[0], "INTERSECTION", true) == 0) ct = ClipType.ctIntersection;
-            else if (String.Compare(args[0], "UNION", true) == 0) ct = ClipType.ctUnion;
-            else if (String.Compare(args[0], "DIFFERENCE", true) == 0) ct = ClipType.ctDifference;
-            else if (String.Compare(args[0], "XOR", true) == 0) ct = ClipType.ctXor;
-            else
+            ClipType ct;
+            switch (args[0].ToUpper())
             {
-                Console.WriteLine("Error: invalid operation - {0}", args[0]);
-                return;
+                case "INTERSECTION": ct = ClipType.ctIntersection; break;
+                case "UNION": ct = ClipType.ctUnion; break;
+                case "DIFFERENCE": ct = ClipType.ctDifference; break;
+                case "XOR": ct = ClipType.ctXor; break;
+                default: Console.WriteLine("Error: invalid operation - {0}", args[0]); return;
             }
 
             string subjFilename = args[1];
@@ -386,19 +368,17 @@ namespace ClipperTest1
             PolyFillType pftClip = PolyFillType.pftEvenOdd;
             if (args.Length > 6)
             {
-                if (String.Compare(args[5], "EVENODD", true) == 0) pftSubj = PolyFillType.pftEvenOdd;
-                else if (String.Compare(args[5], "NONZERO", true) == 0) pftSubj = PolyFillType.pftNonZero;
-                else
+                switch (args[5].ToUpper())
                 {
-                    Console.WriteLine("Error: invalid cliptype - {0}", args[5]);
-                    return;
+                    case "EVENODD": pftSubj = PolyFillType.pftEvenOdd; break;
+                    case "NONZERO": pftSubj = PolyFillType.pftNonZero; break;
+                    default: Console.WriteLine("Error: invalid cliptype - {0}", args[5]); return;
                 }
-                if (String.Compare(args[6], "EVENODD", true) == 0) pftClip = PolyFillType.pftEvenOdd;
-                else if (String.Compare(args[6], "NONZERO", true) == 0) pftClip = PolyFillType.pftNonZero;
-                else
+                switch (args[6].ToUpper())
                 {
-                    Console.WriteLine("Error: invalid cliptype - {0}", args[6]);
-                    return;
+                    case "EVENODD": pftClip = PolyFillType.pftEvenOdd; break;
+                    case "NONZERO": pftClip = PolyFillType.pftNonZero; break;
+                    default: Console.WriteLine("Error: invalid cliptype - {0}", args[6]); return;
                 }
             }
 
@@ -417,7 +397,6 @@ namespace ClipperTest1
                 return;
             }
 
-
             Console.WriteLine("wait ...");
             Clipper cp = new Clipper();
             cp.AddPolygons(subjs, PolyType.ptSubject);
@@ -429,7 +408,7 @@ namespace ClipperTest1
             {
                 SaveToFile("solution.txt", solution, decimal_places);
 
-                solution = Clipper.OffsetPolygons(solution, -6, Clipper.JoinType.jtRound);
+                //solution = Clipper.OffsetPolygons(solution, -4, JoinType.jtRound);
 
                 SVGBuilder svg = new SVGBuilder();
                 svg.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);

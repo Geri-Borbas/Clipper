@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.4                                                           *
-* Date      :  4 September 2011                                                *
+* Version   :  4.5                                                             *
+* Date      :  24 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -30,9 +30,11 @@
 *                                                                              *
 *******************************************************************************/
 
+#define UseYAxisInverted //comment out if using classic Y-axis positive upward.
+
 using System;
 using System.Collections.Generic;
-//using System.Text; //for Int128.AsString() & StringBuilder
+using System.Text; //for Int128.AsString() & StringBuilder
 
 namespace ClipperLib
 {
@@ -317,6 +319,7 @@ namespace ClipperLib
     public enum ClipType { ctIntersection, ctUnion, ctDifference, ctXor };
     public enum PolyType { ptSubject, ptClip };
     public enum PolyFillType { pftEvenOdd, pftNonZero };
+    public enum JoinType { jtSquare, jtMiter, jtRound };
 
 
     internal enum EdgeSide { esLeft, esRight };
@@ -522,6 +525,13 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        //UseFullCoordinateRange: When this property is false (default = false), polygon
+        //coordinates must be between +/- MAX_INT32 /2 (approx. 1.5e+9 or
+        //exactly sqrt(2^63 -1)/2). When this property is true, coordinates
+        //must be between +/- MAX_INT64 /2 (approx. 6.5e+18 or exactly
+        //sqrt(2^127 -1)/2). If these ranges are exceeded, an error will be thrown
+        //when the polygon is added to a Clipper object. The benefit of leaving
+        //this property false is a small increase in performance (roughly 15-20%).
         public bool UseFullCoordinateRange
         {
             get { return m_UseFullRange; }
@@ -577,10 +587,17 @@ namespace ClipperLib
             int j = 0;
             for (int i = 1; i < len; ++i)
             {
-                const Int64 MaxVal = 1500000000; //~ Sqrt(2^63)/2 => 1.5e+9 (see SlopesEqual)
-                if (!m_UseFullRange && 
-                    (Math.Abs(pg[i].X) > MaxVal || Math.Abs(pg[i].Y) > MaxVal))
-                        throw new ClipperException("Integer exceeds range bounds");
+
+                //The SlopesEqual function places the most limits on max. coordinate values.
+                //Given that MaxInt32 = 2^31 -1 and MaxInt64 = 2^63 -1 and the SlopesEqual()
+                //algorithm requires:  Sqr(IntVal - IntVal) < MaxInt, then
+                //IntVal must not exceed the following values ...
+                const Int64 loRange = 1518500249;          //sqrt(2^63 -1)/2
+                const Int64 hiRange = 6521908912666391106; //sqrt(2^127 -1)/2
+                Int64 maxVal;
+                if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
+                if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
+                        throw new ClipperException("Coordinate exceeds range bounds");
                 
                 if (PointsEqual(p[j], pg[i])) continue;
                 else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
@@ -856,7 +873,11 @@ namespace ClipperLib
 
     public class Clipper : ClipperBase
     {
-    
+#if UseYAxisInverted
+        public static bool YAxisInverted = true;
+#else
+        public static bool YAxisInverted = false;
+#endif
         private List<OutRec> m_PolyOuts;
         private ClipType m_ClipType;
         private Scanbeam m_Scanbeam;
@@ -2650,11 +2671,11 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static bool IsClockwise(Polygon poly, bool UseFulllongRange = true)
+        public static bool IsClockwise(Polygon poly, bool UseFull64BitRange = true)
         {
           int highI = poly.Count -1;
           if (highI < 2) return false;
-          if (UseFulllongRange)
+          if (UseFull64BitRange)
           {
               Int128 area;
               area = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
@@ -2662,7 +2683,10 @@ namespace ClipperLib
               for (int i = 0; i < highI; ++i)
                   area += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
                     Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
-              return area.ToDouble() > 0;
+              if (YAxisInverted)
+                  return area.ToDouble() >= 0;
+              else
+                  return area.ToDouble() <= 0;
           }
           else
           {
@@ -2674,16 +2698,19 @@ namespace ClipperLib
                   area += (double)poly[i].X * (double)poly[i + 1].Y -
                       (double)poly[i + 1].X * (double)poly[i].Y;
               //area := area/2;
-              return area > 0; //reverse of normal formula because assuming Y axis inverted
+              if (YAxisInverted)
+                  return area >= 0; 
+              else
+                  return area <= 0;
           }
         }
         //------------------------------------------------------------------------------
 
-        private bool IsClockwise(OutRec outRec, bool UseFulllongRange)
+        private bool IsClockwise(OutRec outRec, bool UseFull64BitRange)
         {
             OutPt startPt = outRec.pts;
             OutPt op = startPt;
-            if (UseFulllongRange)
+            if (UseFull64BitRange)
             {
                 Int128 area = new Int128(0);
                 do
@@ -2693,7 +2720,10 @@ namespace ClipperLib
                     op = op.next;
                 }
                 while (op != startPt);
-                return area.ToDouble() > 0;
+                if (YAxisInverted)
+                    return area.ToDouble() >= 0;
+                else
+                    return area.ToDouble() <= 0;
             }
             else
             {
@@ -2707,8 +2737,11 @@ namespace ClipperLib
                 }
                 while (op != startPt);
                 //area = area /2;
-                return area > 0; //reverse of normal formula because assuming Y axis inverted
-                }
+                if (YAxisInverted)
+                    return area >= 0;
+                else
+                    return area <= 0;
+            }
         }
         //------------------------------------------------------------------------------
 
@@ -2832,18 +2865,33 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        internal static double Area(OutPt pts)
+        internal static double Area(OutPt pts, bool UseFullRange)
         {
             double result = 0.0;
             if (pts.next == pts.prev) return 0.0;
-            OutPt p = pts;
-            do
+            if (UseFullRange)
             {
-                result += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
-                p = p.next;
+                Int128 a = new Int128(0);
+                OutPt p = pts;
+                do
+                {
+                    a += Int128.Int128Mul(p.pt.X, p.next.pt.Y) -
+                            Int128.Int128Mul(p.next.pt.X, p.pt.Y);
+                    p = p.next;
+                }
+                while (p != pts);
             }
-            while (p != pts);
-            return result / 2;
+            else
+            {
+                OutPt p = pts;
+                do
+                {
+                    result += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
+                    p = p.next;
+                }
+                while (p != pts);
+            }
+            return Math.Abs(result) / 2;
         }
         //------------------------------------------------------------------------------
 
@@ -2876,8 +2924,8 @@ namespace ClipperLib
             if (j.poly1Idx != j.poly2Idx)
             {
                 //get the area of each polygon before joining them ...
-                a1 = Area(outRec1.pts);
-                a2 = Area(outRec2.pts);
+                a1 = Area(outRec1.pts, m_UseFullRange);
+                a2 = Area(outRec2.pts, m_UseFullRange);
             }
 
             OutPt p1, p2, p3, p4;
@@ -2937,7 +2985,7 @@ namespace ClipperLib
                 //splitting one polygon into two.
                 //However, make sure the larger polygon is attached
                 //to outRec1 in case it also owns some holes ...
-                if (Math.Abs(Area(p1)) >= Math.Abs(Area(p2)))
+                if (Area(p1, m_UseFullRange) >= Area(p2, m_UseFullRange))
                 {
                     outRec1.pts = PolygonBottom(p1);
                     outRec1.bottomPt = outRec1.pts;
@@ -3048,11 +3096,11 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static double Area(Polygon poly, bool UseFulllongRange = true)
+        public static double Area(Polygon poly, bool UseFullRange = true)
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            if (UseFulllongRange)
+            if (UseFullRange)
             {
                 Int128 a = new Int128(0);
                 a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
@@ -3060,7 +3108,7 @@ namespace ClipperLib
                 for (int i = 0; i < highI; ++i)
                     a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
                     Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
-                return a.ToDouble() / 2;
+                return Math.Abs(a.ToDouble()) / 2;
             }
             else
             {
@@ -3069,21 +3117,8 @@ namespace ClipperLib
                 for (int i = 0; i < highI; ++i)
                     area += (double)poly[i].X * (double)poly[i + 1].Y -
                         (double)poly[i + 1].X * (double)poly[i].Y;
-                return area / 2;
+                return Math.Abs(area) / 2;
             }
-        }
-        //------------------------------------------------------------------------------
-
-        public static void ReversePoints(Polygon p)
-        {
-            p.Reverse();
-        }
-        //------------------------------------------------------------------------------
-
-        public static void ReversePoints(Polygons p)
-        {
-            for (int i = 0; i < p.Count; ++i)
-              ReversePoints(p[i]);
         }
 
         //------------------------------------------------------------------------------
@@ -3115,7 +3150,11 @@ namespace ClipperLib
             double f = 1 * 1.0 / Math.Sqrt(dx * dx + dy * dy);
             dx *= f;
             dy *= f;
-            return new DoublePoint(dy, -dx);
+
+            if (YAxisInverted)
+                return new DoublePoint(dy, -dx);
+            else
+                return new DoublePoint(-dy, dx);
         }
         //------------------------------------------------------------------------------
 
@@ -3130,8 +3169,6 @@ namespace ClipperLib
         };
         //------------------------------------------------------------------------------
 
-        public enum JoinType { jtSquare, jtMiter, jtRound };
-
         private class PolyOffsetBuilder
         {
             private Polygons pts; 
@@ -3141,6 +3178,7 @@ namespace ClipperLib
             private int highJ;
             private double RMin;
             private const int buffLength = 128;
+            private int orientSign;
 
             public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit = 2)
             {
@@ -3156,6 +3194,7 @@ namespace ClipperLib
                 this.delta = delta;
                 if (MiterLimit <= 1) MiterLimit = 1;
                 RMin = 2/(MiterLimit*MiterLimit);
+                if (YAxisInverted) orientSign = 1; else orientSign = -1;
 
                 normals = new List<DoublePoint>();
 
@@ -3178,7 +3217,11 @@ namespace ClipperLib
                     if (len == 0 || (len < 3 && delta <= 0)) continue;
                     if (len == 1)
                     {
-                        Polygon arc = BuildArc(pts[i][highJ], 0, 2 * Math.PI, delta);
+                        Polygon arc;
+                        if (YAxisInverted)
+                            arc = BuildArc(pts[i][highJ], 0, 2 * Math.PI, delta); 
+                        else
+                            arc = BuildArc(pts[i][highJ], 2 * Math.PI, 0, delta);
                         solution.Add(arc);
                         continue;
                     }
@@ -3218,15 +3261,19 @@ namespace ClipperLib
                 {
                     IntRect r = clpr.GetBounds();
                     Polygon outer = new Polygon(4);
+                    
                     outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
                     outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
                     outer.Add(new IntPoint(r.right + 10, r.top - 10));
                     outer.Add(new IntPoint(r.left - 10, r.top - 10));
+                    if (!YAxisInverted) outer.Reverse();
+
                     clpr.AddPolygon(outer, PolyType.ptSubject);
                     if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
                     {
                         solution.RemoveAt(0);
-                        ReversePoints(solution);
+                        for (int i = 0; i < solution.Count; i++)
+                            solution[i].Reverse();
                     } 
                     else
                         solution.Clear();
@@ -3251,13 +3298,14 @@ namespace ClipperLib
                     (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
                 IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
                     (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
-                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0)
+                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * 
+                    delta * orientSign >= 0)
                 {
                     double a1 = Math.Atan2(normals[j].Y, normals[j].X);
                     double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
                     a1 = Math.Abs(a2 - a1);
                     if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                    double dx = Math.Tan((Math.PI - a1)/4) *Math.Abs(delta * mul); ////
+                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul) * orientSign;
                     pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
                         (Int64)(pt1.Y + normals[j].X *dx));
                     AddPoint(pt1);
@@ -3280,10 +3328,23 @@ namespace ClipperLib
                 double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
                 if (R >= RMin)
                 {
-                    R = delta / R;
-                    IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + (normals[j].X + normals[k].X) * R),
-                      (Int64)Round(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
-                    AddPoint(pt1);
+                    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
+                        delta * orientSign >= 0) //ie angle > 180
+                    {
+                        R = delta / R;
+                        IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + (normals[j].X + normals[k].X) * R),
+                          (Int64)Round(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
+                        AddPoint(pt1);
+                    }
+                    else
+                    {
+                        IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
+                            (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
+                        IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
+                            (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
+                        AddPoint(pt1);
+                        AddPoint(pt2);
+                    }
                 }
                 else
                     DoSquare(i, j, mul);
@@ -3301,15 +3362,16 @@ namespace ClipperLib
                 AddPoint(pt1);
                 //round off reflex angles (ie > 180 deg) unless it's
                 //almost flat (ie < 10deg angle).
-                //cross product normals < 0 -> angle > 180 deg.
-                //dot product normals == 1 -> no angle
-                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0 &&
+                //cross product normals < 0 . angle > 180 deg.
+                //dot product normals == 1 . no angle
+                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * 
+                    delta * orientSign >= 0 &&
                    (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985) 
                 {
                   double a1 = Math.Atan2(normals[j].Y, normals[j].X);
                   double a2 = Math.Atan2(normals[k].Y, normals[k].X);
-                  if (delta > 0 && a2 < a1) a2 += Math.PI *2;
-                  else if (delta < 0 && a2 > a1) a2 -= Math.PI *2;
+                  if (delta * orientSign > 0 && a2 < a1) a2 += Math.PI * 2;
+                  else if (delta * orientSign < 0 && a2 > a1) a2 -= Math.PI * 2;
                   Polygon arc = BuildArc(pts[i][j], a1, a2, delta);
                   for (int m = 0; m < arc.Count; m++)
                       AddPoint(arc[m]);
@@ -3320,7 +3382,8 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype, double MiterLimit = 2)
+        public static Polygons OffsetPolygons(Polygons poly, double delta, 
+            JoinType jointype = JoinType.jtSquare, double MiterLimit = 2)
         {
             Polygons result = new Polygons(poly.Count);
             new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit);

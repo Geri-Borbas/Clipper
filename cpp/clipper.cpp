@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.4.4                                                           *
-* Date      :  4 September 2011                                                *
+* Version   :  4.5                                                             *
+* Date      :  24 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -52,6 +52,13 @@ namespace ClipperLib {
 static double const horizontal = -3.4E+38;
 static double const pi = 3.141592653589793238;
 enum Direction { dRightToLeft, dLeftToRight };
+
+#ifdef UseYAxisInverted
+  static bool YAxisInverted = true;
+#else
+  static bool YAxisInverted = false;
+#endif
+
 
 //------------------------------------------------------------------------------
 // Int128 class (enables safe math on signed 64bit integers)
@@ -296,7 +303,10 @@ bool IsClockwise(const Polygon &poly, bool UseFullInt64Range)
     for (int i = 0; i < highI; ++i)
       area += Int128(poly[i].X) * Int128(poly[i+1].Y) -
         Int128(poly[i+1].X) * Int128(poly[i].Y);
-    return area > 0;
+    if (YAxisInverted)
+      return area > 0;
+    else
+      return area < 0;
   }
   else
   {
@@ -306,7 +316,10 @@ bool IsClockwise(const Polygon &poly, bool UseFullInt64Range)
     for (int i = 0; i < highI; ++i)
       a += (double)(poly[i].X) * (double)(poly[i+1].Y) -
         (double)(poly[i+1].X) * (double)(poly[i].Y);
-    return a > 0;
+    if (YAxisInverted)
+      return a >= 0;
+    else
+      return a <= 0;
   }
 }
 //------------------------------------------------------------------------------
@@ -374,7 +387,7 @@ double Area(const Polygon &poly, bool UseFullInt64Range)
     for (int i = 0; i < highI; ++i)
       a += Int128(poly[i].X) * Int128(poly[i+1].Y) -
         Int128(poly[i+1].X) * Int128(poly[i].Y);
-    return a.AsDouble() / 2;
+    return std::fabs(a.AsDouble()) / 2;
   }
   else
   {
@@ -382,22 +395,39 @@ double Area(const Polygon &poly, bool UseFullInt64Range)
     a = (double)poly[highI].X * poly[0].Y - (double)poly[0].X * poly[highI].Y;
     for (int i = 0; i < highI; ++i)
       a += (double)poly[i].X * poly[i+1].Y - (double)poly[i+1].X * poly[i].Y;
-    return a/2;
+    return std::fabs(a/2);
   }
 }
 //------------------------------------------------------------------------------
 
-double Area(OutPt *pts)
+double Area(OutPt *pts, bool UseFullInt64Range)
 {
   double result = 0.0;
   if (pts->next == pts->prev) return 0.0;
-  OutPt* p = pts;
-  do {
-    result += (double)p->pt.X * p->next->pt.Y - (double)p->next->pt.X * p->pt.Y;
-    p = p->next;
+
+  if (UseFullInt64Range)
+  {
+    Int128 a(0);
+    OutPt *p = pts;
+    do {
+      a += (Int128(p->pt.X) * Int128(p->next->pt.Y)) -
+         (Int128(p->next->pt.X) * Int128(p->pt.Y));
+      p = p->next;
+    }
+    while (p != pts);
+    return std::fabs(result) / 2;
   }
-  while (p != pts);
-  return result / 2;
+  else
+  {
+    OutPt* p = pts;
+    do {
+      result += (double)p->pt.X * p->next->pt.Y -
+        (double)p->next->pt.X * p->pt.Y;
+      p = p->next;
+    }
+    while (p != pts);
+    return std::fabs(result) / 2;
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -787,12 +817,20 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
   Polygon p(len);
   p[0] = pg[0];
   int j = 0;
-  const long64 MaxVal = 1500000000; //~ Sqrt(2^63)/2
+
+  //The SlopesEqual function places the most limits on max. coordinate values.
+  //Given that MaxInt32 = 2^31 -1 and MaxInt64 = 2^63 -1 and the SlopesEqual()
+  //algorithm requires:  Sqr(IntVal - IntVal) < MaxInt, then
+  //IntVal must not exceed the following values ...
+  const long64 loRange = 1518500249;            //sqrt(2^63 -1)/2
+  const long64 hiRange = 6521908912666391106LL; //sqrt(2^127 -1)/2
+  long64 maxVal;
+  if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
 
   for (int i = 1; i < len; ++i)
   {
-    if (!m_UseFullRange && (Abs(pg[i].X) > MaxVal || Abs(pg[i].Y) > MaxVal))
-      throw clipperException("Integer exceeds range bounds");
+    if (Abs(pg[i].X) > maxVal || Abs(pg[i].Y) > maxVal)
+      throw clipperException("Coordinate exceeds range bounds");
     else if (PointsEqual(p[j], pg[i])) continue;
     else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
     {
@@ -1067,6 +1105,18 @@ Clipper::~Clipper() //destructor
 {
   Clear();
   DisposeScanbeamList();
+};
+//------------------------------------------------------------------------------
+
+bool Clipper::YAxisInverted()
+{
+  return ClipperLib::YAxisInverted;
+};
+//------------------------------------------------------------------------------
+
+void Clipper::YAxisInverted(bool value)
+{
+  ClipperLib::YAxisInverted = value;
 };
 //------------------------------------------------------------------------------
 
@@ -2717,8 +2767,8 @@ void Clipper::JoinCommonEdges()
     double a1 = 0.0, a2 = 0.0;
     if (j->poly1Idx != j->poly2Idx)
     {
-      a1 = Area(outRec1->pts);
-      a2 = Area(outRec2->pts);
+      a1 = Area(outRec1->pts, UseFullCoordinateRange());
+      a2 = Area(outRec2->pts, UseFullCoordinateRange());
     }
 
     OutPt *p1, *p2, *p3, *p4;
@@ -2774,7 +2824,8 @@ void Clipper::JoinCommonEdges()
       //splitting one polygon into two.
       //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if (std::fabs(Area(p1)) >= std::fabs(Area(p2)))
+      if (Area(p1, UseFullCoordinateRange()) >=
+        Area(p2, UseFullCoordinateRange()))
       {
           outRec1->pts = PolygonBottom(p1);
           outRec1->bottomPt = outRec1->pts;
@@ -2933,7 +2984,10 @@ DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
   double f = 1 *1.0/ std::sqrt( dx*dx + dy*dy );
   dx *= f;
   dy *= f;
-  return DoublePoint(dy, -dx);
+  if (YAxisInverted)
+    return DoublePoint(dy, -dx);
+  else
+    return DoublePoint(-dy, dx);
 }
 
 //------------------------------------------------------------------------------
@@ -2949,6 +3003,7 @@ private:
   int m_highJ;
   static const int buffLength = 128;
   JoinType m_jointype;
+  int m_orientSign;
 
 public:
 
@@ -2967,6 +3022,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     this->m_jointype = jointype;
     if (MiterLimit <= 1) MiterLimit = 1;
     m_RMin = 2/(MiterLimit*MiterLimit);
+    if (YAxisInverted) m_orientSign = 1; else m_orientSign = -1;
 
     double deltaSq = delta*delta;
     out_polys.clear();
@@ -2988,7 +3044,11 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         if (len == 0 || (len < 3 && delta <= 0)) continue;
         if (len == 1)
         {
-            Polygon arc = BuildArc(in_polys[i][m_highJ], 0, 2 * pi, delta);
+            Polygon arc;
+            if (YAxisInverted)
+              arc = BuildArc(in_polys[i][m_highJ], 0, 2 * pi, delta);
+            else
+              arc = BuildArc(in_polys[i][m_highJ], 2 * pi, 0, delta);
             out_polys[i] = arc;
             continue;
         }
@@ -3030,6 +3090,8 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         outer[1] = IntPoint(r.right + 10, r.bottom + 10);
         outer[2] = IntPoint(r.right + 10, r.top - 10);
         outer[3] = IntPoint(r.left - 10, r.top - 10);
+        if (!YAxisInverted) ReversePoints(outer);
+
         clpr.AddPolygon(outer, ptSubject);
         if (clpr.Execute(ctUnion, out_polys, pftNonZero, pftNonZero))
         {
@@ -3061,18 +3123,19 @@ void DoSquare(int i, int j, double mul)
         (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
     IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
         (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
-    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta >= 0)
+    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
+      m_delta * m_orientSign >= 0)
     {
         double a1 = std::atan2(normals[j].Y, normals[j].X);
         double a2 = std::atan2(-normals[k].Y, -normals[k].X);
         a1 = std::fabs(a2 - a1);
         if (a1 > pi) a1 = pi * 2 - a1;
-        double dx = std::tan((pi - a1)/4) *std::fabs(m_delta * mul); ////
-        pt1 = IntPoint((long64)(pt1.X -normals[j].Y *dx),
-          (long64)(pt1.Y + normals[j].X *dx));
+        double dx = std::tan((pi - a1)/4) * std::fabs(m_delta * mul) * m_orientSign;
+        pt1 = IntPoint((long64)(pt1.X -normals[j].Y * dx),
+          (long64)(pt1.Y + normals[j].X * dx));
         AddPoint(pt1);
-        pt2 = IntPoint((long64)(pt2.X + normals[k].Y *dx),
-          (long64)(pt2.Y -normals[k].X *dx));
+        pt2 = IntPoint((long64)(pt2.X + normals[k].Y * dx),
+          (long64)(pt2.Y -normals[k].X * dx));
         AddPoint(pt2);
     }
     else
@@ -3090,11 +3153,24 @@ void DoMiter(int i, int j, double mul)
     double R = 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
     if (R >= m_RMin)
     {
+      if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
+          m_delta * m_orientSign >= 0) //ie angle > 180
+      {
         R = m_delta / R;
         IntPoint pt1 =
           IntPoint((long64)Round(m_p[i][j].X + (normals[j].X + normals[k].X) *R),
           (long64)Round(m_p[i][j].Y + (normals[j].Y + normals[k].Y) *R));
         AddPoint(pt1);
+      }
+      else
+      {
+          IntPoint pt1 = IntPoint((long64)Round(m_p[i][j].X + normals[j].X *
+            m_delta), (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
+          IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X *
+            m_delta), (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
+          AddPoint(pt1);
+          AddPoint(pt2);
+      }
     }
     else
         DoSquare(i, j, mul);
@@ -3114,13 +3190,14 @@ void DoRound(int i, int j)
     //almost flat (ie < 10deg angle).
     //cross product normals < 0 -> angle > 180 deg.
     //dot product normals == 1 -> no angle
-    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta >= 0 &&
-       (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985)
+    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
+      m_delta * m_orientSign >= 0 &&
+      (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985)
     {
       double a1 = std::atan2(normals[j].Y, normals[j].X);
       double a2 = std::atan2(normals[k].Y, normals[k].X);
-      if (m_delta > 0 && a2 < a1) a2 += pi *2;
-      else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
+      if (m_delta * m_orientSign > 0 && a2 < a1) a2 += pi *2;
+      else if (m_delta * m_orientSign < 0 && a2 > a1) a2 -= pi *2;
       Polygon arc = BuildArc(m_p[i][j], a1, a2, m_delta);
       for (Polygon::size_type m = 0; m < arc.size(); m++)
         AddPoint(arc[m]);
