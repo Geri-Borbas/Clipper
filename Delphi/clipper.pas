@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5                                                             *
-* Date      :  24 September 2011                                               *
+* Version   :  4.5.1                                                           *
+* Date      :  27 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -259,7 +259,7 @@ type
     procedure Clear; override;
   end;
 
-function IsClockwise(const pts: TPolygon; YAxisPosUpward: boolean): boolean;
+function IsClockwise(const pts: TPolygon; YAxisPositiveUpward: boolean): boolean;
 function Area(const pts: TPolygon): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
 function ReversePoints(const pts: TPolygon): TPolygon; overload;
@@ -598,7 +598,7 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function IsClockwise(const pts: TPolygon; YAxisPosUpward: boolean): boolean; overload;
+function IsClockwise(const pts: TPolygon; YAxisPositiveUpward: boolean): boolean; overload;
 var
   i, highI: integer;
   a: double;
@@ -622,7 +622,7 @@ begin
     for i := 0 to highI-1 do
       area := Int128Add(area, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
          Int128Mul(pts[i+1].x, pts[i].y)));
-    if YAxisPosUpward then
+    if YAxisPositiveUpward then
       result := area.hi <= 0 else
       result := area.hi >= 0;
   end else
@@ -630,15 +630,14 @@ begin
     a := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
     for i := 0 to highI-1 do
       a := a + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    if YAxisPosUpward then
+    if YAxisPositiveUpward then
       result := a <= 0 else
       result := a >= 0;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function IsClockwise(outRec: POutRec;
-  UseFullInt64Range: boolean; YAxisPosUpward: boolean): boolean; overload;
+function IsClockwise(outRec: POutRec; UseFullInt64Range: boolean): boolean; overload;
 var
   a: double;
   area: TInt128;
@@ -654,9 +653,7 @@ begin
         Int128Mul(op.next.pt.X, op.pt.Y)));
       op := op.next;
     until op = startOp;
-    if YAxisPosUpward then
-      result := area.hi <= 0 else
-      result := area.hi >= 0;
+    result := area.hi <= 0;
   end else
   begin
     a := 0;
@@ -664,9 +661,7 @@ begin
       a := a + (op.pt.X)*op.next.pt.Y - (op.next.pt.X)*op.pt.Y;
       op := op.next;
     until op = startOp;
-    if YAxisPosUpward then
-      result := a <= 0 else
-      result := a >= 0;
+    result := a <= 0;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1470,7 +1465,7 @@ begin
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then FixHoleLinkage(outRec);
-      if (outRec.isHole = IsClockwise(outRec, fUse64BitRange, true)) then
+      if (outRec.isHole = IsClockwise(outRec, fUse64BitRange)) then
         ReversePolyPtLinks(outRec.pts);
     end;
 
@@ -3334,7 +3329,7 @@ begin
       begin
         outRec2.isHole := not outRec1.isHole;
         outRec2.FirstLeft := outRec1;
-        if (outRec2.isHole = IsClockwise(outRec2, fUse64BitRange, true)) then
+        if (outRec2.isHole = IsClockwise(outRec2, fUse64BitRange)) then
           ReversePolyPtLinks(outRec2.pts);
       end else if PointInPolygon(outRec1.pts.pt, outRec2.pts, fUse64BitRange) then
       begin
@@ -3342,7 +3337,7 @@ begin
         outRec1.isHole := not outRec2.isHole;
         outRec2.FirstLeft := outRec1.FirstLeft;
         outRec1.FirstLeft := outRec2;
-        if (outRec1.isHole = IsClockwise(outRec1, fUse64BitRange, true)) then
+        if (outRec1.isHole = IsClockwise(outRec1, fUse64BitRange)) then
           ReversePolyPtLinks(outRec1.pts);
       end else
       begin
