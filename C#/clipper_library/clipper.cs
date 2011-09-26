@@ -412,8 +412,8 @@ namespace ClipperLib
     public class ClipperBase
     {
         protected const double horizontal = -3.4E+38;
-        internal const Int64 loRange = 1518500249;          //sqrt(2^63 -1)/2
-        internal const Int64 hiRange = 6521908912666391106; //sqrt(2^127 -1)/2
+        internal const Int64 loRange = 1518500249;           //sqrt(2^63 -1)/2
+        internal const Int64 hiRange = 6521908912666391106L; //sqrt(2^127 -1)/2
 
         internal LocalMinima m_MinimaList;
         internal LocalMinima m_CurrentLM;
@@ -594,7 +594,7 @@ namespace ClipperLib
                 if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
                 if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
                 {
-                  if (maxVal == hiRange) 
+                    if (m_UseFullRange) 
                     throw new ClipperException("Coordinate exceeds range bounds");
                   maxVal = hiRange;
                   if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
@@ -2676,7 +2676,7 @@ namespace ClipperLib
             {
                 if (pts[i].X > hiRange || pts[i].Y > hiRange)
                   return ClipperLib.RangeTest.rtError;
-                else if (pts[i].X > loRange || pts[i].Y > loRange) 
+                else if (pts[i].X > loRange || pts[i].Y > loRange)
                   result = ClipperLib.RangeTest.rtHi;
             }
             return result;

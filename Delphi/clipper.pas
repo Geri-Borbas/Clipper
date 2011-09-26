@@ -43,9 +43,8 @@ type
   //see http://www.songho.ca/opengl/gl_tessellation.html#winding_rules
   TPolyFillType = (pftEvenOdd, pftNonZero);
 
-  //TJoinType - is used by the OffsetPolygons function
+  //TJoinType - used by OffsetPolygons()
   TJoinType = (jtSquare, jtRound, jtMiter);
-  TOrientation = (orientCW, orientCCW); //clockwise vs counter-clockwise
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
@@ -1113,7 +1112,7 @@ begin
   begin
     if ((abs(polygon[i].X) > maxVal) or (abs(polygon[i].Y) > maxVal)) then
     begin
-      if maxVal = hiRange then
+      if fUse64BitRange then
         raise exception.Create(rsInvalidInt);
       maxVal := hiRange;
       if ((abs(polygon[i].X) > maxVal) or (abs(polygon[i].Y) > maxVal)) then
