@@ -1,8 +1,8 @@
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  1.1                                                             *
-* Date      :  4 April 2011                                                    *
+* Version   :  1.2                                                             *
+* Date      :  29 September 2011                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -60,7 +60,7 @@ type
 
    m_poly_a ,
    m_poly_b ,
-   m_result : TArrayOfArrayOfIntPoint;
+   m_result : TPolygons;
 
    m_vertex_accumulator: pod_deque;
    clipper: TClipper;
@@ -89,8 +89,8 @@ type
    procedure start_extracting;
    procedure start_contour;
    procedure add_vertex_ (x,y: double );
-   procedure end_contour(var p: TArrayOfArrayOfIntPoint);
-   procedure add(src : vertex_source_ptr; var p: TArrayOfArrayOfIntPoint);
+   procedure end_contour(var p: TPolygons);
+   procedure add(src : vertex_source_ptr; var p: TPolygons);
   end;
 
 implementation
@@ -222,7 +222,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.end_contour(var p: TArrayOfArrayOfIntPoint);
+procedure conv_clipper.end_contour(var p: TPolygons);
 var
   i, len: integer;
 begin
@@ -297,7 +297,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure conv_clipper.add(src : vertex_source_ptr; var p: TArrayOfArrayOfIntPoint);
+procedure conv_clipper.add(src : vertex_source_ptr; var p: TPolygons);
 var
   cmd: unsigned;
   x, y, start_x ,start_y: double;

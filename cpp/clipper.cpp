@@ -287,14 +287,20 @@ private:
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
+inline long64 Abs(long64 val)
+{
+  if ((val < 0)) return -val; else return val;
+}
+//------------------------------------------------------------------------------
+
 RangeTest TestRange(const Polygon &pts)
 {
   RangeTest result = rtLo;
   for (Polygon::size_type i = 0; i <  pts.size(); ++i)
   {
-      if (pts[i].X > hiRange || pts[i].Y > hiRange)
+	  if (Abs(pts[i].X) > hiRange || Abs(pts[i].Y) > hiRange)
         return rtError;
-      else if (pts[i].X > loRange || pts[i].Y > loRange)
+      else if (Abs(pts[i].X) > loRange || Abs(pts[i].Y) > loRange)
         result = rtHi;
   }
   return result;
@@ -567,12 +573,6 @@ inline long64 Round(double val)
 {
   if ((val < 0)) return static_cast<long64>(val - 0.5);
   else return static_cast<long64>(val + 0.5);
-}
-//------------------------------------------------------------------------------
-
-inline long64 Abs(long64 val)
-{
-  if ((val < 0)) return -val; else return val;
 }
 //------------------------------------------------------------------------------
 

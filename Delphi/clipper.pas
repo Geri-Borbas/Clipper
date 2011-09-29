@@ -283,8 +283,8 @@ const
   //Given that MaxInt32 = 2^31 -1 and MaxInt64 = 2^63 -1 and the SlopesEqual()
   //algorithm requires:  Sqr(IntVal - IntVal) < MaxInt, then IntVal must not
   //exceed the following values ...
-  loRange: int64 = 1518500249;          //sqrt(2^63 -1)/2
-  hiRange: int64 = 6521908912666391106; //sqrt(2^127 -1)/2
+  loRange: Int64 = 1518500249;          //sqrt(2^63 -1)/2
+  hiRange: Int64 = 6521908912666391106; //sqrt(2^127 -1)/2
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
@@ -548,12 +548,12 @@ var
 begin
   result := rtLo;
   for i := 0 to high(pts) do
-    if (pts[i].X > hiRange) or (pts[i].Y > hiRange) then
+    if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
     begin
       result := rtError;
       break;
     end
-    else if (pts[i].X > loRange) or (pts[i].Y > loRange) then
+    else if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
       result := rtHi;
 end;
 //------------------------------------------------------------------------------
@@ -1098,7 +1098,7 @@ var
   edges: PEdgeArray;
   e, eHighest: PEdge;
   pg: TPolygon;
-  maxVal: int64;
+  maxVal: Int64;
 begin
   {AddPolygon}
   result := false; //ie assume nothing added

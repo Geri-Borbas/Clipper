@@ -182,7 +182,7 @@ namespace ClipperLib
         public static Int128 operator /(Int128 lhs, Int128 rhs)
         {
             if (rhs.lo == 0 && rhs.hi == 0)
-                throw new Exception("Int128 operator/: divide by zero");
+                throw new ClipperException("Int128: divide by zero");
             bool negate = (rhs.hi < 0) != (lhs.hi < 0);
             Int128 result = new Int128(lhs), denom = new Int128(rhs);
             if (result.hi < 0) Negate(result);
@@ -527,26 +527,6 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        //UseFullCoordinateRange: When this property is false (default = false), polygon
-        //coordinates must be between +/- MAX_INT32 /2 (approx. 1.5e+9 or
-        //exactly sqrt(2^63 -1)/2). When this property is true, coordinates
-        //must be between +/- MAX_INT64 /2 (approx. 6.5e+18 or exactly
-        //sqrt(2^127 -1)/2). If these ranges are exceeded, an error will be thrown
-        //when the polygon is added to a Clipper object. The benefit of leaving
-        //this property false is a small increase in performance (roughly 15-20%).
-        public bool UseFullCoordinateRange
-        {
-            get { return m_UseFullRange; }
-            set 
-            {
-                if (m_edges.Count > 0 && value == true)
-                    throw new Exception("UseFullCoordinateRange() can't be changed "+      
-                        "until the Clipper object has been cleared.");
-                m_UseFullRange = value; 
-            }
-        }
-        //------------------------------------------------------------------------------
-
         public virtual void Clear()
         {
             DisposeLocalMinimaList();
@@ -594,7 +574,7 @@ namespace ClipperLib
                 if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
                 if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
                 {
-                    if (m_UseFullRange) 
+                  if (m_UseFullRange) 
                     throw new ClipperException("Coordinate exceeds range bounds");
                   maxVal = hiRange;
                   if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
@@ -2674,9 +2654,9 @@ namespace ClipperLib
             RangeTest result = ClipperLib.RangeTest.rtLo;
             for (int i = 0; i <  pts.Count; i++) 
             {
-                if (pts[i].X > hiRange || pts[i].Y > hiRange)
+                if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
                   return ClipperLib.RangeTest.rtError;
-                else if (pts[i].X > loRange || pts[i].Y > loRange)
+                else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
                   result = ClipperLib.RangeTest.rtHi;
             }
             return result;
@@ -3400,13 +3380,7 @@ namespace ClipperLib
   
     class ClipperException : Exception
     {
-        private string m_description;
-        public ClipperException(string description)
-        {
-            m_description = description;
-            Console.WriteLine(m_description);
-            throw new Exception(m_description);
-        }
+        public ClipperException(string description) : base(description){}
     }
     //------------------------------------------------------------------------------
 }

@@ -411,7 +411,6 @@ int _tmain(int argc, _TCHAR* argv[])
   }
 
   Clipper c;
-  c.UseFullCoordinateRange(false);
   c.AddPolygons(subject, ptSubject);
   c.AddPolygons(clip, ptClip);
   Polygons solution;

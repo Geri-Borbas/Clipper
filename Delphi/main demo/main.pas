@@ -173,7 +173,7 @@ end;
 
 procedure TSvgBuilder.AddPolygons(const poly: TPolygons);
 var
-  i, j, len, len2: integer;
+  i, len: integer;
 begin
   i := length(poly);
   if i = 0 then Exit;
@@ -193,7 +193,7 @@ end;
 
 procedure TSvgBuilder.AddText(const text: string; X,Y: integer);
 var
-  i, j, len, len2: integer;
+  len: integer;
 begin
   len := length(textList);
   setlength(textList, len +1);
@@ -223,7 +223,7 @@ var
   rec: TIntRect;
   ds: char;
   ss: TStringStream;
-  dashArrayStr, startArrowStr, endArrowStr: string;
+  dashArrayStr: string;
 begin
   result := false;
   len := length(polyList);
@@ -760,7 +760,6 @@ end;
 procedure TMainForm.bSaveSvgClick(Sender: TObject);
 var
   invScale: single;
-  dashArray: TArrayOfInteger;
 begin
   if not SaveDialog1.Execute then exit;
   invScale := 1/ power(10, scale);

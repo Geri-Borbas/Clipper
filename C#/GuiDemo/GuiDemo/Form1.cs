@@ -450,7 +450,6 @@ namespace WindowsFormsApplication1
             {                
                 Polygons solution2 = new Polygons();
                 Clipper c = new Clipper();
-                c.UseFullCoordinateRange = false;
                 c.AddPolygons(subjects, PolyType.ptSubject);
                 c.AddPolygons(clips, PolyType.ptClip);
                 exSolution.Clear();
@@ -469,7 +468,7 @@ namespace WindowsFormsApplication1
 
                     //or for something fancy ...
                     if (nudOffset.Value != 0)
-                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, Clipper.JoinType.jtMiter);
+                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, JoinType.jtMiter);
                     else
                         solution2 = new Polygons(solution);
                     foreach (Polygon pg in solution2)
