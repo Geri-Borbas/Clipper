@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.1                                                           *
-* Date      :  27 September 2011                                               *
+* Version   :  4.5.2                                                           *
+* Date      :  1 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1204,6 +1204,7 @@ begin
   DisposeLocalMinimaList;
   for i := 0 to fEdgeList.Count -1 do dispose(PEdgeArray(fEdgeList[i]));
   fEdgeList.Clear;
+  fUse64BitRange := false;
 end;
 //------------------------------------------------------------------------------
 
