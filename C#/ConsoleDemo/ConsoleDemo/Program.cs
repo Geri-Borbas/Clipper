@@ -298,12 +298,12 @@ namespace ClipperTest1
 
         ////////////////////////////////////////////////
 
-        static Polygon MakeRandomPolygon(Random r,  int maxWidth, int maxHeight, int edgeCount)
+        static Polygon MakeRandomPolygon(Random r,  int maxWidth, int maxHeight, int edgeCount, Int64 scale = 1)
         {
             Polygon result = new Polygon(edgeCount);
             for (int i = 0; i < edgeCount; i++)
             {
-                result.Add(new IntPoint(r.Next(maxWidth), r.Next(maxHeight)));
+                result.Add(new IntPoint(r.Next(maxWidth)*scale, r.Next(maxHeight)*scale));
             }
             return result;
         }
@@ -314,13 +314,14 @@ namespace ClipperTest1
             ////quick test with random polygons ...
             //Polygons ss = new Polygons(1), cc = new Polygons(1), sss = new Polygons();
             //Random r = new Random((int)DateTime.Now.Ticks);
-            //ss.Add(MakeRandomPolygon(r, 400, 350, 9));
-            //cc.Add(MakeRandomPolygon(r, 400, 350, 9));
+            //int scale = 1000000000; //tests 128bit math
+            //ss.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
+            //cc.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
             //Clipper cpr = new Clipper();
             //cpr.AddPolygons(ss, PolyType.ptSubject);
             //cpr.AddPolygons(cc, PolyType.ptClip);
             //cpr.Execute(ClipType.ctUnion, sss, PolyFillType.pftNonZero, PolyFillType.pftNonZero);
-            //sss = Clipper.OffsetPolygons(sss, -5, JoinType.jtMiter, 4);
+            //sss = Clipper.OffsetPolygons(sss, -5.0*scale, JoinType.jtMiter, 4);
             //SVGBuilder svg1 = new SVGBuilder();
             //svg1.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);
             //svg1.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
@@ -331,7 +332,7 @@ namespace ClipperTest1
             //svg1.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
             //svg1.style.penClr = Color.FromArgb(0, 0x33, 0);
             //svg1.AddPolygons(sss);
-            //svg1.SaveToFile("solution.svg", 1);
+            //svg1.SaveToFile("solution.svg", 1.0/scale);
             //return;
 
             if (args.Length < 5)

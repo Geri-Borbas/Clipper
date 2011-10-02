@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.2                                                           *
-* Date      :  1 October 2011                                                  *
+* Version   :  4.5.3                                                           *
+* Date      :  3 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -309,74 +309,73 @@ RangeTest TestRange(const Polygon &pts)
 
 bool IsClockwise(const Polygon &poly, bool YAxisPositiveUpward)
 {
-  int highI = poly.size() -1;
-  if (highI < 2) return false;
-  bool UseFullInt64Range;
-  RangeTest rt = TestRange(poly);
-  switch (rt)
-  {
-    case rtLo: { UseFullInt64Range = false; break; }
-    case rtHi: { UseFullInt64Range = true; break; }
-    default: throw "Coordinate exceeds range bounds.";
-  }
+	Polygon::size_type highI = poly.size() -1;
+	if (highI < 2) return false;
+	bool UseFullInt64Range = false;
 
-  if (UseFullInt64Range)
-  {
-    Int128 area;
-    area = Int128(poly[highI].X) * Int128(poly[0].Y) -
-      Int128(poly[0].X) * Int128(poly[highI].Y);
-    for (int i = 0; i < highI; ++i)
-      area += Int128(poly[i].X) * Int128(poly[i+1].Y) -
-        Int128(poly[i+1].X) * Int128(poly[i].Y);
-    if (YAxisPositiveUpward)
-      return area < 0;
-    else
-      return area > 0;
-  }
-  else
-  {
-    double a;
-    a = (double)(poly[highI].X) * (double)(poly[0].Y) -
-      (double)(poly[0].X) * (double)(poly[highI].Y);
-    for (int i = 0; i < highI; ++i)
-      a += (double)(poly[i].X) * (double)(poly[i+1].Y) -
-        (double)(poly[i+1].X) * (double)(poly[i].Y);
-    if (YAxisPositiveUpward)
-      return a <= 0;
-    else
-      return a >= 0;
-  }
+    Polygon::size_type j = 0, jplus, jminus;
+    for (Polygon::size_type i = 0; i <= highI; ++i) 
+	{
+    if (std::abs(poly[i].X) > hiRange || std::abs(poly[i].Y) > hiRange)
+		throw "Coordinate exceeds range bounds.";
+    if (std::abs(poly[i].X) > loRange || std::abs(poly[i].Y) > loRange) 
+		UseFullInt64Range = true;
+    if (poly[i].Y < poly[j].Y) continue;
+    if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
+	};
+	if (j == highI) jplus = 0;
+	else jplus = j +1;
+	if (j == 0) jminus = highI;
+	else jminus = j -1;
+
+	IntPoint vec1, vec2;
+	//get cross product of vectors of the edges adjacent to highest point ...
+	vec1.X = poly[j].X - poly[jminus].X;
+	vec1.Y = poly[j].Y - poly[jminus].Y;
+	vec2.X = poly[jplus].X - poly[j].X;
+	vec2.Y = poly[jplus].Y - poly[j].Y;
+
+	if (UseFullInt64Range)
+	{
+		Int128 cross = Int128(vec1.X) * Int128(vec2.Y) - Int128(vec2.X) * Int128(vec1.Y);
+		return (YAxisPositiveUpward ? cross < 0: cross > 0);
+	}
+	else
+	{
+		long64 cross = (vec1.X * vec2.Y - vec2.X * vec1.Y);
+		return (YAxisPositiveUpward ? cross < 0: cross > 0);
+	}
 }
 //------------------------------------------------------------------------------
 
 bool IsClockwise(OutRec *outRec, bool UseFullInt64Range)
 {
-  OutPt* startPt = outRec->pts;
-  OutPt* op = outRec->pts;
-  if (UseFullInt64Range)
-  {
-    Int128 area(0);
-    do
-    {
-      area += (Int128(op->pt.X) * Int128(op->next->pt.Y)) -
-        (Int128(op->next->pt.X) * Int128(op->pt.Y));
-      op = op->next;
-    }
-    while (op != startPt);
-    return area < 0;
-  }
-  else
-  {
-    double a = 0;
-    do
-    {
-      a += (double)op->pt.X * op->next->pt.Y -
-        (double)op->next->pt.X * op->pt.Y;
-      op = op->next;
-    }
-    while (op != startPt);
-    return a < 0;
-  }
+	OutPt *opBottom = outRec->pts, *op = outRec->pts->next;
+	while (op != outRec->pts) 
+	{
+		if (op->pt.Y >= opBottom->pt.Y) 
+		{
+		  if (op->pt.Y > opBottom->pt.Y || op->pt.X < opBottom->pt.X) 
+			opBottom = op;
+		}
+		op = op->next;
+	}
+
+    IntPoint vec1, vec2;
+	vec1.X = op->pt.X - op->prev->pt.X;
+	vec1.Y = op->pt.Y - op->prev->pt.Y;
+	vec2.X = op->next->pt.X - op->pt.X;
+	vec2.Y = op->next->pt.Y - op->pt.Y;
+	
+	if (UseFullInt64Range)
+	{
+		Int128 cross = Int128(vec1.X) * Int128(vec2.Y) - Int128(vec2.X) * Int128(vec1.Y);
+		return cross < 0;
+	}
+	else
+	{
+		return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+	}
 }
 //------------------------------------------------------------------------------
 

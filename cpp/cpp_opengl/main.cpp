@@ -207,9 +207,9 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 	{
 		case pctSubject: glColor4f(0.0f, 0.6f, 1.0f, 0.5f); break;
 		case pctClip: glColor4f(1.0f, 0.6f, 0.0f, 0.5f); break;
-		default: glColor4f(0.0f, 0.2f, 0.0f, 1.0f);
+		default: glColor4f(0.0f, 0.4f, 0.0f, 1.0f);
 	}
-	if (pct == pctSolution) glLineWidth(1.2f); else glLineWidth(1);
+	if (pct == pctSolution) glLineWidth(1.0f); else glLineWidth(0.8f);
 
 	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_TRUE); //GL_FALSE
 	gluTessBeginPolygon(tess, NULL); 

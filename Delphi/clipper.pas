@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.2                                                           *
-* Date      :  1 October 2011                                                  *
+* Version   :  4.5.3                                                           *
+* Date      :  3 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -599,69 +599,73 @@ end;
 
 function IsClockwise(const pts: TPolygon; YAxisPositiveUpward: boolean): boolean; overload;
 var
-  i, highI: integer;
-  a: double;
-  area: TInt128;
+  i, j, jplus, jminus, highI: integer;
   UseFullInt64Range: boolean;
-  rt: TRangeTest;
+  vec1, vec2: TIntPoint;
+  cross: TInt128;
 begin
   result := true;
   highI := high(pts);
   if highI < 2 then exit;
-  rt := RangeTest(pts);
-  case rt of
-    rtLo: UseFullInt64Range := false;
-    rtHi: UseFullInt64Range := true;
-    else raise exception.Create(rsInvalidInt);
+  UseFullInt64Range := false;
+  j := 0;
+  for i := 0 to highI do
+  begin
+    if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
+      raise exception.Create(rsInvalidInt);
+    if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
+      UseFullInt64Range := true;
+    if (pts[i].Y < pts[j].Y) then continue;
+    if ((pts[i].Y > pts[j].Y) or (pts[i].X < pts[j].X)) then j := i;
   end;
+  if j = highI then jplus := 0
+  else jplus := j+1;
+  if j = 0 then jminus := highI
+  else jminus := j-1;
+
+  //get cross product of vectors of the edges adjacent to highest point ...
+  vec1.X := pts[j].X - pts[jminus].X;
+  vec1.Y := pts[j].Y - pts[jminus].Y;
+  vec2.X := pts[jplus].X - pts[j].X;
+  vec2.Y := pts[jplus].Y - pts[j].Y;
   if UseFullInt64Range then
   begin
-    area := Int128Sub(Int128Mul(pts[highI].x, pts[0].y),
-      Int128Mul(pts[0].x, pts[highI].y));
-    for i := 0 to highI-1 do
-      area := Int128Add(area, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
-         Int128Mul(pts[i+1].x, pts[i].y)));
-    if YAxisPositiveUpward then
-      result := area.hi <= 0 else
-      result := area.hi >= 0;
+    cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
+    result := cross.hi < 0;
   end else
-  begin
-    a := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
-    for i := 0 to highI-1 do
-      a := a + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    if YAxisPositiveUpward then
-      result := a <= 0 else
-      result := a >= 0;
-  end;
+    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+  if not YAxisPositiveUpward then result := not result;
 end;
 //------------------------------------------------------------------------------
 
 function IsClockwise(outRec: POutRec; UseFullInt64Range: boolean): boolean; overload;
 var
-  a: double;
-  area: TInt128;
-  op, startOp: POutPt;
+  op, opBottom: POutPt;
+  vec1, vec2: TIntPoint;
+  cross: TInt128;
 begin
-  startOp := outRec.pts;
-  op := startOp;
+  opBottom := outRec.pts;
+  op := opBottom.next;
+  while op <> outRec.pts do
+  begin
+    if op.pt.Y >= opBottom.pt.Y then
+    begin
+      if (op.pt.Y > opBottom.pt.Y) or (op.pt.X < opBottom.pt.X) then
+        opBottom := op;
+    end;
+    op := op.next;
+  end;
+  vec1.X := op.pt.X - op.prev.pt.X;
+  vec1.Y := op.pt.Y - op.prev.pt.Y;
+  vec2.X := op.next.pt.X - op.pt.X;
+  vec2.Y := op.next.pt.Y - op.pt.Y;
+
   if UseFullInt64Range then
   begin
-    area := int128(0);
-    repeat
-      area := int128Add(area, int128Sub(Int128Mul(op.pt.X, op.next.pt.Y),
-        Int128Mul(op.next.pt.X, op.pt.Y)));
-      op := op.next;
-    until op = startOp;
-    result := area.hi <= 0;
+    cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
+    result := cross.hi < 0;
   end else
-  begin
-    a := 0;
-    repeat
-      a := a + (op.pt.X)*op.next.pt.Y - (op.next.pt.X)*op.pt.Y;
-      op := op.next;
-    until op = startOp;
-    result := a <= 0;
-  end;
+    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
 end;
 //------------------------------------------------------------------------------
 

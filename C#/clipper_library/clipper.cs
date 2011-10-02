@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.2                                                           *
-* Date      :  1 October 2011                                                  *
+* Version   :  4.5.3                                                           *
+* Date      :  3 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -87,6 +87,11 @@ namespace ClipperLib
             val.lo = ~val.lo +1;
             val.hi = ~val.hi;
             }
+        }
+
+        public bool IsNegative()
+        {
+            return hi < 0;       
         }
 
         public static bool operator== (Int128 val1, Int128 val2)
@@ -2666,77 +2671,68 @@ namespace ClipperLib
 
         public static bool IsClockwise(Polygon poly, bool YAxisPositiveUpward)
         {
-          int highI = poly.Count -1;
-          if (highI < 2) return false;
-          bool UseFullInt64Range;
-          RangeTest rt = TestRange(poly);
-          switch (rt) 
-          {
-            case RangeTest.rtLo: { UseFullInt64Range = false; break; }
-            case RangeTest.rtHi: { UseFullInt64Range = true; break; }
-            default: throw new ClipperException("Coordinate exceeds range bounds.");
-          }
+            int highI = poly.Count -1;
+            if (highI < 2) return false;
+            bool UseFullInt64Range = false;
 
-          if (UseFullInt64Range)
-          {
-              Int128 area;
-              area = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
-                Int128.Int128Mul(poly[0].X, poly[highI].Y);
-              for (int i = 0; i < highI; ++i)
-                  area += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
-                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
-              if (YAxisPositiveUpward)
-                  return area.ToDouble() <= 0;
-              else
-                  return area.ToDouble() >= 0;
-          }
-          else
-          {
+            int j = 0, jplus, jminus;
+            for (int i = 0; i <= highI; ++i) 
+            {
+            if (Math.Abs(poly[i].X) > hiRange || Math.Abs(poly[i].Y) > hiRange)
+	            throw new ClipperException("Coordinate exceeds range bounds.");
+            if (Math.Abs(poly[i].X) > loRange || Math.Abs(poly[i].Y) > loRange) 
+	            UseFullInt64Range = true;
+            if (poly[i].Y < poly[j].Y) continue;
+            if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
+            };
+            if (j == highI) jplus = 0;
+            else jplus = j +1;
+            if (j == 0) jminus = highI;
+            else jminus = j -1;
 
-              double area;
-              area = (double)poly[highI].X * (double)poly[0].Y -
-                  (double)poly[0].X * (double)poly[highI].Y;
-              for (int i = 0; i < highI; ++i)
-                  area += (double)poly[i].X * (double)poly[i + 1].Y -
-                      (double)poly[i + 1].X * (double)poly[i].Y;
-              //area := area/2;
-              if (YAxisPositiveUpward)
-                  return area <= 0; 
-              else
-                  return area >= 0;
-          }
+            //get cross product of vectors of the edges adjacent to highest point ...
+            IntPoint vec1 = new IntPoint(poly[j].X - poly[jminus].X, poly[j].Y - poly[jminus].Y);
+            IntPoint vec2 = new IntPoint(poly[jplus].X - poly[j].X, poly[jplus].Y - poly[j].Y);
+
+            if (UseFullInt64Range)
+            {
+                Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
+                return (YAxisPositiveUpward ? cross.IsNegative() : !cross.IsNegative());
+            }
+            else
+            {
+                Int64 cross = (vec1.X * vec2.Y - vec2.X * vec1.Y);
+                return (YAxisPositiveUpward ? cross < 0 : cross > 0);
+            }
         }
         //------------------------------------------------------------------------------
 
         private bool IsClockwise(OutRec outRec, bool UseFull64BitRange)
         {
-            OutPt startPt = outRec.pts;
-            OutPt op = startPt;
+            OutPt opBottom = outRec.pts, op = outRec.pts.next;
+            while (op != outRec.pts) 
+            {
+	            if (op.pt.Y >= opBottom.pt.Y) 
+	            {
+		            if (op.pt.Y > opBottom.pt.Y || op.pt.X < opBottom.pt.X) 
+		            opBottom = op;
+	            }
+	            op = op.next;
+            }
+
+            IntPoint vec1 = new IntPoint(op.pt.X - op.prev.pt.X, op.pt.Y - op.prev.pt.Y);
+            IntPoint vec2 = new IntPoint(op.next.pt.X - op.pt.X, op.next.pt.Y - op.pt.Y);
+
             if (UseFull64BitRange)
             {
-                Int128 area = new Int128(0);
-                do
-                {
-                    area += Int128.Int128Mul(op.pt.X, op.next.pt.Y) -
-                        Int128.Int128Mul(op.next.pt.X, op.pt.Y);
-                    op = op.next;
-                }
-                while (op != startPt);
-                return area.ToDouble() <= 0;
+                Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
+                return cross.IsNegative();
             }
             else
             {
-                double area = 0;
-                do
-                {
-                    area += (double)op.pt.X * (double)op.next.pt.Y -
-                        (double)op.next.pt.X * (double)op.pt.Y;
-                    op = op.next;
-                }
-                while (op != startPt);
-                //area = area /2;
-                return area <= 0;
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
             }
+
         }
         //------------------------------------------------------------------------------
 
