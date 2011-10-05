@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.3                                                           *
-* Date      :  3 October 2011                                                  *
+* Version   :  4.5.4                                                           *
+* Date      :  5 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1081,7 +1081,7 @@ namespace ClipperLib
                   FixupOutPolygon(outRec);
                   if (outRec.pts == null) continue;
                   if (outRec.isHole && fixHoleLinkages) FixHoleLinkage(outRec);
-                  if (outRec.isHole == IsClockwise(outRec, m_UseFullRange))
+                  if (outRec.isHole == Orientation(outRec, m_UseFullRange))
                     ReversePolyPtLinks(outRec.pts);
                 }
 
@@ -2669,7 +2669,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static bool IsClockwise(Polygon poly, bool YAxisPositiveUpward)
+        public static bool Orientation(Polygon poly)
         {
             int highI = poly.Count -1;
             if (highI < 2) return false;
@@ -2697,17 +2697,16 @@ namespace ClipperLib
             if (UseFullInt64Range)
             {
                 Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
-                return (YAxisPositiveUpward ? cross.IsNegative() : !cross.IsNegative());
+                return cross.IsNegative();
             }
             else
             {
-                Int64 cross = (vec1.X * vec2.Y - vec2.X * vec1.Y);
-                return (YAxisPositiveUpward ? cross < 0 : cross > 0);
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
             }
         }
         //------------------------------------------------------------------------------
 
-        private bool IsClockwise(OutRec outRec, bool UseFull64BitRange)
+        private bool Orientation(OutRec outRec, bool UseFull64BitRange)
         {
             OutPt opBottom = outRec.pts, op = outRec.pts.next;
             while (op != outRec.pts) 
@@ -2858,7 +2857,6 @@ namespace ClipperLib
 
         internal static double Area(OutPt pts, bool UseFullRange)
         {
-            double result = 0.0;
             if (pts.next == pts.prev) return 0.0;
             if (UseFullRange)
             {
@@ -2871,18 +2869,20 @@ namespace ClipperLib
                     p = p.next;
                 }
                 while (p != pts);
+                return a.ToDouble() / 2;
             }
             else
             {
+                double a = 0.0;
                 OutPt p = pts;
                 do
                 {
-                    result += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
+                    a += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
                     p = p.next;
                 }
                 while (p != pts);
+                return a / 2;
             }
-            return Math.Abs(result) / 2;
         }
         //------------------------------------------------------------------------------
 
@@ -3005,7 +3005,7 @@ namespace ClipperLib
                 {
                     outRec2.isHole = !outRec1.isHole;
                     outRec2.FirstLeft = outRec1;
-                    if (outRec2.isHole == IsClockwise(outRec2, m_UseFullRange)) 
+                    if (outRec2.isHole == Orientation(outRec2, m_UseFullRange)) 
                       ReversePolyPtLinks(outRec2.pts);
                 }
                 else if (PointInPolygon(outRec1.pts.pt, outRec2.pts, m_UseFullRange))
@@ -3014,12 +3014,12 @@ namespace ClipperLib
                     outRec1.isHole = !outRec2.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
                     outRec1.FirstLeft = outRec2;
-                    if (outRec1.isHole == IsClockwise(outRec1, m_UseFullRange))
+                    if (outRec1.isHole == Orientation(outRec1, m_UseFullRange))
                       ReversePolyPtLinks(outRec1.pts);
                 }
                 else
                 {
-                    //I'm assuming that if outRec1 contain any holes, it still does after
+                    //I'm assuming that if outRec1 contains any holes, it still does after
                     //the split and that none are now contained by the new outRec2.
                     //In a perfect world, I'd PointInPolygon() every hole owned by outRec1
                     //to make sure it's still owned by outRec1 and not now owned by outRec2.
@@ -3087,11 +3087,21 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static double Area(Polygon poly, bool UseFullRange = true)
+        public static double Area(Polygon poly)
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            if (UseFullRange)
+            bool UseFullInt64Range = false;
+            RangeTest rt = TestRange(poly);
+            switch (rt)
+            {
+                case RangeTest.rtHi: 
+                    UseFullInt64Range = true; 
+                    break;
+                case RangeTest.rtError: 
+                    throw new ClipperException("Coordinate exceeds range bounds.");
+            }
+            if (UseFullInt64Range)
             {
                 Int128 a = new Int128(0);
                 a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
@@ -3099,7 +3109,7 @@ namespace ClipperLib
                 for (int i = 0; i < highI; ++i)
                     a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
                     Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
-                return Math.Abs(a.ToDouble()) / 2;
+                return a.ToDouble() / 2;
             }
             else
             {
@@ -3108,7 +3118,7 @@ namespace ClipperLib
                 for (int i = 0; i < highI; ++i)
                     area += (double)poly[i].X * (double)poly[i + 1].Y -
                         (double)poly[i + 1].X * (double)poly[i].Y;
-                return Math.Abs(area) / 2;
+                return area / 2;
             }
         }
 
@@ -3196,7 +3206,7 @@ namespace ClipperLib
 
                     //to minimize artefacts, strip out those polygons where
                     //it's being shrunk and where its area < Sqr(delta) ...
-                    double a1 = Area(pts[i], true);
+                    double a1 = Area(pts[i]);
                     if (delta < 0) { if (a1 > 0 && a1 < deltaSq) len = 0; }
                     else if (a1 < 0 && -a1 < deltaSq) len = 0; //nb: a hole if area < 0
 

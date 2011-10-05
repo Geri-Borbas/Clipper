@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.3                                                           *
-* Date      :  3 October 2011                                                  *
+* Version   :  4.5.4                                                           *
+* Date      :  5 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -258,7 +258,7 @@ type
     procedure Clear; override;
   end;
 
-function IsClockwise(const pts: TPolygon; YAxisPositiveUpward: boolean): boolean;
+function Orientation(const pts: TPolygon): boolean;
 function Area(const pts: TPolygon): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
 function ReversePoints(const pts: TPolygon): TPolygon; overload;
@@ -597,7 +597,7 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function IsClockwise(const pts: TPolygon; YAxisPositiveUpward: boolean): boolean; overload;
+function Orientation(const pts: TPolygon): boolean; overload;
 var
   i, j, jplus, jminus, highI: integer;
   UseFullInt64Range: boolean;
@@ -634,11 +634,10 @@ begin
     result := cross.hi < 0;
   end else
     result := (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
-  if not YAxisPositiveUpward then result := not result;
 end;
 //------------------------------------------------------------------------------
 
-function IsClockwise(outRec: POutRec; UseFullInt64Range: boolean): boolean; overload;
+function Orientation(outRec: POutRec; UseFullInt64Range: boolean): boolean; overload;
 var
   op, opBottom: POutPt;
   vec1, vec2: TIntPoint;
@@ -695,13 +694,13 @@ begin
     for i := 0 to highI-1 do
       a := Int128Add(a, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
         Int128Mul(pts[i+1].x, pts[i].y)));
-    result := abs(Int128AsDouble(a)) / 2;
+    result := Int128AsDouble(a) / 2;
   end else
   begin
     result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
     for i := 0 to highI-1 do
       result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    result := abs(result) / 2;
+    result := result / 2;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -722,7 +721,7 @@ begin
          Int128Mul(p.next.pt.x, p.pt.Y)));
       p := p.next;
     until p = pts;
-    result := abs(result) / 2;
+    result := result / 2;
   end else
   begin
     if pts.next = pts.prev then Exit;
@@ -731,7 +730,7 @@ begin
       result := result + p.pt.X * p.next.pt.y - p.next.pt.x * p.pt.Y;
       p := p.next;
     until p = pts;
-    result := abs(result) / 2;
+    result := result / 2;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1469,7 +1468,7 @@ begin
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then FixHoleLinkage(outRec);
-      if (outRec.isHole = IsClockwise(outRec, fUse64BitRange)) then
+      if (outRec.isHole = Orientation(outRec, fUse64BitRange)) then
         ReversePolyPtLinks(outRec.pts);
     end;
 
@@ -3333,7 +3332,7 @@ begin
       begin
         outRec2.isHole := not outRec1.isHole;
         outRec2.FirstLeft := outRec1;
-        if (outRec2.isHole = IsClockwise(outRec2, fUse64BitRange)) then
+        if (outRec2.isHole = Orientation(outRec2, fUse64BitRange)) then
           ReversePolyPtLinks(outRec2.pts);
       end else if PointInPolygon(outRec1.pts.pt, outRec2.pts, fUse64BitRange) then
       begin
@@ -3341,7 +3340,7 @@ begin
         outRec1.isHole := not outRec2.isHole;
         outRec2.FirstLeft := outRec1.FirstLeft;
         outRec1.FirstLeft := outRec2;
-        if (outRec1.isHole = IsClockwise(outRec1, fUse64BitRange)) then
+        if (outRec1.isHole = Orientation(outRec1, fUse64BitRange)) then
           ReversePolyPtLinks(outRec1.pts);
       end else
       begin
