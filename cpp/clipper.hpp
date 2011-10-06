@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.4                                                           *
-* Date      :  5 October 2011                                                  *
+* Version   :  4.5.5                                                           *
+* Date      :  6 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -201,8 +201,8 @@ public:
     PolyFillType subjFillType = pftEvenOdd,
     PolyFillType clipFillType = pftEvenOdd);
   void Clear();
-  static bool YAxisInverted();
-  static void YAxisInverted(bool value);
+  bool ReverseSolution() {return m_ReverseOutput;};
+  void ReverseSolution(bool value) {m_ReverseOutput = value;};
 protected:
   void Reset();
   virtual bool ExecuteInternal(bool fixHoleLinkages);
@@ -218,6 +218,7 @@ private:
   bool              m_ExecuteLocked;
   PolyFillType      m_ClipFillType;
   PolyFillType      m_SubjFillType;
+  bool              m_ReverseOutput;
   void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
   bool IsNonZeroFillType(const TEdge& edge) const;

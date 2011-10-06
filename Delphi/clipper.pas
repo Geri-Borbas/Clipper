@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.4                                                           *
-* Date      :  5 October 2011                                                  *
+* Version   :  4.5.5                                                           *
+* Date      :  6 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -193,6 +193,7 @@ type
     fSubjFillType  : TPolyFillType;
     fExecuteLocked : boolean;
     fHorizJoins    : PHorzRec;
+    fReverseOutput : boolean;
     procedure DisposeScanbeamList;
     procedure InsertScanbeam(const y: int64);
     function PopScanbeam: int64;
@@ -256,6 +257,7 @@ type
     constructor Create; override;
     destructor Destroy; override;
     procedure Clear; override;
+    property ReverseSolution: boolean read fReverseOutput write fReverseOutput;
   end;
 
 function Orientation(const pts: TPolygon): boolean;
@@ -631,9 +633,9 @@ begin
   if UseFullInt64Range then
   begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
-    result := cross.hi < 0;
+    result := cross.hi > 0;
   end else
-    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -662,9 +664,9 @@ begin
   if UseFullInt64Range then
   begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
-    result := cross.hi < 0;
+    result := cross.hi > 0;
   end else
-    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -1468,7 +1470,7 @@ begin
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then FixHoleLinkage(outRec);
-      if (outRec.isHole = Orientation(outRec, fUse64BitRange)) then
+      if (outRec.isHole = fReverseOutput xor Orientation(outRec, fUse64BitRange)) then
         ReversePolyPtLinks(outRec.pts);
     end;
 
@@ -3429,8 +3431,8 @@ begin
     dx := dx * f;
     dy := dy * f;
   end;
-  Result.X := -dy;
-  Result.Y := dx
+  Result.X := dy;
+  Result.Y := -dx
 end;
 //------------------------------------------------------------------------------
 
@@ -3516,13 +3518,13 @@ const
     pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
     pt2.X := round(pts[i][j].X + normals[k].X * delta);
     pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
-    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta <= 0) then
+    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta >= 0) then
     begin
       a1 := ArcTan2(normals[j].Y, normals[j].X);
       a2 := ArcTan2(-normals[k].Y, -normals[k].X);
       a1 := abs(a2 - a1);
       if a1 > pi then a1 := pi*2 - a1;
-      dx := -tan((pi - a1)/4) * abs(delta*mul); ////
+      dx := tan((pi - a1)/4) * abs(delta*mul); ////
       pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
         round(pt1.Y + normals[j].X *dx));
       AddPoint(pt1);
@@ -3541,7 +3543,7 @@ const
     R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
     if (R >= RMin) then
     begin
-      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) *delta <= 0) then //ie angle > 180
+      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) *delta >= 0) then //ie angle > 180
       begin
         R := delta / R;
         pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
@@ -3576,13 +3578,13 @@ const
     //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
     //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
     //dot product normals == 1 -> no angle
-    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta <= 0) and
+    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) and
        ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
     begin
       a1 := ArcTan2(normals[j].Y, normals[j].X);
       a2 := ArcTan2(normals[k].Y, normals[k].X);
-      if (delta < 0) and (a2 < a1) then a2 := a2 + pi*2
-      else if (delta > 0) and (a2 > a1) then a2 := a2 - pi*2;
+      if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
+      else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
       arc := BuildArc(pts[i][j], a1, a2, delta);
       for m := 0 to high(arc) do
         AddPoint(arc[m]);
@@ -3657,10 +3659,10 @@ begin
     begin
       bounds := GetBounds(result);
       setlength(outer, 4);
-      outer[0] := IntPoint(bounds.left-10, bounds.top-10);
-      outer[1] := IntPoint(bounds.right+10, bounds.top-10);
-      outer[2] := IntPoint(bounds.right+10, bounds.bottom+10);
-      outer[3] := IntPoint(bounds.left-10, bounds.bottom+10);
+      outer[0] := IntPoint(bounds.left-10, bounds.bottom+10);
+      outer[1] := IntPoint(bounds.right+10, bounds.bottom+10);
+      outer[2] := IntPoint(bounds.right+10, bounds.top-10);
+      outer[3] := IntPoint(bounds.left-10, bounds.top-10);
       clipper.AddPolygon(outer, ptSubject);
       if clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
       begin

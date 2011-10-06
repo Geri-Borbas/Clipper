@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.4                                                           *
-* Date      :  5 October 2011                                                  *
+* Version   :  4.5.5                                                           *
+* Date      :  6 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -339,11 +339,11 @@ bool Orientation(const Polygon &poly)
   {
     Int128 cross = Int128(vec1.X) * Int128(vec2.Y) -
       Int128(vec2.X) * Int128(vec1.Y);
-    return cross < 0;
+    return cross > 0;
   }
   else
   {
-    return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+    return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
   }
 }
 //------------------------------------------------------------------------------
@@ -370,11 +370,11 @@ bool Orientation(OutRec *outRec, bool UseFullInt64Range)
   if (UseFullInt64Range)
   {
     Int128 cross = Int128(vec1.X) * Int128(vec2.Y) - Int128(vec2.X) * Int128(vec1.Y);
-    return cross < 0;
+    return cross > 0;
   }
   else
   {
-    return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+    return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
   }
 }
 //------------------------------------------------------------------------------
@@ -1120,6 +1120,7 @@ Clipper::Clipper() : ClipperBase() //constructor
   m_IntersectNodes = 0;
   m_ExecuteLocked = false;
   m_UseFullRange = false;
+  m_ReverseOutput = false;
 };
 //------------------------------------------------------------------------------
 
@@ -1288,8 +1289,9 @@ bool Clipper::ExecuteInternal(bool fixHoleLinkages)
       FixupOutPolygon(*outRec);
       if (!outRec->pts) continue;
       if (outRec->isHole && fixHoleLinkages) FixHoleLinkage(outRec);
-      if (outRec->isHole == Orientation(outRec, m_UseFullRange))
-        ReversePolyPtLinks(*outRec->pts);
+      if (outRec->isHole ==
+        (m_ReverseOutput ^ Orientation(outRec, m_UseFullRange)))
+          ReversePolyPtLinks(*outRec->pts);
     }
 
     JoinCommonEdges();
@@ -2993,7 +2995,7 @@ DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
   double f = 1 *1.0/ std::sqrt( dx*dx + dy*dy );
   dx *= f;
   dy *= f;
-  return DoublePoint(-dy, dx);
+  return DoublePoint(dy, -dx);
 }
 
 //------------------------------------------------------------------------------
@@ -3087,10 +3089,10 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     {
         IntRect r = clpr.GetBounds();
         Polygon outer(4);
-        outer[0] = IntPoint(r.left - 10, r.top - 10);
-        outer[1] = IntPoint(r.right + 10, r.top - 10);
-        outer[2] = IntPoint(r.right + 10, r.bottom + 10);
-        outer[3] = IntPoint(r.left - 10, r.bottom + 10);
+        outer[0] = IntPoint(r.left - 10, r.bottom + 10);
+        outer[1] = IntPoint(r.right + 10, r.bottom + 10);
+        outer[2] = IntPoint(r.right + 10, r.top - 10);
+        outer[3] = IntPoint(r.left - 10, r.top - 10);
 
         clpr.AddPolygon(outer, ptSubject);
         if (clpr.Execute(ctUnion, out_polys, pftNonZero, pftNonZero))
@@ -3123,13 +3125,13 @@ void DoSquare(int i, int j, double mul)
         (long64)Round(m_p[i][j].Y + normals[j].Y * m_delta));
     IntPoint pt2 = IntPoint((long64)Round(m_p[i][j].X + normals[k].X * m_delta),
         (long64)Round(m_p[i][j].Y + normals[k].Y * m_delta));
-    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta <= 0)
+    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * m_delta >= 0)
     {
         double a1 = std::atan2(normals[j].Y, normals[j].X);
         double a2 = std::atan2(-normals[k].Y, -normals[k].X);
         a1 = std::fabs(a2 - a1);
         if (a1 > pi) a1 = pi * 2 - a1;
-        double dx = -std::tan((pi - a1)/4) * std::fabs(m_delta * mul);
+        double dx = std::tan((pi - a1)/4) * std::fabs(m_delta * mul);
         pt1 = IntPoint((long64)(pt1.X -normals[j].Y * dx),
           (long64)(pt1.Y + normals[j].X * dx));
         AddPoint(pt1);
@@ -3152,7 +3154,7 @@ void DoMiter(int i, int j, double mul)
     double R = 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
     if (R >= m_RMin)
     {
-      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) * m_delta <= 0) //ie angle > 180
+      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) * m_delta >= 0) //ie angle > 180
       {
         R = m_delta / R;
         IntPoint pt1 =
@@ -3188,13 +3190,13 @@ void DoRound(int i, int j)
     //almost flat (ie < 10deg angle).
     //cross product normals < 0 -> angle > 180 deg.
     //dot product normals == 1 -> no angle
-    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) * m_delta <= 0 &&
+    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) * m_delta >= 0 &&
       (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985)
     {
       double a1 = std::atan2(normals[j].Y, normals[j].X);
       double a2 = std::atan2(normals[k].Y, normals[k].X);
-      if (m_delta < 0 && a2 < a1) a2 += pi *2;
-      else if (m_delta > 0 && a2 > a1) a2 -= pi *2;
+      if (m_delta > 0 && a2 < a1) a2 += pi *2;
+      else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
       Polygon arc = BuildArc(m_p[i][j], a1, a2, m_delta);
       for (Polygon::size_type m = 0; m < arc.size(); m++)
         AddPoint(arc[m]);

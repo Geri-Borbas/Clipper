@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.4                                                           *
-* Date      :  5 October 2011                                                  *
+* Version   :  4.5.5                                                           *
+* Date      :  6 October 2011                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -873,6 +873,7 @@ namespace ClipperLib
         private PolyFillType m_SubjFillType;
         private List<JoinRec> m_Joins;
         private List<HorzJoinRec> m_HorizJoins;
+        private bool m_ReverseOutput;
 
         public Clipper()
         {
@@ -884,6 +885,7 @@ namespace ClipperLib
             m_PolyOuts = new List<OutRec>();
             m_Joins = new List<JoinRec>();
             m_HorizJoins = new List<HorzJoinRec>();
+            m_ReverseOutput = false;
         }
         //------------------------------------------------------------------------------
 
@@ -929,6 +931,13 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        public bool ReverseSolution
+        {
+            get { return m_ReverseOutput; }
+            set { m_ReverseOutput = value; }
+        }
+        //------------------------------------------------------------------------------
+        
         private void InsertScanbeam(Int64 Y)
         {
           if( m_Scanbeam == null )
@@ -1081,7 +1090,7 @@ namespace ClipperLib
                   FixupOutPolygon(outRec);
                   if (outRec.pts == null) continue;
                   if (outRec.isHole && fixHoleLinkages) FixHoleLinkage(outRec);
-                  if (outRec.isHole == Orientation(outRec, m_UseFullRange))
+                  if (outRec.isHole == (m_ReverseOutput ^ Orientation(outRec, m_UseFullRange)))
                     ReversePolyPtLinks(outRec.pts);
                 }
 
@@ -2725,11 +2734,11 @@ namespace ClipperLib
             if (UseFull64BitRange)
             {
                 Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
-                return cross.IsNegative();
+                return !cross.IsNegative();
             }
             else
             {
-                return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
             }
 
         }
@@ -3152,7 +3161,7 @@ namespace ClipperLib
             dx *= f;
             dy *= f;
 
-            return new DoublePoint(-dy, dx);
+            return new DoublePoint(dy, -dx);
         }
         //------------------------------------------------------------------------------
 
@@ -3255,10 +3264,10 @@ namespace ClipperLib
                     IntRect r = clpr.GetBounds();
                     Polygon outer = new Polygon(4);
 
-                    outer.Add(new IntPoint(r.left - 10, r.top - 10));
-                    outer.Add(new IntPoint(r.right + 10, r.top - 10));
-                    outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
                     outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
+                    outer.Add(new IntPoint(r.right + 10, r.bottom + 10));
+                    outer.Add(new IntPoint(r.right + 10, r.top - 10));
+                    outer.Add(new IntPoint(r.left - 10, r.top - 10));
 
                     clpr.AddPolygon(outer, PolyType.ptSubject);
                     if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
@@ -3291,13 +3300,13 @@ namespace ClipperLib
                 IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
                     (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
                 if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * 
-                    delta <= 0)
+                    delta >= 0)
                 {
                     double a1 = Math.Atan2(normals[j].Y, normals[j].X);
                     double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
                     a1 = Math.Abs(a2 - a1);
                     if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                    double dx = -Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
+                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
                     pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
                         (Int64)(pt1.Y + normals[j].X *dx));
                     AddPoint(pt1);
@@ -3321,7 +3330,7 @@ namespace ClipperLib
                 if (R >= RMin)
                 {
                     if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
-                        delta <= 0) //ie angle > 180
+                        delta >= 0) //ie angle > 180
                     {
                         R = delta / R;
                         IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + (normals[j].X + normals[k].X) * R),
@@ -3356,14 +3365,13 @@ namespace ClipperLib
                 //almost flat (ie < 10deg angle).
                 //cross product normals < 0 . angle > 180 deg.
                 //dot product normals == 1 . no angle
-                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * 
-                    delta <= 0 &&
+                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0 &&
                    (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985) 
                 {
                   double a1 = Math.Atan2(normals[j].Y, normals[j].X);
                   double a2 = Math.Atan2(normals[k].Y, normals[k].X);
-                  if (delta < 0 && a2 < a1) a2 += Math.PI * 2;
-                  else if (delta > 0 && a2 > a1) a2 -= Math.PI * 2;
+                  if (delta > 0 && a2 < a1) a2 += Math.PI * 2;
+                  else if (delta < 0 && a2 > a1) a2 -= Math.PI * 2;
                   Polygon arc = BuildArc(pts[i][j], a1, a2, delta);
                   for (int m = 0; m < arc.Count; m++)
                       AddPoint(arc[m]);
