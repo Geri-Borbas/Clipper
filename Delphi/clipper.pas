@@ -3308,7 +3308,7 @@ begin
       //splitting one polygon into two.
       //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if Area(p1, fUse64BitRange) >= Area(p2, fUse64BitRange) then
+      if abs(Area(p1, fUse64BitRange)) >= abs(Area(p2, fUse64BitRange)) then
       begin
         outRec1.pts := PolygonBottom(p1);
         outRec1.bottomPt := outRec1.pts;
@@ -3616,15 +3616,15 @@ begin
       if (a1 < 0) and (-a1 < deltaSq) then len := 1; //ie: a hole if area < 0
 
     //allow the 'expansion' of single lines and points ...
-    if (len < 3) and (delta <= 0) then
+    if (len < 3) and (delta < 0) then
     begin
       result[i] := nil;
       continue;
     end;
 
-    if len = 1 then
+    if (len = 1) then
     begin
-      result[i] := BuildArc(pts[i][0], 2*pi, 0, delta);
+      result[i] := BuildArc(pts[i][0], 0, 2*pi, delta);
       continue;
     end;
 

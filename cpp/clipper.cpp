@@ -2836,7 +2836,8 @@ void Clipper::JoinCommonEdges()
       //splitting one polygon into two.
       //However, make sure the larger polygon is attached
       //to outRec1 in case it also owns some holes ...
-      if (Area(p1, m_UseFullRange) >= Area(p2, m_UseFullRange))
+      if (std::fabs(Area(p1, m_UseFullRange)) >=
+        std::fabs(Area(p2, m_UseFullRange)))
       {
           outRec1->pts = PolygonBottom(p1);
           outRec1->bottomPt = outRec1->pts;
@@ -3051,7 +3052,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         if (len == 1)
         {
             Polygon arc;
-            arc = BuildArc(in_polys[i][m_highJ], 2 * pi, 0, delta);
+            arc = BuildArc(in_polys[i][m_highJ], 0, 2 * pi, delta);
             out_polys[i] = arc;
             continue;
         }

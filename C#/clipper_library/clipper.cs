@@ -2985,7 +2985,7 @@ namespace ClipperLib
                 //splitting one polygon into two.
                 //However, make sure the larger polygon is attached
                 //to outRec1 in case it also owns some holes ...
-                if (Area(p1, m_UseFullRange) >= Area(p2, m_UseFullRange))
+                if ( Math.Abs(Area(p1, m_UseFullRange)) >= Math.Abs(Area(p2, m_UseFullRange)) )
                 {
                     outRec1.pts = PolygonBottom(p1);
                     outRec1.bottomPt = outRec1.pts;
@@ -3223,7 +3223,7 @@ namespace ClipperLib
                     if (len == 1)
                     {
                         Polygon arc;
-                        arc = BuildArc(pts[i][highJ], 2 * Math.PI, 0, delta);
+                        arc = BuildArc(pts[i][highJ], 0, 2 * Math.PI, delta);
                         solution.Add(arc);
                         continue;
                     }
