@@ -29,7 +29,7 @@ interface
 
 uses
   SysUtils, Types, Classes, Math;
-
+  
 type
   PIntPoint = ^TIntPoint;
   TIntPoint = record X, Y: int64; end;
@@ -240,7 +240,9 @@ type
     procedure ClearJoins;
     procedure AddHorzJoin(e: PEdge; idx: integer);
     procedure ClearHorzJoins;
-    procedure JoinCommonEdges;
+    procedure CheckHoleLinkages1(const outRec1, outRec2: POutRec);
+    procedure CheckHoleLinkages2(const outRec1, outRec2: POutRec);
+    procedure JoinCommonEdges(fixHoleLinkages: boolean);
     procedure FixHoleLinkage(outRec: POutRec);
   protected
     procedure Reset; override;
@@ -670,7 +672,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Area(const pts: TPolygon): double; overload;
+function Area(const pts: TPolygon): double;
 var
   i, highI: integer;
   a: TInt128;
@@ -702,36 +704,6 @@ begin
     result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
     for i := 0 to highI-1 do
       result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    result := result / 2;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function Area(pts: POutPt; UseFullInt64Range: boolean): double; overload;
-var
-  p: POutPt;
-  a: TInt128;
-begin
-  result := 0;
-  if pts.next = pts.prev then Exit;
-  if UseFullInt64Range then
-  begin
-    a := int128(0);
-    p := pts;
-    repeat
-      a := Int128Add(a, Int128Sub(Int128Mul(p.pt.X, p.next.pt.y),
-         Int128Mul(p.next.pt.x, p.pt.Y)));
-      p := p.next;
-    until p = pts;
-    result := result / 2;
-  end else
-  begin
-    if pts.next = pts.prev then Exit;
-    p := pts;
-    repeat
-      result := result + p.pt.X * p.next.pt.y - p.next.pt.x * p.pt.Y;
-      p := p.next;
-    until p = pts;
     result := result / 2;
   end;
 end;
@@ -1474,9 +1446,9 @@ begin
         ReversePolyPtLinks(outRec.pts);
     end;
 
-    JoinCommonEdges;
-
+    JoinCommonEdges(fixHoleLinkages);
     if fixHoleLinkages then fPolyOutList.Sort(PolySort);
+    
     result := true;
   except
     result := false;
@@ -3215,10 +3187,35 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.JoinCommonEdges;
+procedure TClipper.CheckHoleLinkages1(const outRec1, outRec2: POutRec);
+var
+  i: integer;
+begin
+  //when a polygon is split into 2 polygons, make sure any holes the original
+  //polygon contained link to the correct polygon ...
+  for i := 0 to fPolyOutList.Count - 1 do
+    with POutRec(fPolyOutList[i])^ do
+      if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) and
+         not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
+          FirstLeft := outRec2;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.CheckHoleLinkages2(const outRec1, outRec2: POutRec);
+var
+  i: integer;
+begin
+  //if a hole is owned by outRec2 then make it owned by outRec1 ...
+  for i := 0 to fPolyOutList.Count - 1 do
+    with POutRec(fPolyOutList[i])^ do
+      if isHole and assigned(bottomPt) and (FirstLeft = OutRec2) then
+        FirstLeft := outRec1;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.JoinCommonEdges(fixHoleLinkages: boolean);
 var
   i, j, OKIdx, ObsoleteIdx: integer;
-  a1, a2: double;
   jr, jr2: PJoinRec;
   outRec1, outRec2: POutRec;
   prev, p1, p2, p3, p4, pp1a, pp2a: POutPt;
@@ -3246,15 +3243,6 @@ begin
       if not FindSegment(pp2a, pt3, pt4) then continue;
 
     if not GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2) then continue;
-
-    if (jr.poly1Idx = jr.poly2Idx) then
-    begin
-      a1 := 0.0; a2 := 0.0; //ignored, but stops warnings.
-    end else
-    begin
-      a1 := Area(outRec1.pts, fUse64BitRange);
-      a2 := Area(outRec2.pts, fUse64BitRange);
-    end;
 
     prev := pp1a.prev;
     if PointsEqual(pp1a.pt, pt1) then p1 := pp1a
@@ -3306,28 +3294,14 @@ begin
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      //However, make sure the larger polygon is attached
-      //to outRec1 in case it also owns some holes ...
-      if abs(Area(p1, fUse64BitRange)) >= abs(Area(p2, fUse64BitRange)) then
-      begin
-        outRec1.pts := PolygonBottom(p1);
-        outRec1.bottomPt := outRec1.pts;
-        outRec2 := CreateOutRec;
-        outRec2.idx := fPolyOutList.Add(outRec2);
-        jr.poly2Idx := outRec2.idx;
-        outRec2.pts := PolygonBottom(p2);
-        outRec2.bottomPt := outRec2.pts;
-      end else
-      begin
-        outRec1.pts := PolygonBottom(p2);
-        outRec1.bottomPt := outRec1.pts;
-        outRec2 := CreateOutRec;
-        outRec2.idx := fPolyOutList.Add(outRec2);
-        jr.poly2Idx := outRec2.idx;
-        outRec2.pts := PolygonBottom(p1);
-        outRec2.bottomPt := outRec2.pts;
-      end;
+      outRec1.pts := PolygonBottom(p1);
+      outRec1.bottomPt := outRec1.pts;
       outRec1.bottomPt.idx := outRec1.idx;
+      outRec2 := CreateOutRec;
+      outRec2.idx := fPolyOutList.Add(outRec2);
+      jr.poly2Idx := outRec2.idx;
+      outRec2.pts := PolygonBottom(p2);
+      outRec2.bottomPt := outRec2.pts;
       outRec2.bottomPt.idx := outRec2.idx;
 
       if PointInPolygon(outRec2.pts.pt, outRec1.pts, fUse64BitRange) then
@@ -3346,12 +3320,10 @@ begin
           ReversePolyPtLinks(outRec1.pts);
       end else
       begin
-        //I'm assuming that if outRec1 contain any holes, it still does after
-        //the split and that none are now contained by the new outRec2.
-        //In a perfect world, I'd PointInPolygon() every hole owned by outRec1
-        //to make sure it's still owned by outRec1 and not now owned by outRec2.
         outRec2.isHole := outRec1.isHole;
         outRec2.FirstLeft := outRec1.FirstLeft;
+        //make sure any contained holes now link to the correct polygon ...
+        if fixHoleLinkages then CheckHoleLinkages1(outRec1, outRec2);
       end;
 
       //now fixup any subsequent joins that match this polygon
@@ -3369,30 +3341,19 @@ begin
       FixupOutPolygon(outRec2);
     end else
     begin
-      //having joined 2 polygons together, delete the obsolete pointer ...
+      //joined 2 polygons together ...
 
-      //assume the polygon with the largest area is the one
-      //(and only one) that contains any holes ...
-      if a1 >= a2 then
-      begin
-        OKIdx := outRec1.idx;
-        ObsoleteIdx := outRec2.idx;
-        outRec2.pts := nil;
-        outRec2.bottomPt := nil;
-        outRec2.AppendLink := outRec1;
-        //holes are practically always joined to outers, not vice versa ...
-        if outRec1.isHole and not outRec2.isHole then outRec1.isHole := false;
-      end else
-      begin
-        OKIdx := outRec2.idx;
-        ObsoleteIdx := outRec1.idx;
-        outRec2.pts := outRec1.pts;
-        outRec1.pts := nil;
-        outRec1.bottomPt := nil;
-        outRec1.AppendLink := outRec2;
-        //holes are practically always joined to outers, not vice versa ...
-        if outRec2.isHole and not outRec1.isHole then outRec2.isHole := false;
-      end;
+      //make sure any holes contained by outRec2 now link to outRec1 ...
+      if fixHoleLinkages then CheckHoleLinkages2(outRec1, outRec2);
+
+      //delete the obsolete pointer ...
+      OKIdx := outRec1.idx;
+      ObsoleteIdx := outRec2.idx;
+      outRec2.pts := nil;
+      outRec2.bottomPt := nil;
+      outRec2.AppendLink := outRec1;
+      //holes are practically always joined to outers, not vice versa ...
+      if outRec1.isHole and not outRec2.isHole then outRec1.isHole := false;
 
       //now fixup any subsequent joins ...
       for j := i+1 to fJoinList.count -1 do

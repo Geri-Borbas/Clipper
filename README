@@ -2,8 +2,15 @@
 Clipper Change Log
 ============================================================
 
+v4.5.5 - 8 October 2011
+* Bugfix: Fixed an obscure bug in Clipper's JoinCommonEdges 
+  method. 
+* Update: Replaced IsClockwise function with Orientation 
+  function. The orientation issues affecting OffsetPolygons 
+  should now be finally resolved.
+* Change: The Area function once again returns a signed value.
+ 
 v4.5.1 - 28 September 2011
-v4.5.1 (27 September 2011)
 * Deleted: The UseFullCoordinateRange property has been 
   deleted since integer range is now managed implicitly. 
 * BugFix: Minor bug in OffsetPolygon mitering. 

@@ -309,12 +309,12 @@ RangeTest TestRange(const Polygon &pts)
 
 bool Orientation(const Polygon &poly)
 {
-  Polygon::size_type highI = poly.size() -1;
+  int highI = (int)poly.size() -1;
   if (highI < 2) return false;
   bool UseFullInt64Range = false;
 
-    Polygon::size_type j = 0, jplus, jminus;
-    for (Polygon::size_type i = 0; i <= highI; ++i)
+    int j = 0, jplus, jminus;
+    for (int i = 0; i <= highI; ++i)
   {
     if (std::abs(poly[i].X) > hiRange || std::abs(poly[i].Y) > hiRange)
     throw "Coordinate exceeds range bounds.";
@@ -361,7 +361,7 @@ bool Orientation(OutRec *outRec, bool UseFullInt64Range)
     op = op->next;
   }
 
-    IntPoint vec1, vec2;
+  IntPoint vec1, vec2;
   vec1.X = op->pt.X - op->prev->pt.X;
   vec1.Y = op->pt.Y - op->prev->pt.Y;
   vec2.X = op->next->pt.X - op->pt.X;
@@ -402,7 +402,7 @@ inline bool PointsEqual( const IntPoint &pt1, const IntPoint &pt2)
 
 double Area(const Polygon &poly)
 {
-  int highI = poly.size() -1;
+  int highI = (int)poly.size() -1;
   if (highI < 2) return 0;
   bool UseFullInt64Range = false;
   RangeTest rt = TestRange(poly);
@@ -430,37 +430,6 @@ double Area(const Polygon &poly)
     for (int i = 0; i < highI; ++i)
       a += (double)poly[i].X * poly[i+1].Y - (double)poly[i+1].X * poly[i].Y;
     return a/2;
-  }
-}
-//------------------------------------------------------------------------------
-
-double Area(OutPt *pts, bool UseFullInt64Range)
-{
-  double result = 0.0;
-  if (pts->next == pts->prev) return 0.0;
-
-  if (UseFullInt64Range)
-  {
-    Int128 a(0);
-    OutPt *p = pts;
-    do {
-      a += (Int128(p->pt.X) * Int128(p->next->pt.Y)) -
-         (Int128(p->next->pt.X) * Int128(p->pt.Y));
-      p = p->next;
-    }
-    while (p != pts);
-    return result / 2;
-  }
-  else
-  {
-    OutPt* p = pts;
-    do {
-      result += (double)p->pt.X * p->next->pt.Y -
-        (double)p->next->pt.X * p->pt.Y;
-      p = p->next;
-    }
-    while (p != pts);
-    return result / 2;
   }
 }
 //------------------------------------------------------------------------------
@@ -500,8 +469,8 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
     {
       if ((((pp2->pt.Y <= pt.Y) && (pt.Y < pp2->prev->pt.Y)) ||
         ((pp2->prev->pt.Y <= pt.Y) && (pt.Y < pp2->pt.Y))) &&
-        (pt.X - pp2->pt.X < (pp2->prev->pt.X - pp2->pt.X) * (pt.Y - pp2->pt.Y) /
-        (pp2->prev->pt.Y - pp2->pt.Y))) result = !result;
+        (pt.X < (pp2->prev->pt.X - pp2->pt.X) * (pt.Y - pp2->pt.Y) /
+        (pp2->prev->pt.Y - pp2->pt.Y) + pp2->pt.X )) result = !result;
       pp2 = pp2->next;
     }
     while (pp2 != pp);
@@ -831,7 +800,7 @@ ClipperBase::~ClipperBase() //destructor
 
 bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
 {
-  int len = pg.size();
+  int len = (int)pg.size();
   if (len < 3) return false;
   Polygon p(len);
   p[0] = pg[0];
@@ -1294,7 +1263,7 @@ bool Clipper::ExecuteInternal(bool fixHoleLinkages)
           ReversePolyPtLinks(*outRec->pts);
     }
 
-    JoinCommonEdges();
+    JoinCommonEdges(fixHoleLinkages);
     if (fixHoleLinkages)
       std::sort(m_PolyOuts.begin(), m_PolyOuts.end(), PolySort);
   }
@@ -1349,7 +1318,7 @@ void Clipper::DisposeAllPolyPts(){
 }
 //------------------------------------------------------------------------------
 
-void Clipper::DisposeOutRec(int index, bool ignorePts)
+void Clipper::DisposeOutRec(PolyOutList::size_type index, bool ignorePts)
 {
   OutRec *outRec = m_PolyOuts[index];
   if (!ignorePts && outRec->pts) DisposeOutPts(outRec->pts);
@@ -1964,7 +1933,7 @@ void Clipper::AddOutPt(TEdge *e, TEdge *altE, const IntPoint &pt)
   {
     OutRec *outRec = CreateOutRec();
     m_PolyOuts.push_back(outRec);
-    outRec->idx = m_PolyOuts.size()-1;
+    outRec->idx = (int)m_PolyOuts.size()-1;
     e->outIdx = outRec->idx;
     OutPt* op = new OutPt;
     outRec->pts = op;
@@ -2752,7 +2721,31 @@ void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt)
 }
 //----------------------------------------------------------------------
 
-void Clipper::JoinCommonEdges()
+void Clipper::CheckHoleLinkages1(OutRec *outRec1, OutRec *outRec2)
+{
+  //when a polygon is split into 2 polygons, make sure any holes the original
+  //polygon contained link to the correct polygon ...
+  for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
+  {
+    OutRec *or = m_PolyOuts[i];
+    if (or->isHole && or->bottomPt && or->FirstLeft == outRec1 &&
+      !PointInPolygon(or->bottomPt->pt, outRec1->pts, m_UseFullRange))
+        or->FirstLeft = outRec2;
+  }
+}
+//----------------------------------------------------------------------
+
+void Clipper::CheckHoleLinkages2(OutRec *outRec1, OutRec *outRec2)
+{
+  //if a hole is owned by outRec2 then make it owned by outRec1 ...
+  for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
+    if (m_PolyOuts[i]->isHole && m_PolyOuts[i]->bottomPt &&
+      m_PolyOuts[i]->FirstLeft == outRec2)
+        m_PolyOuts[i]->FirstLeft = outRec1;
+}
+//----------------------------------------------------------------------
+
+void Clipper::JoinCommonEdges(bool fixHoleLinkages)
 {
   for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
   {
@@ -2774,14 +2767,6 @@ void Clipper::JoinCommonEdges()
     else if (!FindSegment(pp2a, pt3, pt4)) continue;
 
     if (!GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2)) continue;
-
-
-    double a1 = 0.0, a2 = 0.0;
-    if (j->poly1Idx != j->poly2Idx)
-    {
-      a1 = Area(outRec1->pts, m_UseFullRange);
-      a2 = Area(outRec2->pts, m_UseFullRange);
-    }
 
     OutPt *p1, *p2, *p3, *p4;
     OutPt *prev = pp1a->prev;
@@ -2834,32 +2819,15 @@ void Clipper::JoinCommonEdges()
     {
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      //However, make sure the larger polygon is attached
-      //to outRec1 in case it also owns some holes ...
-      if (std::fabs(Area(p1, m_UseFullRange)) >=
-        std::fabs(Area(p2, m_UseFullRange)))
-      {
-          outRec1->pts = PolygonBottom(p1);
-          outRec1->bottomPt = outRec1->pts;
-          outRec2 = CreateOutRec();
-          m_PolyOuts.push_back(outRec2);
-          outRec2->idx = m_PolyOuts.size()-1;
-          j->poly2Idx = outRec2->idx;
-          outRec2->pts = PolygonBottom(p2);
-          outRec2->bottomPt = outRec2->pts;
-      }
-      else
-      {
-          outRec1->pts = PolygonBottom(p2);
-          outRec1->bottomPt = outRec1->pts;
-          outRec2 = CreateOutRec();
-          m_PolyOuts.push_back(outRec2);
-          outRec2->idx = m_PolyOuts.size()-1;
-          j->poly2Idx = outRec2->idx;
-          outRec2->pts = PolygonBottom(p1);
-          outRec2->bottomPt = outRec2->pts;
-      }
+      outRec1->pts = PolygonBottom(p1);
+      outRec1->bottomPt = outRec1->pts;
       outRec1->bottomPt->idx = outRec1->idx;
+      outRec2 = CreateOutRec();
+      m_PolyOuts.push_back(outRec2);
+      outRec2->idx = (int)m_PolyOuts.size()-1;
+      j->poly2Idx = outRec2->idx;
+      outRec2->pts = PolygonBottom(p2);
+      outRec2->bottomPt = outRec2->pts;
       outRec2->bottomPt->idx = outRec2->idx;
 
       if (PointInPolygon(outRec2->pts->pt, outRec1->pts, m_UseFullRange))
@@ -2878,12 +2846,10 @@ void Clipper::JoinCommonEdges()
           ReversePolyPtLinks(*outRec1->pts);
       } else
       {
-        //I'm assuming that if outRec1 contain any holes, it still does after
-        //the split and that none are now contained by the new outRec2.
-        //In a perfect world, I'd PointInPolygon() every hole owned by outRec1
-        //to make sure it's still owned by outRec1 and not now owned by outRec2.
         outRec2->isHole = outRec1->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
+        //make sure any contained holes now link to the correct polygon ...
+        if (fixHoleLinkages) CheckHoleLinkages1(outRec1, outRec2);
       }
 
       //now fixup any subsequent joins that match this polygon
@@ -2901,31 +2867,19 @@ void Clipper::JoinCommonEdges()
       FixupOutPolygon(*outRec2);
     } else
     {
-      //having joined 2 polygons together, delete the obsolete pointer ...
+      //joined 2 polygons together ...
 
-      int OKIdx, ObsoleteIdx;
-      //assume the polygon with the largest area is the one
-      //(and only one) that contains any holes ...
-      if (a1 >= a2)
-      {
-        OKIdx = outRec1->idx;
-        ObsoleteIdx = outRec2->idx;
-        outRec2->pts = 0;
-        outRec2->bottomPt = 0;
-        outRec2->AppendLink = outRec1;
-        //holes are practically always joined to outers, not vice versa ...
-        if (outRec1->isHole && !outRec2->isHole) outRec1->isHole = false;
-      } else
-      {
-        OKIdx = outRec2->idx;
-        ObsoleteIdx = outRec1->idx;
-        outRec2->pts = outRec1->pts;
-        outRec1->pts = 0;
-        outRec1->bottomPt = 0;
-        outRec1->AppendLink = outRec2;
-        //holes are practically always joined to outers, not vice versa ...
-        if (outRec2->isHole && !outRec1->isHole) outRec2->isHole = false;
-      }
+      //make sure any holes contained by outRec2 now link to outRec1 ...
+      if (fixHoleLinkages) CheckHoleLinkages2(outRec1, outRec2);
+
+      //delete the obsolete pointer ...
+      int OKIdx = outRec1->idx;
+      int ObsoleteIdx = outRec2->idx;
+      outRec2->pts = 0;
+      outRec2->bottomPt = 0;
+      outRec2->AppendLink = outRec1;
+      //holes are practically always joined to outers, not vice versa ...
+      if (outRec1->isHole && !outRec2->isHole) outRec1->isHole = false;
 
       //now fixup any subsequent Joins that match this polygon
       for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)
@@ -3037,7 +2991,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     for (Polygons::size_type i = 0; i < in_polys.size(); i++)
     {
         m_curr_poly = &out_polys[i];
-        int len = in_polys[i].size();
+        int len = (int)in_polys[i].size();
         if (len > 1 && m_p[i][0].X == m_p[i][len - 1].X &&
             m_p[i][0].Y == m_p[i][len - 1].Y) len--;
         m_highJ = len - 1;
@@ -3232,7 +3186,7 @@ std::ostream& operator <<(std::ostream &s, IntPoint& p)
 
 std::ostream& operator <<(std::ostream &s, Polygon &p)
 {
-  for (unsigned i = 0; i < p.size(); i++)
+  for (Polygon::size_type i = 0; i < p.size(); i++)
     s << p[i];
   s << "\n";
   return s;
@@ -3241,7 +3195,7 @@ std::ostream& operator <<(std::ostream &s, Polygon &p)
 
 std::ostream& operator <<(std::ostream &s, Polygons &p)
 {
-  for (unsigned i = 0; i < p.size(); i++)
+  for (Polygons::size_type i = 0; i < p.size(); i++)
     s << p[i];
   s << "\n";
   return s;

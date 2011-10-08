@@ -281,6 +281,63 @@ void SaveToFile(char *filename, Polygons &pp, double scale = 1)
 }
 //---------------------------------------------------------------------------
 
+void SaveToFile(char *filename, ExPolygons &pp, double scale = 1)
+{
+  FILE *f = fopen(filename, "w");
+  if (!f) return;
+  int cnt = 0;
+  for (ExPolygons::size_type i = 0; i < pp.size(); ++i)
+    cnt += pp[i].holes.size() +1;
+  fprintf(f, "%d\n", cnt);
+  for (ExPolygons::size_type i = 0; i < pp.size(); ++i)
+  {
+    fprintf(f, "%d\n", pp[i].outer.size());
+    if (scale > 1.01 || scale < 0.99)
+    {
+      //do outer polygon ...
+      for (Polygon::size_type j = 0; j < pp[i].outer.size(); ++j)
+      {
+        IntPoint *p = &pp[i].outer[j];
+        fprintf(f, "%.6lf, %.6lf,\n", (double)p->X /scale, (double)p->Y /scale);
+      }
+      //do hole polygons ...
+      for (Polygon::size_type j = 0; j < pp[i].holes.size(); ++j)
+      {
+        Polygon *h = &pp[i].holes[j];
+        fprintf(f, "%d\n", h->size());
+        for (Polygon::iterator it = h->begin(); it != h->end(); it++)
+        {
+          fprintf(f, "%.6lf, %.6lf,\n",
+            (double)it->X /scale, (double)it->Y /scale);
+        }
+      }
+    }
+    else
+    {
+      //do outer polygon ...
+      for (Polygon::size_type j = 0; j < pp[i].outer.size(); ++j)
+      {
+        IntPoint *p = &pp[i].outer[j];
+        fprintf(f, "%Ld, %Ld,\n", p->X, p->Y );
+      }
+      //do hole polygons ...
+      for (Polygon::size_type j = 0; j < pp[i].holes.size(); ++j)
+      {
+        Polygon *h = &pp[i].holes[j];
+        fprintf(f, "%d\n", h->size());
+        for (Polygon::iterator it = h->begin(); it != h->end(); it++)
+        {
+          fprintf(f, "%Ld, %Ld,\n", it->X, it->Y );
+        }
+      }
+    }
+
+
+  }
+  fclose(f);
+}
+//---------------------------------------------------------------------------
+
 void MakeRandomPoly(int edgeCount, int width, int height, Polygons & poly)
 {
   poly.resize(1);
@@ -431,6 +488,8 @@ int _tmain(int argc, _TCHAR* argv[])
     s = "Solution (using " + sClipType[clipType] + ")";
     //SaveToConsole(s, solution, scale);
     SaveToFile("solution.txt", solution, scale);
+
+    //OffsetPolygons(solution, solution, -5.0 *scale, jtRound, 4);
 
     //let's see the result too ...
     SVGBuilder svg;

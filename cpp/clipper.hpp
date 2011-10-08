@@ -250,7 +250,7 @@ private:
   OutRec* CreateOutRec();
   void AddOutPt(TEdge *e, TEdge *altE, const IntPoint &pt);
   void DisposeAllPolyPts();
-  void DisposeOutRec(int index, bool ignorePts = false);
+  void DisposeOutRec(PolyOutList::size_type index, bool ignorePts = false);
   bool ProcessIntersections(const long64 botY, const long64 topY);
   void AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
   void BuildIntersectList(const long64 botY, const long64 topY);
@@ -264,11 +264,13 @@ private:
   void FixupOutPolygon(OutRec &outRec);
   bool IsHole(TEdge *e);
   void FixHoleLinkage(OutRec *outRec);
+  void CheckHoleLinkages1(OutRec *outRec1, OutRec *outRec2);
+  void CheckHoleLinkages2(OutRec *outRec1, OutRec *outRec2);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
   void ClearHorzJoins();
-  void JoinCommonEdges();
+  void JoinCommonEdges(bool fixHoleLinkages);
 };
 
 //------------------------------------------------------------------------------

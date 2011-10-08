@@ -1094,7 +1094,7 @@ namespace ClipperLib
                     ReversePolyPtLinks(outRec.pts);
                 }
 
-                JoinCommonEdges();
+                JoinCommonEdges(fixHoleLinkages);
                 if (fixHoleLinkages) m_PolyOuts.Sort(new Comparison<OutRec>(PolySort));
             }
             m_Joins.Clear();
@@ -2864,38 +2864,32 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        internal static double Area(OutPt pts, bool UseFullRange)
+        private void CheckHoleLinkages1(OutRec outRec1, OutRec outRec2)
         {
-            if (pts.next == pts.prev) return 0.0;
-            if (UseFullRange)
-            {
-                Int128 a = new Int128(0);
-                OutPt p = pts;
-                do
-                {
-                    a += Int128.Int128Mul(p.pt.X, p.next.pt.Y) -
-                            Int128.Int128Mul(p.next.pt.X, p.pt.Y);
-                    p = p.next;
-                }
-                while (p != pts);
-                return a.ToDouble() / 2;
-            }
-            else
-            {
-                double a = 0.0;
-                OutPt p = pts;
-                do
-                {
-                    a += (double)p.pt.X * p.next.pt.Y - (double)p.next.pt.X * p.pt.Y;
-                    p = p.next;
-                }
-                while (p != pts);
-                return a / 2;
-            }
+          //when a polygon is split into 2 polygons, make sure any holes the original
+          //polygon contained link to the correct polygon ...
+          for (int i = 0; i < m_PolyOuts.Count; ++i)
+          {
+            if (m_PolyOuts[i].isHole && m_PolyOuts[i].bottomPt != null &&
+                m_PolyOuts[i].FirstLeft == outRec1 &&
+                !PointInPolygon(m_PolyOuts[i].bottomPt.pt, 
+                outRec1.pts, m_UseFullRange))
+                    m_PolyOuts[i].FirstLeft = outRec2;
+          }
         }
-        //------------------------------------------------------------------------------
+        //----------------------------------------------------------------------
 
-        private void JoinCommonEdges()
+        private void CheckHoleLinkages2(OutRec outRec1, OutRec outRec2)
+        {
+          //if a hole is owned by outRec2 then make it owned by outRec1 ...
+          for (int i = 0; i < m_PolyOuts.Count; ++i)
+            if (m_PolyOuts[i].isHole && m_PolyOuts[i].bottomPt != null &&
+              m_PolyOuts[i].FirstLeft == outRec2)
+                m_PolyOuts[i].FirstLeft = outRec1;
+        }
+        //----------------------------------------------------------------------
+
+        private void JoinCommonEdges(bool fixHoleLinkages)
         {
           for (int i = 0; i < m_Joins.Count; i++)
           {
@@ -2919,14 +2913,6 @@ namespace ClipperLib
             else if (!FindSegment(ref pp2a, ref pt3, ref pt4)) continue;
 
             if (!GetOverlapSegment(pt1, pt2, pt3, pt4, ref pt1, ref pt2)) continue;
-
-            double a1 = 0.0, a2 = 0.0;
-            if (j.poly1Idx != j.poly2Idx)
-            {
-                //get the area of each polygon before joining them ...
-                a1 = Area(outRec1.pts, m_UseFullRange);
-                a2 = Area(outRec2.pts, m_UseFullRange);
-            }
 
             OutPt p1, p2, p3, p4;
             OutPt prev = pp1a.prev;
@@ -2983,31 +2969,15 @@ namespace ClipperLib
             {
                 //instead of joining two polygons, we've just created a new one by
                 //splitting one polygon into two.
-                //However, make sure the larger polygon is attached
-                //to outRec1 in case it also owns some holes ...
-                if ( Math.Abs(Area(p1, m_UseFullRange)) >= Math.Abs(Area(p2, m_UseFullRange)) )
-                {
-                    outRec1.pts = PolygonBottom(p1);
-                    outRec1.bottomPt = outRec1.pts;
-                    outRec2 = CreateOutRec();
-                    m_PolyOuts.Add(outRec2);
-                    outRec2.idx = m_PolyOuts.Count - 1;
-                    j.poly2Idx = outRec2.idx;
-                    outRec2.pts = PolygonBottom(p2);
-                    outRec2.bottomPt = outRec2.pts;
-                }
-                else 
-                {
-                    outRec1.pts = PolygonBottom(p2);
-                    outRec1.bottomPt = outRec1.pts;
-                    outRec2 = CreateOutRec();
-                    m_PolyOuts.Add(outRec2);
-                    outRec2.idx = m_PolyOuts.Count - 1;
-                    j.poly2Idx = outRec2.idx;
-                    outRec2.pts = PolygonBottom(p1);
-                    outRec2.bottomPt = outRec2.pts;
-                }
+                outRec1.pts = PolygonBottom(p1);
+                outRec1.bottomPt = outRec1.pts;
                 outRec1.bottomPt.idx = outRec1.idx;
+                outRec2 = CreateOutRec();
+                m_PolyOuts.Add(outRec2);
+                outRec2.idx = m_PolyOuts.Count - 1;
+                j.poly2Idx = outRec2.idx;
+                outRec2.pts = PolygonBottom(p2);
+                outRec2.bottomPt = outRec2.pts;
                 outRec2.bottomPt.idx = outRec2.idx;
 
                 if (PointInPolygon(outRec2.pts.pt, outRec1.pts, m_UseFullRange))
@@ -3028,12 +2998,10 @@ namespace ClipperLib
                 }
                 else
                 {
-                    //I'm assuming that if outRec1 contains any holes, it still does after
-                    //the split and that none are now contained by the new outRec2.
-                    //In a perfect world, I'd PointInPolygon() every hole owned by outRec1
-                    //to make sure it's still owned by outRec1 and not now owned by outRec2.
                     outRec2.isHole = outRec1.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
+                    //make sure any contained holes now link to the correct polygon ...
+                    if (fixHoleLinkages) CheckHoleLinkages1(outRec1, outRec2);
                 }
 
                 //now fixup any subsequent m_Joins that match this polygon
@@ -3052,32 +3020,19 @@ namespace ClipperLib
             }
             else
             {
-                //having joined 2 polygons together, delete the obsolete pointer ...
+                //joined 2 polygons together ...
 
-                int OKIdx, ObsoleteIdx;
-                //assume the polygon with the largest area is the one
-                //(and only one) that contains any holes ...
-                if (a1 >= a2)
-                {
-                    OKIdx = outRec1.idx;
-                    ObsoleteIdx = outRec2.idx;
-                    outRec2.pts = null;
-                    outRec2.bottomPt = null;
-                    outRec2.AppendLink = outRec1;
-                    //holes are practically always joined to outers, not vice versa ...
-                    if (outRec1.isHole && !outRec2.isHole) outRec1.isHole = false;
-                }
-                else
-                {
-                    OKIdx = outRec2.idx;
-                    ObsoleteIdx = outRec1.idx;
-                    outRec2.pts = outRec1.pts;
-                    outRec1.pts = null;
-                    outRec1.bottomPt = null;
-                    outRec1.AppendLink = outRec2;
-                    //holes are practically always joined to outers, not vice versa ...
-                    if (outRec2.isHole && !outRec1.isHole) outRec2.isHole = false;
-                }
+                //make sure any holes contained by outRec2 now link to outRec1 ...
+                if (fixHoleLinkages) CheckHoleLinkages2(outRec1, outRec2);
+
+                //delete the obsolete pointer ...
+                int OKIdx = outRec1.idx;
+                int ObsoleteIdx = outRec2.idx;
+                outRec2.pts = null;
+                outRec2.bottomPt = null;
+                outRec2.AppendLink = outRec1;
+                //holes are practically always joined to outers, not vice versa ...
+                if (outRec1.isHole && !outRec2.isHole) outRec1.isHole = false;
 
                 //now fixup any subsequent joins that match this polygon
                 for (int k = i + 1; k < m_Joins.Count; k++)
