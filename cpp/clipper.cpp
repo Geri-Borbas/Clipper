@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.5.5                                                           *
-* Date      :  6 October 2011                                                  *
+* Date      :  10 October 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2727,10 +2727,10 @@ void Clipper::CheckHoleLinkages1(OutRec *outRec1, OutRec *outRec2)
   //polygon contained link to the correct polygon ...
   for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
   {
-    OutRec *or = m_PolyOuts[i];
-    if (or->isHole && or->bottomPt && or->FirstLeft == outRec1 &&
-      !PointInPolygon(or->bottomPt->pt, outRec1->pts, m_UseFullRange))
-        or->FirstLeft = outRec2;
+    OutRec *orec = m_PolyOuts[i];
+    if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
+      !PointInPolygon(orec->bottomPt->pt, outRec1->pts, m_UseFullRange))
+        orec->FirstLeft = outRec2;
   }
 }
 //----------------------------------------------------------------------
