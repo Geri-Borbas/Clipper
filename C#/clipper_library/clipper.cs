@@ -966,7 +966,8 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public bool Execute(ClipType clipType, Polygons solution,
-            PolyFillType subjFillType, PolyFillType clipFillType)
+            PolyFillType subjFillType = PolyFillType.pftEvenOdd, 
+            PolyFillType clipFillType = PolyFillType.pftEvenOdd)
         {
             if (m_ExecuteLocked) return false;
             m_ExecuteLocked = true;
@@ -983,7 +984,8 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public bool Execute(ClipType clipType, ExPolygons solution,
-            PolyFillType subjFillType, PolyFillType clipFillType)
+            PolyFillType subjFillType = PolyFillType.pftEvenOdd,
+            PolyFillType clipFillType = PolyFillType.pftEvenOdd)
         {
             if (m_ExecuteLocked) return false;
             m_ExecuteLocked = true;
