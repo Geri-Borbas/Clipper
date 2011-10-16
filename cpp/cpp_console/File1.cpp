@@ -31,6 +31,19 @@ static float GetAlphaAsFrac(unsigned clr)
 }
 //------------------------------------------------------------------------------
 
+void ExPolygonsToPolygons(const ExPolygons &expolys, Polygons &polys)
+{
+  //precondition: 'expolys' outer and holes polygons must be oriented correctly
+  polys.clear();
+  for (int i = 0; i < (int)expolys.size(); ++i)
+  {
+    polys.push_back(expolys[i].outer);
+    for (int j = 0; j < (int)expolys[i].holes.size(); ++j)
+      polys.push_back(expolys[i].holes[j]);
+  }
+}
+//------------------------------------------------------------------------------
+
 //a simple class that builds an SVG file with any number of polygons
 class SVGBuilder
 {
@@ -79,6 +92,14 @@ public:
 
   void AddPolygons(Polygons& poly)
   {
+    if (poly.size() == 0) return;
+    polyInfos.push_back(PolyInfo(poly, style));
+  }
+
+  void AddPolygons(ExPolygons& expoly)
+  {
+    Polygons poly;
+    ExPolygonsToPolygons(expoly, poly);
     if (poly.size() == 0) return;
     polyInfos.push_back(PolyInfo(poly, style));
   }

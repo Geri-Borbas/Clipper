@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.5                                                           *
-* Date      :  10 October 2011                                                 *
+* Version   :  4.5.6                                                           *
+* Date      :  11 October 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -39,14 +39,6 @@
 #include <cstdlib>
 #include <ostream>
 
-//Workaround for older compilers that don't have std::abs
-#if (__GNUC__ == 2 && __GNUC_MINOR__ <= 97) || (defined(_MSC_VER) && _MSC_VER <= 1500)
-namespace std
-{
-    long long abs(long long x) { return x < 0 ? -x : x; }
-}
-#endif
-
 namespace ClipperLib {
 
 static long64 const loRange = 1518500249;            //sqrt(2^63 -1)/2
@@ -55,6 +47,12 @@ static double const horizontal = -3.4E+38;
 static double const pi = 3.141592653589793238;
 enum Direction { dRightToLeft, dLeftToRight };
 enum RangeTest { rtLo, rtHi, rtError };
+
+inline long64 Abs(long64 val)
+{
+  if (val < 0) return -val; else return val;
+}
+//------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
 // Int128 class (enables safe math on signed 64bit integers)
@@ -83,7 +81,7 @@ class Int128
     long64 operator = (const long64 &val)
     {
       hi = 0;
-      lo = std::abs(val);
+      lo = Abs(val);
       if (val < 0) Negate(*this);
       return val;
     }
@@ -287,12 +285,6 @@ private:
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-inline long64 Abs(long64 val)
-{
-  if ((val < 0)) return -val; else return val;
-}
-//------------------------------------------------------------------------------
-
 RangeTest TestRange(const Polygon &pts)
 {
   RangeTest result = rtLo;
@@ -316,9 +308,9 @@ bool Orientation(const Polygon &poly)
     int j = 0, jplus, jminus;
     for (int i = 0; i <= highI; ++i)
   {
-    if (std::abs(poly[i].X) > hiRange || std::abs(poly[i].Y) > hiRange)
+    if (Abs(poly[i].X) > hiRange || Abs(poly[i].Y) > hiRange)
     throw "Coordinate exceeds range bounds.";
-    if (std::abs(poly[i].X) > loRange || std::abs(poly[i].Y) > loRange)
+    if (Abs(poly[i].X) > loRange || Abs(poly[i].Y) > loRange)
     UseFullInt64Range = true;
     if (poly[i].Y < poly[j].Y) continue;
     if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
@@ -404,13 +396,16 @@ double Area(const Polygon &poly)
 {
   int highI = (int)poly.size() -1;
   if (highI < 2) return 0;
-  bool UseFullInt64Range = false;
+  bool UseFullInt64Range;
   RangeTest rt = TestRange(poly);
   switch (rt) {
+    case rtLo:
+      UseFullInt64Range = false;
+      break;
     case rtHi:
       UseFullInt64Range = true;
       break;
-    case rtError:
+    default:
       throw "Coordinate exceeds range bounds.";
   }
 
@@ -809,7 +804,7 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
   long64 maxVal;
   if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
 
-  for (int i = 1; i < len; ++i)
+  for (int i = 0; i < len; ++i)
   {
     if (Abs(pg[i].X) > maxVal || Abs(pg[i].Y) > maxVal)
     {
@@ -821,7 +816,7 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
       m_UseFullRange = true;
     }
 
-    if (PointsEqual(p[j], pg[i])) continue;
+    if (i == 0 || PointsEqual(p[j], pg[i])) continue;
     else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
     {
       if (PointsEqual(p[j-1], pg[i])) j--;
@@ -1414,10 +1409,10 @@ bool Clipper::IsContributing(const TEdge& edge) const
       return Abs(edge.windCnt) == 1 && edge.windCnt2 == 0;
     case ctDifference:
       if ( edge.polyType == ptSubject )
-        return std::abs(edge.windCnt) == 1 && edge.windCnt2 == 0; else
-        return std::abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
+        return Abs(edge.windCnt) == 1 && edge.windCnt2 == 0; else
+        return Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
     default: //case ctXor:
-      return std::abs(edge.windCnt) == 1;
+      return Abs(edge.windCnt) == 1;
   }
 }
 //------------------------------------------------------------------------------
@@ -1677,8 +1672,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
 
   if ( e1Contributing && e2contributing )
   {
-    if ( e1stops || e2stops || std::abs(e1->windCnt) > 1 ||
-      std::abs(e2->windCnt) > 1 ||
+    if ( e1stops || e2stops || Abs(e1->windCnt) > 1 ||
+      Abs(e2->windCnt) > 1 ||
       (e1->polyType != e2->polyType && m_ClipType != ctXor) )
         AddLocalMaxPoly(e1, e2, pt); else
         DoBothEdges( e1, e2, pt );
@@ -1688,10 +1683,10 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     switch( m_ClipType ) {
       case ctIntersection:
         if ( (e2->polyType == ptSubject || e2->windCnt2 != 0) &&
-           std::abs(e2->windCnt) < 2 ) DoEdge1( e1, e2, pt);
+           Abs(e2->windCnt) < 2 ) DoEdge1( e1, e2, pt);
         break;
       default:
-        if ( std::abs(e2->windCnt) < 2 ) DoEdge1(e1, e2, pt);
+        if ( Abs(e2->windCnt) < 2 ) DoEdge1(e1, e2, pt);
     }
   }
   else if ( e2contributing )
@@ -1699,21 +1694,21 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     if ( m_ClipType == ctIntersection )
     {
         if ( (e1->polyType == ptSubject || e1->windCnt2 != 0) &&
-          std::abs(e1->windCnt) < 2 ) DoEdge2( e1, e2, pt );
+          Abs(e1->windCnt) < 2 ) DoEdge2( e1, e2, pt );
     }
     else
-      if (std::abs(e1->windCnt) < 2) DoEdge2( e1, e2, pt );
+      if (Abs(e1->windCnt) < 2) DoEdge2( e1, e2, pt );
 
-  } else if ( std::abs(e1->windCnt) < 2 && std::abs(e2->windCnt) < 2 &&
+  } else if ( Abs(e1->windCnt) < 2 && Abs(e2->windCnt) < 2 &&
       !e1stops && !e2stops )
   {
     //nb: neither edge is currently contributing ...
     if ( e1->polyType != e2->polyType )
         AddLocalMinPoly(e1, e2, pt);
-    else if ( std::abs(e1->windCnt) == 1 && std::abs(e2->windCnt) == 1 )
+    else if ( Abs(e1->windCnt) == 1 && Abs(e2->windCnt) == 1 )
       switch( m_ClipType ) {
         case ctIntersection:
-          if ( std::abs(e1->windCnt2) > 0 && std::abs(e2->windCnt2) > 0 )
+          if ( Abs(e1->windCnt2) > 0 && Abs(e2->windCnt2) > 0 )
             AddLocalMinPoly(e1, e2, pt);
           break;
         case ctUnion:
@@ -2988,7 +2983,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     double deltaSq = delta*delta;
     out_polys.clear();
     out_polys.resize(in_polys.size());
-    for (Polygons::size_type i = 0; i < in_polys.size(); i++)
+    for (int i = 0; i < (int)in_polys.size(); i++)
     {
         m_curr_poly = &out_polys[i];
         int len = (int)in_polys[i].size();
