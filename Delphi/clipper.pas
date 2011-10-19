@@ -1613,26 +1613,19 @@ end;
 
 function TClipper.IsContributing(edge: PEdge): boolean;
 begin
-  result := true;
   case fClipType of
     ctIntersection:
-      begin
-        if edge.polyType = ptSubject then
-          result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0) else
-          result := (edge.windCnt2 <> 0) and (abs(edge.windCnt) = 1);
-      end;
+        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0);
     ctUnion:
-      begin
         result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0);
-      end;
     ctDifference:
       begin
         if edge.polyType = ptSubject then
         result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0) else
         result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0);
       end;
-    ctXor:
-      result := (abs(edge.windCnt) = 1);    
+    else //ctXor
+      result := (abs(edge.windCnt) = 1);
   end;
 end;
 //------------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 #include "agg_rbox_ctrl.h"
 
 #include "agg_conv_clipper.h"
+#include "windows.h"
 
 enum flip_y_e { flip_y = true };
 
@@ -120,6 +121,12 @@ class the_application : public agg::platform_support
     double m_x;
     double m_y;
 
+	virtual void on_key(int x, int y, unsigned key, unsigned flags)
+	{
+		if(key == agg::key_escape) exit(0);
+		
+	}
+
 public:
     the_application(agg::pix_format_e format, bool flip_y) :
         agg::platform_support(format, flip_y),
@@ -166,19 +173,30 @@ public:
             counter.rewind(0);
             double t1 = elapsed_time();
 
-            ras.reset();
+			agg::path_storage ps;
             double x;
             double y;
             unsigned cmd;
             start_timer();
             while(!agg::is_stop(cmd = counter.vertex(&x, &y)))
             {
-                ras.add_vertex(x, y, cmd);
-            }
-
-            ren.color(agg::rgba(0.5, 0.0, 0, 0.5));
+				if(agg::is_move_to(cmd)) 
+					ps.move_to(x, y);
+				else if(agg::is_line_to(cmd))
+					ps.line_to(x, y);
+				else if(agg::is_close(cmd))
+					ps.close_polygon();
+			}
+			ras.add_path(ps);
+            ren.color(agg::rgba(0.25, 0.9, 0.25, 0.65));
             agg::render_scanlines(ras, sl, ren);
             double t2 = elapsed_time();
+
+            agg::conv_stroke<agg::path_storage> stroke(ps);
+            stroke.width(0.4);
+            ras.add_path(stroke);
+            ren.color(agg::rgba(0, 0, 0));
+            agg::render_scanlines(ras, sl, ren);
 
             char buf[100];
             sprintf_s(buf, "Contours: %d      Points: %d", counter.m_contours, counter.m_points);
@@ -514,13 +532,6 @@ public:
             m_y = y;
             force_redraw();
         }
-
-        if(flags & agg::mouse_right)
-        {
-            char buf[100];
-            sprintf_s(buf, "%d %d", x, y);
-            message(buf);
-        }
     }
 
 
@@ -546,7 +557,16 @@ int agg_main(int argc, char* argv[])
 
     if(app.init(640, 520, agg::window_resize))
     {
-        return app.run();
+		//replace the main window icon with Resource Icon #1 ...
+		HWND w = GetActiveWindow();
+		HMODULE m = GetModuleHandle(0); //hInstance
+		HANDLE small_ico = LoadImage(m, MAKEINTRESOURCE(1), IMAGE_ICON, 16, 16, 0);
+		HANDLE big_ico = LoadImage(m, MAKEINTRESOURCE(1), IMAGE_ICON, 32, 32, 0);
+		SendMessage(w, WM_SETICON, ICON_SMALL, (LPARAM)small_ico);
+		SendMessage(w, WM_SETICON, ICON_BIG, (LPARAM)big_ico);
+
+		//main message loop ...
+		return app.run();
     }
     return 0;
 }

@@ -1309,10 +1309,7 @@ namespace ClipperLib
             switch (m_ClipType)
             {
                 case ClipType.ctIntersection:
-                    if (edge.polyType == PolyType.ptSubject)
-                        return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
-                    else
-                        return Math.Abs(edge.windCnt2) > 0 && Math.Abs(edge.windCnt) == 1;
+                    return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
                 case ClipType.ctUnion:
                     return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 == 0;
                 case ClipType.ctDifference:

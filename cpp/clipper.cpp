@@ -1402,9 +1402,7 @@ bool Clipper::IsContributing(const TEdge& edge) const
 {
   switch( m_ClipType ){
     case ctIntersection:
-      if ( edge.polyType == ptSubject )
-        return Abs(edge.windCnt) == 1 && edge.windCnt2 != 0; else
-        return Abs(edge.windCnt2) > 0 && Abs(edge.windCnt) == 1;
+        return Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
     case ctUnion:
       return Abs(edge.windCnt) == 1 && edge.windCnt2 == 0;
     case ctDifference:
@@ -2983,7 +2981,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     double deltaSq = delta*delta;
     out_polys.clear();
     out_polys.resize(in_polys.size());
-    for (int i = 0; i < (int)in_polys.size(); i++)
+    for (Polygons::size_type i = 0; i < in_polys.size(); i++)
     {
         m_curr_poly = &out_polys[i];
         int len = (int)in_polys[i].size();
