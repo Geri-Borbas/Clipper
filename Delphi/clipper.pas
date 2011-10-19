@@ -1990,7 +1990,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   //----------------------------------------------------------------------
 
 var
-  oldE1WindCnt: integer;
+  e1Wc, e2Wc: integer;
   e1stops, e2stops: boolean;
   e1Contributing, e2contributing: boolean;
 begin
@@ -2020,9 +2020,9 @@ begin
         dec(e2.windCnt, e1.windDelta);
     end else
     begin
-      oldE1WindCnt := e1.windCnt;
+      e1Wc := e1.windCnt;
       e1.windCnt := e2.windCnt;
-      e2.windCnt := oldE1WindCnt;
+      e2.windCnt := e1Wc;
     end;
   end else
   begin
@@ -2034,51 +2034,44 @@ begin
     else e2.windCnt2 := 0;
   end;
 
+  e1Wc := abs(e1.windCnt);
+  e2Wc := abs(e2.windCnt);
+
   if e1Contributing and e2contributing then
   begin
-    if e1stops or e2stops or
-      (abs(e1.windCnt) > 1) or (abs(e2.windCnt) > 1) or
+    if e1stops or e2stops or (e1Wc > 1) or (e2Wc > 1) or
       ((e1.polytype <> e2.polytype) and (fClipType <> ctXor)) then
         AddLocalMaxPoly(e1, e2, pt) else
         DoBothEdges;
   end
   else if e1Contributing then
   begin
-    if fClipType = ctIntersection then
-    begin
-      if (abs(e2.windCnt) < 2) and
-        ((e2.polyType = ptSubject) or (e2.windCnt2 <> 0)) then DoEdge1;
-    end
-    else if (abs(e2.windCnt) < 2) then DoEdge1;
+    if (e2Wc < 2) and
+      ((fClipType <> ctIntersection) or (e2.polyType = ptSubject) or
+        (e2.windCnt2 <> 0)) then DoEdge1;
   end
   else if e2contributing then
   begin
-    if fClipType = ctIntersection then
-    begin
-      if (abs(e1.windCnt) < 2) and
-        ((e1.polyType = ptSubject) or (e1.windCnt2 <> 0)) then DoEdge2;
-    end
-    else if (abs(e1.windCnt) < 2) then DoEdge2;
+    if (e1Wc < 2) and
+      ((fClipType <> ctIntersection) or (e1.polyType = ptSubject) or
+        (e1.windCnt2 <> 0)) then DoEdge2;
   end
-  else if (abs(e1.windCnt) < 2) and (abs(e2.windCnt) < 2) and
-    not e1stops and not e2stops then
+  else if (e1Wc < 2) and (e2Wc < 2) and not e1stops and not e2stops then
   begin
-    //nb: neither edge is currently contributing ...
+    //neither edge is currently contributing ...
     if (e1.polytype <> e2.polytype) then
       AddLocalMinPoly(e1, e2, pt)
-    else if (abs(e1.windCnt) = 1) and (abs(e2.windCnt) = 1) then
+    else if (e1Wc = 1) and (e2Wc = 1) then
       case fClipType of
         ctIntersection:
-          if (abs(e1.windCnt2) > 0) and (abs(e2.windCnt2) > 0) then
+          if (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0) then
             AddLocalMinPoly(e1, e2, pt);
         ctUnion:
           if (e1.windCnt2 = 0) and (e2.windCnt2 = 0) then
             AddLocalMinPoly(e1, e2, pt);
         ctDifference:
-          if ((e1.polyType = ptClip) and (e2.polyType = ptClip) and
-            (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0)) or
-            ((e1.polyType = ptSubject) and (e2.polyType = ptSubject) and
-            (e1.windCnt2 = 0) and (e2.windCnt2 = 0)) then
+          if ((e1.polyType = ptClip) and (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0)) or
+            ((e1.polyType = ptSubject) and (e1.windCnt2 = 0) and (e2.windCnt2 = 0)) then
               AddLocalMinPoly(e1, e2, pt);
         ctXor:
           AddLocalMinPoly(e1, e2, pt);

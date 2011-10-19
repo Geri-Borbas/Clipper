@@ -1977,10 +1977,12 @@ namespace ClipperLib
                 else e2.windCnt2 = (e2.windCnt2 == 0) ? 1 : 0;
             }
 
+            int e1Wc = Math.Abs(e1.windCnt);
+            int e2Wc = Math.Abs(e2.windCnt);
+
             if (e1Contributing && e2contributing)
             {
-                if (e1stops || e2stops || Math.Abs(e1.windCnt) > 1 ||
-                  Math.Abs(e2.windCnt) > 1 ||
+                if (e1stops || e2stops || e1Wc > 1 || e2Wc > 1 ||
                   (e1.polyType != e2.polyType && m_ClipType != ClipType.ctXor))
                     AddLocalMaxPoly(e1, e2, pt);
                 else
@@ -1988,37 +1990,22 @@ namespace ClipperLib
             }
             else if (e1Contributing)
             {
-                if (m_ClipType == ClipType.ctIntersection)
-                {
-                    if ((e2.polyType == PolyType.ptSubject || e2.windCnt2 != 0) &&
-                        Math.Abs(e2.windCnt) < 2)
+                if (e2Wc < 2 && (m_ClipType != ClipType.ctIntersection || 
+                    e2.polyType == PolyType.ptSubject || (e2.windCnt2 != 0))) 
                         DoEdge1(e1, e2, pt);
-                }
-                else
-                {
-                    if (Math.Abs(e2.windCnt) < 2)
-                        DoEdge1(e1, e2, pt);
-                }
             }
             else if (e2contributing)
             {
-                if (m_ClipType == ClipType.ctIntersection)
-                {
-                    if ((e1.polyType == PolyType.ptSubject || e1.windCnt2 != 0) &&
-                  Math.Abs(e1.windCnt) < 2) DoEdge2(e1, e2, pt);
-                }
-                else
-                {
-                    if (Math.Abs(e1.windCnt) < 2)
+                if (e1Wc < 2 && (m_ClipType != ClipType.ctIntersection || 
+                    e1.polyType == PolyType.ptSubject || (e1.windCnt2 != 0))) 
                         DoEdge2(e1, e2, pt);
-                }
             }
-            else if (Math.Abs(e1.windCnt) < 2 && Math.Abs(e2.windCnt) < 2 && !e1stops && !e2stops)
+            else if (e1Wc < 2 && e2Wc < 2 && !e1stops && !e2stops)
             {
-                //nb: neither edge is currently contributing ...
+                //neither edge is currently contributing ...
                 if (e1.polyType != e2.polyType)
                     AddLocalMinPoly(e1, e2, pt);
-                else if (Math.Abs(e1.windCnt) == 1 && Math.Abs(e2.windCnt) == 1)
+                else if (e1Wc == 1 && e2Wc == 1)
                     switch (m_ClipType)
                     {
                         case ClipType.ctIntersection:
@@ -2035,10 +2022,8 @@ namespace ClipperLib
                             }
                         case ClipType.ctDifference:
                             {
-                                if ((e1.polyType == PolyType.ptClip && e2.polyType == PolyType.ptClip &&
-                              e1.windCnt2 != 0 && e2.windCnt2 != 0) ||
-                              (e1.polyType == PolyType.ptSubject && e2.polyType == PolyType.ptSubject &&
-                              e1.windCnt2 == 0 && e2.windCnt2 == 0))
+                                if ((e1.polyType == PolyType.ptClip && e1.windCnt2 != 0 && e2.windCnt2 != 0) ||
+                                  (e1.polyType == PolyType.ptSubject && e1.windCnt2 == 0 && e2.windCnt2 == 0))
                                     AddLocalMinPoly(e1, e2, pt);
                                 break;
                             }

@@ -1623,7 +1623,7 @@ void Clipper::DeleteFromSEL(TEdge *e)
 {
   TEdge* SelPrev = e->prevInSEL;
   TEdge* SelNext = e->nextInSEL;
-  if(  !SelPrev &&  !SelNext && (e != m_SortedEdges) ) return; //already deleted
+  if( !SelPrev &&  !SelNext && (e != m_SortedEdges) ) return; //already deleted
   if( SelPrev ) SelPrev->nextInSEL = SelNext;
   else m_SortedEdges = SelNext;
   if( SelNext ) SelNext->prevInSEL = SelPrev;
@@ -1668,42 +1668,35 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     else e2->windCnt2 = ( e2->windCnt2 == 0 ) ? 1 : 0;
   }
 
+  long64 e1Wc = Abs(e1->windCnt);
+  long64 e2Wc = Abs(e2->windCnt);
+
   if ( e1Contributing && e2contributing )
   {
-    if ( e1stops || e2stops || Abs(e1->windCnt) > 1 ||
-      Abs(e2->windCnt) > 1 ||
+    if ( e1stops || e2stops || e1Wc > 1 || e2Wc > 1 ||
       (e1->polyType != e2->polyType && m_ClipType != ctXor) )
-        AddLocalMaxPoly(e1, e2, pt); else
+        AddLocalMaxPoly(e1, e2, pt); 
+    else
         DoBothEdges( e1, e2, pt );
   }
   else if ( e1Contributing )
   {
-    switch( m_ClipType ) {
-      case ctIntersection:
-        if ( (e2->polyType == ptSubject || e2->windCnt2 != 0) &&
-           Abs(e2->windCnt) < 2 ) DoEdge1( e1, e2, pt);
-        break;
-      default:
-        if ( Abs(e2->windCnt) < 2 ) DoEdge1(e1, e2, pt);
-    }
+    if (e2Wc < 2 && (m_ClipType != ctIntersection || 
+      e2->polyType == ptSubject || (e2->windCnt2 != 0))) 
+        DoEdge1(e1, e2, pt);
   }
   else if ( e2contributing )
   {
-    if ( m_ClipType == ctIntersection )
-    {
-        if ( (e1->polyType == ptSubject || e1->windCnt2 != 0) &&
-          Abs(e1->windCnt) < 2 ) DoEdge2( e1, e2, pt );
-    }
-    else
-      if (Abs(e1->windCnt) < 2) DoEdge2( e1, e2, pt );
-
-  } else if ( Abs(e1->windCnt) < 2 && Abs(e2->windCnt) < 2 &&
-      !e1stops && !e2stops )
+    if (e1Wc < 2 && (m_ClipType != ctIntersection || 
+      e1->polyType == ptSubject || (e1->windCnt2 != 0))) 
+        DoEdge2(e1, e2, pt);
+  } 
+  else if ( e1Wc < 2 && e2Wc < 2 && !e1stops && !e2stops )
   {
-    //nb: neither edge is currently contributing ...
+    //neither edge is currently contributing ...
     if ( e1->polyType != e2->polyType )
         AddLocalMinPoly(e1, e2, pt);
-    else if ( Abs(e1->windCnt) == 1 && Abs(e2->windCnt) == 1 )
+    else if (e1Wc == 1 && e2Wc == 1)
       switch( m_ClipType ) {
         case ctIntersection:
           if ( Abs(e1->windCnt2) > 0 && Abs(e2->windCnt2) > 0 )
@@ -1714,10 +1707,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
             AddLocalMinPoly(e1, e2, pt);
           break;
         case ctDifference:
-          if ( (e1->polyType == ptClip && e2->polyType == ptClip &&
-            e1->windCnt2 != 0 && e2->windCnt2 != 0) ||
-            (e1->polyType == ptSubject && e2->polyType == ptSubject &&
-            e1->windCnt2 == 0 && e2->windCnt2 == 0) )
+          if ( (e1->polyType == ptClip && e1->windCnt2 != 0 && e2->windCnt2 != 0) ||
+            (e1->polyType == ptSubject && e1->windCnt2 == 0 && e2->windCnt2 == 0) )
               AddLocalMinPoly(e1, e2, pt);
           break;
         case ctXor:
