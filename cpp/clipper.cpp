@@ -3056,7 +3056,7 @@ void AddPoint(IntPoint& pt)
 }
 //------------------------------------------------------------------------------
 
-void DoSquare(int i, int j, double mul)
+void DoSquare(Polygons::size_type i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3086,7 +3086,7 @@ void DoSquare(int i, int j, double mul)
 }
 //------------------------------------------------------------------------------
 
-void DoMiter(int i, int j, double mul)
+void DoMiter(Polygons::size_type i, int j, double mul)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
@@ -3116,7 +3116,7 @@ void DoMiter(int i, int j, double mul)
 }
 //------------------------------------------------------------------------------
 
-void DoRound(int i, int j)
+void DoRound(Polygons::size_type i, int j)
 {
     int k;
     if (j == m_highJ) k = 0; else k = j + 1;
