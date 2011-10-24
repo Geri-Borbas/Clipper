@@ -86,6 +86,9 @@
   <ItemGroup>
     <ClInclude Include="..\clipper.hpp" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="icon.res" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
