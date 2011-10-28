@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.6                                                           *
-* Date      :  11 October 2011                                                 *
+* Version   :  4.6                                                             *
+* Date      :  29 October 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -20,6 +20,14 @@
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
+*                                                                              *
+* See also:                                                                    *
+* "Polygon Offsetting by Computing Winding Numbers"                            *
+* Paper no. DETC2005-85513 pp. 565-575                                         *
+* ASME 2005 International Design Engineering Technical Conferences             *
+* and Computers and Information in Engineering Conference (IDETC/CIE2005)      *
+* September 24–28, 2005 , Long Beach, California, USA                          *
+* http://www.me.berkeley.edu/~mcmains/pubs/DAC05OffsetPolygon.pdf              *
 *                                                                              *
 *******************************************************************************/
 
@@ -39,8 +47,8 @@ enum PolyType { ptSubject, ptClip };
 //By far the most widely used winding rules for polygon filling are
 //EvenOdd & NonZero (GDI, GDI+, XLib, OpenGL, Cairo, AGG, Quartz, SVG, Gr32)
 //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
-//see http://www.songho.ca/opengl/gl_tessellation.html#winding_rules
-enum PolyFillType { pftEvenOdd, pftNonZero };
+//see http://glprogramming.com/red/chapter11.html
+enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
 
 typedef signed long long long64;
 typedef unsigned long long ulong64;
@@ -193,13 +201,13 @@ public:
   Clipper();
   ~Clipper();
   bool Execute(ClipType clipType,
-    Polygons &solution,
-    PolyFillType subjFillType = pftEvenOdd,
-    PolyFillType clipFillType = pftEvenOdd);
+  Polygons &solution,
+  PolyFillType subjFillType = pftEvenOdd,
+  PolyFillType clipFillType = pftEvenOdd);
   bool Execute(ClipType clipType,
-    ExPolygons &solution,
-    PolyFillType subjFillType = pftEvenOdd,
-    PolyFillType clipFillType = pftEvenOdd);
+  ExPolygons &solution,
+  PolyFillType subjFillType = pftEvenOdd,
+  PolyFillType clipFillType = pftEvenOdd);
   void Clear();
   bool ReverseSolution() {return m_ReverseOutput;};
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
@@ -221,8 +229,8 @@ private:
   bool              m_ReverseOutput;
   void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
-  bool IsNonZeroFillType(const TEdge& edge) const;
-  bool IsNonZeroAltFillType(const TEdge& edge) const;
+  bool IsEvenOddFillType(const TEdge& edge) const;
+  bool IsEvenOddAltFillType(const TEdge& edge) const;
   void InsertScanbeam(const long64 Y);
   long64 PopScanbeam();
   void InsertLocalMinimaIntoAEL(const long64 botY);

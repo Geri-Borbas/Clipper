@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.5                                                           *
-* Date      :  6 October 2011                                                  *
+* Version   :  4.6                                                             *
+* Date      :  29 October 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -23,6 +23,14 @@ unit clipper;
 * Springer; 1 edition (January 4, 2005)                                        *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
 *                                                                              *
+* See also:                                                                    *
+* "Polygon Offsetting by Computing Winding Numbers"                            *
+* Paper no. DETC2005-85513 pp. 565-575                                         *
+* ASME 2005 International Design Engineering Technical Conferences             *
+* and Computers and Information in Engineering Conference (IDETC/CIE2005)      *
+* September 24–28, 2005 , Long Beach, California, USA                          *
+* http://www.me.berkeley.edu/~mcmains/pubs/DAC05OffsetPolygon.pdf              *
+*                                                                              *
 *******************************************************************************)
 
 interface
@@ -40,8 +48,8 @@ type
   //By far the most widely used winding rules for polygon filling are
   //EvenOdd & NonZero (GDI, GDI+, XLib, OpenGL, Cairo, AGG, Quartz, SVG, Gr32)
   //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
-  //see http://www.songho.ca/opengl/gl_tessellation.html#winding_rules
-  TPolyFillType = (pftEvenOdd, pftNonZero);
+  //see http://glprogramming.com/red/chapter11.html
+  TPolyFillType = (pftEvenOdd, pftNonZero, pftPositive, pftNegative);
 
   //TJoinType - used by OffsetPolygons()
   TJoinType = (jtSquare, jtRound, jtMiter);
@@ -198,8 +206,8 @@ type
     procedure InsertScanbeam(const y: int64);
     function PopScanbeam: int64;
     procedure SetWindingCount(edge: PEdge);
-    function IsNonZeroFillType(edge: PEdge): boolean;
-    function IsNonZeroAltFillType(edge: PEdge): boolean;
+    function IsEvenOddFillType(edge: PEdge): boolean;
+    function IsEvenOddAltFillType(edge: PEdge): boolean;
     procedure AddEdgeToSEL(edge: PEdge);
     procedure CopyAELToSEL;
     procedure InsertLocalMinimaIntoAEL(const botY: int64);
@@ -1545,9 +1553,15 @@ begin
     edge.windCnt := edge.windDelta;
     edge.windCnt2 := 0;
     e := fActiveEdges; //ie get ready to calc windCnt2
-  end else if IsNonZeroFillType(edge) then
+  end else if IsEvenOddFillType(edge) then
   begin
-    //nonZero filling ...
+    //even-odd filling ...
+    edge.windCnt := 1;
+    edge.windCnt2 := e.windCnt2;
+    e := e.nextInAEL; //ie get ready to calc windCnt2
+  end else
+  begin
+    //NonZero, Positive, or Negative filling ...
     if e.windCnt * e.windDelta < 0 then
     begin
       if (abs(e.windCnt) > 1) then
@@ -1566,24 +1580,10 @@ begin
     end;
     edge.windCnt2 := e.windCnt2;
     e := e.nextInAEL; //ie get ready to calc windCnt2
-  end else
-  begin
-    //even-odd filling ...
-    edge.windCnt := 1;
-    edge.windCnt2 := e.windCnt2;
-    e := e.nextInAEL; //ie get ready to calc windCnt2
   end;
 
   //update windCnt2 ...
-  if IsNonZeroAltFillType(edge) then
-  begin
-    //nonZero filling ...
-    while (e <> edge) do
-    begin
-      inc(edge.windCnt2, e.windDelta);
-      e := e.nextInAEL;
-    end;
-  end else
+  if IsEvenOddAltFillType(edge) then
   begin
     //even-odd filling ...
     while (e <> edge) do
@@ -1591,41 +1591,80 @@ begin
       if edge.windCnt2 = 0 then edge.windCnt2 := 1 else edge.windCnt2 := 0;
       e := e.nextInAEL;
     end;
+  end else
+  begin
+    //NonZero, Positive, or Negative filling ...
+    while (e <> edge) do
+    begin
+      inc(edge.windCnt2, e.windDelta);
+      e := e.nextInAEL;
+    end;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsNonZeroFillType(edge: PEdge): boolean;
+function TClipper.IsEvenOddFillType(edge: PEdge): boolean;
 begin
   if edge.polyType = ptSubject then
-    result := fSubjFillType = pftNonZero else
-    result := fClipFillType = pftNonZero;
+    result := fSubjFillType = pftEvenOdd else
+    result := fClipFillType = pftEvenOdd;
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.IsNonZeroAltFillType(edge: PEdge): boolean;
+function TClipper.IsEvenOddAltFillType(edge: PEdge): boolean;
 begin
   if edge.polyType = ptSubject then
-    result := fClipFillType = pftNonZero else
-    result := fSubjFillType = pftNonZero;
+    result := fClipFillType = pftEvenOdd else
+    result := fSubjFillType = pftEvenOdd;
 end;
 //------------------------------------------------------------------------------
 
 function TClipper.IsContributing(edge: PEdge): boolean;
+var
+  pft,pft2: TPolyFillType;
 begin
+  if edge.polyType = ptSubject then
+  begin
+    pft := fSubjFillType;
+    pft2 := fClipFillType;
+  end else
+  begin
+    pft := fClipFillType;
+    pft2 := fSubjFillType
+  end;
+  case pft of
+    pftEvenOdd, pftNonZero: result := abs(edge.windCnt) = 1;
+    pftPositive: result := (edge.windCnt = 1);
+    else result := (edge.windCnt = -1);
+  end;
+  if not result then exit;
+
   case fClipType of
     ctIntersection:
-        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0);
-    ctUnion:
-        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0);
-    ctDifference:
-      begin
-        if edge.polyType = ptSubject then
-        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 = 0) else
-        result := (abs(edge.windCnt) = 1) and (edge.windCnt2 <> 0);
+      case pft2 of
+        pftEvenOdd, pftNonZero: result := (edge.windCnt2 <> 0);
+        pftPositive: result := (edge.windCnt2 > 0);
+        pftNegative: result := (edge.windCnt2 < 0);
       end;
-    else //ctXor
-      result := (abs(edge.windCnt) = 1);
+    ctUnion:
+      case pft2 of
+        pftEvenOdd, pftNonZero: result := (edge.windCnt2 = 0);
+        pftPositive: result := (edge.windCnt2 <= 0);
+        pftNegative: result := (edge.windCnt2 >= 0);
+      end;
+    ctDifference:
+      if edge.polyType = ptSubject then
+        case pft2 of
+          pftEvenOdd, pftNonZero: result := (edge.windCnt2 = 0);
+          pftPositive: result := (edge.windCnt2 <= 0);
+          pftNegative: result := (edge.windCnt2 >= 0);
+        end
+      else
+        case pft2 of
+          pftEvenOdd, pftNonZero: result := (edge.windCnt2 <> 0);
+          pftPositive: result := (edge.windCnt2 > 0);
+          pftNegative: result := (edge.windCnt2 < 0);
+        end;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1859,13 +1898,13 @@ begin
     InsertEdgeIntoAEL(rb);
 
     //set edge winding states ...
-    if IsNonZeroFillType(lb) then
-    begin
-      rb.windDelta := -lb.windDelta
-    end else
+    if IsEvenOddFillType(lb) then
     begin
       lb.windDelta := 1;
       rb.windDelta := 1;
+    end else
+    begin
+      rb.windDelta := -lb.windDelta
     end;
     SetWindingCount(lb);
     rb.windCnt := lb.windCnt;
@@ -1990,9 +2029,10 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
   //----------------------------------------------------------------------
 
 var
-  e1Wc, e2Wc: integer;
   e1stops, e2stops: boolean;
   e1Contributing, e2contributing: boolean;
+  e1FillType, e2FillType, e1FillType2, e2FillType2: TPolyFillType;
+  e1Wc, e2Wc, e1Wc2, e2Wc2: integer;
 begin
   {IntersectEdges}
 
@@ -2010,7 +2050,12 @@ begin
   //assumes that e1 will be to the right of e2 ABOVE the intersection
   if e1.polyType = e2.polyType then
   begin
-    if IsNonZeroFillType(e1) then
+    if IsEvenOddFillType(e1) then
+    begin
+      e1Wc := e1.windCnt;
+      e1.windCnt := e2.windCnt;
+      e2.windCnt := e1Wc;
+    end else
     begin
       if e1.windCnt + e2.windDelta = 0 then
         e1.windCnt := -e1.windCnt else
@@ -2018,60 +2063,96 @@ begin
       if e2.windCnt - e1.windDelta = 0 then
         e2.windCnt := -e2.windCnt else
         dec(e2.windCnt, e1.windDelta);
-    end else
-    begin
-      e1Wc := e1.windCnt;
-      e1.windCnt := e2.windCnt;
-      e2.windCnt := e1Wc;
     end;
   end else
   begin
-    if IsNonZeroFillType(e2) then inc(e1.windCnt2, e2.windDelta)
+    if not IsEvenOddFillType(e2) then inc(e1.windCnt2, e2.windDelta)
     else if e1.windCnt2 = 0 then e1.windCnt2 := 1
     else e1.windCnt2 := 0;
-    if IsNonZeroFillType(e1) then dec(e2.windCnt2, e1.windDelta)
+    if not IsEvenOddFillType(e1) then dec(e2.windCnt2, e1.windDelta)
     else if e2.windCnt2 = 0 then e2.windCnt2 := 1
     else e2.windCnt2 := 0;
   end;
 
-  e1Wc := abs(e1.windCnt);
-  e2Wc := abs(e2.windCnt);
+  if e1.polyType = ptSubject then
+  begin
+    e1FillType := fSubjFillType;
+    e1FillType2 := fClipFillType;
+  end else
+  begin
+    e1FillType := fClipFillType;
+    e1FillType2 := fSubjFillType;
+  end;
+  if e2.polyType = ptSubject then
+  begin
+    e2FillType := fSubjFillType;
+    e2FillType2 := fClipFillType;
+  end else
+  begin
+    e2FillType := fClipFillType;
+    e2FillType2 := fSubjFillType;
+  end;
+
+  case e1FillType of
+    pftPositive: e1Wc := e1.windCnt;
+    pftNegative : e1Wc := -e1.windCnt;
+    else e1Wc := abs(e1.windCnt);
+  end;
+  case e2FillType of
+    pftPositive: e2Wc := e2.windCnt;
+    pftNegative : e2Wc := -e2.windCnt;
+    else e2Wc := abs(e2.windCnt);
+  end;
 
   if e1Contributing and e2contributing then
   begin
-    if e1stops or e2stops or (e1Wc > 1) or (e2Wc > 1) or
+    if e1stops or e2stops or not (e1Wc in [0,1]) or not (e2Wc in [0,1]) or
       ((e1.polytype <> e2.polytype) and (fClipType <> ctXor)) then
         AddLocalMaxPoly(e1, e2, pt) else
         DoBothEdges;
-  end
-  else if e1Contributing then
+  end else if e1Contributing then
   begin
-    if (e2Wc < 2) and
+    if ((e2Wc = 0) or (e2Wc = 1)) and
       ((fClipType <> ctIntersection) or (e2.polyType = ptSubject) or
         (e2.windCnt2 <> 0)) then DoEdge1;
   end
   else if e2contributing then
   begin
-    if (e1Wc < 2) and
+    if ((e1Wc = 0) or (e1Wc = 1)) and
       ((fClipType <> ctIntersection) or (e1.polyType = ptSubject) or
         (e1.windCnt2 <> 0)) then DoEdge2;
   end
-  else if (e1Wc < 2) and (e2Wc < 2) and not e1stops and not e2stops then
+  else if  ((e1Wc = 0) or (e1Wc = 1)) and ((e2Wc = 0) or (e2Wc = 1)) and
+    not e1stops and not e2stops then
   begin
     //neither edge is currently contributing ...
+
+    case e1FillType2 of
+      pftPositive: e1Wc2 := e1.windCnt2;
+      pftNegative : e1Wc2 := -e1.windCnt2;
+      else e1Wc2 := abs(e1.windCnt2);
+    end;
+    case e2FillType2 of
+      pftPositive: e2Wc2 := e2.windCnt2;
+      pftNegative : e2Wc2 := -e2.windCnt2;
+      else e2Wc2 := abs(e2.windCnt2);
+    end;
+
     if (e1.polytype <> e2.polytype) then
       AddLocalMinPoly(e1, e2, pt)
     else if (e1Wc = 1) and (e2Wc = 1) then
       case fClipType of
         ctIntersection:
-          if (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0) then
+          if (e1Wc2 > 0) and (e2Wc2 > 0) then
             AddLocalMinPoly(e1, e2, pt);
         ctUnion:
-          if (e1.windCnt2 = 0) and (e2.windCnt2 = 0) then
+          if (e1Wc2 <= 0) and (e2Wc2 <= 0) then
             AddLocalMinPoly(e1, e2, pt);
         ctDifference:
-          if ((e1.polyType = ptClip) and (e1.windCnt2 <> 0) and (e2.windCnt2 <> 0)) or
-            ((e1.polyType = ptSubject) and (e1.windCnt2 = 0) and (e2.windCnt2 = 0)) then
+          if ((e1.polyType = ptClip) and (e2.polyType = ptClip) and
+            (e1Wc2 > 0) and (e2Wc2 > 0)) or
+            ((e1.polyType = ptSubject) and (e2.polyType = ptSubject) and
+            (e1Wc2 <= 0) and (e2Wc2 <= 0)) then
               AddLocalMinPoly(e1, e2, pt);
         ctXor:
           AddLocalMinPoly(e1, e2, pt);
@@ -2169,10 +2250,9 @@ begin
   holeStateRec := GetLowermostRec(outRec1, outRec2);
 
   //fixup hole status ...
-  if (outRec1.isHole <> outRec2.isHole) then
-    if holeStateRec = outRec2 then
-      outRec1.isHole := outRec2.isHole else
-      outRec2.isHole := outRec1.isHole;
+  if holeStateRec = outRec2 then
+    outRec1.isHole := outRec2.isHole else
+    outRec2.isHole := outRec1.isHole;
 
   //get the start and ends of both output polygons ...
   p1_lft := outRec1.pts;
@@ -3436,7 +3516,7 @@ end;
 function OffsetPolygons(const pts: TPolygons; const delta: double;
   JoinType: TJoinType = jtSquare; MiterLimit: double = 2): TPolygons;
 var
-  i, j, k, highI, len, out_len: integer;
+  i, j, k, len, out_len: integer;
   normals: TArrayOfDoublePoint;
   a1, a2, deltaSq, R, RMin: double;
   pt1, pt2: TIntPoint;
@@ -3457,7 +3537,7 @@ const
     inc(out_len);
   end;
 
-  procedure DoSquare(mul: double);
+  procedure DoSquare(mul: double = 1.0);
   var
     dx: double;
   begin
@@ -3481,33 +3561,21 @@ const
     end else
     begin
       AddPoint(pt1);
+      AddPoint(pts[i][j]);
       AddPoint(pt2);
     end;
   end;
 
   procedure DoMiter;
   begin
-    R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
-    if (R >= RMin) then
-    begin
-      if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y) *delta >= 0) then //ie angle > 180
-      begin
-        R := delta / R;
-        pt1 := IntPoint(round(pts[i][j].X + (normals[j].X + normals[k].X)*R),
-          round(pts[i][j].Y + (normals[j].Y + normals[k].Y)*R));
-        AddPoint(pt1);
-      end else
-      begin
-        pt1.X := round(pts[i][j].X + normals[j].X * delta);
-        pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
-        pt2.X := round(pts[i][j].X + normals[k].X * delta);
-        pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
-        AddPoint(pt1);
-        AddPoint(pt2);
-      end;
-    end
-    else
-      DoSquare(MiterLimit);
+    pt1.X := round(pts[i][j].X + normals[j].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[k].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    AddPoint(pt1);
+    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta < 0) then
+      AddPoint(pts[i][j]);
+    AddPoint(pt2);
   end;
 
   procedure DoRound;
@@ -3520,22 +3588,24 @@ const
     pt2.X := round(pts[i][j].X + normals[k].X * delta);
     pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
     AddPoint(pt1);
-    //round off reflex angles (ie > 180 deg) unless it's
-    //almost flat (ie < 10deg angle).
+    //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
     //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
     //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
     //dot product normals == 1 -> no angle
-    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) and
-       ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
+    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) then
     begin
-      a1 := ArcTan2(normals[j].Y, normals[j].X);
-      a2 := ArcTan2(normals[k].Y, normals[k].X);
-      if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
-      else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
-      arc := BuildArc(pts[i][j], a1, a2, delta);
-      for m := 0 to high(arc) do
-        AddPoint(arc[m]);
-    end;
+      if ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
+      begin
+        a1 := ArcTan2(normals[j].Y, normals[j].X);
+        a2 := ArcTan2(normals[k].Y, normals[k].X);
+        if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
+        else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
+        arc := BuildArc(pts[i][j], a1, a2, delta);
+        for m := 0 to high(arc) do
+          AddPoint(arc[m]);
+      end;
+    end else
+      AddPoint(pts[i][j]);
     AddPoint(pt2);
   end;
 
@@ -3551,25 +3621,13 @@ begin
     len := length(pts[i]);
     if (len > 1) and (pts[i][0].X = pts[i][len - 1].X) and
         (pts[i][0].Y = pts[i][len - 1].Y) then dec(len);
-    highI := len -1;
 
-    //when 'shrinking' polygons, to minimize artefacts,
-    //strip those that have an area < Sqr(delta) ...
-    a1 := Area(pts[i]);
-    if (delta < 0) then
-    begin
-      if (a1 > 0) and (a1 < deltaSq) then len := 1;
-    end else
-      if (a1 < 0) and (-a1 < deltaSq) then len := 1; //ie: a hole if area < 0
-
-    //allow the 'expansion' of single lines and points ...
     if (len < 3) and (delta < 0) then
     begin
       result[i] := nil;
       continue;
-    end;
-
-    if (len = 1) then
+    end
+    else if (len = 1) then
     begin
       result[i] := BuildArc(pts[i][0], 0, 2*pi, delta);
       continue;
@@ -3577,30 +3635,36 @@ begin
 
     //build normals ...
     setLength(normals, len);
-    normals[0] := GetUnitNormal(pts[i][highI], pts[i][0]);
-    for j := 1 to highI do
+    normals[0] := GetUnitNormal(pts[i][len-1], pts[i][0]);
+    for j := 1 to len-1 do
       normals[j] := GetUnitNormal(pts[i][j-1], pts[i][j]);
 
     out_len := 0;
-    for j := 0 to highI do
+    for j := 0 to len-1 do
     begin
-      if j = highI then k := 0 else k := j +1;
+      if j = len-1 then k := 0 else k := j +1;
       case JoinType of
-        jtMiter: DoMiter;
-        jtSquare: DoSquare(1.0);
+        jtMiter:
+        begin
+          R := 1 + (normals[k].X*normals[j].X + normals[k].Y*normals[j].Y);
+          if (R >= RMin) then
+            DoMiter else
+            DoSquare;
+        end;
+        jtSquare: DoSquare;
         jtRound: DoRound;
       end;
     end;
     setLength(result[i], out_len);
   end;
-
+  
   //finally, clean up untidy corners ...
   clipper := TClipper.Create;
   try
     clipper.AddPolygons(result, ptSubject);
     if delta > 0 then
     begin
-      if not clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
+      if not clipper.Execute(ctUnion, result, pftPositive, pftPositive) then
         result := nil;
     end else
     begin
@@ -3611,12 +3675,13 @@ begin
       outer[2] := IntPoint(bounds.right+10, bounds.top-10);
       outer[3] := IntPoint(bounds.left-10, bounds.top-10);
       clipper.AddPolygon(outer, ptSubject);
-      if clipper.Execute(ctUnion, result, pftNonZero, pftNonZero) then
+      if clipper.Execute(ctUnion, result, pftNegative, pftNegative) then
       begin
         //delete the outer rectangle ...
-        highI := high(result);
-        for j := 1 to highI do result[j-1] := result[j];
-        setlength(result, highI);
+        len := length(result);
+        for j := 1 to len -1 do result[j-1] := result[j];
+        if len > 0 then
+          setlength(result, len -1);
         //restore polygon orientation ...
         result := ReversePoints(result);
       end else

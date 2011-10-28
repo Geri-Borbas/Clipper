@@ -24,11 +24,11 @@ PolyFillType pft = pftEvenOdd;
 bool show_clipping = true;
 Polygons sub, clp, sol;
 int VertCount = 5;
+int scale = 10;
+double delta = 0.0;
 
 typedef std::vector< GLdouble* > Vectors;
 Vectors vectors;
-
-#define array_len(a) ( sizeof ( a ) / sizeof ( *a ) )
 
 //------------------------------------------------------------------------------
 // heap memory management for GLUtesselator ...
@@ -105,23 +105,15 @@ void CALLBACK ErrorCallback(GLenum errorCode)
 // Set up pixel format for graphics initialization
 void SetupPixelFormat()
 {
-    PIXELFORMATDESCRIPTOR pfd, *ppfd;
-    int pixelformat;
-
-    ppfd = &pfd;
-
-    ppfd->nSize = sizeof(PIXELFORMATDESCRIPTOR);
-    ppfd->nVersion = 1;
-    ppfd->dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    ppfd->dwLayerMask = PFD_MAIN_PLANE;
-    ppfd->iPixelType = PFD_TYPE_RGBA;
-    ppfd->cColorBits = 16;
-    ppfd->cDepthBits = 16;
-    ppfd->cAccumBits = 0;
-    ppfd->cStencilBits = 0;
-
-    pixelformat = ChoosePixelFormat(hDC, ppfd);
-    SetPixelFormat(hDC, pixelformat, ppfd);
+    PIXELFORMATDESCRIPTOR pfd;
+    ZeroMemory( &pfd, sizeof(pfd));
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
+    int pfIdx = ChoosePixelFormat(hDC, &pfd);
+    if (pfIdx != 0) SetPixelFormat(hDC, pfIdx, &pfd);
 }
 //------------------------------------------------------------------------------
 
@@ -144,8 +136,8 @@ void MakeRandomPoly(ClipperLib::Polygon &p, int width, int height, int edgeCount
 	p.resize(edgeCount);
 	for (int i = 0; i < edgeCount; i++)
 	{
-		p[i].X = rand()%(width-20) +10;
-		p[i].Y = rand()%(height-20) +10;
+		p[i].X = (rand()%(width -20) +10)*scale;
+		p[i].Y = (rand()%(height -20) +10)*scale;
 	}
 }
 //------------------------------------------------------------------------------
@@ -190,7 +182,7 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
     case pftPositive: 
       gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_POSITIVE); 
       break;
-    default: 
+    default: //case pftNegative
       if (pct == pctSolution)
         gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NONZERO);
       else
@@ -205,7 +197,7 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 		for (ClipperLib::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
       GLdouble *vert = 
-        NewVector((GLdouble)pgs[i][j].X, (GLdouble)pgs[i][j].Y);
+        NewVector((GLdouble)pgs[i][j].X/scale, (GLdouble)pgs[i][j].Y/scale);
 			gluTessVertex(tess, vert, vert); 
 		}
 		gluTessEndContour(tess); 
@@ -235,23 +227,17 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 		for (ClipperLib::Polygon::size_type j = 0; j < pgs[i].size(); ++j)
 		{
 			GLdouble *vert = 
-        NewVector((GLdouble)pgs[i][j].X, (GLdouble)pgs[i][j].Y);
+        NewVector((GLdouble)pgs[i][j].X/scale, (GLdouble)pgs[i][j].Y/scale);
 			gluTessVertex(tess, vert, vert); 
 		}
 
     switch (pct)
 	  {
 		  case pctSubject: 
-        if (Orientation(pgs[i])) 
-          glColor4f(0.0f, 0.0f, 0.8f, 0.5f); 
-        else
-          glColor4f(0.0f, 1.0f, 1.0f, 0.5f); 
+        glColor4f(0.0f, 0.0f, 0.8f, 0.5f); 
         break;
 		  case pctClip: 
-        if (Orientation(pgs[i])) 
-          glColor4f(0.6f, 0.0f, 0.0f, 0.5f); 
-        else
-          glColor4f(1.0f, 0.25f, 1.0f, 0.5f); 
+        glColor4f(0.6f, 0.0f, 0.0f, 0.5f); 
 	  }
 		gluTessEndContour(tess);
 	  gluTessEndPolygon(tess);
@@ -280,38 +266,38 @@ void DrawGraphics()
 	
   wstringstream ss;
   if (!show_clipping)
-    ss << L"Clipper Demo - No clipping"; 
+    ss << L"Clipper Demo - NO CLIPPING"; 
   else
 	  switch (ct)
 	  {
 		  case ctUnion: 
-        ss << L"Clipper Demo - Union"; 
+        ss << L"Clipper Demo - UNION"; 
         break;
 		  case ctDifference: 
-        ss << L"Clipper Demo - Difference"; 
+        ss << L"Clipper Demo - DIFFERENCE"; 
         break;
 		  case ctXor: 
         ss << L"Clipper Demo - XOR"; 
         break;
 		  default: 
-        ss << L"Clipper Demo - Intersection"; 
+        ss << L"Clipper Demo - INTERSECTION"; 
 	  }
 
 	switch(pft)
   {
     case pftEvenOdd: 
-      ss << L" with EvenOdd fill"; 
+      ss << L"  (EvenOdd filled polygons with "; 
       break;
     case pftNonZero: 
-      ss << L" with NonZero fill"; 
+      ss << L"  (NonZero filled polygons with "; 
       break;
     case pftPositive: 
-      ss << L" with Positive fill"; 
+      ss << L"  (Positive filled polygons with "; 
       break;
     default: 
-      ss << L" with Negative fill"; 
+      ss << L"  (Negative filled polygons with "; 
   }
-  ss << L".  [vertex count = " << VertCount << "]";
+  ss << VertCount << " vertices each.)";
 	SetWindowText(hWnd, ss.str().c_str());
 
 	HCURSOR hArrowCursor = LoadCursor(NULL, IDC_ARROW);
@@ -364,21 +350,21 @@ inline long64 Round(double val)
 //}
 //------------------------------------------------------------------------------
 
-void SaveToFile(const char *filename, Polygons &pp, double scale = 1)
-{
-  ofstream of(filename);
-  if (!of.is_open()) return;
-  of << pp.size() << "\n";
-  for (Polygons::size_type i = 0; i < pp.size(); ++i)
-  {
-    of << pp[i].size() << "\n";
-    if (scale > 1.01 || scale < 0.99) 
-      of << fixed << setprecision(6);
-    for (Polygon::size_type j = 0; j < pp[i].size(); ++j)
-      of << (double)pp[i][j].X /scale << ", " << (double)pp[i][j].Y /scale << ",\n";
-  }
-  of.close();
-}
+//void SaveToFile(const char *filename, Polygons &pp, double scale = 1)
+//{
+//  ofstream of(filename);
+//  if (!of.is_open()) return;
+//  of << pp.size() << "\n";
+//  for (Polygons::size_type i = 0; i < pp.size(); ++i)
+//  {
+//    of << pp[i].size() << "\n";
+//    if (scale > 1.01 || scale < 0.99) 
+//      of << fixed << setprecision(6);
+//    for (Polygon::size_type j = 0; j < pp[i].size(); ++j)
+//      of << (double)pp[i][j].X /scale << ", " << (double)pp[i][j].Y /scale << ",\n";
+//  }
+//  of.close();
+//}
 //---------------------------------------------------------------------------
 
 //void MakePolygonFromInts(int *ints, int size, ClipperLib::Polygon &p)
@@ -408,6 +394,8 @@ void UpdatePolygons(bool updateSolutionOnly)
   Clipper c;
 	if (!updateSolutionOnly)
 	{
+    delta = 0.0;
+
     RECT r;
     GetWindowRect(hStatus, &r);
     int statusHeight = r.bottom - r.top;
@@ -415,28 +403,26 @@ void UpdatePolygons(bool updateSolutionOnly)
 
     sub.resize(1);
     clp.resize(1);
-
     MakeRandomPoly(sub[0], r.right, r.bottom - statusHeight, VertCount);
     MakeRandomPoly(clp[0], r.right, r.bottom - statusHeight, VertCount);
-    SaveToFile("subj.txt", sub);
-    SaveToFile("clip.txt", clp);
-
-    //LoadFromFile(sub, "subj.txt");
-    //LoadFromFile(clp, "clip.txt");
-
+    //SaveToFile("subj.txt", sub);
+    //SaveToFile("clip.txt", clp);
 	}
+
 	c.AddPolygons(sub, ptSubject);
 	c.AddPolygons(clp, ptClip);
 	c.Execute(ct, sol, pft, pft);
+  if (delta != 0.0) 
+    OffsetPolygons(sol,sol,delta,jtRound);
 
 	InvalidateRect(hWnd, NULL, false); 
 }
 //------------------------------------------------------------------------------
 
-void DoNumericKeyPress(int  numChr)
+void DoNumericKeyPress(int  num)
 {
-  if (VertCount >= 0) VertCount = -(numChr - '0');
-  else if (VertCount > -10) VertCount = VertCount*10 - (numChr - '0');
+  if (VertCount >= 0) VertCount = -num;
+  else if (VertCount > -10) VertCount = VertCount*10 - num;
   else Beep(1000, 100);
 }
 //------------------------------------------------------------------------------
@@ -444,26 +430,26 @@ void DoNumericKeyPress(int  numChr)
 LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
 {
 	int clientwidth, clientheight;
-    switch (uMsg)
-    {
+  switch (uMsg)
+  {
 
-	case WM_SIZE:
-		clientwidth = LOWORD(lParam);
-		clientheight = HIWORD(lParam);
-		ResizeGraphics(clientwidth, clientheight);
-		SetWindowPos(hStatus, NULL, 0, 
-      clientheight, clientwidth, 0, SWP_NOACTIVATE | SWP_NOZORDER);
-        return 0;
+	  case WM_SIZE:
+		  clientwidth = LOWORD(lParam);
+		  clientheight = HIWORD(lParam);
+		  ResizeGraphics(clientwidth, clientheight);
+		  SetWindowPos(hStatus, NULL, 0, 
+        clientheight, clientwidth, 0, SWP_NOACTIVATE | SWP_NOZORDER);
+          return 0;
 
-	case WM_PAINT:
-		HDC hdc;
-		PAINTSTRUCT ps;
-		hdc = BeginPaint(hWnd, &ps);
-		//do the drawing ...
-		DrawGraphics();
-		SwapBuffers(hdc);
-		EndPaint(hWnd, &ps);		
-		return 0;
+	  case WM_PAINT:
+		  HDC hdc;
+		  PAINTSTRUCT ps;
+		  hdc = BeginPaint(hWnd, &ps);
+		  //do the drawing ...
+		  DrawGraphics();
+		  SwapBuffers(hdc);
+		  EndPaint(hWnd, &ps);		
+		  return 0;
 
     case WM_CLOSE: 
         DestroyWindow(hWnd);
@@ -473,65 +459,67 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
         PostQuitMessage(0);
         return 0;
 
-	case WM_HELP:
-        MessageBox(hWnd, 
-			L"Clipper Demo tips...\n\n"
-			L"I - for Intersection operations.\n"
-			L"U - for Union operations.\n" 
-			L"D - for Difference operations.\n"
-			L"X - for XOR operations.\n" 
-			L"Q - for no clipping.\n" 
-			L"------------------------------\n" 
-			L"E - for EvenOdd fills.\n" 
-			L"Z - for NonZero fills.\n" 
-			L"P - for Positive fills.\n" 
-			L"N - for Negative fills.\n" 
-			L"------------------------------\n" 
-			L"nn<ENTER> - number of vertices (3..50).\n" 
-			L"------------------------------\n" 
-			L"SPACE, ENTER or click to refresh.\n" 
-			L"F1 - to see this help dialog again.\n"
-			L"Esc - to quit.\n",
-			L"Clipper Demo - Help", 0);
-        return 0;
+	  case WM_HELP:
+      MessageBox(hWnd, 
+			  L"Clipper Demo tips...\n\n"
+			  L"I - for Intersection operations.\n"
+			  L"U - for Union operations.\n" 
+			  L"D - for Difference operations.\n"
+			  L"X - for XOR operations.\n" 
+			  L"------------------------------\n" 
+			  L"Q - Toggle clipping on/off.\n" 
+			  L"------------------------------\n" 
+			  L"E - for EvenOdd fills.\n" 
+			  L"Z - for NonZero fills.\n"
+			  L"P - for Positive fills.\n" 
+			  L"N - for Negative fills.\n" 
+			  L"------------------------------\n" 
+			  L"nn<ENTER> - number of vertices (3..50).\n" 
+			  L"------------------------------\n" 
+			  L"UP arrow - Expand Solution.\n" 
+			  L"DN arrow - Contract Solution.\n" 
+			  L"LT or RT arrow - Reset Solution.\n" 
+			  L"------------------------------\n" 
+			  L"SPACE, ENTER or click to refresh.\n" 
+			  L"F1 - to see this help dialog again.\n"
+			  L"Esc - to quit.\n",
+			  L"Clipper Demo - Help", 0);
+      return 0;
 
-    case WM_CHAR:
-		switch (wParam)
-		{
-			case VK_ESCAPE: PostQuitMessage(0); break; 
-			case 'e': 
-			case 'E': pft = pftEvenOdd; UpdatePolygons(true); break;
-			case 'z': 
-			case 'Z': pft = pftNonZero; UpdatePolygons(true); break;
-			case 'p': 
-      case 'P': pft = pftPositive; UpdatePolygons(true); break;
-			case 'n': 
-      case 'N': pft = pftNegative; UpdatePolygons(true); break;
-			case 'i': 
-			case 'I': show_clipping = true; ct = ctIntersection; UpdatePolygons(true); break;
-			case 'd': 
-			case 'D': show_clipping = true; ct = ctDifference; UpdatePolygons(true); break;
-			case 'u': 
-			case 'U': show_clipping = true; ct = ctUnion; UpdatePolygons(true); break;
-			case 'x': 
-			case 'X': show_clipping = true; ct = ctXor; UpdatePolygons(true); break;
-			case 'q': 
-			case 'Q': show_clipping = false; UpdatePolygons(true); break;
-      case '0': case '1': case '2': case '3': case '4':
-      case '5': case '6': case '7': case '8': case '9': 
-        DoNumericKeyPress((int)wParam); break;
-			case VK_SPACE:
-			case VK_RETURN: UpdatePolygons(false);
-		}
-        return 0;
+    case WM_COMMAND:
+      switch(LOWORD(wParam))
+      {
+          case 1: PostQuitMessage(0); break; //escape
+          case 98: SendMessage(hWnd, WM_HELP, 0, 0); break;
+          case 99: MessageBox(hWnd, L"After closing this dialog,\ntype the required number of vertices (3-50) then <Enter> ...", L"Clipper Demo", 0);
+          case 101: show_clipping = true; ct = ctIntersection; UpdatePolygons(true); break;
+          case 102: show_clipping = true; ct = ctUnion; UpdatePolygons(true); break;
+          case 103: show_clipping = true; ct = ctDifference; UpdatePolygons(true); break;
+          case 104: show_clipping = true; ct = ctXor; UpdatePolygons(true); break;
+			    case 105: pft = pftEvenOdd; UpdatePolygons(true); break;
+			    case 106: pft = pftNonZero; UpdatePolygons(true); break;
+          case 107: pft = pftPositive; UpdatePolygons(true); break;
+          case 108: pft = pftNegative; UpdatePolygons(true); break;
+			    case 109: show_clipping = !show_clipping; UpdatePolygons(true); break;
+          case 110: case 111: case 112: case 113: case 114:
+          case 115: case 116: case 117: case 118: case 119: 
+            DoNumericKeyPress(LOWORD(wParam) - 110); 
+            break;
+          case 120: UpdatePolygons(false); break; //space, return
+          case 131: if (delta < 20*scale) {delta += scale; UpdatePolygons(true);} break;
+          case 132: if (delta > -20*scale) {delta -= scale; UpdatePolygons(true);} break;
+          case 133: if (delta != 0.0) {delta = 0.0; UpdatePolygons(true);} break;
+          default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
+      }
+      return 0; 
 
-	case WM_LBUTTONUP:
-		UpdatePolygons(false);
-		return 0;
+    case WM_LBUTTONUP:
+		  UpdatePolygons(false);
+		  return 0;
 
-	// Default event handler
+    // Default event handler
     default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
-    }  
+  }  
 }
 //------------------------------------------------------------------------------
 
@@ -558,18 +546,25 @@ int WINAPI WinMain (HINSTANCE hInstance,
  
     // Register the window class
     if (!RegisterClass(&wndclass)) return FALSE;
- 
+
+    HMENU menu = LoadMenu(hInstance, MAKEINTRESOURCE(1));
+    HACCEL accel = LoadAccelerators(hInstance, MAKEINTRESOURCE(1));
+
+    int windowSizeX = 540, windowSizeY = 400;
+
+    int dx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    int dy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    dx += ((GetSystemMetrics(SM_CXSCREEN) -windowSizeX) /2);
+    dy += ((GetSystemMetrics(SM_CYSCREEN) -windowSizeY) /2);
+
     // Create the window
     hWnd = CreateWindow(
             appname,
             appname,
             WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            640,
-            480,
+            dx, dy, windowSizeX, windowSizeY,
             NULL,
-            NULL,
+            menu,
             hInstance,
             NULL);
  
@@ -584,7 +579,7 @@ int WINAPI WinMain (HINSTANCE hInstance,
 	InitCommonControls();
 	hStatus = CreateWindowEx(0, L"msctls_statusbar32", NULL, WS_CHILD | WS_VISIBLE,
 		0, 0, 0, 0, hWnd, (HMENU)0, hInstance, NULL);
-	SetWindowText(hStatus, L"  F1 for help");
+	SetWindowText(hStatus, L" Copyright © Angus Johnson 2011");
 
   // Initialize OpenGL
   InitGraphics();
@@ -603,11 +598,14 @@ int WINAPI WinMain (HINSTANCE hInstance,
         {
             if (!GetMessage(&msg, NULL, 0, 0)) return TRUE;
 
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+            if (!TranslateAccelerator(hWnd, accel, &msg))
+            {
+              TranslateMessage(&msg);
+              DispatchMessage(&msg);
+            }
         }
     }
-	wglMakeCurrent(NULL, NULL);
+	  wglMakeCurrent(NULL, NULL);
     wglDeleteContext(hRC);
     ReleaseDC(hWnd, hDC);
 }

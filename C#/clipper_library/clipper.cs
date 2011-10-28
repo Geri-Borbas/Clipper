@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.5.5                                                           *
-* Date      :  6 October 2011                                                  *
+* Version   :  4.6                                                             *
+* Date      :  29 October 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -20,6 +20,14 @@
 * By Max K. Agoston                                                            *
 * Springer; 1 edition (January 4, 2005)                                        *
 * http://books.google.com/books?q=vatti+clipping+agoston                       *
+*                                                                              *
+* See also:                                                                    *
+* "Polygon Offsetting by Computing Winding Numbers"                            *
+* Paper no. DETC2005-85513 pp. 565-575                                         *
+* ASME 2005 International Design Engineering Technical Conferences             *
+* and Computers and Information in Engineering Conference (IDETC/CIE2005)      *
+* September 24–28, 2005 , Long Beach, California, USA                          *
+* http://www.me.berkeley.edu/~mcmains/pubs/DAC05OffsetPolygon.pdf              *
 *                                                                              *
 *******************************************************************************/
 
@@ -321,7 +329,11 @@ namespace ClipperLib
 
     public enum ClipType { ctIntersection, ctUnion, ctDifference, ctXor };
     public enum PolyType { ptSubject, ptClip };
-    public enum PolyFillType { pftEvenOdd, pftNonZero };
+    //By far the most widely used winding rules for polygon filling are
+    //EvenOdd & NonZero (GDI, GDI+, XLib, OpenGL, Cairo, AGG, Quartz, SVG, Gr32)
+    //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
+    //see http://glprogramming.com/red/chapter11.html
+    public enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
     public enum JoinType { jtSquare, jtMiter, jtRound };
 
 
@@ -1181,14 +1193,16 @@ namespace ClipperLib
             InsertScanbeam( lb.ytop );
             InsertEdgeIntoAEL( rb );
 
-            if ( IsNonZeroFillType( lb) )
-              rb.windDelta = -lb.windDelta;
+            if (IsEvenOddFillType(lb))
+            {
+                lb.windDelta = 1;
+                rb.windDelta = 1;
+            }
             else
             {
-              lb.windDelta = 1;
-              rb.windDelta = 1;
+                rb.windDelta = -lb.windDelta;
             }
-            SetWindingCount( lb );
+            SetWindingCount(lb);
             rb.windCnt = lb.windCnt;
             rb.windCnt2 = lb.windCnt2;
 
@@ -1288,38 +1302,101 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool IsNonZeroFillType(TEdge edge) 
+        private bool IsEvenOddFillType(TEdge edge) 
         {
           if (edge.polyType == PolyType.ptSubject)
-            return m_SubjFillType == PolyFillType.pftNonZero; else
-            return m_ClipFillType == PolyFillType.pftNonZero;
+              return m_SubjFillType == PolyFillType.pftEvenOdd; 
+          else
+              return m_ClipFillType == PolyFillType.pftEvenOdd;
         }
         //------------------------------------------------------------------------------
 
-        private bool IsNonZeroAltFillType(TEdge edge) 
+        private bool IsEvenOddAltFillType(TEdge edge) 
         {
           if (edge.polyType == PolyType.ptSubject)
-            return m_ClipFillType == PolyFillType.pftNonZero; else
-            return m_SubjFillType == PolyFillType.pftNonZero;
+              return m_ClipFillType == PolyFillType.pftEvenOdd; 
+          else
+              return m_SubjFillType == PolyFillType.pftEvenOdd;
         }
         //------------------------------------------------------------------------------
 
         private bool IsContributing(TEdge edge)
         {
+            PolyFillType pft, pft2;
+            if (edge.polyType == PolyType.ptSubject)
+            {
+                pft = m_SubjFillType;
+                pft2 = m_ClipFillType;
+            }
+            else
+            {
+                pft = m_ClipFillType;
+                pft2 = m_SubjFillType;
+            }
+
+            switch (pft)
+            {
+                case PolyFillType.pftEvenOdd:
+                case PolyFillType.pftNonZero:
+                    if (Math.Abs(edge.windCnt) != 1) return false;
+                    break;
+                case PolyFillType.pftPositive:
+                    if (edge.windCnt != 1) return false;
+                    break;
+                default: //PolyFillType.pftNegative
+                    if (edge.windCnt != -1) return false; 
+                    break;
+            }
+
             switch (m_ClipType)
             {
                 case ClipType.ctIntersection:
-                    return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
+                    switch (pft2)
+                    {
+                        case PolyFillType.pftEvenOdd:
+                        case PolyFillType.pftNonZero:
+                            return (edge.windCnt2 != 0);
+                        case PolyFillType.pftPositive:
+                            return (edge.windCnt2 > 0);
+                        default:
+                            return (edge.windCnt2 < 0);
+                    }
                 case ClipType.ctUnion:
-                    return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 == 0;
+                    switch (pft2)
+                    {
+                        case PolyFillType.pftEvenOdd:
+                        case PolyFillType.pftNonZero:
+                            return (edge.windCnt2 == 0);
+                        case PolyFillType.pftPositive:
+                            return (edge.windCnt2 <= 0);
+                        default:
+                            return (edge.windCnt2 >= 0);
+                    }
                 case ClipType.ctDifference:
                     if (edge.polyType == PolyType.ptSubject)
-                        return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 == 0;
+                        switch (pft2)
+                        {
+                            case PolyFillType.pftEvenOdd:
+                            case PolyFillType.pftNonZero:
+                                return (edge.windCnt2 == 0);
+                            case PolyFillType.pftPositive:
+                                return (edge.windCnt2 <= 0);
+                            default:
+                                return (edge.windCnt2 >= 0);
+                        }
                     else
-                        return Math.Abs(edge.windCnt) == 1 && edge.windCnt2 != 0;
-                default: //case ctXor:
-                    return Math.Abs(edge.windCnt) == 1;
+                        switch (pft2)
+                        {
+                            case PolyFillType.pftEvenOdd:
+                            case PolyFillType.pftNonZero:
+                                return (edge.windCnt2 != 0);
+                            case PolyFillType.pftPositive:
+                                return (edge.windCnt2 > 0);
+                            default:
+                                return (edge.windCnt2 < 0);
+                        }
             }
+            return true;
         }
         //------------------------------------------------------------------------------
 
@@ -1335,7 +1412,14 @@ namespace ClipperLib
                 edge.windCnt2 = 0;
                 e = m_ActiveEdges; //ie get ready to calc windCnt2
             }
-            else if (IsNonZeroFillType(edge))
+            else if (IsEvenOddFillType(edge))
+            {
+                //even-odd filling ...
+                edge.windCnt = 1;
+                edge.windCnt2 = e.windCnt2;
+                e = e.nextInAEL; //ie get ready to calc windCnt2
+            }
+            else
             {
                 //nonZero filling ...
                 if (e.windCnt * e.windDelta < 0)
@@ -1362,30 +1446,23 @@ namespace ClipperLib
                 edge.windCnt2 = e.windCnt2;
                 e = e.nextInAEL; //ie get ready to calc windCnt2
             }
-            else
-            {
-                //even-odd filling ...
-                edge.windCnt = 1;
-                edge.windCnt2 = e.windCnt2;
-                e = e.nextInAEL; //ie get ready to calc windCnt2
-            }
 
             //update windCnt2 ...
-            if (IsNonZeroAltFillType(edge))
-            {
-                //nonZero filling ...
-                while (e != edge)
-                {
-                    edge.windCnt2 += e.windDelta;
-                    e = e.nextInAEL;
-                }
-            }
-            else
+            if (IsEvenOddAltFillType(edge))
             {
                 //even-odd filling ...
                 while (e != edge)
                 {
                     edge.windCnt2 = (edge.windCnt2 == 0) ? 1 : 0;
+                    e = e.nextInAEL;
+                }
+            }
+            else
+            {
+                //nonZero filling ...
+                while (e != edge)
+                {
+                    edge.windCnt2 += e.windDelta;
                     e = e.nextInAEL;
                 }
             }
@@ -1783,10 +1860,10 @@ namespace ClipperLib
           OutRec holeStateRec = GetLowermostRec(outRec1, outRec2);
 
           //fixup hole status ...
-          if (outRec1.isHole != outRec2.isHole)
-              if (holeStateRec == outRec2)
-                  outRec1.isHole = outRec2.isHole; else
-                  outRec2.isHole = outRec1.isHole;
+          if (holeStateRec == outRec2)
+            outRec1.isHole = outRec2.isHole; 
+          else
+            outRec2.isHole = outRec1.isHole;
 
           OutPt p1_lft = outRec1.pts;
           OutPt p1_rt = p1_lft.prev;
@@ -1955,34 +2032,71 @@ namespace ClipperLib
             //assumes that e1 will be to the right of e2 ABOVE the intersection
             if (e1.polyType == e2.polyType)
             {
-                if (IsNonZeroFillType(e1))
+                if (IsEvenOddFillType(e1))
+                {
+                    int oldE1WindCnt = e1.windCnt;
+                    e1.windCnt = e2.windCnt;
+                    e2.windCnt = oldE1WindCnt;
+                }
+                else
                 {
                     if (e1.windCnt + e2.windDelta == 0) e1.windCnt = -e1.windCnt;
                     else e1.windCnt += e2.windDelta;
                     if (e2.windCnt - e1.windDelta == 0) e2.windCnt = -e2.windCnt;
                     else e2.windCnt -= e1.windDelta;
                 }
-                else
-                {
-                    int oldE1WindCnt = e1.windCnt;
-                    e1.windCnt = e2.windCnt;
-                    e2.windCnt = oldE1WindCnt;
-                }
             }
             else
             {
-                if (IsNonZeroFillType(e2)) e1.windCnt2 += e2.windDelta;
+                if (!IsEvenOddFillType(e2)) e1.windCnt2 += e2.windDelta;
                 else e1.windCnt2 = (e1.windCnt2 == 0) ? 1 : 0;
-                if (IsNonZeroFillType(e1)) e2.windCnt2 -= e1.windDelta;
+                if (!IsEvenOddFillType(e1)) e2.windCnt2 -= e1.windDelta;
                 else e2.windCnt2 = (e2.windCnt2 == 0) ? 1 : 0;
             }
 
             int e1Wc = Math.Abs(e1.windCnt);
             int e2Wc = Math.Abs(e2.windCnt);
 
+            PolyFillType e1FillType, e2FillType, e1FillType2, e2FillType2;
+            if (e1.polyType == PolyType.ptSubject)
+            {
+                e1FillType = m_SubjFillType;
+                e1FillType2 = m_ClipFillType;
+            }
+            else
+            {
+                e1FillType = m_ClipFillType;
+                e1FillType2 = m_SubjFillType;
+            }
+            if (e2.polyType == PolyType.ptSubject)
+            {
+                e2FillType = m_SubjFillType;
+                e2FillType2 = m_ClipFillType;
+            }
+            else
+            {
+                e2FillType = m_ClipFillType;
+                e2FillType2 = m_SubjFillType;
+            }
+
+            switch (e1FillType)
+            {
+                case PolyFillType.pftPositive: e1Wc = e1.windCnt; break;
+                case PolyFillType.pftNegative: e1Wc = -e1.windCnt; break;
+                default: e1Wc = Math.Abs(e1.windCnt); break;
+            }
+            switch (e2FillType)
+            {
+                case PolyFillType.pftPositive: e2Wc = e2.windCnt; break;
+                case PolyFillType.pftNegative: e2Wc = -e2.windCnt; break;
+                default: e2Wc = Math.Abs(e2.windCnt); break;
+            }
+
+
             if (e1Contributing && e2contributing)
             {
-                if (e1stops || e2stops || e1Wc > 1 || e2Wc > 1 ||
+                if ( e1stops || e2stops || 
+                  (e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
                   (e1.polyType != e2.polyType && m_ClipType != ClipType.ctXor))
                     AddLocalMaxPoly(e1, e2, pt);
                 else
@@ -1990,19 +2104,36 @@ namespace ClipperLib
             }
             else if (e1Contributing)
             {
-                if (e2Wc < 2 && (m_ClipType != ClipType.ctIntersection || 
+                if ((e2Wc == 0 || e2Wc == 1) && 
+                  (m_ClipType != ClipType.ctIntersection || 
                     e2.polyType == PolyType.ptSubject || (e2.windCnt2 != 0))) 
                         DoEdge1(e1, e2, pt);
             }
             else if (e2contributing)
             {
-                if (e1Wc < 2 && (m_ClipType != ClipType.ctIntersection || 
-                    e1.polyType == PolyType.ptSubject || (e1.windCnt2 != 0))) 
+                if ((e1Wc == 0 || e1Wc == 1) &&
+                  (m_ClipType != ClipType.ctIntersection ||
+                                e1.polyType == PolyType.ptSubject || (e1.windCnt2 != 0))) 
                         DoEdge2(e1, e2, pt);
             }
-            else if (e1Wc < 2 && e2Wc < 2 && !e1stops && !e2stops)
+            else if ( (e1Wc == 0 || e1Wc == 1) && 
+                (e2Wc == 0 || e2Wc == 1) && !e1stops && !e2stops )
             {
                 //neither edge is currently contributing ...
+                Int64 e1Wc2, e2Wc2;
+                switch (e1FillType2)
+                {
+                    case PolyFillType.pftPositive: e1Wc2 = e1.windCnt2; break;
+                    case PolyFillType.pftNegative: e1Wc2 = -e1.windCnt2; break;
+                    default: e1Wc2 = Math.Abs(e1.windCnt2); break;
+                }
+                switch (e2FillType2)
+                {
+                    case PolyFillType.pftPositive: e2Wc2 = e2.windCnt2; break;
+                    case PolyFillType.pftNegative: e2Wc2 = -e2.windCnt2; break;
+                    default: e2Wc2 = Math.Abs(e2.windCnt2); break;
+                }
+
                 if (e1.polyType != e2.polyType)
                     AddLocalMinPoly(e1, e2, pt);
                 else if (e1Wc == 1 && e2Wc == 1)
@@ -2010,21 +2141,25 @@ namespace ClipperLib
                     {
                         case ClipType.ctIntersection:
                             {
-                                if (Math.Abs(e1.windCnt2) > 0 && Math.Abs(e2.windCnt2) > 0)
+                                if (e1Wc2 > 0 && e2Wc2 > 0)
                                     AddLocalMinPoly(e1, e2, pt);
                                 break;
                             }
                         case ClipType.ctUnion:
                             {
-                                if (e1.windCnt2 == 0 && e2.windCnt2 == 0)
+                                if (e1Wc2 <= 0 && e2Wc2 <= 0)
                                     AddLocalMinPoly(e1, e2, pt);
                                 break;
                             }
                         case ClipType.ctDifference:
                             {
-                                if ((e1.polyType == PolyType.ptClip && e1.windCnt2 != 0 && e2.windCnt2 != 0) ||
-                                  (e1.polyType == PolyType.ptSubject && e1.windCnt2 == 0 && e2.windCnt2 == 0))
-                                    AddLocalMinPoly(e1, e2, pt);
+                                if ((e1.polyType == PolyType.ptClip && 
+                                    e2.polyType == PolyType.ptClip && e1Wc2 > 0 && 
+                                    e2Wc2 > 0) ||
+                                    (e1.polyType == PolyType.ptSubject && 
+                                    e2.polyType == PolyType.ptSubject &&
+                                    e1Wc2 <= 0 && e2Wc2 <= 0))
+                                        AddLocalMinPoly(e1, e2, pt);
                                 break;
                             }
                         case ClipType.ctXor:
@@ -3121,8 +3256,7 @@ namespace ClipperLib
             private Polygon currentPoly;
             private List<DoublePoint> normals;
             private double delta;
-            private int highJ;
-            private double RMin;
+            private int m_i, m_j, m_k;
             private const int buffLength = 128;
 
             public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit = 2)
@@ -3138,31 +3272,25 @@ namespace ClipperLib
                 this.pts = pts;
                 this.delta = delta;
                 if (MiterLimit <= 1) MiterLimit = 1;
-                RMin = 2/(MiterLimit*MiterLimit);
+                double RMin = 2/(MiterLimit*MiterLimit);
 
                 normals = new List<DoublePoint>();
 
                 double deltaSq = delta*delta;
                 solution.Clear();
                 solution.Capacity = pts.Count;
-                for (int i = 0; i < pts.Count; i++)
+                for (m_i = 0; m_i < pts.Count; m_i++)
                 {
-                    int len = pts[i].Count;
-                    if (len > 1 && pts[i][0].X == pts[i][len - 1].X &&
-                        pts[i][0].Y == pts[i][len - 1].Y) len--;
-                    this.highJ = len - 1;
+                    int len = pts[m_i].Count;
+                    if (len > 1 && pts[m_i][0].X == pts[m_i][len - 1].X &&
+                        pts[m_i][0].Y == pts[m_i][len - 1].Y) len--;
 
-                    //to minimize artefacts, strip out those polygons where
-                    //it's being shrunk and where its area < Sqr(delta) ...
-                    double a1 = Area(pts[i]);
-                    if (delta < 0) { if (a1 > 0 && a1 < deltaSq) len = 0; }
-                    else if (a1 < 0 && -a1 < deltaSq) len = 0; //nb: a hole if area < 0
-
-                    if (len == 0 || (len < 3 && delta <= 0)) continue;
-                    if (len == 1)
+                    if (len == 0 || (len < 3 && delta <= 0)) 
+                        continue;
+                    else if (len == 1)
                     {
                         Polygon arc;
-                        arc = BuildArc(pts[i][highJ], 0, 2 * Math.PI, delta);
+                        arc = BuildArc(pts[m_i][len - 1], 0, 2 * Math.PI, delta);
                         solution.Add(arc);
                         continue;
                     }
@@ -3170,22 +3298,35 @@ namespace ClipperLib
                     //build normals ...
                     normals.Clear();
                     normals.Capacity = len;
-                    normals.Add(GetUnitNormal(pts[i][highJ], pts[i][0]));
+                    normals.Add(GetUnitNormal(pts[m_i][len - 1], pts[m_i][0]));
                     for (int j = 1; j < len; ++j)
-                        normals.Add(GetUnitNormal(pts[i][j - 1], pts[i][j]));
+                        normals.Add(GetUnitNormal(pts[m_i][j - 1], pts[m_i][j]));
 
                     currentPoly = new Polygon();
-                    switch (jointype)
+
+                    for (m_j = 0; m_j < len; ++m_j)
                     {
-                        case JoinType.jtMiter:
-                            for (int j = 0; j < len; ++j) DoMiter(i, j, MiterLimit);
-                            break;
-                        case JoinType.jtRound:
-                            for (int j = 0; j < len; ++j) DoRound(i, j);
-                            break;
-                        case JoinType.jtSquare:
-                            for (int j = 0; j < len; ++j) DoSquare(i, j, 1.0);
-                            break;
+                        if (m_j == len - 1) m_k = 0; else m_k = m_j + 1;
+
+                        switch (jointype)
+                        {
+                            case JoinType.jtMiter:
+                            {
+                                double R = 1 +
+                                (normals[m_k].X*normals[m_j].X + normals[m_k].Y*normals[m_j].Y);
+                                if (R >= RMin) 
+                                    DoMiter(); 
+                                else 
+                                    DoSquare();
+                                break;
+                            }
+                            case JoinType.jtRound: 
+                                DoRound();
+                                break;
+                            case JoinType.jtSquare:
+                                DoSquare();
+                                break;
+                        }
                     }
                     solution.Add(currentPoly);
                 }
@@ -3195,7 +3336,7 @@ namespace ClipperLib
                 clpr.AddPolygons(solution, PolyType.ptSubject);
                 if (delta > 0)
                 {
-                    if (!clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                    if (!clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftPositive, PolyFillType.pftPositive))
                         solution.Clear();
                 }
                 else
@@ -3209,7 +3350,7 @@ namespace ClipperLib
                     outer.Add(new IntPoint(r.left - 10, r.top - 10));
 
                     clpr.AddPolygon(outer, PolyType.ptSubject);
-                    if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNonZero, PolyFillType.pftNonZero))
+                    if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNegative, PolyFillType.pftNegative))
                     {
                         solution.RemoveAt(0);
                         for (int i = 0; i < solution.Count; i++)
@@ -3230,95 +3371,78 @@ namespace ClipperLib
             }
             //------------------------------------------------------------------------------
 
-            internal void DoSquare(int i, int j, double mul)
+            internal void DoSquare(double mul = 1.0)
             {
-                int k;
-                if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
-                    (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
-                    (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
-                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * 
-                    delta >= 0)
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
+                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta >= 0)
                 {
-                    double a1 = Math.Atan2(normals[j].Y, normals[j].X);
-                    double a2 = Math.Atan2(-normals[k].Y, -normals[k].X);
+                    double a1 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
+                    double a2 = Math.Atan2(-normals[m_k].Y, -normals[m_k].X);
                     a1 = Math.Abs(a2 - a1);
                     if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
                     double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
-                    pt1 = new IntPoint((Int64)(pt1.X -normals[j].Y *dx),
-                        (Int64)(pt1.Y + normals[j].X *dx));
+                    pt1 = new IntPoint((Int64)(pt1.X - normals[m_j].Y * dx),
+                        (Int64)(pt1.Y + normals[m_j].X * dx));
                     AddPoint(pt1);
-                    pt2 = new IntPoint((Int64)(pt2.X + normals[k].Y *dx),
-                        (Int64)(pt2.Y -normals[k].X *dx));
+                    pt2 = new IntPoint((Int64)(pt2.X + normals[m_k].Y * dx),
+                        (Int64)(pt2.Y - normals[m_k].X * dx));
                     AddPoint(pt2);
                 }
                 else
                 {
                     AddPoint(pt1);
+                    AddPoint(pts[m_i][m_j]);
                     AddPoint(pt2);
                 }
             }
             //------------------------------------------------------------------------------
 
-            internal void DoMiter(int i, int j, double mul)
+            internal void DoMiter()
             {
-                int k;
-                if (j == highJ) k = 0; else k = j + 1;
-                double R = 1 + (normals[j].X * normals[k].X + normals[j].Y * normals[k].Y);
-                if (R >= RMin)
-                {
-                    if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) *
-                        delta >= 0) //ie angle > 180
-                    {
-                        R = delta / R;
-                        IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + (normals[j].X + normals[k].X) * R),
-                          (Int64)Round(pts[i][j].Y + (normals[j].Y + normals[k].Y) * R));
-                        AddPoint(pt1);
-                    }
-                    else
-                    {
-                        IntPoint pt1 = new IntPoint((Int64)Round(pts[i][j].X + normals[j].X * delta),
-                            (Int64)Round(pts[i][j].Y + normals[j].Y * delta));
-                        IntPoint pt2 = new IntPoint((Int64)Round(pts[i][j].X + normals[k].X * delta),
-                            (Int64)Round(pts[i][j].Y + normals[k].Y * delta));
-                        AddPoint(pt1);
-                        AddPoint(pt2);
-                    }
-                }
-                else
-                    DoSquare(i, j, mul);
-            }
-            //------------------------------------------------------------------------------
-
-            internal void DoRound(int i, int j)
-            {
-                int k;
-                if (j == highJ) k = 0; else k = j + 1;
-                IntPoint pt1 = new IntPoint(Round(pts[i][j].X + normals[j].X * delta),
-                    Round(pts[i][j].Y + normals[j].Y * delta));
-                IntPoint pt2 = new IntPoint(Round(pts[i][j].X + normals[k].X * delta),
-                    Round(pts[i][j].Y + normals[k].Y * delta));
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
                 AddPoint(pt1);
-                //round off reflex angles (ie > 180 deg) unless it's
-                //almost flat (ie < 10deg angle).
-                //cross product normals < 0 . angle > 180 deg.
-                //dot product normals == 1 . no angle
-                if ((normals[j].X * normals[k].Y - normals[k].X * normals[j].Y) * delta >= 0 &&
-                   (normals[k].X * normals[j].X + normals[k].Y * normals[j].Y) < 0.985) 
-                {
-                  double a1 = Math.Atan2(normals[j].Y, normals[j].X);
-                  double a2 = Math.Atan2(normals[k].Y, normals[k].X);
-                  if (delta > 0 && a2 < a1) a2 += Math.PI * 2;
-                  else if (delta < 0 && a2 > a1) a2 -= Math.PI * 2;
-                  Polygon arc = BuildArc(pts[i][j], a1, a2, delta);
-                  for (int m = 0; m < arc.Count; m++)
-                      AddPoint(arc[m]);
-                  }
+                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta < 0)
+                    AddPoint(pts[m_i][m_j]);
                 AddPoint(pt2);
             }
             //------------------------------------------------------------------------------
-        }
+
+            internal void DoRound()
+            {
+                IntPoint pt1 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                IntPoint pt2 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                    Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
+                AddPoint(pt1);
+                //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
+                //cross product normals < 0 . angle > 180 deg.
+                //dot product normals == 1 . no angle
+                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta >= 0)
+                {
+                    if ((normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y) < 0.985)
+                    {
+                        double a1 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
+                        double a2 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
+                        if (delta > 0 && a2 < a1) a2 += Math.PI * 2;
+                        else if (delta < 0 && a2 > a1) a2 -= Math.PI * 2;
+                        Polygon arc = BuildArc(pts[m_i][m_j], a1, a2, delta);
+                        for (int m = 0; m < arc.Count; m++)
+                            AddPoint(arc[m]);
+                    }
+                }
+                else
+                    AddPoint(pts[m_i][m_j]);
+                AddPoint(pt2);
+            }
+            //------------------------------------------------------------------------------
+
+        } //end PolyOffsetBuilder
         //------------------------------------------------------------------------------
 
         public static Polygons OffsetPolygons(Polygons poly, double delta, 
@@ -3330,7 +3454,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-    } //ClipperLib namespace
+    } //end ClipperLib namespace
   
     class ClipperException : Exception
     {
