@@ -209,7 +209,7 @@ end;
 function TSvgBuilder.SaveToFile(filename: string;
   scale: double = 1.0; margin: integer = 10): boolean;
 const
-  pft_string: array[TPolyFillType] of string = ('evenodd', 'nonzero');
+  pft_string: array[TPolyFillType] of string = ('evenodd', 'nonzero', 'positive', 'negative');
   svg_xml_start: array [0..1] of string =
     ('<?xml version="1.0" standalone="no"?>'+#10+
      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"'+#10+

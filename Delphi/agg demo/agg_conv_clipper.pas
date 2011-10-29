@@ -38,7 +38,9 @@ type
 
   clipper_polyFillType = (
     clipper_evenOdd,
-    clipper_nonZero
+    clipper_nonZero,
+    clipper_positive,
+    clipper_negative
   );
 
   status = (status_move_to, status_line_to, status_stop );
@@ -97,9 +99,12 @@ implementation
 
 function pft(cpft: clipper_polyFillType): TPolyFillType;
 begin
-  if cpft = clipper_evenOdd then
-    result := pftEvenOdd else
-    result := pftNonZero;
+  case cpft of
+    clipper_evenOdd: result := pftEvenOdd;
+    clipper_nonZero: result := pftNonZero;
+    clipper_positive: result := pftPositive;
+    else {clipper_negative: } result := pftNegative;
+  end;
 end;
 
 constructor conv_clipper.Construct(a, b: vertex_source_ptr;

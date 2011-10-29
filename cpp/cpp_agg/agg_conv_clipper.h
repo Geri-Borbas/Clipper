@@ -24,7 +24,7 @@ namespace agg
 {
   enum clipper_op_e { clipper_or,
     clipper_and, clipper_xor, clipper_a_minus_b, clipper_b_minus_a };
-  enum clipper_PolyFillType {clipper_even_odd, clipper_non_zero};
+  enum clipper_PolyFillType {clipper_even_odd, clipper_non_zero, clipper_positive, clipper_negative};
 
   template<class VSA, class VSB> class conv_clipper
   {
@@ -149,10 +149,21 @@ namespace agg
     add( m_src_b , m_poly_b );
     m_result.resize(0);
 
-    ClipperLib::PolyFillType pftSubj = (m_subjFillType == clipper_even_odd) ?
-      ClipperLib::pftEvenOdd : ClipperLib::pftNonZero;
-    ClipperLib::PolyFillType pftClip = (m_clipFillType == clipper_even_odd) ?
-      ClipperLib::pftEvenOdd : ClipperLib::pftNonZero;
+    ClipperLib::PolyFillType pftSubj, pftClip;
+    switch (m_subjFillType)
+    {
+      case clipper_even_odd: pftSubj = ClipperLib::pftEvenOdd; break;
+      case clipper_non_zero: pftSubj = ClipperLib::pftNonZero; break;
+      case clipper_positive: pftSubj = ClipperLib::pftPositive; break;
+      default: pftSubj = ClipperLib::pftNegative;
+    }
+    switch (m_clipFillType)
+    {
+      case clipper_even_odd: pftClip = ClipperLib::pftEvenOdd; break;
+      case clipper_non_zero: pftClip = ClipperLib::pftNonZero; break;
+      case clipper_positive: pftClip = ClipperLib::pftPositive; break;
+      default: pftClip = ClipperLib::pftNegative;
+    }
 
     m_clipper.Clear();
     switch( m_operation ) {
