@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+v4.6 - 29 October 2011
+* Added: Support for Positive and Negative polygon fill 
+  types (in addition to the EvenOdd and NonZero fill types).
+* Bugfix: The OffsetPolygons function was generating the 
+  occasional artefact when 'shrinking' polygons.
+
 v4.5.5 - 8 October 2011
 * Bugfix: Fixed an obscure bug in Clipper's JoinCommonEdges 
   method. 
