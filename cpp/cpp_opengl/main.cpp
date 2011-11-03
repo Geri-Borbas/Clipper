@@ -2,6 +2,7 @@
 #include <commctrl.h>
 #include <gl/gl.h>
 #include <gl/glu.h>
+//#include <gl/glut.h>
 #include <ctime>
 #include <cmath>
 #include <sstream>
@@ -21,6 +22,7 @@ HDC			 hDC;
 HGLRC		 hRC;
 ClipType     ct = ctIntersection;
 PolyFillType pft = pftEvenOdd;
+JoinType jt = jtRound;
 bool show_clipping = true;
 Polygons sub, clp, sol;
 int VertCount = 5;
@@ -260,10 +262,16 @@ void DrawGraphics()
 	glClearColor(1,1,1,1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	DrawPolygon(sub, pctSubject);
+  //glRasterPos2f(110, 340);
+  //glColor4f(0.0f, 1.0f, 0.0f, 1.0f); 
+  //char * text = "Positive Fills";
+  //for (int i = 0; i < strlen(text); ++i)
+  //  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, text[i]);
+	
+  DrawPolygon(sub, pctSubject);
 	DrawPolygon(clp, pctClip);
   if (show_clipping) DrawPolygon(sol, pctSolution);
-	
+
   wstringstream ss;
   if (!show_clipping)
     ss << L"Clipper Demo - NO CLIPPING"; 
@@ -367,13 +375,23 @@ inline long64 Round(double val)
 //}
 //---------------------------------------------------------------------------
 
-//void MakePolygonFromInts(int *ints, int size, ClipperLib::Polygon &p)
-//{
-//  p.clear();
-//  p.reserve(size / 2);
-//  for (int i = 0; i < size; i +=2)
-//    p.push_back(IntPoint(ints[i], ints[i+1]));
-//}
+void MakePolygonFromInts(int *ints, int size, ClipperLib::Polygon &p)
+{
+  p.clear();
+  p.reserve(size / 2);
+  for (int i = 0; i < size; i +=2)
+    p.push_back(IntPoint(ints[i], ints[i+1]));
+}
+//---------------------------------------------------------------------------
+
+void TranslatePolygon(ClipperLib::Polygon &p, int dx, int dy)
+{
+  for (size_t i = 0; i < p.size(); ++i)
+  {
+    p[i].X += dx;
+    p[i].Y += dy;
+  }
+}
 //---------------------------------------------------------------------------
 
 //void MakePolygonFromIntArray(const int ints[][2], int size, ClipperLib::Polygon &p)
@@ -403,8 +421,16 @@ void UpdatePolygons(bool updateSolutionOnly)
 
     sub.resize(1);
     clp.resize(1);
+
+    //int ints[] = {0,0,0, -100,100, -100,100, 0};
+    //int ints2[] = {0, 100, 100, -200,0, -200,100, 100};
+    //MakePolygonFromInts(ints, 8, sub[0]);
+    //TranslatePolygon(sub[0], 100,220);
+    //MakePolygonFromInts(ints2, 8, clp[0]);
+    //TranslatePolygon(sub[1], 100,220);
     MakeRandomPoly(sub[0], r.right, r.bottom - statusHeight, VertCount);
     MakeRandomPoly(clp[0], r.right, r.bottom - statusHeight, VertCount);
+
     //SaveToFile("subj.txt", sub);
     //SaveToFile("clip.txt", clp);
 	}
@@ -413,7 +439,7 @@ void UpdatePolygons(bool updateSolutionOnly)
 	c.AddPolygons(clp, ptClip);
 	c.Execute(ct, sol, pft, pft);
   if (delta != 0.0) 
-    OffsetPolygons(sol,sol,delta,jtRound);
+    OffsetPolygons(sol,sol,delta,jt);
 
 	InvalidateRect(hWnd, NULL, false); 
 }
@@ -480,6 +506,10 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
 			  L"DN arrow - Contract Solution.\n" 
 			  L"LT or RT arrow - Reset Solution.\n" 
 			  L"------------------------------\n" 
+			  L"M - Miter OffsetPolygons.\n" 
+			  L"S - Square OffsetPolygons.\n" 
+			  L"R - Round OffsetPolygons.\n" 
+			  L"------------------------------\n" 
 			  L"SPACE, ENTER or click to refresh.\n" 
 			  L"F1 - to see this help dialog again.\n"
 			  L"Esc - to quit.\n",
@@ -509,6 +539,9 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
           case 131: if (delta < 20*scale) {delta += scale; UpdatePolygons(true);} break;
           case 132: if (delta > -20*scale) {delta -= scale; UpdatePolygons(true);} break;
           case 133: if (delta != 0.0) {delta = 0.0; UpdatePolygons(true);} break;
+          case 141: {jt = jtMiter; if (delta != 0.0) UpdatePolygons(true);} break;
+          case 142: {jt = jtSquare; if (delta != 0.0) UpdatePolygons(true);} break;
+          case 143: {jt = jtRound; if (delta != 0.0) UpdatePolygons(true);} break;
           default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
       }
       return 0; 

@@ -3518,7 +3518,7 @@ function OffsetPolygons(const pts: TPolygons; const delta: double;
 var
   i, j, k, len, out_len: integer;
   normals: TArrayOfDoublePoint;
-  a1, a2, deltaSq, R, RMin: double;
+  a1, a2, R, RMin: double;
   pt1, pt2: TIntPoint;
   clipper: TClipper;
   outer: TPolygon;
@@ -3541,22 +3541,22 @@ const
   var
     dx: double;
   begin
-    pt1.X := round(pts[i][j].X + normals[j].X * delta);
-    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    pt2.X := round(pts[i][j].X + normals[k].X * delta);
-    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
-    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta >= 0) then
+    pt1.X := round(pts[i][j].X + normals[k].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[j].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
+    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y)*delta >= 0) then
     begin
-      a1 := ArcTan2(normals[j].Y, normals[j].X);
-      a2 := ArcTan2(-normals[k].Y, -normals[k].X);
+      a1 := ArcTan2(normals[k].Y, normals[k].X);
+      a2 := ArcTan2(-normals[j].Y, -normals[j].X);
       a1 := abs(a2 - a1);
       if a1 > pi then a1 := pi*2 - a1;
-      dx := tan((pi - a1)/4) * abs(delta*mul); ////
-      pt1 := IntPoint(round(pt1.X -normals[j].Y *dx),
-        round(pt1.Y + normals[j].X *dx));
+      dx := tan((pi - a1)/4) * abs(delta*mul);
+      pt1 := IntPoint(round(pt1.X -normals[k].Y *dx),
+        round(pt1.Y + normals[k].X *dx));
       AddPoint(pt1);
-      pt2 := IntPoint(round(pt2.X + normals[k].Y *dx),
-        round(pt2.Y - normals[k].X *dx));
+      pt2 := IntPoint(round(pt2.X + normals[j].Y *dx),
+        round(pt2.Y - normals[j].X *dx));
       AddPoint(pt2);
     end else
     begin
@@ -3568,12 +3568,12 @@ const
 
   procedure DoMiter;
   begin
-    pt1.X := round(pts[i][j].X + normals[j].X * delta);
-    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    pt2.X := round(pts[i][j].X + normals[k].X * delta);
-    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    pt1.X := round(pts[i][j].X + normals[k].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[j].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
     AddPoint(pt1);
-    if ((normals[j].X*normals[k].Y-normals[k].X*normals[j].Y)*delta < 0) then
+    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y)*delta < 0) then
       AddPoint(pts[i][j]);
     AddPoint(pt2);
   end;
@@ -3583,21 +3583,21 @@ const
     m: integer;
     arc: TPolygon;
   begin
-    pt1.X := round(pts[i][j].X + normals[j].X * delta);
-    pt1.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    pt2.X := round(pts[i][j].X + normals[k].X * delta);
-    pt2.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    pt1.X := round(pts[i][j].X + normals[k].X * delta);
+    pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
+    pt2.X := round(pts[i][j].X + normals[j].X * delta);
+    pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
     AddPoint(pt1);
     //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
     //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
     //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
     //dot product normals == 1 -> no angle
-    if ((normals[j].X*normals[k].Y - normals[k].X*normals[j].Y)*delta >= 0) then
+    if ((normals[k].X*normals[j].Y - normals[j].X*normals[k].Y)*delta >= 0) then
     begin
-      if ((normals[k].X*normals[j].X+normals[k].Y*normals[j].Y) < 0.985) then
+      if ((normals[j].X*normals[k].X+normals[j].Y*normals[k].Y) < 0.985) then
       begin
-        a1 := ArcTan2(normals[j].Y, normals[j].X);
-        a2 := ArcTan2(normals[k].Y, normals[k].X);
+        a1 := ArcTan2(normals[k].Y, normals[k].X);
+        a2 := ArcTan2(normals[j].Y, normals[j].X);
         if (delta > 0) and (a2 < a1) then a2 := a2 + pi*2
         else if (delta < 0) and (a2 > a1) then a2 := a2 - pi*2;
         arc := BuildArc(pts[i][j], a1, a2, delta);
@@ -3610,7 +3610,6 @@ const
   end;
 
 begin
-  deltaSq := delta*delta;
   //MiterLimit defaults to twice delta's width ...
   if MiterLimit <= 1 then MiterLimit := 1;
   RMin := 2/(sqr(MiterLimit));
@@ -3635,18 +3634,18 @@ begin
 
     //build normals ...
     setLength(normals, len);
-    normals[0] := GetUnitNormal(pts[i][len-1], pts[i][0]);
-    for j := 1 to len-1 do
-      normals[j] := GetUnitNormal(pts[i][j-1], pts[i][j]);
+    for j := 0 to len-2 do
+      normals[j] := GetUnitNormal(pts[i][j], pts[i][j+1]);
+    normals[len-1] := GetUnitNormal(pts[i][len-1], pts[i][0]);
 
     out_len := 0;
+    k := len -1;
     for j := 0 to len-1 do
     begin
-      if j = len-1 then k := 0 else k := j +1;
       case JoinType of
         jtMiter:
         begin
-          R := 1 + (normals[k].X*normals[j].X + normals[k].Y*normals[j].Y);
+          R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
           if (R >= RMin) then
             DoMiter else
             DoSquare;
@@ -3654,10 +3653,11 @@ begin
         jtSquare: DoSquare;
         jtRound: DoRound;
       end;
+      k := j;
     end;
     setLength(result[i], out_len);
   end;
-  
+
   //finally, clean up untidy corners ...
   clipper := TClipper.Create;
   try

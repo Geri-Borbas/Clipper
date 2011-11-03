@@ -3105,25 +3105,26 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         //build normals ...
         normals.clear();
         normals.resize(len);
-        normals[0] = GetUnitNormal(in_polys[m_i][len-1], in_polys[m_i][0]);
-        for (m_j = 1; m_j < len; ++m_j)
-            normals[m_j] = GetUnitNormal(in_polys[m_i][m_j-1], in_polys[m_i][m_j]);
-
+        normals[len-1] = GetUnitNormal(in_polys[m_i][len-1], in_polys[m_i][0]);
+        for (m_j = 0; m_j < len -1; ++m_j)
+            normals[m_j] = GetUnitNormal(in_polys[m_i][m_j], in_polys[m_i][m_j+1]);
+        
+        m_k = len -1;
         for (m_j = 0; m_j < len; ++m_j)
         {
-          if (m_j == len-1) m_k = 0; else m_k = m_j +1;
           switch (jointype)
           {
             case jtMiter:
             {
               double R = 1 +
-                (normals[m_k].X*normals[m_j].X + normals[m_k].Y*normals[m_j].Y);
+                (normals[m_j].X*normals[m_k].X + normals[m_j].Y*normals[m_k].Y);
               if (R >= m_RMin) DoMiter(); else DoSquare();
               break;
             }
             case jtSquare: DoSquare(); break;
             case jtRound: DoRound(); break;
           }
+        m_k = m_j;
         }
     }
 
@@ -3169,22 +3170,22 @@ void AddPoint(IntPoint& pt)
 
 void DoSquare(double mul = 1.0)
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
+    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * m_delta >= 0)
+    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+    if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
     {
-        double a1 = std::atan2(normals[m_j].Y, normals[m_j].X);
-        double a2 = std::atan2(-normals[m_k].Y, -normals[m_k].X);
+        double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
+        double a2 = std::atan2(-normals[m_j].Y, -normals[m_j].X);
         a1 = std::fabs(a2 - a1);
         if (a1 > pi) a1 = pi * 2 - a1;
         double dx = std::tan((pi - a1)/4) * std::fabs(m_delta * mul);
-        pt1 = IntPoint((long64)(pt1.X -normals[m_j].Y * dx),
-          (long64)(pt1.Y + normals[m_j].X * dx));
+        pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx),
+          (long64)(pt1.Y + normals[m_k].X * dx));
         AddPoint(pt1);
-        pt2 = IntPoint((long64)(pt2.X + normals[m_k].Y * dx),
-          (long64)(pt2.Y -normals[m_k].X * dx));
+        pt2 = IntPoint((long64)(pt2.X + normals[m_j].Y * dx),
+          (long64)(pt2.Y -normals[m_j].X * dx));
         AddPoint(pt2);
     }
     else
@@ -3197,10 +3198,10 @@ void DoSquare(double mul = 1.0)
 
 void DoMiter()
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
-      m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X *
+    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X *
       m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
+      m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     AddPoint(pt1);
     AddPoint(pt2);
 }
@@ -3208,17 +3209,17 @@ void DoMiter()
 
 void DoRound()
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
+    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     AddPoint(pt1);
     //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
-    if ((normals[m_j].X*normals[m_k].Y - normals[m_k].X*normals[m_j].Y) * m_delta >= 0 &&
-      (normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y) < 0.985)
+    if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0 &&
+      (normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y) < 0.985)
     {
-      double a1 = std::atan2(normals[m_j].Y, normals[m_j].X);
-      double a2 = std::atan2(normals[m_k].Y, normals[m_k].X);
+      double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
+      double a2 = std::atan2(normals[m_j].Y, normals[m_j].X);
       if (m_delta > 0 && a2 < a1) a2 += pi *2;
       else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
       Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta);

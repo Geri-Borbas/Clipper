@@ -3298,22 +3298,20 @@ namespace ClipperLib
                     //build normals ...
                     normals.Clear();
                     normals.Capacity = len;
+                    for (int j = 0; j < len -1; ++j)
+                        normals.Add(GetUnitNormal(pts[m_i][j], pts[m_i][j+1]));
                     normals.Add(GetUnitNormal(pts[m_i][len - 1], pts[m_i][0]));
-                    for (int j = 1; j < len; ++j)
-                        normals.Add(GetUnitNormal(pts[m_i][j - 1], pts[m_i][j]));
 
                     currentPoly = new Polygon();
-
+                    m_k = len - 1;
                     for (m_j = 0; m_j < len; ++m_j)
                     {
-                        if (m_j == len - 1) m_k = 0; else m_k = m_j + 1;
-
                         switch (jointype)
                         {
                             case JoinType.jtMiter:
                             {
                                 double R = 1 +
-                                (normals[m_k].X*normals[m_j].X + normals[m_k].Y*normals[m_j].Y);
+                                (normals[m_j].X*normals[m_k].X + normals[m_j].Y*normals[m_k].Y);
                                 if (R >= RMin) 
                                     DoMiter(); 
                                 else 
@@ -3327,6 +3325,7 @@ namespace ClipperLib
                                 DoSquare();
                                 break;
                         }
+                        m_k = m_j;
                     }
                     solution.Add(currentPoly);
                 }
@@ -3373,22 +3372,22 @@ namespace ClipperLib
 
             internal void DoSquare(double mul = 1.0)
             {
-                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
-                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
-                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta >= 0)
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta >= 0)
                 {
-                    double a1 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
-                    double a2 = Math.Atan2(-normals[m_k].Y, -normals[m_k].X);
+                    double a1 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
+                    double a2 = Math.Atan2(-normals[m_j].Y, -normals[m_j].X);
                     a1 = Math.Abs(a2 - a1);
                     if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
                     double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
-                    pt1 = new IntPoint((Int64)(pt1.X - normals[m_j].Y * dx),
-                        (Int64)(pt1.Y + normals[m_j].X * dx));
+                    pt1 = new IntPoint((Int64)(pt1.X - normals[m_k].Y * dx),
+                        (Int64)(pt1.Y + normals[m_k].X * dx));
                     AddPoint(pt1);
-                    pt2 = new IntPoint((Int64)(pt2.X + normals[m_k].Y * dx),
-                        (Int64)(pt2.Y - normals[m_k].X * dx));
+                    pt2 = new IntPoint((Int64)(pt2.X + normals[m_j].Y * dx),
+                        (Int64)(pt2.Y - normals[m_j].X * dx));
                     AddPoint(pt2);
                 }
                 else
@@ -3402,12 +3401,12 @@ namespace ClipperLib
 
             internal void DoMiter()
             {
-                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
-                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
+                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
                 AddPoint(pt1);
-                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta < 0)
+                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta < 0)
                     AddPoint(pts[m_i][m_j]);
                 AddPoint(pt2);
             }
@@ -3415,20 +3414,20 @@ namespace ClipperLib
 
             internal void DoRound()
             {
-                IntPoint pt1 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_j].X * delta),
-                    Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                IntPoint pt2 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                IntPoint pt1 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
+                IntPoint pt2 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                    Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
                 AddPoint(pt1);
                 //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
                 //cross product normals < 0 . angle > 180 deg.
                 //dot product normals == 1 . no angle
-                if ((normals[m_j].X * normals[m_k].Y - normals[m_k].X * normals[m_j].Y) * delta >= 0)
+                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta >= 0)
                 {
-                    if ((normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y) < 0.985)
+                    if ((normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y) < 0.985)
                     {
-                        double a1 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
-                        double a2 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
+                        double a1 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
+                        double a2 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
                         if (delta > 0 && a2 < a1) a2 += Math.PI * 2;
                         else if (delta < 0 && a2 > a1) a2 -= Math.PI * 2;
                         Polygon arc = BuildArc(pts[m_i][m_j], a1, a2, delta);
