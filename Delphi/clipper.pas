@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6                                                             *
-* Date      :  29 October 2011                                                 *
+* Version   :  4.6.1                                                           *
+* Date      :  5 November 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3445,19 +3445,18 @@ function GetUnitNormal(const pt1, pt2: TIntPoint): TDoublePoint;
 var
   dx, dy, f: single;
 begin
-  dx := (pt2.X - pt1.X);
-  dy := (pt2.Y - pt1.Y);
-
-  if (dx = 0) and (dy = 0) then
+  if (pt2.X = pt1.X) and (pt2.Y = pt1.Y) then
   begin
     result.X := 0;
     result.Y := 0;
-  end else
-  begin
-    f := 1 / Hypot(dx, dy);
-    dx := dx * f;
-    dy := dy * f;
+    exit;
   end;
+
+  dx := (pt2.X - pt1.X);
+  dy := (pt2.Y - pt1.Y);
+  f := 1 / Hypot(dx, dy);
+  dx := dx * f;
+  dy := dy * f;
   Result.X := dy;
   Result.Y := -dx
 end;

@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6                                                             *
-* Date      :  29 October 2011                                                 *
+* Version   :  4.6.1                                                           *
+* Date      :  5 November 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -2054,9 +2054,6 @@ namespace ClipperLib
                 else e2.windCnt2 = (e2.windCnt2 == 0) ? 1 : 0;
             }
 
-            int e1Wc = Math.Abs(e1.windCnt);
-            int e2Wc = Math.Abs(e2.windCnt);
-
             PolyFillType e1FillType, e2FillType, e1FillType2, e2FillType2;
             if (e1.polyType == PolyType.ptSubject)
             {
@@ -2079,6 +2076,7 @@ namespace ClipperLib
                 e2FillType2 = m_SubjFillType;
             }
 
+            int e1Wc, e2Wc;
             switch (e1FillType)
             {
                 case PolyFillType.pftPositive: e1Wc = e1.windCnt; break;
