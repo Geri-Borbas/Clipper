@@ -2215,6 +2215,7 @@ function GetLowermostRec(outRec1, outRec2: POutRec): POutRec;
 var
   outPt1, outPt2: POutPt;
   dx1, dx2: double;
+  y1, y2: Int64;
 begin
   outPt1 := outRec1.bottomPt;
   outPt2 := outRec2.bottomPt;
@@ -2226,9 +2227,18 @@ begin
   else if (outRec2.bottomE2 = nil) then result := outRec1
   else
   begin
-    dx1 := max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
-    dx2 := max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
-    if dx2 > dx1 then result := outRec2 else result := outRec1;
+    y1 := max(outRec1.bottomE1.ybot, outRec1.bottomE2.ybot);
+    y2 := max(outRec2.bottomE1.ybot, outRec2.bottomE2.ybot);
+    if (y2 = y1) or ((y1 > outPt1.pt.Y) and (y2 > outPt1.pt.Y)) then
+    begin
+      dx1 := max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
+      dx2 := max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
+      if dx2 > dx1 then result := outRec2 else result := outRec1;
+    end
+    else if (y2 > y1) then
+      result := outRec2
+    else
+      result := outRec1;
   end;
 end;
 //------------------------------------------------------------------------------

@@ -1843,9 +1843,16 @@ namespace ClipperLib
             else if (outRec2.bottomE2 == null) return outRec1;
             else
             {
-                double dx1 = Math.Max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
-                double dx2 = Math.Max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
-                if (dx2 > dx1) return outRec2; else return outRec1;
+                Int64 y1 = Math.Max(outRec1.bottomE1.ybot, outRec1.bottomE2.ybot);
+                Int64 y2 = Math.Max(outRec2.bottomE1.ybot, outRec2.bottomE2.ybot);
+                if (y2 == y1 || (y1 > bPt1.pt.Y && y2 > bPt1.pt.Y))
+                {
+                  double dx1 = Math.Max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
+                  double dx2 = Math.Max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
+                  if (dx2 > dx1) return outRec2; else return outRec1;
+                }
+                else if (y2 > y1) return outRec2;
+                else return outRec1;
             }
         }
         //------------------------------------------------------------------------------
