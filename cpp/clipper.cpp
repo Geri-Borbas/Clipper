@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.1                                                           *
-* Date      :  5 November 2011                                                 *
+* Version   :  4.6.2                                                           *
+* Date      :  10 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3064,7 +3064,7 @@ private:
   Polygons m_p;
   Polygon* m_curr_poly;
   std::vector<DoublePoint> normals;
-  double m_delta, m_RMin;
+  double m_delta, m_RMin, m_R;
   size_t m_i, m_j, m_k;
   static const int buffLength = 128;
   JoinType m_jointype;
@@ -3127,9 +3127,9 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
           {
             case jtMiter:
             {
-              double R = 1 +
-                (normals[m_j].X*normals[m_k].X + normals[m_j].Y*normals[m_k].Y);
-              if (R >= m_RMin) DoMiter(); else DoSquare();
+              m_R = 1 + (normals[m_j].X*normals[m_k].X + 
+                normals[m_j].Y*normals[m_k].Y);
+              if (m_R >= m_RMin) DoMiter(); else DoSquare();
               break;
             }
             case jtSquare: DoSquare(); break;
@@ -3170,7 +3170,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
 private:
 
-void AddPoint(IntPoint& pt)
+void AddPoint(const IntPoint& pt)
 {
     Polygon::size_type len = m_curr_poly->size();
     if (len == m_curr_poly->capacity())
@@ -3202,6 +3202,7 @@ void DoSquare(double mul = 1.0)
     else
     {
         AddPoint(pt1);
+        AddPoint(m_p[m_i][m_j]);
         AddPoint(pt2);
     }
 }
@@ -3209,12 +3210,23 @@ void DoSquare(double mul = 1.0)
 
 void DoMiter()
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X *
-      m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
-      m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    AddPoint(pt1);
-    AddPoint(pt2);
+    if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
+    {
+        double q = m_delta / m_R;
+        AddPoint(IntPoint((long64)Round(m_p[m_i][m_j].X + 
+            (normals[m_k].X + normals[m_j].X) * q),
+            (long64)Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
+    }
+    else
+    {
+        IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X *
+          m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+        IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
+          m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+        AddPoint(pt1);
+        AddPoint(m_p[m_i][m_j]);
+        AddPoint(pt2);
+    }
 }
 //------------------------------------------------------------------------------
 
@@ -3226,17 +3238,21 @@ void DoRound()
         (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     AddPoint(pt1);
     //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
-    if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0 &&
-      (normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y) < 0.985)
+    if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0)
     {
-      double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
-      double a2 = std::atan2(normals[m_j].Y, normals[m_j].X);
-      if (m_delta > 0 && a2 < a1) a2 += pi *2;
-      else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
-      Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta);
-      for (Polygon::size_type m = 0; m < arc.size(); m++)
-        AddPoint(arc[m]);
+      if (normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y < 0.985)
+      {
+        double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
+        double a2 = std::atan2(normals[m_j].Y, normals[m_j].X);
+        if (m_delta > 0 && a2 < a1) a2 += pi *2;
+        else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
+        Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta);
+        for (Polygon::size_type m = 0; m < arc.size(); m++)
+          AddPoint(arc[m]);
+      }
     }
+    else
+      AddPoint(m_p[m_i][m_j]);
     AddPoint(pt2);
 }
 //--------------------------------------------------------------------------

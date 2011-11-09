@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+v4.6.2 - 10 November 2011
+* Bugfix: Fixed a rare bug in the orientation of polygons 
+  returned by Clipper's Execute() method.
+* Bugfix: Previous update introduced a mitering bug in the
+  OffsetPolygons function.
+
 v4.6 - 29 October 2011
 * Added: Support for Positive and Negative polygon fill 
   types (in addition to the EvenOdd and NonZero fill types).

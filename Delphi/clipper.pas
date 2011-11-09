@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.1                                                           *
-* Date      :  5 November 2011                                                 *
+* Version   :  4.6.2                                                           *
+* Date      :  10 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3576,15 +3576,24 @@ const
   end;
 
   procedure DoMiter;
+  var
+    q: double;
   begin
-    pt1.X := round(pts[i][j].X + normals[k].X * delta);
-    pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
-    pt2.X := round(pts[i][j].X + normals[j].X * delta);
-    pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    AddPoint(pt1);
-    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y)*delta < 0) then
+    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y)*delta >= 0) then
+    begin
+      q := delta / R;
+      AddPoint(IntPoint(round(pts[i][j].X + (normals[k].X + normals[j].X) *q),
+        round(pts[i][j].Y + (normals[k].Y + normals[j].Y) *q)));
+    end else
+    begin
+      pt1.X := round(pts[i][j].X + normals[k].X * delta);
+      pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
+      pt2.X := round(pts[i][j].X + normals[j].X * delta);
+      pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
+      AddPoint(pt1);
       AddPoint(pts[i][j]);
-    AddPoint(pt2);
+      AddPoint(pt2);
+    end;
   end;
 
   procedure DoRound;

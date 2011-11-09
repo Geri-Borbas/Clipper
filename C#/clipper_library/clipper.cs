@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.1                                                           *
-* Date      :  5 November 2011                                                 *
+* Version   :  4.6.2                                                           *
+* Date      :  10 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3260,7 +3260,7 @@ namespace ClipperLib
             private Polygons pts; 
             private Polygon currentPoly;
             private List<DoublePoint> normals;
-            private double delta;
+            private double delta, m_R;
             private int m_i, m_j, m_k;
             private const int buffLength = 128;
 
@@ -3315,12 +3315,9 @@ namespace ClipperLib
                         {
                             case JoinType.jtMiter:
                             {
-                                double R = 1 +
-                                (normals[m_j].X*normals[m_k].X + normals[m_j].Y*normals[m_k].Y);
-                                if (R >= RMin) 
-                                    DoMiter(); 
-                                else 
-                                    DoSquare();
+                                m_R = 1 + (normals[m_j].X*normals[m_k].X + 
+                                    normals[m_j].Y*normals[m_k].Y);
+                                if (m_R >= RMin) DoMiter(); else DoSquare();
                                 break;
                             }
                             case JoinType.jtRound: 
@@ -3406,14 +3403,23 @@ namespace ClipperLib
 
             internal void DoMiter()
             {
-                IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
-                    (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
-                IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
-                    (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                AddPoint(pt1);
-                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta < 0)
+                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta >= 0)
+                {
+                    double q = delta / m_R;
+                    AddPoint(new IntPoint((Int64)Round(pts[m_i][m_j].X + 
+                        (normals[m_k].X + normals[m_j].X) * q),
+                        (Int64)Round(pts[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
+                }
+                else
+                {
+                    IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
+                        (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
+                    IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
+                        (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                    AddPoint(pt1);
                     AddPoint(pts[m_i][m_j]);
-                AddPoint(pt2);
+                    AddPoint(pt2);
+                }
             }
             //------------------------------------------------------------------------------
 
