@@ -61,15 +61,23 @@ namespace ClipperLib
     {
         private Int64 hi;
         private Int64 lo;
-    
-        public Int128(Int64 _lo = 0)
+
+        public Int128(Int64 _lo)
         {
             hi = 0;
-            if (_lo < 0) {
+            if (_lo < 0)
+            {
                 lo = -_lo;
                 Negate(this);
-            } else
+            }
+            else
                 lo = _lo;
+        }
+
+        public Int128()
+        {
+            hi = 0;
+            lo = 0;
         }
 
         public Int128(Int128 val)
@@ -298,10 +306,17 @@ namespace ClipperLib
     {
         public Int64 X { get; set; }
         public Int64 Y { get; set; }
-        public IntPoint(Int64 X = 0, Int64 Y = 0)
+
+        public IntPoint()
+        {
+            this.X = 0; this.Y = 0;
+        }
+        
+        public IntPoint(Int64 X, Int64 Y)
         {
             this.X = X; this.Y = Y;
         }
+        
         public IntPoint(IntPoint pt)
         {
             this.X = pt.X; this.Y = pt.Y;
@@ -314,10 +329,17 @@ namespace ClipperLib
         public Int64 top { get; set; }
         public Int64 right { get; set; }
         public Int64 bottom { get; set; }
-        public IntRect(Int64 l = 0, Int64 t = 0, Int64 r = 0, Int64 b = 0)
+        
+        public IntRect(Int64 l, Int64 t, Int64 r, Int64 b)
         {
             this.left = l; this.top = t;
             this.right = r; this.bottom = b;
+        }
+
+        public IntRect()
+        {
+            this.left = 0; this.top = 0;
+            this.right = 0; this.bottom = 0;
         }
     }
 
@@ -978,8 +1000,7 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public bool Execute(ClipType clipType, Polygons solution,
-            PolyFillType subjFillType = PolyFillType.pftEvenOdd, 
-            PolyFillType clipFillType = PolyFillType.pftEvenOdd)
+            PolyFillType subjFillType, PolyFillType clipFillType)
         {
             if (m_ExecuteLocked) return false;
             m_ExecuteLocked = true;
@@ -996,8 +1017,7 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public bool Execute(ClipType clipType, ExPolygons solution,
-            PolyFillType subjFillType = PolyFillType.pftEvenOdd,
-            PolyFillType clipFillType = PolyFillType.pftEvenOdd)
+            PolyFillType subjFillType, PolyFillType clipFillType)
         {
             if (m_ExecuteLocked) return false;
             m_ExecuteLocked = true;
@@ -1010,6 +1030,20 @@ namespace ClipperLib
             if (succeeded) BuildResultEx(solution);
             m_ExecuteLocked = false;
             return succeeded;
+        }
+        //------------------------------------------------------------------------------
+
+        public bool Execute(ClipType clipType, Polygons solution)
+        {
+            return Execute(clipType, solution,
+                PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
+        }
+        //------------------------------------------------------------------------------
+
+        public bool Execute(ClipType clipType, ExPolygons solution)
+        {
+            return Execute(clipType, solution,
+                PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
         }
         //------------------------------------------------------------------------------
 
@@ -1156,7 +1190,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private void AddJoin(TEdge e1, TEdge e2, int e1OutIdx = -1, int e2OutIdx = -1)
+        private void AddJoin(TEdge e1, TEdge e2, int e1OutIdx, int e2OutIdx)
         {
             JoinRec jr = new JoinRec();
             if (e1OutIdx >= 0)
@@ -1223,7 +1257,7 @@ namespace ClipperLib
             if (lb.outIdx >= 0 && lb.prevInAEL != null &&
               lb.prevInAEL.outIdx >= 0 && lb.prevInAEL.xcurr == lb.xbot &&
                SlopesEqual(lb, lb.prevInAEL, m_UseFullRange))
-                AddJoin(lb, lb.prevInAEL);
+                AddJoin(lb, lb.prevInAEL, -1, -1);
 
             //if any output polygons share an edge, they'll need joining later ...
             if (rb.outIdx >= 0)
@@ -1240,7 +1274,7 @@ namespace ClipperLib
                             new IntPoint(rb.xbot, rb.ybot),
                             new IntPoint(rb.xtop, rb.ytop), 
                             ref pt, ref pt2))
-                                AddJoin(hj.edge, rb, hj.savedIdx);
+                            AddJoin(hj.edge, rb, hj.savedIdx, -1);
                     }
                 }
             }
@@ -1250,7 +1284,7 @@ namespace ClipperLib
             {
                 if (rb.outIdx >= 0 && rb.prevInAEL.outIdx >= 0 && 
                     SlopesEqual(rb.prevInAEL, rb, m_UseFullRange))
-                    AddJoin(rb, rb.prevInAEL);
+                    AddJoin(rb, rb.prevInAEL, -1, -1);
 
               TEdge e = lb.nextInAEL;
               IntPoint pt = new IntPoint(lb.xcurr, lb.ycurr);
@@ -2296,7 +2330,7 @@ namespace ClipperLib
                         {
                             //if output polygons share an edge, they'll need joining later ...
                             if (horzEdge.outIdx >= 0 && e.outIdx >= 0)
-                                AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx);
+                                AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx, -1);
                             break; //we've reached the end of the horizontal line
                         }
                         else if (e.dx < horzEdge.nextInLML.dx)
@@ -2744,7 +2778,7 @@ namespace ClipperLib
                   new IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), m_UseFullRange))
               {
                   AddOutPt(e.prevInAEL, null, new IntPoint(e.xbot, e.ybot));
-                  AddJoin(e, e.prevInAEL);
+                  AddJoin(e, e.prevInAEL, -1, -1);
               }
               else if (e.outIdx >= 0 && e.nextInAEL != null && e.nextInAEL.outIdx >= 0 &&
                 e.nextInAEL.ycurr > e.nextInAEL.ytop &&
@@ -2755,7 +2789,7 @@ namespace ClipperLib
                   new IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), m_UseFullRange))
               {
                   AddOutPt(e.nextInAEL, null, new IntPoint(e.xbot, e.ybot));
-                  AddJoin(e, e.nextInAEL);
+                  AddJoin(e, e.nextInAEL, -1, -1);
               }
 
             }
@@ -3317,14 +3351,14 @@ namespace ClipperLib
                             {
                                 m_R = 1 + (normals[m_j].X*normals[m_k].X + 
                                     normals[m_j].Y*normals[m_k].Y);
-                                if (m_R >= RMin) DoMiter(); else DoSquare();
+                                if (m_R >= RMin) DoMiter(); else DoSquare(1);
                                 break;
                             }
                             case JoinType.jtRound: 
                                 DoRound();
                                 break;
                             case JoinType.jtSquare:
-                                DoSquare();
+                                DoSquare(1);
                                 break;
                         }
                         m_k = m_j;
@@ -3372,7 +3406,7 @@ namespace ClipperLib
             }
             //------------------------------------------------------------------------------
 
-            internal void DoSquare(double mul = 1.0)
+            internal void DoSquare(double mul)
             {
                 IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
@@ -3455,11 +3489,27 @@ namespace ClipperLib
         } //end PolyOffsetBuilder
         //------------------------------------------------------------------------------
 
-        public static Polygons OffsetPolygons(Polygons poly, double delta, 
-            JoinType jointype = JoinType.jtSquare, double MiterLimit = 2)
+        public static Polygons OffsetPolygons(Polygons poly, double delta,
+            JoinType jointype, double MiterLimit)
         {
             Polygons result = new Polygons(poly.Count);
             new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit);
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype)
+        {
+            Polygons result = new Polygons(poly.Count);
+            new PolyOffsetBuilder(poly, result, delta, jointype, 2.0);
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygons OffsetPolygons(Polygons poly, double delta)
+        {
+            Polygons result = new Polygons(poly.Count);
+            new PolyOffsetBuilder(poly, result, delta, JoinType.jtSquare, 2.0);
             return result;
         }
         //------------------------------------------------------------------------------
