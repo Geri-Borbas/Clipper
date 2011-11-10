@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.2                                                           *
-* Date      :  10 November 2011                                                *
+* Version   :  4.6.3                                                           *
+* Date      :  11 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3129,7 +3129,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
             {
               m_R = 1 + (normals[m_j].X*normals[m_k].X + 
                 normals[m_j].Y*normals[m_k].Y);
-              if (m_R >= m_RMin) DoMiter(); else DoSquare();
+              if (m_R >= m_RMin) DoMiter(); else DoSquare(MiterLimit);
               break;
             }
             case jtSquare: DoSquare(); break;
@@ -3237,7 +3237,7 @@ void DoRound()
     IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     AddPoint(pt1);
-    //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
+    //round off reflex angles (ie > 180 deg) unless almost flat (ie < ~10deg).
     if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0)
     {
       if (normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y < 0.985)

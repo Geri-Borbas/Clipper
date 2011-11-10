@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.2                                                           *
-* Date      :  10 November 2011                                                *
+* Version   :  4.6.3                                                           *
+* Date      :  11 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3666,7 +3666,7 @@ begin
           R := 1 + (normals[j].X*normals[k].X + normals[j].Y*normals[k].Y);
           if (R >= RMin) then
             DoMiter else
-            DoSquare;
+            DoSquare(MiterLimit);
         end;
         jtSquare: DoSquare;
         jtRound: DoRound;

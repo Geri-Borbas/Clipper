@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.2                                                           *
-* Date      :  10 November 2011                                                *
+* Version   :  4.6.3                                                           *
+* Date      :  11 November 2011                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -3351,7 +3351,7 @@ namespace ClipperLib
                             {
                                 m_R = 1 + (normals[m_j].X*normals[m_k].X + 
                                     normals[m_j].Y*normals[m_k].Y);
-                                if (m_R >= RMin) DoMiter(); else DoSquare(1);
+                                if (m_R >= RMin) DoMiter(); else DoSquare(MiterLimit);
                                 break;
                             }
                             case JoinType.jtRound: 
