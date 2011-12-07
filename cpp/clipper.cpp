@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.3                                                           *
-* Date      :  11 November 2011                                                *
+* Version   :  4.6.4                                                           *
+* Date      :  4 December 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -1818,10 +1818,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
             AddLocalMinPoly(e1, e2, pt);
           break;
         case ctDifference:
-          if ((e1->polyType == ptClip && e2->polyType == ptClip && 
-              e1Wc2 > 0 && e2Wc2 > 0) || 
-              (e1->polyType == ptSubject && e2->polyType == ptSubject && 
-              e1Wc2 <= 0 && e2Wc2 <= 0)) 
+          if (e1->polyType == ptClip && e1Wc2 > 0 && e2Wc2 > 0 || 
+              e1->polyType == ptSubject && e1Wc2 <= 0 && e2Wc2 <= 0)
                 AddLocalMinPoly(e1, e2, pt);
           break;
         case ctXor:
@@ -3271,6 +3269,28 @@ void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
     PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit);
   }
   else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit);
+}
+//------------------------------------------------------------------------------
+
+void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys)
+{
+  Clipper c;
+  c.AddPolygon(in_poly, ptSubject);
+  c.Execute(ctUnion, out_polys);
+}
+//------------------------------------------------------------------------------
+
+void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys)
+{
+  Clipper c;
+  c.AddPolygons(in_polys, ptSubject);
+  c.Execute(ctUnion, out_polys);
+}
+//------------------------------------------------------------------------------
+
+void SimplifyPolygons(Polygons &polys)
+{
+  SimplifyPolygons(polys, polys);
 }
 //------------------------------------------------------------------------------
 

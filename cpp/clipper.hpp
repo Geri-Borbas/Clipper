@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.3                                                           *
-* Date      :  11 November 2011                                                *
+* Version   :  4.6.4                                                           *
+* Date      :  4 December 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -79,6 +79,9 @@ bool Orientation(const Polygon &poly);
 double Area(const Polygon &poly);
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
   double delta, JoinType jointype = jtSquare, double MiterLimit = 2);
+void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys);
+void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys);
+void SimplifyPolygons(Polygons &polys);
 
 void ReversePoints(Polygon& p);
 void ReversePoints(Polygons& p);

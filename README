@@ -2,6 +2,12 @@
 Clipper Change Log
 ============================================================
 
+v4.6.4 - 8 November 2011
+* Added: SimplifyPolygon and SimplifyPolygons functions.
+
+v4.6.3 - 11 November 2011
+* Bugfix: Fixed another minor mitering bug in OffsetPolygons.
+
 v4.6.2 - 10 November 2011
 * Bugfix: Fixed a rare bug in the orientation of polygons 
   returned by Clipper's Execute() method.

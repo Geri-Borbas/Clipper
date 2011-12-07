@@ -1,9 +1,9 @@
 //---------------------------------------------------------------------------
 
 #include <windows.h>
-#include <cstring.h>
+#include <cstring>
 #include <cmath>
-#include <sstream.h>
+#include <sstream>
 #pragma hdrstop
 
 #include "clipper.hpp"
@@ -18,8 +18,7 @@ int offsetVal = 0;
 
 LRESULT CALLBACK WndProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-#pragma argsused
-WINAPI _tWinMain(HINSTANCE hInstance,
+int CALLBACK WinMain(HINSTANCE hInstance,
   HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
 {
   MSG        Msg;
@@ -79,7 +78,7 @@ void OnPaint(HWND hWnd, HDC dc)
 
   using namespace ClipperLib;
 
-  const scaling = 2;
+  const int scaling = 2;
 
   Clipper clpr;    //clipper class
   Polygons pg; //std::vector for polygon(s) storage
@@ -124,9 +123,9 @@ void OnPaint(HWND hWnd, HDC dc)
 
   cairo_text_extents_t extent;
   cairo_set_font_size(cr,11);
-  stringstream ss;
+  std::stringstream ss;
   ss << "Polygon offset = " << offsetVal << ".  (Adjust with arrow keys)";
-  string s = ss.str();
+  std::string s = ss.str();
   cairo_text_extents(cr, s.c_str(), &extent);
   cairo_move_to(cr, 10, rec.bottom - extent.height);
   cairo_show_text(cr, s.c_str());

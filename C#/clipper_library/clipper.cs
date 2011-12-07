@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.3                                                           *
-* Date      :  11 November 2011                                                *
+* Version   :  4.6.4                                                           *
+* Date      :  4 December 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -461,7 +461,7 @@ namespace ClipperLib
 
         //------------------------------------------------------------------------------
 
-        protected bool PointsEqual(IntPoint pt1, IntPoint pt2)
+        protected static bool PointsEqual(IntPoint pt1, IntPoint pt2)
         {
           return ( pt1.X == pt2.X && pt1.Y == pt2.Y );
         }
@@ -560,10 +560,11 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        ~ClipperBase() //destructor
-        {
-            Clear();
-        }
+        //destructor - commented out since I gather this impedes the GC 
+        //~ClipperBase() 
+        //{
+        //    Clear();
+        //}
         //------------------------------------------------------------------------------
 
         public virtual void Clear()
@@ -923,11 +924,12 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        ~Clipper() //destructor
-        {
-            Clear();
-            DisposeScanbeamList();
-        }
+        //destructor - commented out since I gather this impedes the GC 
+        //~Clipper() //destructor
+        //{
+        //    Clear();
+        //    DisposeScanbeamList();
+        //}
         //------------------------------------------------------------------------------
 
         public override void Clear()
@@ -2192,12 +2194,8 @@ namespace ClipperLib
                             }
                         case ClipType.ctDifference:
                             {
-                                if ((e1.polyType == PolyType.ptClip && 
-                                    e2.polyType == PolyType.ptClip && e1Wc2 > 0 && 
-                                    e2Wc2 > 0) ||
-                                    (e1.polyType == PolyType.ptSubject && 
-                                    e2.polyType == PolyType.ptSubject &&
-                                    e1Wc2 <= 0 && e2Wc2 <= 0))
+                                if (e1.polyType == PolyType.ptClip && e1Wc2 > 0 && e2Wc2 > 0 ||
+                                   e1.polyType == PolyType.ptSubject && e1Wc2 <= 0 && e2Wc2 <= 0)
                                         AddLocalMinPoly(e1, e2, pt);
                                 break;
                             }
@@ -3371,8 +3369,7 @@ namespace ClipperLib
                 clpr.AddPolygons(solution, PolyType.ptSubject);
                 if (delta > 0)
                 {
-                    if (!clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftPositive, PolyFillType.pftPositive))
-                        solution.Clear();
+                    clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftPositive, PolyFillType.pftPositive);
                 }
                 else
                 {
@@ -3385,14 +3382,13 @@ namespace ClipperLib
                     outer.Add(new IntPoint(r.left - 10, r.top - 10));
 
                     clpr.AddPolygon(outer, PolyType.ptSubject);
-                    if (clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNegative, PolyFillType.pftNegative))
+                    clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNegative, PolyFillType.pftNegative);
+                    if (solution.Count > 0)
                     {
                         solution.RemoveAt(0);
                         for (int i = 0; i < solution.Count; i++)
                             solution[i].Reverse();
-                    } 
-                    else
-                        solution.Clear();
+                    }
                 }
             }
             //------------------------------------------------------------------------------
@@ -3510,6 +3506,30 @@ namespace ClipperLib
         {
             Polygons result = new Polygons(poly.Count);
             new PolyOffsetBuilder(poly, result, delta, JoinType.jtSquare, 2.0);
+            return result;
+        }
+
+        //------------------------------------------------------------------------------
+        // SimplifyPolygon functions ...
+        // Convert self-intersecting polygons into simple polygons
+        //------------------------------------------------------------------------------
+
+        public static Polygons SimplifyPolygon(Polygon poly)
+        {
+            Polygons result = new Polygons();
+            Clipper c = new Clipper();
+            c.AddPolygon(poly, PolyType.ptSubject);
+            c.Execute(ClipType.ctUnion, result);
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygons SimplifyPolygons(Polygons polys)
+        {
+            Polygons result = new Polygons();
+            Clipper c = new Clipper();
+            c.AddPolygons(polys, PolyType.ptSubject);
+            c.Execute(ClipType.ctUnion, result);
             return result;
         }
         //------------------------------------------------------------------------------

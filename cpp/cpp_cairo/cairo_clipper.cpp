@@ -30,7 +30,7 @@ namespace ClipperLib {
 
       void transform_point(cairo_t* pen, Transform transform, long64* x, long64* y)
       {
-        double _x = *x, _y = *y;
+        double _x = (double)*x, _y = (double)*y;
         switch (transform)
         {
           case tDeviceToUser:

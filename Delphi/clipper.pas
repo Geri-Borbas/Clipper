@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.6.3                                                           *
-* Date      :  11 November 2011                                                *
+* Version   :  4.6.4                                                           *
+* Date      :  4 December 2011                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2011                                         *
 *                                                                              *
@@ -59,8 +59,6 @@ type
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
   TDirection = (dRightToLeft, dLeftToRight);
-  //TArrayOfIntPoint = array of TIntPoint;
-  //TArrayOfArrayOfIntPoint = array of TArrayOfIntPoint;
   TPolygon = array of TIntPoint;
   TPolygons = array of TPolygon;
 
@@ -280,6 +278,15 @@ function ReversePoints(const pts: TPolygons): TPolygons; overload;
 //and inner 'hole' polygons must be oriented counter-clockwise ...
 function OffsetPolygons(const pts: TPolygons; const delta: double;
   JoinType: TJoinType = jtSquare; MiterLimit: double = 2): TPolygons;
+
+//TrimPolygons removes very narrow 'spikes' that can very rarely appear when
+//rounding polygons with fractional coordinates. A 'spike' is created when
+//an edge is longer that 2 units but ends within one unit of an adjacent edge.
+function TrimPolygon(const poly: TPolygon): TPolygon;
+function TrimPolygons(const polys: TPolygons): TPolygons;
+//SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
+function SimplifyPolygon(const poly: TPolygon): TPolygons;
+function SimplifyPolygons(const polys: TPolygons): TPolygons;
 
 implementation
 
@@ -686,8 +693,6 @@ var
   a: TInt128;
   UseFullInt64Range: boolean;
   rt: TRangeTest;
-const
-  leftShift64: double = 18446744073709551616.0;
 begin
   result := 0;
   highI := high(pts);
@@ -700,19 +705,18 @@ begin
   end;
   if UseFullInt64Range then
   begin
-    a := int128(0);
-    a := Int128Add(a, Int128Sub(Int128Mul(pts[highI].x, pts[0].y),
-      Int128Mul(pts[0].x, pts[highI].y)));
+    a := Int128Sub(Int128Mul(pts[highI].X, pts[0].Y),
+      Int128Mul(pts[0].X, pts[highI].Y));
     for i := 0 to highI-1 do
-      a := Int128Add(a, Int128Sub(Int128Mul(pts[i].x, pts[i+1].y),
-        Int128Mul(pts[i+1].x, pts[i].y)));
+      a := Int128Add(a, Int128Sub(Int128Mul(pts[i].X, pts[i+1].Y),
+        Int128Mul(pts[i+1].X, pts[i].Y)));
     result := Int128AsDouble(a) / 2;
   end else
   begin
-    result := pts[highI].x * pts[0].y - pts[0].x * pts[highI].y;
-    for i := 0 to highI-1 do
-      result := result + pts[i].x * pts[i+1].y - pts[i+1].x * pts[i].y;
-    result := result / 2;
+    a := int128(pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y);
+    for i := 1 to highI do
+      a := Int128Add(a, Int128(pts[i-1].X * pts[i].Y - pts[i].X * pts[i-1].Y));
+    result := Int128AsDouble(a) / 2;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1450,7 +1454,7 @@ begin
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then FixHoleLinkage(outRec);
-      if (outRec.isHole = fReverseOutput xor Orientation(outRec, fUse64BitRange)) then
+      if (outRec.isHole = fReverseOutput) xor Orientation(outRec, fUse64BitRange) then
         ReversePolyPtLinks(outRec.pts);
     end;
 
@@ -1850,8 +1854,9 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const botY: int64);
 
   function E2InsertsBeforeE1(e1,e2: PEdge): boolean;
   begin
-    if e2.xcurr = e1.xcurr then result := e2.dx > e1.dx
-    else result := e2.xcurr < e1.xcurr;
+    if e2.xcurr = e1.xcurr then
+      result := e2.dx > e1.dx else
+      result := e2.xcurr < e1.xcurr;
   end;
   //----------------------------------------------------------------------
 
@@ -2149,10 +2154,8 @@ begin
           if (e1Wc2 <= 0) and (e2Wc2 <= 0) then
             AddLocalMinPoly(e1, e2, pt);
         ctDifference:
-          if ((e1.polyType = ptClip) and (e2.polyType = ptClip) and
-            (e1Wc2 > 0) and (e2Wc2 > 0)) or
-            ((e1.polyType = ptSubject) and (e2.polyType = ptSubject) and
-            (e1Wc2 <= 0) and (e2Wc2 <= 0)) then
+          if ((e1.polyType = ptClip) and (e1Wc2 > 0) and (e2Wc2 > 0)) or
+            ((e1.polyType = ptSubject) and (e1Wc2 <= 0) and (e2Wc2 <= 0)) then
               AddLocalMinPoly(e1, e2, pt);
         ctXor:
           AddLocalMinPoly(e1, e2, pt);
@@ -2266,8 +2269,8 @@ begin
 
   //get the start and ends of both output polygons ...
   p1_lft := outRec1.pts;
-  p1_rt := p1_lft.prev;
   p2_lft := outRec2.pts;
+  p1_rt := p1_lft.prev;
   p2_rt := p2_lft.prev;
 
   //join e2 poly onto e1 poly and delete pointers to e2 ...
@@ -3529,7 +3532,6 @@ var
   normals: TArrayOfDoublePoint;
   a1, a2, R, RMin: double;
   pt1, pt2: TIntPoint;
-  clipper: TClipper;
   outer: TPolygon;
   bounds: TIntRect;
 const
@@ -3635,16 +3637,14 @@ begin
   setLength(result, length(pts));
   for i := 0 to high(pts) do
   begin
+    result[i] := nil;
     len := length(pts[i]);
     if (len > 1) and (pts[i][0].X = pts[i][len - 1].X) and
         (pts[i][0].Y = pts[i][len - 1].Y) then dec(len);
 
-    if (len < 3) and (delta < 0) then
-    begin
-      result[i] := nil;
-      continue;
-    end
-    else if (len = 1) then
+    if (len < 3) and (delta < 0) then continue;
+
+    if (len = 1) then
     begin
       result[i] := BuildArc(pts[i][0], 0, 2*pi, delta);
       continue;
@@ -3677,13 +3677,12 @@ begin
   end;
 
   //finally, clean up untidy corners ...
-  clipper := TClipper.Create;
+  with TClipper.Create do
   try
-    clipper.AddPolygons(result, ptSubject);
+    AddPolygons(result, ptSubject);
     if delta > 0 then
     begin
-      if not clipper.Execute(ctUnion, result, pftPositive, pftPositive) then
-        result := nil;
+      Execute(ctUnion, result, pftPositive, pftPositive);
     end else
     begin
       bounds := GetBounds(result);
@@ -3692,23 +3691,215 @@ begin
       outer[1] := IntPoint(bounds.right+10, bounds.bottom+10);
       outer[2] := IntPoint(bounds.right+10, bounds.top-10);
       outer[3] := IntPoint(bounds.left-10, bounds.top-10);
-      clipper.AddPolygon(outer, ptSubject);
-      if clipper.Execute(ctUnion, result, pftNegative, pftNegative) then
-      begin
-        //delete the outer rectangle ...
-        len := length(result);
-        for j := 1 to len -1 do result[j-1] := result[j];
-        if len > 0 then
-          setlength(result, len -1);
-        //restore polygon orientation ...
-        result := ReversePoints(result);
-      end else
-        result := nil;
+      AddPolygon(outer, ptSubject);
+      Execute(ctUnion, result, pftNegative, pftNegative);
+      //delete the outer rectangle ...
+      len := length(result);
+      for j := 1 to len -1 do result[j-1] := result[j];
+      if len > 0 then
+        setlength(result, len -1);
+      //restore polygon orientation ...
+      result := ReversePoints(result);
     end;
   finally
-    clipper.free;
+    free;
   end;
 end;
+
+//------------------------------------------------------------------------------
+// TidyPolygon ...
+//------------------------------------------------------------------------------
+
+function ClosestPointOnLine(const pt, linePt1, linePt2: TIntPoint): TIntPoint;
+var
+  q: double;
+begin
+  if (linePt1.X = linePt2.X) and (linePt1.Y = linePt2.Y) then
+    Result := linePt1
+  else
+  begin
+    q := ((pt.X-linePt1.X)*(linePt2.X-linePt1.X) +
+      (pt.Y-linePt1.Y)*(linePt2.Y-linePt1.Y)) /
+      (sqr(linePt2.X-linePt1.X) + sqr(linePt2.Y-linePt1.Y));
+    Result.X := round((1-q)*linePt1.X + q*linePt2.X);
+    Result.Y := round((1-q)*linePt1.Y + q*linePt2.Y);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function DistSqr(const pt1, pt2: TIntPoint): Int64;
+begin
+  result := (pt1.X - pt2.X)*(pt1.X - pt2.X) + (pt1.Y - pt2.Y)*(pt1.Y - pt2.Y);
+end;
+//------------------------------------------------------------------------------
+
+function MaxDxDy(const pt1, pt2: TIntPoint): Int64;
+var
+  dy: Int64;
+begin
+  result := abs(pt1.X - pt2.X);
+  dy := abs(pt1.Y - pt2.Y);
+  if dy > result then result := dy;
+end;
+//------------------------------------------------------------------------------
+
+function EdgesVeryClose(const pt1, pt2, pt3: TIntPoint): boolean;
+var
+  cpol: TIntPoint;
+begin
+  //returns true if pt1 is no more than one unit away from segment pt2-pt3
+  // or if pt3 is no more than one unit away from segment pt1-pt2.
+  if ((pt1.X - pt2.X >= 0) = (pt2.X - pt3.X >= 0)) and
+    ((pt1.Y - pt2.Y >= 0) = (pt2.Y - pt3.Y >= 0)) then
+      result := false //ie the angle formed by pt1, pt2 & pt3 is non-acute
+  else if DistSqr(pt1, pt2) > distSqr(pt2, pt3) then
+  begin
+    cpol := ClosestPointOnLine(pt3, pt1, pt2);
+    result := MaxDxDy(pt3, cpol) < 2;
+  end else
+  begin
+    cpol := ClosestPointOnLine(pt1, pt2, pt3);
+    result := MaxDxDy(pt1, cpol) < 2;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+type
+    POutPt2 = ^TOutPt2;
+    TOutPt2 = record
+    pt       : TIntPoint;
+    norm     : TDoublePoint;
+    next     : POutPt2;
+    prev     : POutPt2;
+  end;
+
+function AddOutPt2(current: POutPt2; const pt:TIntPoint): POutPt2;
+begin
+  new(result);
+  if not assigned(current) then
+  begin
+    result.next := result;
+    result.prev := result;
+  end else
+  begin
+    result.next := current.next;
+    result.prev := current;
+    current.next.prev := result;
+    current.next := result;
+  end;
+  result.pt := pt;
+end;
+//------------------------------------------------------------------------------
+
+function DeleteOutPt2(current: POutPt2; updateNorm: boolean): POutPt2;
+begin
+  result := current.prev;
+  if result = current then
+  begin
+    result := nil;
+    Dispose(current);
+  end else
+  begin
+    result.next := current.next;
+    current.next.prev := result;
+    Dispose(current);
+    if updateNorm then
+      result.norm := GetUnitNormal(result.pt, result.next.pt);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function TrimPolygon(const poly: TPolygon): TPolygon;
+var
+  i, highI: integer;
+  outPt2, last: POutPt2;
+  d: Int64;
+begin
+  highI := high(poly);
+  setlength(result, highI+1);
+  if highI < 0 then exit;
+  outPt2 := AddOutPt2(nil, poly[highI]);
+  outPt2.norm := GetUnitNormal(poly[highI], poly[0]);
+  for i := 0 to highI -1 do
+  begin
+    if PointsEqual(outPt2.pt, poly[i]) then continue;
+    outPt2 := AddOutPt2(outPt2, poly[i]);
+    outPt2.norm := GetUnitNormal(poly[i], poly[i+1]);
+  end;
+
+  last := outPt2.prev;
+  while true do
+  begin
+    if last.next = last.prev then break;
+    d := MaxDxDy(outPt2.pt, outPt2.prev.pt);
+    if (d < 2) or
+      ((abs(outPt2.prev.norm.X * outPt2.norm.Y -
+        outPt2.norm.X * outPt2.prev.norm.Y) < 0.26) and
+      EdgesVeryClose(outPt2.prev.pt, outPt2.pt, outPt2.next.pt)) then
+    begin
+      outPt2 := DeleteOutPt2(outPt2, true);
+      last := outPt2;
+    end
+    else if outPt2 = last then
+      break;
+    outPt2 := outPt2.next;
+  end;
+
+  i := 1;
+  last := outPt2.prev;
+  while outPt2 <> last do
+  begin
+    inc(i);
+    outPt2 := outPt2.next;
+  end;
+  if i < 3 then exit;
+  SetLength(result, i);
+  for i := 0 to i -1 do
+  begin
+    result[i] := outPt2.pt;
+    outPt2 := outPt2.next;
+  end;
+  while assigned(outPt2) do
+    outPt2 := DeleteOutPt2(outPt2, false);
+end;
+//------------------------------------------------------------------------------
+
+function TrimPolygons(const polys: TPolygons): TPolygons;
+var
+  i, len: integer;
+begin
+  len := length(polys);
+  setLength(result, len);
+  for i := 0 to len -1 do
+    result[i] := TrimPolygon(polys[i]);
+end;
+//------------------------------------------------------------------------------
+
+function SimplifyPolygon(const poly: TPolygon): TPolygons;
+begin
+  with TClipper.Create do
+  try
+    AddPolygon(poly, ptSubject);
+    Execute(ctUnion, Result);
+  finally
+    free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function SimplifyPolygons(const polys: TPolygons): TPolygons;
+begin
+  with TClipper.Create do
+  try
+    AddPolygons(polys, ptSubject);
+    Execute(ctUnion, Result);
+  finally
+    free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
 end.
