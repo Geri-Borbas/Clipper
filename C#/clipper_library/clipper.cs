@@ -356,7 +356,7 @@ namespace ClipperLib
     //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
     //see http://glprogramming.com/red/chapter11.html
     public enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
-    public enum JoinType { jtSquare, jtMiter, jtRound };
+    public enum JoinType { jtSquare, jtRound, jtMiter };
 
 
     internal enum EdgeSide { esLeft, esRight };

@@ -73,7 +73,7 @@ struct ExPolygon {
 };
 typedef std::vector< ExPolygon > ExPolygons;
 
-enum JoinType { jtSquare, jtMiter, jtRound };
+enum JoinType { jtSquare, jtRound, jtMiter };
 
 bool Orientation(const Polygon &poly);
 double Area(const Polygon &poly);
