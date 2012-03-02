@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7                                                             *
-* Date      :  10 February 2011                                                *
+* Version   :  4.7.1                                                           *
+* Date      :  3 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -268,7 +268,7 @@ type
     property ReverseSolution: boolean read fReverseOutput write fReverseOutput;
   end;
 
-function Orientation(const pts: TPolygon): boolean;
+function Orientation(const pts: TPolygon): boolean; overload;
 function Area(const pts: TPolygon): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
 function ReversePoints(const pts: TPolygon): TPolygon; overload;
@@ -611,7 +611,7 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function Orientation(const pts: TPolygon): boolean; overload;
+function Orientation(const pts: TPolygon): boolean; 
 var
   i, j, jplus, jminus, highI: integer;
   UseFullInt64Range: boolean;
@@ -670,6 +670,7 @@ begin
     op := op.next;
   end;
   outRec.bottomPt := opBottom;
+  op := opBottom;
 
   //find vertices either side of bottomPt (skipping duplicate points) ....
   opPrev := op.prev;
@@ -2911,7 +2912,7 @@ begin
   begin
     IntersectEdges(e, eMaxPair, IntPoint(X, topY));
   end
-    else raise exception.Create(rsDoMaxima);
+  else raise exception.Create(rsDoMaxima);
 end;
 //------------------------------------------------------------------------------
 
@@ -3346,7 +3347,8 @@ begin
     else if (p1 = pp1a) or (p1 = prev) then
       p2 := InsertPolyPtBetween(pp1a, prev, pt2)
     else if Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2) then
-      p2 := InsertPolyPtBetween(pp1a, p1, pt2) else
+      p2 := InsertPolyPtBetween(pp1a, p1, pt2)
+    else
       p2 := InsertPolyPtBetween(p1, prev, pt2);
 
     prev := pp2a.prev;
@@ -3359,7 +3361,8 @@ begin
     else if (p3 = pp2a) or (p3 = prev) then
       p4 := InsertPolyPtBetween(pp2a, prev, pt2)
     else if Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2) then
-      p4 := InsertPolyPtBetween(pp2a, p3, pt2) else
+      p4 := InsertPolyPtBetween(pp2a, p3, pt2)
+    else
       p4 := InsertPolyPtBetween(p3, prev, pt2);
 
     //p1.pt == p3.pt and p2.pt == p4.pt so join p1 to p3 and p2 to p4 ...
@@ -3445,15 +3448,18 @@ begin
       //cleanup edges ...
       FixupOutPolygon(outRec1);
 
-      //sort out hole vs outer and then recheck orientation ...
-      if (outRec1.isHole <> outRec2.isHole) and
-        ((outRec2.bottomPt.pt.Y > outRec1.bottomPt.pt.Y) or
-          (outRec2.bottomPt.pt.Y = outRec1.bottomPt.pt.Y) and
-          (outRec2.bottomPt.pt.X < outRec1.bottomPt.pt.X)) then
-          outRec1.isHole := outRec2.isHole;
+      if assigned(outRec1.pts) then
+      begin
+        //sort out hole vs outer and then recheck orientation ...
+        if (outRec1.isHole <> outRec2.isHole) and
+          ((outRec2.bottomPt.pt.Y > outRec1.bottomPt.pt.Y) or
+            (outRec2.bottomPt.pt.Y = outRec1.bottomPt.pt.Y) and
+            (outRec2.bottomPt.pt.X < outRec1.bottomPt.pt.X)) then
+            outRec1.isHole := outRec2.isHole;
 
-      if outRec1.isHole = Orientation(outRec1, fUse64BitRange) then
-        ReversePolyPtLinks(outRec1.pts);
+        if outRec1.isHole = Orientation(outRec1, fUse64BitRange) then
+          ReversePolyPtLinks(outRec1.pts);
+      end;
 
       //delete the obsolete pointer ...
       OKIdx := outRec1.idx;

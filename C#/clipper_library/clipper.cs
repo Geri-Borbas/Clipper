@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7                                                             *
-* Date      :  10 February 2011                                                *
+* Version   :  4.7.1                                                           *
+* Date      :  3 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -50,59 +50,36 @@ namespace ClipperLib
     using ExPolygons = List<ExPolygon>;
         
     //------------------------------------------------------------------------------
-    // Int128 class (enables safe math on signed 64bit integers)
+    // Int128 struct (enables safe math on signed 64bit integers)
     // eg Int128 val1((Int64)9223372036854775807); //ie 2^63 -1
     //    Int128 val2((Int64)9223372036854775807);
     //    Int128 val3 = val1 * val2;
     //    val3.ToString => "85070591730234615847396907784232501249" (8.5e+37)
     //------------------------------------------------------------------------------
 
-    internal class Int128
+    internal struct Int128
     {
         private Int64 hi;
         private Int64 lo;
 
-        public Int128(Int64 _lo)
+        public Int128(Int64 lo)
         {
-            hi = 0;
-            if (_lo < 0)
-            {
-                lo = -_lo;
-                Negate(this);
-            }
-            else
-                lo = _lo;
+            this.lo = lo;
+            this.hi = 0;
+            if (lo < 0)
+                this.hi = -1;
         }
 
-        public Int128()
-        {
-            hi = 0;
-            lo = 0;
-        }
-
+		public Int128(Int64 lo, Int64 hi)
+		{
+			this.lo = lo;
+			this.hi = hi;
+		}
+ 
         public Int128(Int128 val)
         {
-            Assign(val);
-        }
-
-        public void Assign(Int128 val)
-        {
-            hi = val.hi; lo = val.lo;
-        }
-
-        static private void Negate(Int128 val)
-        {
-            if (val.lo == 0)
-            {
-            if( val.hi == 0) return;
-            val.lo = ~val.lo;
-            val.hi = ~val.hi +1;
-            }
-            else
-            {
-            val.lo = ~val.lo +1;
-            val.hi = ~val.hi;
-            }
+            hi = val.hi;
+            lo = val.lo;
         }
 
         public bool IsNegative()
@@ -124,9 +101,9 @@ namespace ClipperLib
 
         public override bool Equals(System.Object obj)
         {
-            if (obj == null) return false;
-            Int128 i128 = obj as Int128;
-            if (i128 == null) return false;
+            if (obj == null || !(obj is Int128))
+	            return false;
+            Int128 i128 = (Int128)obj;
             return (i128.hi == hi && i128.lo == lo);
         }
 
@@ -165,11 +142,17 @@ namespace ClipperLib
 
         public static Int128 operator- (Int128 lhs, Int128 rhs) 
         {
-            Int128 tmp = new Int128(rhs);
-            Negate(tmp);
-            lhs += tmp;
-            return lhs;
+            return lhs + -rhs;
         }
+
+		public static Int128 operator -(Int128 val)
+		{
+			if (val.lo == 0) {
+				if (val.hi == 0) return val;
+				return new Int128(~val.lo, ~val.hi + 1);
+			} 
+			return new Int128(~val.lo + 1, ~val.hi);
+		}
 
         //nb: Constructing two new Int128 objects every time we want to multiply longs  
         //is slow. So, although calling the Int128Mul method doesn't look as clean, the 
@@ -190,14 +173,14 @@ namespace ClipperLib
             UInt64 b = int1Lo * int2Lo;
             UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi; 
 
-            Int128 result = new Int128();
-            result.hi = (Int64)(a + (c >> 32));
+            Int64 lo, hi;
+            hi = (Int64)(a + (c >> 32));
 
-            result.lo = (Int64)(c << 32);
-            result.lo += (Int64)b;
-            if ((UInt64)result.lo < b) result.hi++;
-            if (negate) Negate(result);
-            return result;
+            lo = (Int64)(c << 32);
+            lo += (Int64)b;
+            if ((UInt64)lo < b) hi++;
+            var result = new Int128(lo, hi);
+            return negate ? -result : result;            
         }
 
         public static Int128 operator /(Int128 lhs, Int128 rhs)
@@ -206,10 +189,10 @@ namespace ClipperLib
                 throw new ClipperException("Int128: divide by zero");
             bool negate = (rhs.hi < 0) != (lhs.hi < 0);
             Int128 result = new Int128(lhs), denom = new Int128(rhs);
-            if (result.hi < 0) Negate(result);
-            if (denom.hi < 0) Negate(denom);
+            if (result.hi < 0) result = -result;
+            if (denom.hi < 0) denom = -denom;
             if (denom > result) return new Int128(0); //result is only a fraction of 1
-            Negate(denom);
+            denom = -denom;
 
             Int128 p = new Int128(0), p2 = new Int128(0);
             for (int i = 0; i < 128; ++i)
@@ -221,13 +204,13 @@ namespace ClipperLib
                 result.hi = result.hi << 1;
                 if (result.lo < 0) result.hi++;
                 result.lo = (Int64)result.lo << 1;
-                p2.Assign(p);
-                p += denom;
-                if (p.hi < 0) p.Assign(p2);
-                else result.lo++;
+                if (p.hi >= 0)
+                {
+                    p += denom;
+                    result.lo++;
+                }
             }
-            if (negate) Negate(result);
-            return result;
+            return negate ? -result : result;
         }
 
         public double ToDouble()
@@ -237,7 +220,7 @@ namespace ClipperLib
             if (hi < 0)
             {
                 Int128 tmp = new Int128(this);
-                Negate(tmp);
+                tmp = -tmp;
                 if (tmp.lo < 0)
                     return (double)tmp.lo - bit64 - tmp.hi * shift64;
                 else
@@ -260,7 +243,7 @@ namespace ClipperLib
         //    {
         //        Div10(val, ref tmp, ref r);
         //        builder.Insert(0, (char)('0' + r));
-        //        val.Assign(tmp);
+        //        val = tmp;
         //    }
         //    if (hi < 0) return '-' + builder.ToString();
         //    if (builder.Length == 0) return "0";
@@ -302,15 +285,10 @@ namespace ClipperLib
     //------------------------------------------------------------------------------
     //------------------------------------------------------------------------------
    
-    public class IntPoint
+    public struct IntPoint
     {
-        public Int64 X { get; set; }
-        public Int64 Y { get; set; }
-
-        public IntPoint()
-        {
-            this.X = 0; this.Y = 0;
-        }
+        public Int64 X;
+        public Int64 Y;
         
         public IntPoint(Int64 X, Int64 Y)
         {
@@ -323,27 +301,21 @@ namespace ClipperLib
         }
     }
 
-    public class IntRect
+    public struct IntRect
     {
-        public Int64 left { get; set; }
-        public Int64 top { get; set; }
-        public Int64 right { get; set; }
-        public Int64 bottom { get; set; }
-        
+        public Int64 left;
+        public Int64 top;
+        public Int64 right;
+        public Int64 bottom;
+
         public IntRect(Int64 l, Int64 t, Int64 r, Int64 b)
         {
             this.left = l; this.top = t;
             this.right = r; this.bottom = b;
         }
-
-        public IntRect()
-        {
-            this.left = 0; this.top = 0;
-            this.right = 0; this.bottom = 0;
-        }
     }
 
-    public class ExPolygon
+    public struct ExPolygon
     {
         public Polygon outer;
         public Polygons holes;
@@ -2889,7 +2861,8 @@ namespace ClipperLib
 	            op = op.next;
             }
             outRec.bottomPt = opBottom;
-
+            
+            op = opBottom;
             //find vertices either side of bottomPt (skipping duplicate points) ....
             OutPt opPrev = op.prev;
             OutPt opNext = op.next;
@@ -3202,15 +3175,18 @@ namespace ClipperLib
                 //now cleanup redundant edges too ...
                 FixupOutPolygon(outRec1);
 
-                //sort out hole vs outer and then recheck orientation ...
-                if (outRec1.isHole != outRec2.isHole &&
-                  (outRec2.bottomPt.pt.Y > outRec1.bottomPt.pt.Y ||
-                  (outRec2.bottomPt.pt.Y == outRec1.bottomPt.pt.Y &&
-                  outRec2.bottomPt.pt.X < outRec1.bottomPt.pt.X)))
-                    outRec1.isHole = outRec2.isHole;
-                if (outRec1.isHole == Orientation(outRec1, m_UseFullRange))
-                    ReversePolyPtLinks(outRec1.pts);
-                
+                if (outRec1.pts != null)
+                {
+                    //sort out hole vs outer and then recheck orientation ...
+                    if (outRec1.isHole != outRec2.isHole &&
+                      (outRec2.bottomPt.pt.Y > outRec1.bottomPt.pt.Y ||
+                      (outRec2.bottomPt.pt.Y == outRec1.bottomPt.pt.Y &&
+                      outRec2.bottomPt.pt.X < outRec1.bottomPt.pt.X)))
+                        outRec1.isHole = outRec2.isHole;
+                    if (outRec1.isHole == Orientation(outRec1, m_UseFullRange))
+                        ReversePolyPtLinks(outRec1.pts);
+                }
+
                 //delete the obsolete pointer ...
                 int OKIdx = outRec1.idx;
                 int ObsoleteIdx = outRec2.idx;
