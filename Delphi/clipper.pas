@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.1                                                           *
-* Date      :  3 March 2012                                                    *
+* Version   :  4.7.2                                                           *
+* Date      :  4 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -670,6 +670,7 @@ begin
     op := op.next;
   end;
   outRec.bottomPt := opBottom;
+  opBottom.idx := outRec.idx;
   op := opBottom;
 
   //find vertices either side of bottomPt (skipping duplicate points) ....
@@ -1401,8 +1402,7 @@ var
   tmp: POutRec;
 begin
   if assigned(outRec.bottomPt) then
-    tmp := POutRec(fPolyOutList[outRec.bottomPt.idx]).FirstLeft
-  else
+    tmp := POutRec(fPolyOutList[outRec.bottomPt.idx]).FirstLeft else
     tmp := outRec.FirstLeft;
   if outRec = tmp then raise exception.Create(rsHoleLinkError);
 
@@ -1458,8 +1458,9 @@ begin
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then
         FixHoleLinkage(outRec);
-      if (outRec.isHole = fReverseOutput) xor Orientation(outRec, fUse64BitRange) then
-        ReversePolyPtLinks(outRec.pts);
+      if (outRec.isHole = fReverseOutput) xor
+        Orientation(outRec, fUse64BitRange) then
+          ReversePolyPtLinks(outRec.pts);
     end;
 
     JoinCommonEdges(fixHoleLinkages);
@@ -3115,7 +3116,6 @@ begin
   //FixupOutPolygon() - removes duplicate points and simplifies consecutive
   //parallel edges by removing the middle vertex.
   lastOK := nil;
-
   outRec.pts := outRec.bottomPt;
   pp := outRec.pts;
   while true do

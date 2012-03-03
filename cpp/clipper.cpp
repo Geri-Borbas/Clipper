@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.1                                                           *
-* Date      :  3 March 2012                                                    *
+* Version   :  4.7.2                                                           *
+* Date      :  4 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -372,8 +372,9 @@ bool Orientation(OutRec *outRec, bool UseFullInt64Range)
     op = op->next;
   }
   outRec->bottomPt = opBottom;
-  op = opBottom;
+  opBottom->idx = outRec->idx;
 
+  op = opBottom;
   //find vertices either side of bottomPt (skipping duplicate points) ....
   OutPt *opPrev = op->prev;
   OutPt *opNext = op->next;

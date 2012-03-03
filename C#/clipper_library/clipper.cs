@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.1                                                           *
-* Date      :  3 March 2012                                                    *
+* Version   :  4.7.2                                                           *
+* Date      :  4 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1062,6 +1062,7 @@ namespace ClipperLib
             if (tmp != null) 
             {
                 if (tmp.AppendLink != null) tmp = FindAppendLinkEnd(tmp);
+
                 if (tmp == outRec) tmp = null;
                 else if (tmp.isHole)
                 {
@@ -2861,6 +2862,7 @@ namespace ClipperLib
 	            op = op.next;
             }
             outRec.bottomPt = opBottom;
+            opBottom.idx = outRec.idx;
             
             op = opBottom;
             //find vertices either side of bottomPt (skipping duplicate points) ....
