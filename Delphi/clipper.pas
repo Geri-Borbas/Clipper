@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.2                                                           *
-* Date      :  4 March 2012                                                    *
+* Version   :  4.7.3                                                           *
+* Date      :  7 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3312,7 +3312,7 @@ var
   jr, jr2: PJoinRec;
   outRec1, outRec2: POutRec;
   prev, p1, p2, p3, p4, pp1a, pp2a: POutPt;
-  pt1, pt2, pt3, pt4: TIntPoint;
+  ip, pt1, pt2, pt3, pt4: TIntPoint;
 begin
   for i := 0 to fJoinList.count -1 do
   begin
@@ -3445,6 +3445,10 @@ begin
       //make sure any holes contained by outRec2 now link to outRec1 ...
       if fixHoleLinkages then CheckHoleLinkages2(outRec1, outRec2);
 
+      //since it's possible for outRec2.bottomPt to be cleaned up
+      //in FixupOutPolygon() below, we need to keep a copy of it ...
+      ip := outRec2.bottomPt.pt;
+
       //cleanup edges ...
       FixupOutPolygon(outRec1);
 
@@ -3452,9 +3456,9 @@ begin
       begin
         //sort out hole vs outer and then recheck orientation ...
         if (outRec1.isHole <> outRec2.isHole) and
-          ((outRec2.bottomPt.pt.Y > outRec1.bottomPt.pt.Y) or
-            (outRec2.bottomPt.pt.Y = outRec1.bottomPt.pt.Y) and
-            (outRec2.bottomPt.pt.X < outRec1.bottomPt.pt.X)) then
+          ((ip.Y > outRec1.bottomPt.pt.Y) or
+            (ip.Y = outRec1.bottomPt.pt.Y) and
+            (ip.X < outRec1.bottomPt.pt.X)) then
             outRec1.isHole := outRec2.isHole;
 
         if outRec1.isHole = Orientation(outRec1, fUse64BitRange) then
