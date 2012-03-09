@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.3                                                           *
-* Date      :  7 March 2012                                                    *
+* Version   :  4.7.4                                                           *
+* Date      :  9 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -309,6 +309,7 @@ resourcestring
   rsJoinError = 'Join Output polygons error';
   rsHoleLinkError = 'HoleLinkage error';
 
+  
 //------------------------------------------------------------------------------
 // Int128 Functions ...
 //------------------------------------------------------------------------------
@@ -1464,8 +1465,9 @@ begin
     end;
 
     JoinCommonEdges(fixHoleLinkages);
+
     if fixHoleLinkages then fPolyOutList.Sort(PolySort);
-    
+
     result := true;
   except
     result := false;
@@ -3136,13 +3138,7 @@ begin
       lastOK := nil;
       tmp := pp;
       if pp = outRec.bottomPt then
-      begin
-        if tmp.prev.pt.Y > tmp.next.pt.Y then
-          outRec.bottomPt := tmp.prev else
-          outRec.bottomPt := tmp.next;
-        outRec.pts := outRec.bottomPt;
-        outRec.bottomPt.idx := outRec.idx;
-      end;
+        outRec.bottomPt := nil; //flags need for updating
       pp.prev.next := pp.next;
       pp.next.prev := pp.prev;
       pp := pp.prev;
@@ -3154,6 +3150,11 @@ begin
       if not assigned(lastOK) then lastOK := pp;
       pp := pp.next;
     end;
+  end;
+  if not assigned(outRec.bottomPt) then
+  begin
+    outRec.bottomPt := PolygonBottom(pp);
+    outRec.pts := outRec.bottomPt;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -3312,7 +3313,7 @@ var
   jr, jr2: PJoinRec;
   outRec1, outRec2: POutRec;
   prev, p1, p2, p3, p4, pp1a, pp2a: POutPt;
-  ip, pt1, pt2, pt3, pt4: TIntPoint;
+  pt1, pt2, pt3, pt4: TIntPoint;
 begin
   for i := 0 to fJoinList.count -1 do
   begin
@@ -3445,25 +3446,12 @@ begin
       //make sure any holes contained by outRec2 now link to outRec1 ...
       if fixHoleLinkages then CheckHoleLinkages2(outRec1, outRec2);
 
-      //since it's possible for outRec2.bottomPt to be cleaned up
-      //in FixupOutPolygon() below, we need to keep a copy of it ...
-      ip := outRec2.bottomPt.pt;
-
       //cleanup edges ...
       FixupOutPolygon(outRec1);
 
       if assigned(outRec1.pts) then
-      begin
-        //sort out hole vs outer and then recheck orientation ...
-        if (outRec1.isHole <> outRec2.isHole) and
-          ((ip.Y > outRec1.bottomPt.pt.Y) or
-            (ip.Y = outRec1.bottomPt.pt.Y) and
-            (ip.X < outRec1.bottomPt.pt.X)) then
-            outRec1.isHole := outRec2.isHole;
+        outRec1.isHole := not Orientation(outRec1, fUse64BitRange);
 
-        if outRec1.isHole = Orientation(outRec1, fUse64BitRange) then
-          ReversePolyPtLinks(outRec1.pts);
-      end;
 
       //delete the obsolete pointer ...
       OKIdx := outRec1.idx;

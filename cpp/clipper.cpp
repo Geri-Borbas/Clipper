@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.3                                                           *
-* Date      :  7 March 2012                                                    *
+* Version   :  4.7.4                                                           *
+* Date      :  9 March 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2632,13 +2632,7 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
       lastOK = 0;
       OutPt *tmp = pp;
       if (pp == outRec.bottomPt)
-      {
-          if (tmp->prev->pt.Y > tmp->next->pt.Y)
-            outRec.bottomPt = tmp->prev; else
-            outRec.bottomPt = tmp->next;
-          outRec.pts = outRec.bottomPt;
-          outRec.bottomPt->idx = outRec.idx;
-      }
+        outRec.bottomPt = 0; //flags need for updating
       pp->prev->next = pp->next;
       pp->next->prev = pp->prev;
       pp = pp->prev;
@@ -2650,6 +2644,10 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
       if (!lastOK) lastOK = pp;
       pp = pp->next;
     }
+  }
+  if (!outRec.bottomPt) {
+    outRec.bottomPt = PolygonBottom(pp);
+    outRec.pts = outRec.bottomPt;
   }
 }
 //------------------------------------------------------------------------------
@@ -2986,21 +2984,11 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       //make sure any holes contained by outRec2 now link to outRec1 ...
       if (fixHoleLinkages) CheckHoleLinkages2(outRec1, outRec2);
 
-      //since it's possible for outRec2->bottomPt to be cleaned up 
-      //in FixupOutPolygon() below, we need to keep a copy of it ...
-      IntPoint ip = outRec2->bottomPt->pt;
-
       //now cleanup redundant edges too ...
       FixupOutPolygon(*outRec1);
 
-      if (outRec1->pts) {
-        //sort out hole vs outer and then recheck orientation ...
-        if (outRec1->isHole != outRec2->isHole && (ip.Y > outRec1->bottomPt->pt.Y ||
-          (ip.Y == outRec1->bottomPt->pt.Y && ip.X < outRec1->bottomPt->pt.X)))
-            outRec1->isHole = outRec2->isHole;
-        if (outRec1->isHole == Orientation(outRec1, m_UseFullRange))
-          ReversePolyPtLinks(*outRec1->pts);
-      }
+      if (outRec1->pts)
+        outRec1->isHole = Orientation(outRec1, m_UseFullRange);
 
       //delete the obsolete pointer ...
       int OKIdx = outRec1->idx;
