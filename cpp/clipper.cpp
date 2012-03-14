@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.7.4                                                           *
-* Date      :  9 March 2012                                                    *
+* Date      :  15 March 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1829,8 +1829,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
             AddLocalMinPoly(e1, e2, pt);
           break;
         case ctDifference:
-          if (e1->polyType == ptClip && e1Wc2 > 0 && e2Wc2 > 0 || 
-              e1->polyType == ptSubject && e1Wc2 <= 0 && e2Wc2 <= 0)
+          if (((e1->polyType == ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
+              ((e1->polyType == ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
                 AddLocalMinPoly(e1, e2, pt);
           break;
         case ctXor:
