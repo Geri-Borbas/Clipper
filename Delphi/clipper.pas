@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.4                                                           *
-* Date      :  15 March 2012                                                   *
+* Version   :  4.7.5                                                           *
+* Date      :  28 March 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -836,7 +836,7 @@ begin
     result := Int128Equal( Int128Mul(pt1.Y-pt2.Y, pt3.X-pt4.X),
       Int128Mul(pt1.X-pt2.X, pt3.Y-pt4.Y))
   else
-    result := (pt1.Y-pt2.Y * pt3.X-pt4.X) = (pt1.X-pt2.X * pt3.Y-pt4.Y);
+    result := (pt1.Y-pt2.Y)*(pt3.X-pt4.X) = (pt1.X-pt2.X)*(pt3.Y-pt4.Y);
 end;
 //---------------------------------------------------------------------------
 
@@ -1464,7 +1464,8 @@ begin
           ReversePolyPtLinks(outRec.pts);
     end;
 
-    JoinCommonEdges(fixHoleLinkages);
+    if fJoinList.count > 0 then
+      JoinCommonEdges(fixHoleLinkages);
 
     if fixHoleLinkages then fPolyOutList.Sort(PolySort);
 
@@ -3018,7 +3019,7 @@ begin
       end
       else if (e.outIdx >= 0) and assigned(e.nextInAEL) and
         (e.nextInAEL.outIdx >= 0) and (e.nextInAEL.ycurr > e.nextInAEL.ytop) and
-        (e.nextInAEL.ycurr < e.nextInAEL.ybot) and
+        (e.nextInAEL.ycurr <= e.nextInAEL.ybot) and
         (e.nextInAEL.xcurr = e.xbot) and (e.nextInAEL.ycurr = e.ybot) and
         SlopesEqual(IntPoint(e.xbot,e.ybot), IntPoint(e.xtop, e.ytop),
           IntPoint(e.xbot,e.ybot),
@@ -3450,8 +3451,11 @@ begin
       FixupOutPolygon(outRec1);
 
       if assigned(outRec1.pts) then
+      begin
         outRec1.isHole := not Orientation(outRec1, fUse64BitRange);
-
+        if outRec1.isHole and not assigned(outRec1.FirstLeft) then
+          outRec1.FirstLeft := outRec2.FirstLeft;
+      end;
 
       //delete the obsolete pointer ...
       OKIdx := outRec1.idx;
@@ -3750,7 +3754,6 @@ begin
     free;
   end;
 end;
-//------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------

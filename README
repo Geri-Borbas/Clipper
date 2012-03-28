@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v4.7.5 - 28 March 2012
+Fixed a recently introduced bug that occasionally caused an 
+unhandled exception in C++ and C# translations. 
+
 v4.7.4 - 15 March 2012
 * Bugfix: Another minor bugfix.
 

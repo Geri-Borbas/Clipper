@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.4                                                           *
-* Date      :  15 March 2012                                                   *
+* Version   :  4.7.5                                                           *
+* Date      :  28 March 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2593,7 +2593,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
       }
       else if (e->outIdx >= 0 && e->nextInAEL && e->nextInAEL->outIdx >= 0 &&
         e->nextInAEL->ycurr > e->nextInAEL->ytop &&
-        e->nextInAEL->ycurr < e->nextInAEL->ybot &&
+        e->nextInAEL->ycurr <= e->nextInAEL->ybot &&
         e->nextInAEL->xcurr == e->xbot && e->nextInAEL->ycurr == e->ybot &&
         SlopesEqual(IntPoint(e->xbot,e->ybot), IntPoint(e->xtop, e->ytop),
           IntPoint(e->xbot,e->ybot),
@@ -2988,7 +2988,11 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       FixupOutPolygon(*outRec1);
 
       if (outRec1->pts)
-        outRec1->isHole = Orientation(outRec1, m_UseFullRange);
+      {
+        outRec1->isHole = !Orientation(outRec1, m_UseFullRange);
+        if (outRec1->isHole && !outRec1->FirstLeft)
+          outRec1->FirstLeft = outRec2->FirstLeft;
+      }
 
       //delete the obsolete pointer ...
       int OKIdx = outRec1->idx;
