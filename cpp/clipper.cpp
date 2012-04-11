@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.5                                                           *
-* Date      :  28 March 2012                                                   *
+* Version   :  4.7.6                                                           *
+* Date      :  11 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -315,15 +315,10 @@ bool Orientation(const Polygon &poly)
 {
   int highI = (int)poly.size() -1;
   if (highI < 2) return false;
-  bool UseFullInt64Range = false;
 
   int j = 0, jplus, jminus;
   for (int i = 0; i <= highI; ++i)
   {
-    if (Abs(poly[i].X) > hiRange || Abs(poly[i].Y) > hiRange)
-    throw "Coordinate exceeds range bounds.";
-    if (Abs(poly[i].X) > loRange || Abs(poly[i].Y) > loRange)
-    UseFullInt64Range = true;
     if (poly[i].Y < poly[j].Y) continue;
     if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
   };
@@ -339,16 +334,18 @@ bool Orientation(const Polygon &poly)
   vec2.X = poly[jplus].X - poly[j].X;
   vec2.Y = poly[jplus].Y - poly[j].Y;
 
-  if (UseFullInt64Range)
+  if (Abs(vec1.X) > loRange || Abs(vec1.Y) > loRange ||
+    Abs(vec2.X) > loRange || Abs(vec2.Y) > loRange)
   {
+    if (Abs(vec1.X) > hiRange || Abs(vec1.Y) > hiRange ||
+      Abs(vec2.X) > hiRange || Abs(vec2.Y) > hiRange)
+        throw "Coordinate exceeds range bounds.";
     Int128 cross = Int128(vec1.X) * Int128(vec2.Y) -
       Int128(vec2.X) * Int128(vec1.Y);
     return cross > 0;
   }
   else
-  {
     return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
-  }
 }
 //------------------------------------------------------------------------------
 

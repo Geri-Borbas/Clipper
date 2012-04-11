@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.5                                                           *
-* Date      :  28 March 2012                                                   *
+* Version   :  4.7.6                                                           *
+* Date      :  11 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -82,12 +82,17 @@ namespace ClipperLib
             lo = val.lo;
         }
 
-        public bool IsNegative()
+        public bool IsPositive()
         {
-            return hi < 0;       
+            return hi > 0;
         }
 
-        public static bool operator== (Int128 val1, Int128 val2)
+        public bool IsNegative()
+        {
+            return hi < 0;
+        }
+
+        public static bool operator ==(Int128 val1, Int128 val2)
         {
             if ((object)val1 == (object)val2) return true;
             else if ((object)val1 == null || (object)val2 == null) return false;
@@ -2815,17 +2820,11 @@ namespace ClipperLib
         {
             int highI = poly.Count -1;
             if (highI < 2) return false;
-            bool UseFullInt64Range = false;
-
             int j = 0, jplus, jminus;
             for (int i = 0; i <= highI; ++i) 
             {
-            if (Math.Abs(poly[i].X) > hiRange || Math.Abs(poly[i].Y) > hiRange)
-	            throw new ClipperException("Coordinate exceeds range bounds.");
-            if (Math.Abs(poly[i].X) > loRange || Math.Abs(poly[i].Y) > loRange) 
-	            UseFullInt64Range = true;
-            if (poly[i].Y < poly[j].Y) continue;
-            if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
+                if (poly[i].Y < poly[j].Y) continue;
+                if ((poly[i].Y > poly[j].Y || poly[i].X < poly[j].X)) j = i;
             };
             if (j == highI) jplus = 0;
             else jplus = j +1;
@@ -2835,16 +2834,17 @@ namespace ClipperLib
             //get cross product of vectors of the edges adjacent to highest point ...
             IntPoint vec1 = new IntPoint(poly[j].X - poly[jminus].X, poly[j].Y - poly[jminus].Y);
             IntPoint vec2 = new IntPoint(poly[jplus].X - poly[j].X, poly[jplus].Y - poly[j].Y);
-
-            if (UseFullInt64Range)
+            if (Math.Abs(vec1.X) > loRange || Math.Abs(vec1.Y) > loRange ||
+                Math.Abs(vec2.X) > loRange || Math.Abs(vec2.Y) > loRange)
             {
+                if (Math.Abs(vec1.X) > hiRange || Math.Abs(vec1.Y) > hiRange ||
+                    Math.Abs(vec2.X) > hiRange || Math.Abs(vec2.Y) > hiRange)
+                    throw new ClipperException("Coordinate exceeds range bounds.");
                 Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
-                return cross.IsNegative();
+                return cross.IsPositive();
             }
             else
-            {
-                return (vec1.X * vec2.Y - vec2.X * vec1.Y) < 0;
-            }
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
         }
         //------------------------------------------------------------------------------
 
@@ -2882,9 +2882,7 @@ namespace ClipperLib
                 return !cross.IsNegative();
             }
             else
-            {
                 return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
-            }
 
         }
         //------------------------------------------------------------------------------

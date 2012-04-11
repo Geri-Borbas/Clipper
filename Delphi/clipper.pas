@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.5                                                           *
-* Date      :  28 March 2012                                                   *
+* Version   :  4.7.6                                                           *
+* Date      :  11 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -612,24 +612,18 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-function Orientation(const pts: TPolygon): boolean; 
+function Orientation(const pts: TPolygon): boolean;
 var
   i, j, jplus, jminus, highI: integer;
-  UseFullInt64Range: boolean;
   vec1, vec2: TIntPoint;
   cross: TInt128;
 begin
   result := true;
   highI := high(pts);
   if highI < 2 then exit;
-  UseFullInt64Range := false;
   j := 0;
   for i := 0 to highI do
   begin
-    if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
-      raise exception.Create(rsInvalidInt);
-    if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
-      UseFullInt64Range := true;
     if (pts[i].Y < pts[j].Y) then continue;
     if ((pts[i].Y > pts[j].Y) or (pts[i].X < pts[j].X)) then j := i;
   end;
@@ -638,17 +632,22 @@ begin
   if j = 0 then jminus := highI
   else jminus := j-1;
 
-  //get cross product of vectors of the edges adjacent to highest point ...
+  //get cross product of vectors of edges adjacent the point with largest Y ...
   vec1.X := pts[j].X - pts[jminus].X;
   vec1.Y := pts[j].Y - pts[jminus].Y;
   vec2.X := pts[jplus].X - pts[j].X;
   vec2.Y := pts[jplus].Y - pts[j].Y;
-  if UseFullInt64Range then
+
+  if (abs(vec1.X) > loRange) or (abs(vec1.Y) > loRange) or
+    (abs(vec2.X) > loRange) or (abs(vec2.Y) > loRange) then
   begin
+    if (abs(vec1.X) > hiRange) or (abs(vec1.Y) > hiRange) or
+      (abs(vec2.X) > hiRange) or (abs(vec2.Y) > hiRange) then
+        raise exception.Create(rsInvalidInt);
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
     result := cross.hi > 0;
   end else
-    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
+    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
 end;
 //------------------------------------------------------------------------------
 
