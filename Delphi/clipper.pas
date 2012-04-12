@@ -288,7 +288,6 @@ implementation
 type
   TDoublePoint = record X, Y: double; end;
   TArrayOfDoublePoint = array of TDoublePoint;
-  TRangeTest = (rtLo, rtHi, rtError);
 
 const
   horizontal: double = -3.4e+38;
@@ -557,19 +556,18 @@ end;
 // Miscellaneous Functions ...
 //------------------------------------------------------------------------------
 
-function RangeTest(const pts: TPolygon): TRangeTest;
+function FullRangeNeeded(const pts: TPolygon): boolean;
 var
   i: integer;
 begin
-  result := rtLo;
+  result := false;
   for i := 0 to high(pts) do
+  begin
     if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
-    begin
-      result := rtError;
-      break;
-    end
+      raise exception.Create(rsInvalidInt)
     else if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
-      result := rtHi;
+      result := true;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -700,19 +698,11 @@ function Area(const pts: TPolygon): double;
 var
   i, highI: integer;
   a: TInt128;
-  UseFullInt64Range: boolean;
-  rt: TRangeTest;
 begin
   result := 0;
   highI := high(pts);
   if highI < 2 then exit;
-  rt := RangeTest(pts);
-  case rt of
-    rtLo: UseFullInt64Range := false;
-    rtHi: UseFullInt64Range := true;
-    else raise exception.Create(rsInvalidInt);
-  end;
-  if UseFullInt64Range then
+  if FullRangeNeeded(pts) then
   begin
     a := Int128Sub(Int128Mul(pts[highI].X, pts[0].Y),
       Int128Mul(pts[0].X, pts[highI].Y));
@@ -1046,6 +1036,7 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
         //    This ensures 'local minima' are always on the left of horizontals.
         if (e.next.ytop < e.ytop) and (e.next.xbot > e.prev.xbot) then break;
         if (e.xtop <> e.prev.xbot) then SwapX(e);
+        //e.windDelta := 0; safe option to consider when redesigning
         e.nextInLML := e.prev;
       end
       else if (e.ybot = e.prev.ybot) then break
@@ -1075,7 +1066,7 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
     newLm.rightBound.side := esRight;
 
     InsertLocalMinima(newLm);
-
+    //now process the ascending bound ....
     repeat
       if (e.next.ytop = e.ytop) and not (e.next.dx = horizontal) then break;
       e.nextInLML := e.next;
@@ -1100,16 +1091,16 @@ begin
   setlength(pg, len);
   pg[0] := polygon[0];
   j := 0;
+  //1. check that coordinate values are within the valid range, and
+  //2. remove duplicate points and co-linear points
   if fUse64BitRange then maxVal := hiRange else maxVal := loRange;
   for i := 1 to len-1 do
   begin
     if ((abs(polygon[i].X) > maxVal) or (abs(polygon[i].Y) > maxVal)) then
     begin
-      if fUse64BitRange then
+      if ((abs(polygon[i].X) > hiRange) or (abs(polygon[i].Y) > hiRange)) then
         raise exception.Create(rsInvalidInt);
       maxVal := hiRange;
-      if ((abs(polygon[i].X) > maxVal) or (abs(polygon[i].Y) > maxVal)) then
-        raise exception.Create(rsInvalidInt);
       fUse64BitRange := true;
     end;
     if PointsEqual(pg[j], polygon[i]) then continue
@@ -1121,8 +1112,10 @@ begin
   end;
   if (j < 2) then exit;
 
+  //now remove duplicate points and co-linear edges at the loop around of the
+  //start and end coordinates ...
   len := j+1;
-  while true do
+  while len > 2 do
   begin
     //nb: test for point equality before testing slopes ...
     if PointsEqual(pg[j], pg[0]) then dec(j)
@@ -1137,10 +1130,10 @@ begin
     begin
       for i := 2 to j do pg[i-1] := pg[i];
       dec(j);
-    end;
-    //exit loop if nothing is changed or there are too few vertices ...
-    if (j = len -1) or (j < 2) then break;
-    len := j +1;
+    end
+    else
+      break;
+    dec(len);
   end;
   if len < 3 then exit;
   result := true;
@@ -1156,8 +1149,9 @@ begin
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
   InitEdge(@edges[0], @edges[1], @edges[len-1], pg[0]);
 
-  //reset xcurr & ycurr and find 'eHighest' (given the Y axis coordinates
-  //increase downward so the 'highest' edge will have the smallest ytop) ...
+  //reset xcurr & ycurr and find the 'highest' edge. (nb: since I'm much more
+  //familiar with positive downwards Y axes, 'highest' here will be the edge
+  //with the *smallest* ytop.)
   e := @edges[0];
   eHighest := e;
   repeat

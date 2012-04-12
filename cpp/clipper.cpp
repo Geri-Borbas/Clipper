@@ -53,7 +53,6 @@ static long64 const loRange = 1518500249;            //sqrt(2^63 -1)/2
 static long64 const hiRange = 6521908912666391106LL; //sqrt(2^127 -1)/2
 static double const pi = 3.141592653589793238;
 enum Direction { dRightToLeft, dLeftToRight };
-enum RangeTest { rtLo, rtHi, rtError };
 
 #define HORIZONTAL (-1.0E+40)
 #define TOLERANCE (1.0e-20)
@@ -297,15 +296,15 @@ private:
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-RangeTest TestRange(const Polygon &pts)
+bool FullRangeNeeded(const Polygon &pts)
 {
-  RangeTest result = rtLo;
+  bool result = false;
   for (Polygon::size_type i = 0; i <  pts.size(); ++i)
   {
     if (Abs(pts[i].X) > hiRange || Abs(pts[i].Y) > hiRange)
-        return rtError;
+        throw "Coordinate exceeds range bounds.";
       else if (Abs(pts[i].X) > loRange || Abs(pts[i].Y) > loRange)
-        result = rtHi;
+        result = true;
   }
   return result;
 }
@@ -397,20 +396,7 @@ double Area(const Polygon &poly)
 {
   int highI = (int)poly.size() -1;
   if (highI < 2) return 0;
-  bool UseFullInt64Range;
-  RangeTest rt = TestRange(poly);
-  switch (rt) {
-    case rtLo:
-      UseFullInt64Range = false;
-      break;
-    case rtHi:
-      UseFullInt64Range = true;
-      break;
-    default:
-      throw "Coordinate exceeds range bounds.";
-  }
-
-  if (UseFullInt64Range) {
+  if (FullRangeNeeded(poly)) {
     Int128 a(0);
     a = (Int128(poly[highI].X) * Int128(poly[0].Y)) -
       Int128(poly[0].X) * Int128(poly[highI].Y);
@@ -803,11 +789,9 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
   {
     if (Abs(pg[i].X) > maxVal || Abs(pg[i].Y) > maxVal)
     {
-      if (m_UseFullRange)
+      if (Abs(pg[i].X) > hiRange || Abs(pg[i].Y) > hiRange)
         throw "Coordinate exceeds range bounds";
       maxVal = hiRange;
-      if (Abs(pg[i].X) > maxVal || Abs(pg[i].Y) > maxVal)
-        throw "Coordinate exceeds range bounds";
       m_UseFullRange = true;
     }
 
@@ -821,7 +805,7 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
   if (j < 2) return false;
 
   len = j+1;
-  for (;;)
+  while (len > 2)
   {
     //nb: test for point equality before testing slopes ...
     if (PointsEqual(p[j], p[0])) j--;
@@ -834,9 +818,8 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
       for (int i = 2; i <= j; ++i) p[i-1] = p[i];
       j--;
     }
-    //exit loop if nothing is changed or there are too few vertices ...
-    if (j == len-1 || j < 2) break;
-    len = j +1;
+    else break;
+    len--;
   }
   if (len < 3) return false;
 

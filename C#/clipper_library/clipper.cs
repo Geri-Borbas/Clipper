@@ -40,7 +40,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text; //for Int128.AsString() & StringBuilder
+//using System.Text; //for Int128.AsString() & StringBuilder
 
 namespace ClipperLib
 {
@@ -338,7 +338,6 @@ namespace ClipperLib
 
     internal enum EdgeSide { esLeft, esRight };
     internal enum Direction { dRightToLeft, dLeftToRight };
-    internal enum RangeTest {rtLo, rtHi, rtError};
     [Flags]
     internal enum Protects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
 
@@ -586,11 +585,9 @@ namespace ClipperLib
                 if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
                 if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
                 {
-                  if (m_UseFullRange) 
+                    if (Math.Abs(pg[i].X) > hiRange || Math.Abs(pg[i].Y) > hiRange)
                     throw new ClipperException("Coordinate exceeds range bounds");
                   maxVal = hiRange;
-                  if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
-                    throw new ClipperException("Coordinate exceeds range bounds");
                   m_UseFullRange = true;
                 }
 
@@ -606,21 +603,20 @@ namespace ClipperLib
             if (j < 2) return false;
 
             len = j+1;
-            for (;;)
+            while (len > 2)
             {
-            //nb: test for point equality before testing slopes ...
-            if (PointsEqual(p[j], p[0])) j--;
-            else if (PointsEqual(p[0], p[1]) || SlopesEqual(p[j], p[0], p[1], m_UseFullRange))
-                p[0] = p[j--];
-            else if (SlopesEqual(p[j-1], p[j], p[0], m_UseFullRange)) j--;
-            else if (SlopesEqual(p[0], p[1], p[2], m_UseFullRange))
-            {
-                for (int i = 2; i <= j; ++i) p[i-1] = p[i];
-                j--;
-            }
-            //exit loop if nothing is changed or there are too few vertices ...
-            if (j == len-1 || j < 2) break;
-            len = j +1;
+                //nb: test for point equality before testing slopes ...
+                if (PointsEqual(p[j], p[0])) j--;
+                else if (PointsEqual(p[0], p[1]) || SlopesEqual(p[j], p[0], p[1], m_UseFullRange))
+                    p[0] = p[j--];
+                else if (SlopesEqual(p[j - 1], p[j], p[0], m_UseFullRange)) j--;
+                else if (SlopesEqual(p[0], p[1], p[2], m_UseFullRange))
+                {
+                    for (int i = 2; i <= j; ++i) p[i - 1] = p[i];
+                    j--;
+                }
+                else break;
+                len--;
             }
             if (len < 3) return false;
 
@@ -2802,15 +2798,15 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private static RangeTest TestRange(Polygon pts)
+        private static bool FullRangeNeeded(Polygon pts)
         {
-            RangeTest result = ClipperLib.RangeTest.rtLo;
+            bool result = false;
             for (int i = 0; i <  pts.Count; i++) 
             {
                 if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
-                  return ClipperLib.RangeTest.rtError;
+                    throw new ClipperException("Coordinate exceeds range bounds.");
                 else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
-                  result = ClipperLib.RangeTest.rtHi;
+                  result = true;
             }
             return result;
         }
@@ -3204,17 +3200,7 @@ namespace ClipperLib
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            bool UseFullInt64Range = false;
-            RangeTest rt = TestRange(poly);
-            switch (rt)
-            {
-                case RangeTest.rtHi: 
-                    UseFullInt64Range = true; 
-                    break;
-                case RangeTest.rtError: 
-                    throw new ClipperException("Coordinate exceeds range bounds.");
-            }
-            if (UseFullInt64Range)
+            if (FullRangeNeeded(poly))
             {
                 Int128 a = new Int128(0);
                 a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
