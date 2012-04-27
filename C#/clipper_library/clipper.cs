@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.6                                                           *
-* Date      :  11 April 2012                                                   *
+* Version   :  4.8.0                                                           *
+* Date      :  27 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -336,11 +336,12 @@ namespace ClipperLib
     public enum JoinType { jtSquare, jtRound, jtMiter };
 
 
-    internal enum EdgeSide { esLeft, esRight };
-    internal enum Direction { dRightToLeft, dLeftToRight };
+    [Flags]
+    internal enum EdgeSide { esNeither = 0, esLeft = 1, esRight = 2, esBoth = 3 };
     [Flags]
     internal enum Protects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
-
+    internal enum Direction { dRightToLeft, dLeftToRight };
+    
     internal class TEdge {
         public Int64 xbot;
         public Int64 ybot;
@@ -387,7 +388,6 @@ namespace ClipperLib
         public Scanbeam next;
     };
 
-
     internal class OutRec
     {
         public int idx;
@@ -396,8 +396,8 @@ namespace ClipperLib
         public OutRec AppendLink;
         public OutPt pts;
         public OutPt bottomPt;
-        public TEdge bottomE1;
-        public TEdge bottomE2;
+        public OutPt bottomFlag;
+        public EdgeSide sides;
     };
 
     internal class OutPt
@@ -1108,6 +1108,15 @@ namespace ClipperLib
                   FixupOutPolygon(outRec);
                   if (outRec.pts == null) continue;
                   if (outRec.isHole && fixHoleLinkages) FixHoleLinkage(outRec);
+
+                  if (outRec.bottomPt == outRec.bottomFlag &&
+                    (Orientation(outRec, m_UseFullRange) !=
+                      (Area(outRec, m_UseFullRange) > 0)))
+                  {
+                      DisposeBottomPt(outRec);
+                      FixupOutPolygon(outRec);
+                  }
+
                   if (outRec.isHole == (m_ReverseOutput ^ Orientation(outRec, m_UseFullRange)))
                     ReversePolyPtLinks(outRec.pts);
                 }
@@ -1132,15 +1141,27 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         private void DisposeAllPolyPts(){
-          for (int i = 0; i < m_PolyOuts.Count; ++i) DisposeOutRec(i, false);
+          for (int i = 0; i < m_PolyOuts.Count; ++i) DisposeOutRec(i);
           m_PolyOuts.Clear();
         }
         //------------------------------------------------------------------------------
 
-        void DisposeOutRec(int index, bool ignorePts)
+        void DisposeBottomPt(OutRec outRec)
+        {
+          OutPt next = outRec.bottomPt.next;
+          OutPt prev = outRec.bottomPt.prev;
+          if (outRec.pts == outRec.bottomPt) outRec.pts = next;
+          outRec.bottomPt = null;
+          next.prev = prev;
+          prev.next = next;
+          outRec.bottomPt = next;
+        }
+        //------------------------------------------------------------------------------
+
+        void DisposeOutRec(int index)
         {
           OutRec outRec = m_PolyOuts[index];
-          if (!ignorePts && outRec.pts != null) DisposeOutPts(outRec.pts);
+          if (outRec.pts != null) DisposeOutPts(outRec.pts);
           outRec = null;
           m_PolyOuts[index] = null;
         }
@@ -1623,7 +1644,7 @@ namespace ClipperLib
 
         private void AddLocalMaxPoly(TEdge e1, TEdge e2, IntPoint pt)
         {
-            AddOutPt(e1, null, pt);
+            AddOutPt(e1, pt);
             if (e1.outIdx == e2.outIdx)
             {
                 e1.outIdx = -1;
@@ -1638,7 +1659,7 @@ namespace ClipperLib
             TEdge e, prevE;
             if (e2.dx == horizontal || (e1.dx > e2.dx))
             {
-                AddOutPt(e1, e2, pt);
+                AddOutPt(e1, pt);
                 e2.outIdx = e1.outIdx;
                 e1.side = EdgeSide.esLeft;
                 e2.side = EdgeSide.esRight;
@@ -1650,7 +1671,7 @@ namespace ClipperLib
             }
             else
             {
-                AddOutPt(e2, e1, pt);
+                AddOutPt(e2, pt);
                 e1.outIdx = e2.outIdx;
                 e1.side = EdgeSide.esRight;
                 e2.side = EdgeSide.esLeft;
@@ -1678,11 +1699,36 @@ namespace ClipperLib
           result.AppendLink = null;
           result.pts = null;
           result.bottomPt = null;
+          result.bottomFlag = null;
+          result.sides = EdgeSide.esNeither;
           return result;
         }
         //------------------------------------------------------------------------------
 
-        private void AddOutPt(TEdge e, TEdge altE, IntPoint pt)
+        private bool AlmostTouching(IntPoint pt1, IntPoint pt2, IntPoint botPt)
+        {
+          if (Math.Abs(pt1.Y - botPt.Y) + Math.Abs(pt1.X - botPt.X) < 2 ||
+            Math.Abs(pt2.Y - botPt.Y) + Math.Abs(pt2.X - botPt.X) < 2) return true;
+
+          if (pt2.Y > pt1.Y)
+          {
+            if ((pt2.Y == botPt.Y) || ((pt2.X > botPt.X) != (pt2.X < pt1.X)) ||
+              pt2.X == botPt.X || pt2.X == pt1.X) return false;
+            double dx = (double)(botPt.X - pt1.X)/(botPt.Y - pt1.Y);
+            return Math.Abs(botPt.X + dx*(pt2.Y-botPt.Y) - pt2.X) < 0.5;
+          }
+          else if (pt2.Y < pt1.Y)
+          {
+            if ((pt1.Y == botPt.Y) || ((pt1.X > botPt.X) != (pt1.X < pt2.X)) ||
+              pt1.X == botPt.X || pt1.X == pt2.X) return false;
+            double dx = (double)(botPt.X - pt2.X)/(botPt.Y - pt2.Y);
+            return Math.Abs(botPt.X + dx * (pt1.Y - botPt.Y) - pt1.X) < 0.5;
+          }
+          return false;
+        }
+        //------------------------------------------------------------------------------
+
+        private void AddOutPt(TEdge e, IntPoint pt)
         {
           bool ToFront = (e.side == EdgeSide.esLeft);
           if(  e.outIdx < 0 )
@@ -1694,8 +1740,6 @@ namespace ClipperLib
               OutPt op = new OutPt();
               outRec.pts = op;
               outRec.bottomPt = op;
-              outRec.bottomE1 = e;
-              outRec.bottomE2 = altE;
               op.pt = pt;
               op.idx = outRec.idx;
               op.next = op;
@@ -1704,19 +1748,50 @@ namespace ClipperLib
           } else
           {
               OutRec outRec = m_PolyOuts[e.outIdx];
-              OutPt op = outRec.pts;
+              OutPt op = outRec.pts, op2, opBot;
               if (ToFront && PointsEqual(pt, op.pt) || 
                   (!ToFront && PointsEqual(pt, op.prev.pt))) return;
-              OutPt op2 = new OutPt();
+
+              if ((e.side | outRec.sides) != outRec.sides)
+              {
+                  outRec.sides = (EdgeSide)(outRec.sides | e.side);
+                  if (outRec.sides == EdgeSide.esBoth)
+                  {
+                    //A vertex from each side has now been added.
+                    //Vertices of one side of an output polygon are quite commonly close to
+                    //or even 'touching' edges of the other side of the output polygon.
+                    //Very occasionally vertices from one side can 'cross' an edge on the
+                    //the other side. The distance 'crossed' is always less that a unit
+                    //and is purely an artefact of coordinate rounding. Nevertheless, this
+                    //results in very tiny self-intersections. Because of the way
+                    //orientation is calculated, even tiny self-intersections can cause
+                    //the Orientation function to return the wrong result. Therefore, it's
+                    //important to ensure that any self-intersections close to BottomPt are
+                    //detected and removed before orientation is assigned.
+
+                    //get the bottom-most point and its 2 adjacent points ...
+                    if (ToFront)
+                    {
+                      opBot = outRec.pts;
+                      op2 = opBot.next;
+                    } else
+                    {
+                      opBot = outRec.pts.prev;
+                      op2 = opBot.prev;
+                    }
+                    //if a vertex is very close to an adjacent edge then flag the polygon
+                    //for checking later  ...
+                    if (AlmostTouching(pt, op2.pt, opBot.pt))
+                      outRec.bottomFlag = opBot;
+                  }
+              }
+
+              op2 = new OutPt();
               op2.pt = pt;
               op2.idx = outRec.idx;
               if (op2.pt.Y == outRec.bottomPt.pt.Y &&
                 op2.pt.X < outRec.bottomPt.pt.X)
-              {
                   outRec.bottomPt = op2;
-                  outRec.bottomE1 = e;
-                  outRec.bottomE2 = altE;
-              }
               op2.next = op;
               op2.prev = op.prev;
               op2.prev.next = op2;
@@ -1725,7 +1800,6 @@ namespace ClipperLib
           }
         }
         //------------------------------------------------------------------------------
-
 
         internal void SwapPoints(ref IntPoint pt1, ref IntPoint pt2)
         {
@@ -1844,6 +1918,66 @@ namespace ClipperLib
         }
         //---------------------------------------------------------------------------
 
+        private bool FirstIsBottomPt(OutPt btmPt1, OutPt btmPt2)
+        {
+          OutPt p = btmPt1.prev;
+          while (PointsEqual(p.pt, btmPt1.pt)) p = p.prev;
+          double dx1p = GetDx(btmPt1.pt, p.pt);
+          p = btmPt1.next;
+          while (PointsEqual(p.pt, btmPt1.pt)) p = p.next;
+          double dx1n = GetDx(btmPt1.pt, p.pt);
+
+          p = btmPt2.prev;
+          while (PointsEqual(p.pt, btmPt2.pt)) p = p.prev;
+          double dx2p = GetDx(btmPt2.pt, p.pt);
+          p = btmPt2.next;
+          while (PointsEqual(p.pt, btmPt2.pt)) p = p.next;
+          double dx2n = GetDx(btmPt2.pt, p.pt);
+          if (dx1p != dx2n && dx1p != dx2p)
+            return ((dx1p < dx2n) == (dx1p < dx2p));
+          else
+            return ((dx1n < dx2n) == (dx1n < dx2p));
+        }
+        //------------------------------------------------------------------------------
+
+        private OutPt GetBottomPt(OutPt pp)
+        {
+          OutPt dups = null;
+          OutPt p = pp.next;
+          while (p != pp)
+          {
+            if (p.pt.Y > pp.pt.Y)
+            {
+              pp = p;
+              dups = null;
+            }
+            else if (p.pt.Y == pp.pt.Y && p.pt.X <= pp.pt.X)
+            {
+              if (p.pt.X < pp.pt.X)
+              {
+                  dups = null;
+                  pp = p;
+              } else
+              {
+                if (p.next != pp && p.prev != pp) dups = p;
+              }
+            }
+            p = p.next;
+          }
+          if (dups != null)
+          {
+            //there appears to be at least 2 vertices at bottomPt so ...
+            while (dups != p)
+            {
+              if (!FirstIsBottomPt(p, dups)) pp = dups;
+              dups = dups.next;
+              while (!PointsEqual(dups.pt, pp.pt)) dups = dups.next;
+            }
+          }
+          return pp;
+        }
+        //------------------------------------------------------------------------------
+
         private OutRec GetLowermostRec(OutRec outRec1, OutRec outRec2)
         {
             //work out which polygon fragment has the correct hole state ...
@@ -1853,21 +1987,10 @@ namespace ClipperLib
             else if (bPt1.pt.Y < bPt2.pt.Y) return outRec2;
             else if (bPt1.pt.X < bPt2.pt.X) return outRec1;
             else if (bPt1.pt.X > bPt2.pt.X) return outRec2;
-            else if (outRec1.bottomE2 == null) return outRec2;
-            else if (outRec2.bottomE2 == null) return outRec1;
-            else
-            {
-                Int64 y1 = Math.Max(outRec1.bottomE1.ybot, outRec1.bottomE2.ybot);
-                Int64 y2 = Math.Max(outRec2.bottomE1.ybot, outRec2.bottomE2.ybot);
-                if (y2 == y1 || (y1 > bPt1.pt.Y && y2 > bPt1.pt.Y))
-                {
-                  double dx1 = Math.Max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
-                  double dx2 = Math.Max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
-                  if (dx2 > dx1) return outRec2; else return outRec1;
-                }
-                else if (y2 > y1) return outRec2;
-                else return outRec1;
-            }
+            else if (bPt1.next == bPt1) return outRec2;
+            else if (bPt2.next == bPt2) return outRec1;
+            else if (FirstIsBottomPt(bPt1, bPt2)) return outRec1;
+            else return outRec2;
         }
         //------------------------------------------------------------------------------
 
@@ -1877,21 +2000,17 @@ namespace ClipperLib
           OutRec outRec1 = m_PolyOuts[e1.outIdx];
           OutRec outRec2 = m_PolyOuts[e2.outIdx];
 
-          //work out which polygon fragment has the correct hole state ...
-          OutRec holeStateRec = GetLowermostRec(outRec1, outRec2);
-
-          //fixup hole status ...
-          if (holeStateRec == outRec2)
-            outRec1.isHole = outRec2.isHole; 
-          else
-            outRec2.isHole = outRec1.isHole;
+          OutRec holeStateRec;
+          if (outRec1.FirstLeft == outRec2) holeStateRec = outRec2;
+          else if (outRec2.FirstLeft == outRec1) holeStateRec = outRec1;
+          else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
           OutPt p1_lft = outRec1.pts;
           OutPt p1_rt = p1_lft.prev;
           OutPt p2_lft = outRec2.pts;
           OutPt p2_rt = p2_lft.prev;
 
-        EdgeSide side;
+          EdgeSide side;
           //join e2 poly onto e1 poly and delete pointers to e2 ...
           if(  e1.side == EdgeSide.esLeft )
           {
@@ -1939,10 +2058,9 @@ namespace ClipperLib
           {
               outRec1.bottomPt = outRec2.bottomPt;
               outRec1.bottomPt.idx = outRec1.idx;
-              outRec1.bottomE1 = outRec2.bottomE1;
-              outRec1.bottomE2 = outRec2.bottomE2;
               if (outRec2.FirstLeft != outRec1)
                   outRec1.FirstLeft = outRec2.FirstLeft;
+              outRec1.isHole = outRec2.isHole;
           }
           outRec2.pts = null;
           outRec2.bottomPt = null;
@@ -2014,7 +2132,7 @@ namespace ClipperLib
 
         private void DoEdge1(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge1, edge2, pt);
+            AddOutPt(edge1, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -2022,7 +2140,7 @@ namespace ClipperLib
 
         private void DoEdge2(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge2, edge1, pt);
+            AddOutPt(edge2, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -2030,8 +2148,8 @@ namespace ClipperLib
 
         private void DoBothEdges(TEdge edge1, TEdge edge2, IntPoint pt)
         {
-            AddOutPt(edge1, edge2, pt);
-            AddOutPt(edge2, edge1, pt);
+            AddOutPt(edge1, pt);
+            AddOutPt(edge2, pt);
             SwapSides(edge1, edge2);
             SwapPolyIndexes(edge1, edge2);
         }
@@ -2356,7 +2474,7 @@ namespace ClipperLib
             if (horzEdge.nextInLML != null)
             {
                 if (horzEdge.outIdx >= 0)
-                    AddOutPt(horzEdge, null, new IntPoint(horzEdge.xtop, horzEdge.ytop));
+                    AddOutPt(horzEdge, new IntPoint(horzEdge.xtop, horzEdge.ytop));
                 UpdateEdgeIntoAEL(ref horzEdge);
             }
             else
@@ -2706,7 +2824,7 @@ namespace ClipperLib
               {
                 if (e.outIdx >= 0)
                 {
-                    AddOutPt(e, null, new IntPoint(e.xtop, e.ytop));
+                    AddOutPt(e, new IntPoint(e.xtop, e.ytop));
 
                     for (int i = 0; i < m_HorizJoins.Count; ++i)
                     {
@@ -2743,7 +2861,7 @@ namespace ClipperLib
           {
             if( IsIntermediate( e, topY ) )
             {
-                if (e.outIdx >= 0) AddOutPt(e, null, new IntPoint(e.xtop, e.ytop));
+                if (e.outIdx >= 0) AddOutPt(e, new IntPoint(e.xtop, e.ytop));
               UpdateEdgeIntoAEL(ref e);
 
               //if output polygons share an edge, they'll need joining later ...
@@ -2753,7 +2871,7 @@ namespace ClipperLib
                   new IntPoint(e.xbot, e.ybot),
                   new IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), m_UseFullRange))
               {
-                  AddOutPt(e.prevInAEL, null, new IntPoint(e.xbot, e.ybot));
+                  AddOutPt(e.prevInAEL, new IntPoint(e.xbot, e.ybot));
                   AddJoin(e, e.prevInAEL, -1, -1);
               }
               else if (e.outIdx >= 0 && e.nextInAEL != null && e.nextInAEL.outIdx >= 0 &&
@@ -2764,7 +2882,7 @@ namespace ClipperLib
                   new IntPoint(e.xbot, e.ybot),
                   new IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), m_UseFullRange))
               {
-                  AddOutPt(e.nextInAEL, null, new IntPoint(e.xbot, e.ybot));
+                  AddOutPt(e.nextInAEL, new IntPoint(e.xbot, e.ybot));
                   AddJoin(e, e.nextInAEL, -1, -1);
               }
 
@@ -3219,6 +3337,31 @@ namespace ClipperLib
                         (double)poly[i + 1].X * (double)poly[i].Y;
                 return area / 2;
             }
+        }
+        //------------------------------------------------------------------------------
+        
+        double Area(OutRec outRec, bool UseFullInt64Range)
+        {
+          OutPt op = outRec.pts;
+          if (UseFullInt64Range) {
+              Int128 a = new Int128(0);
+              do
+              {
+                  a += Int128.Int128Mul(op.prev.pt.X, op.pt.Y) -
+                    Int128.Int128Mul(op.pt.X, op.prev.pt.Y);
+                  op = op.next;
+              } while (op != outRec.pts);
+              return a.ToDouble() / 2;
+          }
+          else
+          {
+            double a = 0;
+            do {
+              a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
+              op = op.next;
+            } while (op != outRec.pts);
+            return a/2;
+          }
         }
 
         //------------------------------------------------------------------------------

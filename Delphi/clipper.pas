@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.7.6                                                           *
-* Date      :  11 April 2012                                                   *
+* Version   :  4.8.0                                                           *
+* Date      :  27 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -37,7 +37,7 @@ interface
 
 uses
   SysUtils, Types, Classes, Math;
-  
+
 type
   PIntPoint = ^TIntPoint;
   TIntPoint = record X, Y: int64; end;
@@ -56,6 +56,7 @@ type
 
   //used internally ...
   TEdgeSide = (esLeft, esRight);
+  TEdgeSides = set of TEdgeSide;
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
   TDirection = (dRightToLeft, dLeftToRight);
@@ -118,12 +119,12 @@ type
   TOutRec = record
     idx         : integer;
     bottomPt    : POutPt;
-    bottomE1    : PEdge;
-    bottomE2    : PEdge;
     isHole      : boolean;
     FirstLeft   : POutRec;
     AppendLink  : POutRec;
     pts         : POutPt;
+    sides       : TEdgeSides;
+    bottomFlag  : POutPt; 
   end;
   TArrayOfOutRec = array of POutRec;
 
@@ -229,13 +230,14 @@ type
     procedure ProcessEdgesAtTopOfScanbeam(const topY: int64);
     function IsContributing(edge: PEdge): boolean;
     function CreateOutRec: POutRec;
-    procedure AddOutPt(e, altE: PEdge; const pt: TIntPoint);
+    procedure AddOutPt(e: PEdge; const pt: TIntPoint);
     procedure AddLocalMaxPoly(e1, e2: PEdge; const pt: TIntPoint);
     procedure AddLocalMinPoly(e1, e2: PEdge; const pt: TIntPoint);
     procedure AppendPolygon(e1, e2: PEdge);
+    procedure DisposeBottomPt(outRec: POutRec);
     procedure DisposePolyPts(pp: POutPt);
     procedure DisposeAllPolyPts;
-    procedure DisposeOutRec(index: integer; ignorePts: boolean = false);
+    procedure DisposeOutRec(index: integer);
     procedure DisposeIntersectNodes;
     function GetResult: TPolygons;
     function GetExResult: TExPolygons;
@@ -265,6 +267,7 @@ type
     constructor Create; override;
     destructor Destroy; override;
     procedure Clear; override;
+    //ReverseSolution: reverses the default orientation
     property ReverseSolution: boolean read fReverseOutput write fReverseOutput;
   end;
 
@@ -308,7 +311,6 @@ resourcestring
   rsJoinError = 'Join Output polygons error';
   rsHoleLinkError = 'HoleLinkage error';
 
-  
 //------------------------------------------------------------------------------
 // Int128 Functions ...
 //------------------------------------------------------------------------------
@@ -598,18 +600,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetAngle(const pt1, pt2: TIntPoint): double;
-begin
-  if (pt1.Y = pt2.Y) then
-  begin
-    if pt1.X > pt2.X then result := pi/2
-    else result := -pi/2;
-  end
-  else
-    result := ArcTan2(pt1.X-pt2.X, pt1.Y-pt2.Y);
-end;
-//---------------------------------------------------------------------------
-
 function Orientation(const pts: TPolygon): boolean;
 var
   i, j, jplus, jminus, highI: integer;
@@ -690,11 +680,12 @@ begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
     result := cross.hi > 0;
   end else
-    result := (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
+    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
+
 end;
 //------------------------------------------------------------------------------
 
-function Area(const pts: TPolygon): double;
+function Area(const pts: TPolygon): double; overload;
 var
   i, highI: integer;
   a: TInt128;
@@ -715,6 +706,33 @@ begin
     a := int128(pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y);
     for i := 1 to highI do
       a := Int128Add(a, Int128(pts[i-1].X * pts[i].Y - pts[i].X * pts[i-1].Y));
+    result := Int128AsDouble(a) / 2;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function Area(outRec: POutRec; UseFullInt64Range: boolean): double; overload;
+var
+  op: POutPt;
+  a: TInt128;
+begin
+  op := outRec.pts;
+  if UseFullInt64Range then
+  begin
+    a := Int128(0);
+    repeat
+      a := Int128Add(a, Int128Sub(Int128Mul(op.pt.X, op.next.pt.Y),
+        Int128Mul(op.next.pt.X, op.pt.Y)));
+      op := op.next;
+    until op = outRec.pts;
+    result := Int128AsDouble(a) / 2;
+  end else
+  begin
+    a := Int128(0);
+    repeat
+      a := Int128Add(a, Int128(op.pt.X * op.next.pt.Y - op.next.pt.X * op.pt.Y));
+      op := op.next;
+    until op = outRec.pts;
     result := Int128AsDouble(a) / 2;
   end;
 end;
@@ -1012,7 +1030,7 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
     begin
       tmpLm := fLmList;
       while assigned(tmpLm.next) and (lm.y < tmpLm.next.y) do
-        tmpLm := tmpLm.next;
+          tmpLm := tmpLm.next;
       lm.next := tmpLm.next;
       tmpLm.next := lm;
     end;
@@ -1452,11 +1470,17 @@ begin
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then
         FixHoleLinkage(outRec);
+      if (outRec.bottomPt = outRec.bottomFlag) and
+        (Orientation(outRec, fUse64BitRange) <>
+          (Area(outRec, fUse64BitRange) > 0)) then
+      begin
+        DisposeBottomPt(outRec);
+        FixupOutPolygon(outRec);
+      end;
       if (outRec.isHole = fReverseOutput) xor
         Orientation(outRec, fUse64BitRange) then
           ReversePolyPtLinks(outRec.pts);
     end;
-
     if fJoinList.count > 0 then
       JoinCommonEdges(fixHoleLinkages);
 
@@ -1512,6 +1536,21 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipper.DisposeBottomPt(outRec: POutRec);
+var
+  next, prev: POutPt;
+begin
+  next := outRec.bottomPt.next;
+  prev := outRec.bottomPt.prev;
+  if outRec.pts = outRec.bottomPt then
+    outRec.pts := next;
+  dispose(outRec.bottomPt);
+  next.prev := prev;
+  prev.next := next;
+  outRec.bottomPt := next;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.DisposePolyPts(pp: POutPt);
 var
   tmpPp: POutPt;
@@ -1535,12 +1574,12 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.DisposeOutRec(index: integer; ignorePts: boolean = false);
+procedure TClipper.DisposeOutRec(index: integer);
 var
   outRec: POutRec;
 begin
   outRec := fPolyOutList[index];
-  if not ignorePts and assigned(outRec.pts) then DisposePolyPts(outRec.pts);
+  if assigned(outRec.pts) then DisposePolyPts(outRec.pts);
   Dispose(outRec);
   fPolyOutList[index] := nil;
 end;
@@ -1680,7 +1719,7 @@ var
 begin
   if (e2.dx = horizontal) or (e1.dx > e2.dx) then
   begin
-    AddOutPt(e1, e2, pt);
+    AddOutPt(e1, pt);
     e2.outIdx := e1.outIdx;
     e1.side := esLeft;
     e2.side := esRight;
@@ -1690,7 +1729,7 @@ begin
       prevE := e.prevInAEL;
   end else
   begin
-    AddOutPt(e2, e1, pt);
+    AddOutPt(e2, pt);
     e1.outIdx := e2.outIdx;
     e1.side := esRight;
     e2.side := esLeft;
@@ -1710,7 +1749,7 @@ end;
 
 procedure TClipper.AddLocalMaxPoly(e1, e2: PEdge; const pt: TIntPoint);
 begin
-  AddOutPt(e1, nil, pt);
+  AddOutPt(e1, pt);
   if (e1.outIdx = e2.outIdx) then
   begin
     e1.outIdx := -1;
@@ -1847,8 +1886,7 @@ end;
 function GetOverlapSegment(pt1a, pt1b, pt2a, pt2b: TIntPoint;
   out pt1, pt2: TIntPoint): boolean;
 begin
-  //precondition: segments are colinear.
-  //todo - reconsider whether this should be protected with TInt128's ...
+  //precondition: segments are colinear
   if (pt1a.Y = pt1b.Y) or (abs((pt1a.X - pt1b.X)/(pt1a.Y - pt1b.Y)) > 1) then
   begin
     if pt1a.X > pt1b.X then SwapPoints(pt1a, pt1b);
@@ -2021,7 +2059,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge1;
   begin
-    AddOutPt(e1, e2, pt);
+    AddOutPt(e1, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -2029,7 +2067,7 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoEdge2;
   begin
-    AddOutPt(e2, e1, pt);
+    AddOutPt(e2, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -2037,8 +2075,8 @@ procedure TClipper.IntersectEdges(e1,e2: PEdge;
 
   procedure DoBothEdges;
   begin
-    AddOutPt(e1, e2, pt);
-    AddOutPt(e2, e1, pt);
+    AddOutPt(e1, pt);
+    AddOutPt(e2, pt);
     SwapSides(e1, e2);
     SwapPolyIndexes(e1, e2);
   end;
@@ -2188,18 +2226,67 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PolygonBottom(pp: POutPt): POutPt;
+function FirstIsBottomPt(btmPt1, btmPt2: POutPt): boolean;
 var
+  dx1n, dx1p, dx2n, dx2p: double;
   p: POutPt;
 begin
+  p := btmPt1.prev;
+  while PointsEqual(p.pt, btmPt1.pt) do p := p.prev;
+  dx1p := GetDx(btmPt1.pt, p.pt);
+  p := btmPt1.next;
+  while PointsEqual(p.pt, btmPt1.pt) do p := p.next;
+  dx1n := GetDx(btmPt1.pt, p.pt);
+
+  p := btmPt2.prev;
+  while PointsEqual(p.pt, btmPt2.pt) do p := p.prev;
+  dx2p := GetDx(btmPt2.pt, p.pt);
+  p := btmPt2.next;
+  while PointsEqual(p.pt, btmPt2.pt) do p := p.next;
+  dx2n := GetDx(btmPt2.pt, p.pt);
+  if (dx1p <> dx2n) and (dx1p <> dx2p) then
+    result := ((dx1p < dx2n) = (dx1p < dx2p)) else
+    result := ((dx1n < dx2n) = (dx1n < dx2p));
+end;
+//------------------------------------------------------------------------------
+
+function GetBottomPt(pp: POutPt): POutPt;
+var
+  p, dups: POutPt;
+begin
+  dups := nil;
   p := pp.next;
-  result := pp;
   while p <> pp do
   begin
-    if p.pt.Y > result.pt.Y then result := p
-    else if (p.pt.Y = result.pt.Y) and (p.pt.X < result.pt.X) then result := p;
+    if p.pt.Y > pp.pt.Y then
+    begin
+      pp := p;
+      dups := nil;
+    end
+    else if (p.pt.Y = pp.pt.Y) and (p.pt.X <= pp.pt.X) then
+    begin
+      if (p.pt.X < pp.pt.X) then
+      begin
+        dups := nil;
+        pp := p;
+      end else
+      begin
+        if (p.next <> pp) and (p.prev <> pp) then dups := p;
+      end;
+    end;
     p := p.next;
   end;
+  if assigned(dups) then
+  begin
+    //there appears to be at least 2 vertices at bottomPt so ...
+    while dups <> p do
+    begin
+      if not FirstIsBottomPt(p, dups) then pp := dups;
+      dups := dups.next;
+      while not PointsEqual(dups.pt, pp.pt) do dups := dups.next;
+    end;
+  end;
+  result := pp;
 end;
 //------------------------------------------------------------------------------
 
@@ -2228,8 +2315,6 @@ end;
 function GetLowermostRec(outRec1, outRec2: POutRec): POutRec;
 var
   outPt1, outPt2: POutPt;
-  dx1, dx2: double;
-  y1, y2: Int64;
 begin
   outPt1 := outRec1.bottomPt;
   outPt2 := outRec2.bottomPt;
@@ -2237,23 +2322,11 @@ begin
   else if (outPt1.pt.Y < outPt2.pt.Y) then result := outRec2
   else if (outPt1.pt.X < outPt2.pt.X) then result := outRec1
   else if (outPt1.pt.X > outPt2.pt.X) then result := outRec2
-  else if (outRec1.bottomE2 = nil) then result := outRec2
-  else if (outRec2.bottomE2 = nil) then result := outRec1
-  else
-  begin
-    y1 := max(outRec1.bottomE1.ybot, outRec1.bottomE2.ybot);
-    y2 := max(outRec2.bottomE1.ybot, outRec2.bottomE2.ybot);
-    if (y2 = y1) or ((y1 > outPt1.pt.Y) and (y2 > outPt1.pt.Y)) then
-    begin
-      dx1 := max(outRec1.bottomE1.dx, outRec1.bottomE2.dx);
-      dx2 := max(outRec2.bottomE1.dx, outRec2.bottomE2.dx);
-      if dx2 > dx1 then result := outRec2 else result := outRec1;
-    end
-    else if (y2 > y1) then
-      result := outRec2
-    else
-      result := outRec1;
-  end;
+  else if (outPt1.next = outPt1) then result := outRec2
+  else if (outPt2.next = outPt2) then result := outRec1
+  else if FirstIsBottomPt(outPt1, outPt2) then
+    result := outRec1 else
+    result := outRec2;
 end;
 //------------------------------------------------------------------------------
 
@@ -2271,12 +2344,9 @@ begin
   outRec2 := fPolyOutList[e2.outIdx];
 
   //work out which polygon fragment has the correct hole state ...
-  holeStateRec := GetLowermostRec(outRec1, outRec2);
-
-  //fixup hole status ...
-  if holeStateRec = outRec2 then
-    outRec1.isHole := outRec2.isHole else
-    outRec2.isHole := outRec1.isHole;
+  if (outRec1.FirstLeft = outRec2) then holeStateRec := outRec2
+  else if (outRec2.FirstLeft = outRec1) then holeStateRec := outRec1
+  else holeStateRec := GetLowermostRec(outRec1, outRec2);
 
   //get the start and ends of both output polygons ...
   p1_lft := outRec1.pts;
@@ -2331,10 +2401,9 @@ begin
   begin
     outRec1.bottomPt := outRec2.bottomPt;
     outRec1.bottomPt.idx := outRec1.idx;
-    outRec1.bottomE1 := outRec2.bottomE1;
-    outRec1.bottomE2 := outRec2.bottomE2;
     if outRec2.FirstLeft <> outRec1 then
       outRec1.FirstLeft := outRec2.FirstLeft;
+    outRec1.isHole := outRec2.isHole;
   end;
   outRec2.pts := nil;
   outRec2.bottomPt := nil;
@@ -2382,13 +2451,42 @@ begin
   result.AppendLink := nil;
   result.pts := nil;
   result.bottomPt := nil;
+  result.sides := [];
+  result.bottomFlag := nil;
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddOutPt(e, altE: PEdge; const pt: TIntPoint);
+function AlmostTouching(const pt1, pt2, botPt: TIntPoint): boolean;
+var
+  dx: extended;
+begin
+  result := false;
+  if (abs(pt1.Y - botPt.Y) + abs(pt1.X - botPt.X) < 2) or
+    (abs(pt2.Y - botPt.Y) + abs(pt2.X - botPt.X) < 2) then
+      result := true
+  else
+  if (pt2.Y > pt1.Y) then
+  begin
+    if (pt2.Y = botPt.Y) or ((pt2.X > botPt.X) <> (pt2.X < pt1.X)) or
+      (pt2.X = botPt.X) or (pt2.X = pt1.X) then exit;
+    dx := (botPt.X - pt1.X)/(botPt.Y - pt1.Y);
+    result := abs(botPt.X + dx*(pt2.Y-botPt.Y) - pt2.X) < 0.5;
+  end
+  else if (pt2.Y < pt1.Y) then
+  begin
+    if (pt1.Y = botPt.Y) or ((pt1.X > botPt.X) <> (pt1.X < pt2.X)) or
+      (pt1.X = botPt.X) or (pt1.X = pt2.X) then exit;
+    dx := (botPt.X - pt2.X)/(botPt.Y - pt2.Y);
+    result := abs(botPt.X + dx*(pt1.Y-botPt.Y) - pt1.X) < 0.5;
+  end;
+
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.AddOutPt(e: PEdge; const pt: TIntPoint);
 var
   outRec: POutRec;
-  op, op2: POutPt;
+  op, op2, opBot: POutPt;
   ToFront: boolean;
 begin
   ToFront := e.side = esLeft;
@@ -2399,9 +2497,6 @@ begin
     e.outIdx := outRec.idx;
     new(op);
     outRec.pts := op;
-
-    outRec.bottomE1 := e;
-    outRec.bottomE2 := altE;
     outRec.bottomPt := op;
 
     op.pt := pt;
@@ -2415,16 +2510,47 @@ begin
     op := outRec.pts;
     if (ToFront and PointsEqual(pt, op.pt)) or
       (not ToFront and PointsEqual(pt, op.prev.pt)) then exit;
+
+    if not (e.side in outRec.sides) then
+    begin
+      outRec.sides := outRec.sides + [e.side];
+      if outRec.sides = [esLeft, esRight] then
+      begin
+        //A vertex from each side has now been added.
+        //Vertices of one side of an output polygon are quite commonly close to
+        //or even 'touching' edges of the other side of the output polygon.
+        //Very occasionally vertices from one side can 'cross' an edge on the
+        //the other side. The distance 'crossed' is always less that a unit
+        //and is purely an artefact of coordinate rounding. Nevertheless, this
+        //results in very tiny self-intersections. Because of the way
+        //orientation is calculated, even tiny self-intersections can cause
+        //the Orientation function to return the wrong result. Therefore, it's
+        //important to ensure that any self-intersections close to BottomPt are
+        //detected and removed before orientation is assigned.
+
+        //get the bottom-most point and its 2 adjacent points ...
+        if ToFront then
+        begin
+          opBot := outRec.pts;
+          op2 := opBot.next;
+        end else
+        begin
+          opBot := outRec.pts.prev;
+          op2 := opBot.prev;
+        end;
+        //if a vertex is very close to an adjacent edge then flag the polygon
+        //for checking later  ...
+        if AlmostTouching(pt, op2.pt, opBot.pt) then
+          outRec.bottomFlag := opBot;
+      end;
+    end;
+
     new(op2);
     op2.pt := pt;
     op2.idx := outRec.idx;
     if (op2.pt.Y = outRec.bottomPt.pt.Y) and
       (op2.pt.X < outRec.bottomPt.pt.X) then
-    begin
-      outRec.bottomPt := op2;
-      outRec.bottomE1 := e;
-      outRec.bottomE2 := altE;
-    end;
+        outRec.bottomPt := op2;
     op2.next := op;
     op2.prev := op.prev;
     op.prev.next := op2;
@@ -2697,7 +2823,7 @@ begin
   if assigned(horzEdge.nextInLML) then
   begin
     if (horzEdge.outIdx >= 0) then
-      AddOutPt(horzEdge, nil, IntPoint(horzEdge.xtop, horzEdge.ytop));
+      AddOutPt(horzEdge, IntPoint(horzEdge.xtop, horzEdge.ytop));
     UpdateEdgeIntoAEL(horzEdge);
   end else
   begin
@@ -2960,7 +3086,7 @@ begin
       begin
         if (e.outIdx >= 0) then
         begin
-          AddOutPt(e, nil, IntPoint(e.xtop, e.ytop));
+          AddOutPt(e, IntPoint(e.xtop, e.ytop));
 
           hj := fHorizJoins;
           if assigned(hj) then
@@ -2996,7 +3122,7 @@ begin
   begin
     if IsIntermediate(e, topY) then
     begin
-      if (e.outIdx >= 0) then AddOutPt(e, nil, IntPoint(e.xtop, e.ytop));
+      if (e.outIdx >= 0) then AddOutPt(e, IntPoint(e.xtop, e.ytop));
       UpdateEdgeIntoAEL(e);
 
       //if output polygons share an edge, they'll need joining later ...
@@ -3007,7 +3133,7 @@ begin
           IntPoint(e.xbot,e.ybot),
           IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), fUse64BitRange) then
       begin
-        AddOutPt(e.prevInAEL, nil, IntPoint(e.xbot, e.ybot));
+        AddOutPt(e.prevInAEL, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.prevInAEL);
       end
       else if (e.outIdx >= 0) and assigned(e.nextInAEL) and
@@ -3018,7 +3144,7 @@ begin
           IntPoint(e.xbot,e.ybot),
           IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), fUse64BitRange) then
       begin
-        AddOutPt(e.nextInAEL, nil, IntPoint(e.xbot, e.ybot));
+        AddOutPt(e.nextInAEL, IntPoint(e.xbot, e.ybot));
         AddJoin(e, e.nextInAEL);
       end;
     end;
@@ -3147,7 +3273,7 @@ begin
   end;
   if not assigned(outRec.bottomPt) then
   begin
-    outRec.bottomPt := PolygonBottom(pp);
+    outRec.bottomPt := GetBottomPt(pp);
     outRec.pts := outRec.bottomPt;
   end;
 end;
@@ -3384,13 +3510,13 @@ begin
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      outRec1.pts := PolygonBottom(p1);
+      outRec1.pts := GetBottomPt(p1);
       outRec1.bottomPt := outRec1.pts;
       outRec1.bottomPt.idx := outRec1.idx;
       outRec2 := CreateOutRec;
       outRec2.idx := fPolyOutList.Add(outRec2);
       jr.poly2Idx := outRec2.idx;
-      outRec2.pts := PolygonBottom(p2);
+      outRec2.pts := GetBottomPt(p2);
       outRec2.bottomPt := outRec2.pts;
       outRec2.bottomPt.idx := outRec2.idx;
 
