@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.8.0                                                           *
-* Date      :  27 April 2012                                                   *
+* Date      :  30 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1705,29 +1705,6 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool AlmostTouching(IntPoint pt1, IntPoint pt2, IntPoint botPt)
-        {
-          if (Math.Abs(pt1.Y - botPt.Y) + Math.Abs(pt1.X - botPt.X) < 2 ||
-            Math.Abs(pt2.Y - botPt.Y) + Math.Abs(pt2.X - botPt.X) < 2) return true;
-
-          if (pt2.Y > pt1.Y)
-          {
-            if ((pt2.Y == botPt.Y) || ((pt2.X > botPt.X) != (pt2.X < pt1.X)) ||
-              pt2.X == botPt.X || pt2.X == pt1.X) return false;
-            double dx = (double)(botPt.X - pt1.X)/(botPt.Y - pt1.Y);
-            return Math.Abs(botPt.X + dx*(pt2.Y-botPt.Y) - pt2.X) < 0.5;
-          }
-          else if (pt2.Y < pt1.Y)
-          {
-            if ((pt1.Y == botPt.Y) || ((pt1.X > botPt.X) != (pt1.X < pt2.X)) ||
-              pt1.X == botPt.X || pt1.X == pt2.X) return false;
-            double dx = (double)(botPt.X - pt2.X)/(botPt.Y - pt2.Y);
-            return Math.Abs(botPt.X + dx * (pt1.Y - botPt.Y) - pt1.X) < 0.5;
-          }
-          return false;
-        }
-        //------------------------------------------------------------------------------
-
         private void AddOutPt(TEdge e, IntPoint pt)
         {
           bool ToFront = (e.side == EdgeSide.esLeft);
@@ -1754,6 +1731,14 @@ namespace ClipperLib
 
               if ((e.side | outRec.sides) != outRec.sides)
               {
+                  //check for 'rounding' artefacts ...
+                  if (outRec.sides == EdgeSide.esNeither && pt.Y == op.pt.Y)
+                      if (ToFront)
+                      {
+                          if (pt.X == op.pt.X + 1) return;    //ie wrong side of bottomPt
+                      }
+                      else if (pt.X == op.pt.X - 1) return; //ie wrong side of bottomPt
+
                   outRec.sides = (EdgeSide)(outRec.sides | e.side);
                   if (outRec.sides == EdgeSide.esBoth)
                   {
@@ -1769,20 +1754,24 @@ namespace ClipperLib
                     //important to ensure that any self-intersections close to BottomPt are
                     //detected and removed before orientation is assigned.
 
-                    //get the bottom-most point and its 2 adjacent points ...
                     if (ToFront)
                     {
                       opBot = outRec.pts;
-                      op2 = opBot.next;
-                    } else
+                      op2 = opBot.next; //op2 == right side
+                      if (opBot.pt.Y != op2.pt.Y && opBot.pt.Y != pt.Y &&
+                        ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) <
+                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y)))
+                          outRec.bottomFlag = opBot;
+                    }
+                    else
                     {
                       opBot = outRec.pts.prev;
-                      op2 = opBot.prev;
+                      op2 = opBot.next; //op2 == left side
+                      if (opBot.pt.Y != op2.pt.Y && opBot.pt.Y != pt.Y &&
+                        ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) >
+                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y)))
+                          outRec.bottomFlag = opBot;
                     }
-                    //if a vertex is very close to an adjacent edge then flag the polygon
-                    //for checking later  ...
-                    if (AlmostTouching(pt, op2.pt, opBot.pt))
-                      outRec.bottomFlag = opBot;
                   }
               }
 
@@ -1921,22 +1910,19 @@ namespace ClipperLib
         private bool FirstIsBottomPt(OutPt btmPt1, OutPt btmPt2)
         {
           OutPt p = btmPt1.prev;
-          while (PointsEqual(p.pt, btmPt1.pt)) p = p.prev;
-          double dx1p = GetDx(btmPt1.pt, p.pt);
+          while (PointsEqual(p.pt, btmPt1.pt) && (p != btmPt1)) p = p.prev;
+          double dx1p = Math.Abs(GetDx(btmPt1.pt, p.pt));
           p = btmPt1.next;
-          while (PointsEqual(p.pt, btmPt1.pt)) p = p.next;
-          double dx1n = GetDx(btmPt1.pt, p.pt);
+          while (PointsEqual(p.pt, btmPt1.pt) && (p != btmPt1)) p = p.next;
+          double dx1n = Math.Abs(GetDx(btmPt1.pt, p.pt));
 
           p = btmPt2.prev;
-          while (PointsEqual(p.pt, btmPt2.pt)) p = p.prev;
-          double dx2p = GetDx(btmPt2.pt, p.pt);
+          while (PointsEqual(p.pt, btmPt2.pt) && (p != btmPt2)) p = p.prev;
+          double dx2p = Math.Abs(GetDx(btmPt2.pt, p.pt));
           p = btmPt2.next;
-          while (PointsEqual(p.pt, btmPt2.pt)) p = p.next;
-          double dx2n = GetDx(btmPt2.pt, p.pt);
-          if (dx1p != dx2n && dx1p != dx2p)
-            return ((dx1p < dx2n) == (dx1p < dx2p));
-          else
-            return ((dx1n < dx2n) == (dx1n < dx2p));
+          while (PointsEqual(p.pt, btmPt2.pt) && (p != btmPt2)) p = p.next;
+          double dx2n = Math.Abs(GetDx(btmPt2.pt, p.pt));
+          return (dx1p >= dx2p && dx1p >= dx2n) || (dx1n >= dx2p && dx1n >= dx2n);
         }
         //------------------------------------------------------------------------------
 

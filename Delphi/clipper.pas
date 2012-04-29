@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.8.0                                                           *
-* Date      :  27 April 2012                                                   *
+* Date      :  30 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -847,6 +847,9 @@ begin
 end;
 //---------------------------------------------------------------------------
 
+//                 0(90º)                                                  //
+//                 |                                                       //
+// +inf (180º) --- o --- -inf (0º)                                         //
 function GetDx(const pt1, pt2: TIntPoint): double;
 begin
   if (pt1.Y = pt2.Y) then result := horizontal
@@ -1470,6 +1473,7 @@ begin
       if not assigned(outRec.pts) then continue;
       if outRec.isHole and fixHoleLinkages then
         FixHoleLinkage(outRec);
+      //outRec.bottomPt might've been cleaned up already so retest orientation
       if (outRec.bottomPt = outRec.bottomFlag) and
         (Orientation(outRec, fUse64BitRange) <>
           (Area(outRec, fUse64BitRange) > 0)) then
@@ -2232,21 +2236,20 @@ var
   p: POutPt;
 begin
   p := btmPt1.prev;
-  while PointsEqual(p.pt, btmPt1.pt) do p := p.prev;
-  dx1p := GetDx(btmPt1.pt, p.pt);
+  while PointsEqual(p.pt, btmPt1.pt) and (p <> btmPt1) do p := p.prev;
+  dx1p := abs(GetDx(btmPt1.pt, p.pt));
   p := btmPt1.next;
-  while PointsEqual(p.pt, btmPt1.pt) do p := p.next;
-  dx1n := GetDx(btmPt1.pt, p.pt);
+  while PointsEqual(p.pt, btmPt1.pt) and (p <> btmPt1) do p := p.next;
+  dx1n := abs(GetDx(btmPt1.pt, p.pt));
 
   p := btmPt2.prev;
-  while PointsEqual(p.pt, btmPt2.pt) do p := p.prev;
-  dx2p := GetDx(btmPt2.pt, p.pt);
+  while PointsEqual(p.pt, btmPt2.pt) and (p <> btmPt2) do p := p.prev;
+  dx2p := abs(GetDx(btmPt2.pt, p.pt));
   p := btmPt2.next;
-  while PointsEqual(p.pt, btmPt2.pt) do p := p.next;
-  dx2n := GetDx(btmPt2.pt, p.pt);
-  if (dx1p <> dx2n) and (dx1p <> dx2p) then
-    result := ((dx1p < dx2n) = (dx1p < dx2p)) else
-    result := ((dx1n < dx2n) = (dx1n < dx2p));
+  while PointsEqual(p.pt, btmPt2.pt) and (p <> btmPt2) do p := p.next;
+  dx2n := abs(GetDx(btmPt2.pt, p.pt));
+  result := ((dx1p >= dx2p) and (dx1p >= dx2n)) or
+    ((dx1n >= dx2p) and (dx1n >= dx2n));
 end;
 //------------------------------------------------------------------------------
 
@@ -2456,33 +2459,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AlmostTouching(const pt1, pt2, botPt: TIntPoint): boolean;
-var
-  dx: extended;
-begin
-  result := false;
-  if (abs(pt1.Y - botPt.Y) + abs(pt1.X - botPt.X) < 2) or
-    (abs(pt2.Y - botPt.Y) + abs(pt2.X - botPt.X) < 2) then
-      result := true
-  else
-  if (pt2.Y > pt1.Y) then
-  begin
-    if (pt2.Y = botPt.Y) or ((pt2.X > botPt.X) <> (pt2.X < pt1.X)) or
-      (pt2.X = botPt.X) or (pt2.X = pt1.X) then exit;
-    dx := (botPt.X - pt1.X)/(botPt.Y - pt1.Y);
-    result := abs(botPt.X + dx*(pt2.Y-botPt.Y) - pt2.X) < 0.5;
-  end
-  else if (pt2.Y < pt1.Y) then
-  begin
-    if (pt1.Y = botPt.Y) or ((pt1.X > botPt.X) <> (pt1.X < pt2.X)) or
-      (pt1.X = botPt.X) or (pt1.X = pt2.X) then exit;
-    dx := (botPt.X - pt2.X)/(botPt.Y - pt2.Y);
-    result := abs(botPt.X + dx*(pt1.Y-botPt.Y) - pt1.X) < 0.5;
-  end;
-
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.AddOutPt(e: PEdge; const pt: TIntPoint);
 var
   outRec: POutRec;
@@ -2513,6 +2489,15 @@ begin
 
     if not (e.side in outRec.sides) then
     begin
+
+      //check for 'rounding' artefacts ...
+      if (outRec.sides = []) and (pt.Y = op.pt.Y) then
+        if ToFront then
+        begin
+          if (pt.X = op.pt.X +1) then exit;    //ie wrong side of bottomPt
+        end
+        else if (pt.X = op.pt.X -1) then exit; //ie wrong side of bottomPt
+
       outRec.sides := outRec.sides + [e.side];
       if outRec.sides = [esLeft, esRight] then
       begin
@@ -2528,20 +2513,23 @@ begin
         //important to ensure that any self-intersections close to BottomPt are
         //detected and removed before orientation is assigned.
 
-        //get the bottom-most point and its 2 adjacent points ...
         if ToFront then
         begin
           opBot := outRec.pts;
-          op2 := opBot.next;
+          op2 := opBot.next; //op2 == right side
+          if (opBot.pt.Y <> op2.pt.Y) and (opBot.pt.Y <> pt.Y) and
+            ((opBot.pt.X - pt.X)/(opBot.pt.Y - pt.Y) <
+            (opBot.pt.X - op2.pt.X)/(opBot.pt.Y - op2.pt.Y)) then
+               outRec.bottomFlag := opBot;
         end else
         begin
           opBot := outRec.pts.prev;
-          op2 := opBot.prev;
+          op2 := opBot.prev; //op2 == left side
+          if (opBot.pt.Y <> op2.pt.Y) and (opBot.pt.Y <> pt.Y) and
+            ((opBot.pt.X - pt.X)/(opBot.pt.Y - pt.Y) >
+            (opBot.pt.X - op2.pt.X)/(opBot.pt.Y - op2.pt.Y)) then
+               outRec.bottomFlag := opBot;
         end;
-        //if a vertex is very close to an adjacent edge then flag the polygon
-        //for checking later  ...
-        if AlmostTouching(pt, op2.pt, opBot.pt) then
-          outRec.bottomFlag := opBot;
       end;
     end;
 
@@ -3644,29 +3632,23 @@ end;
 
 function GetBounds(const a: TPolygons): TIntRect;
 var
-  i,j,len: integer;
-const
-  nullRect: TIntRect = (left:0;top:0;right:0;bottom:0);
+  i,j: integer;
 begin
-  len := length(a);
-  i := 0;
-
-  while (i < len) and (length(a[i]) = 0) do inc(i);
-  if i = len then begin result := nullRect; exit; end;
-
-  with result, a[i][0] do
+  with result do
   begin
-    Left := X; Top := Y; Right := X; Bottom := Y;
+    Left := hiRange; Top := hiRange;
+    Right := -hiRange; Bottom := -hiRange;
   end;
-
-  for i := i to len-1 do
+  for i := 0 to high(a) do
     for j := 0 to high(a[i]) do
     begin
-      if a[i][j].X < result.Left then result.Left := a[i][j].X
-      else if a[i][j].X > result.Right then result.Right := a[i][j].X;
-      if a[i][j].Y < result.Top then result.Top := a[i][j].Y
-      else if a[i][j].Y > result.Bottom then result.Bottom := a[i][j].Y;
+      if a[i][j].X < result.Left then result.Left := a[i][j].X;
+      if a[i][j].X > result.Right then result.Right := a[i][j].X;
+      if a[i][j].Y < result.Top then result.Top := a[i][j].Y;
+      if a[i][j].Y > result.Bottom then result.Bottom := a[i][j].Y;
     end;
+  if result.left = hiRange then
+    with result do begin Left := 0; Top := 0; Right := 0; Bottom := 0; end;
 end;
 //------------------------------------------------------------------------------
 

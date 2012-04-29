@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  4.8.0                                                           *
-* Date      :  27 April 2012                                                   *
+* Date      :  30 April 2012                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -731,25 +731,22 @@ OutPt* PolygonBottom(OutPt* pp)
 }
 //------------------------------------------------------------------------------
 
-bool FirstIsBottomPt(const OutPt& btmPt1, const OutPt& btmPt2)
+bool FirstIsBottomPt(const OutPt* btmPt1, const OutPt* btmPt2)
 {
-  OutPt *p = btmPt1.prev;
-  while (PointsEqual(p->pt, btmPt1.pt)) p = p->prev;
-  double dx1p = GetDx(btmPt1.pt, p->pt);
-  p = btmPt1.next;
-  while (PointsEqual(p->pt, btmPt1.pt)) p = p->next;
-  double dx1n = GetDx(btmPt1.pt, p->pt);
+  OutPt *p = btmPt1->prev;
+  while (PointsEqual(p->pt, btmPt1->pt) && (p != btmPt1)) p = p->prev;
+  double dx1p = std::fabs(GetDx(btmPt1->pt, p->pt));
+  p = btmPt1->next;
+  while (PointsEqual(p->pt, btmPt1->pt) && (p != btmPt1)) p = p->next;
+  double dx1n = std::fabs(GetDx(btmPt1->pt, p->pt));
 
-  p = btmPt2.prev;
-  while (PointsEqual(p->pt, btmPt2.pt)) p = p->prev;
-  double dx2p = GetDx(btmPt2.pt, p->pt);
-  p = btmPt2.next;
-  while (PointsEqual(p->pt, btmPt2.pt)) p = p->next;
-  double dx2n = GetDx(btmPt2.pt, p->pt);
-  if (dx1p != dx2n && dx1p != dx2p)
-    return ((dx1p < dx2n) == (dx1p < dx2p));
-  else
-    return ((dx1n < dx2n) == (dx1n < dx2p));
+  p = btmPt2->prev;
+  while (PointsEqual(p->pt, btmPt2->pt) && (p != btmPt2)) p = p->prev;
+  double dx2p = std::fabs(GetDx(btmPt2->pt, p->pt));
+  p = btmPt2->next;
+  while (PointsEqual(p->pt, btmPt2->pt) && (p != btmPt2)) p = p->next;
+  double dx2n = std::fabs(GetDx(btmPt2->pt, p->pt));
+  return (dx1p >= dx2p && dx1p >= dx2n) || (dx1n >= dx2p && dx1n >= dx2n);
 }
 //------------------------------------------------------------------------------
 
@@ -782,7 +779,7 @@ OutPt* GetBottomPt(OutPt *pp)
     //there appears to be at least 2 vertices at bottomPt so ...
     while (dups != p)
     {
-      if (!FirstIsBottomPt(*p, *dups)) pp = dups;
+      if (!FirstIsBottomPt(p, dups)) pp = dups;
       dups = dups->next;
       while (!PointsEqual(dups->pt, pp->pt)) dups = dups->next;
     }
@@ -1956,7 +1953,7 @@ OutRec* GetLowermostRec(OutRec *outRec1, OutRec *outRec2)
   else if (outPt1->pt.X > outPt2->pt.X) return outRec2;
   else if (outPt1->next == outPt1) return outRec2;
   else if (outPt2->next == outPt2) return outRec1;
-  else if (FirstIsBottomPt(*outPt1, *outPt2)) return outRec1;
+  else if (FirstIsBottomPt(outPt1, outPt2)) return outRec1;
   else return outRec2;
 }
 //------------------------------------------------------------------------------
@@ -2092,30 +2089,6 @@ void Clipper::DisposeBottomPt(OutRec &outRec)
 }
 //------------------------------------------------------------------------------
 
-bool AlmostTouching(const IntPoint pt1,
-  const IntPoint pt2, const IntPoint botPt)
-{
-  if (Abs(pt1.Y - botPt.Y) + Abs(pt1.X - botPt.X) < 2 ||
-    Abs(pt2.Y - botPt.Y) + Abs(pt2.X - botPt.X) < 2) return true;
-
-  if (pt2.Y > pt1.Y)
-  {
-    if ((pt2.Y == botPt.Y) || ((pt2.X > botPt.X) != (pt2.X < pt1.X)) ||
-      pt2.X == botPt.X || pt2.X == pt1.X) return false;
-    double dx = (double)(botPt.X - pt1.X)/(botPt.Y - pt1.Y);
-    return std::fabs(botPt.X + dx*(pt2.Y-botPt.Y) - pt2.X) < 0.5;
-  }
-  else if (pt2.Y < pt1.Y)
-  {
-    if ((pt1.Y == botPt.Y) || ((pt1.X > botPt.X) != (pt1.X < pt2.X)) ||
-      pt1.X == botPt.X || pt1.X == pt2.X) return false;
-    double dx = (double)(botPt.X - pt2.X)/(botPt.Y - pt2.Y);
-    return std::fabs(botPt.X + dx*(pt1.Y-botPt.Y) - pt1.X) < 0.5;
-  }
-  return false;
-}
-//------------------------------------------------------------------------------
-
 void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
 {
   bool ToFront = (e->side == esLeft);
@@ -2142,6 +2115,14 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
 
     if ((e->side | outRec->sides) != outRec->sides)
     {
+      //check for 'rounding' artefacts ...
+      if (outRec->sides == esNeither && pt.Y == op->pt.Y)
+        if (ToFront)
+        {
+          if (pt.X == op->pt.X +1) return;    //ie wrong side of bottomPt
+        }
+        else if (pt.X == op->pt.X -1) return; //ie wrong side of bottomPt
+
       outRec->sides = (EdgeSide)(outRec->sides | e->side);
       if (outRec->sides == esBoth)
       {
@@ -2158,20 +2139,23 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
         //detected and removed before orientation is assigned.
 
         OutPt *opBot, *op2;
-        //get the bottom-most point and its 2 adjacent points ...
         if (ToFront)
         {
           opBot = outRec->pts;
-          op2 = opBot->next;
+          op2 = opBot->next; //op2 == right side
+          if (opBot->pt.Y != op2->pt.Y && opBot->pt.Y != pt.Y &&
+            ((opBot->pt.X - pt.X)/(opBot->pt.Y - pt.Y) <
+            (opBot->pt.X - op2->pt.X)/(opBot->pt.Y - op2->pt.Y)))
+               outRec->bottomFlag = opBot;
         } else
         {
           opBot = outRec->pts->prev;
-          op2 = opBot->prev;
+          op2 = opBot->next; //op2 == left side
+          if (opBot->pt.Y != op2->pt.Y && opBot->pt.Y != pt.Y &&
+            ((opBot->pt.X - pt.X)/(opBot->pt.Y - pt.Y) >
+            (opBot->pt.X - op2->pt.X)/(opBot->pt.Y - op2->pt.Y)))
+               outRec->bottomFlag = opBot;
         }
-        //if a vertex is very close to an adjacent edge then flag the polygon
-        //for checking later  ...
-        if (AlmostTouching(pt, op2->pt, opBot->pt))
-          outRec->bottomFlag = opBot;
       }
     }
 
