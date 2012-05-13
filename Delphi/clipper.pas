@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.0                                                           *
-* Date      :  30 April 2012                                                   *
+* Version   :  4.8.1                                                           *
+* Date      :  12 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -330,11 +330,10 @@ begin
   if val.lo = 0 then
   begin
     if val.hi = 0 then exit;
-    val.lo := not val.lo;
-    val.hi := not val.hi +1;
+    val.hi := -val.hi;
   end else
   begin
-    val.lo := not val.lo  +1;
+    val.lo := -val.lo;
     val.hi := not val.hi;
   end;
 end;
@@ -342,13 +341,10 @@ end;
 
 function Int128(const val: Int64): TInt128; overload;
 begin
-  result.hi := 0;
+  result.lo := val;
   if val < 0 then
-  begin
-    result.lo := -val;
-    Int128Negate(result);
-  end else
-    result.lo := val;
+    result.hi := -1 else
+    result.hi := 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -360,31 +356,17 @@ end;
 
 function Int128LessThan(const int1, int2: TInt128): boolean;
 begin
-  if (int1.hi < int2.hi) then result := true
-  else if (int1.hi > int2.hi) then result := false
-  else if (int1.hi >= 0) then
-  begin
-    if (int1.lo < 0) = (int2.lo < 0) then
-      result := abs(int1.lo) < abs(int2.lo) else
-      result := (int2.lo < 0);
-  end else if (int1.lo < 0) = (int2.lo < 0) then
-    result := abs(int1.lo) > abs(int2.lo)
-  else result := (int1.lo < 0);
+  if (int1.hi <> int2.hi) then
+    result := int1.hi < int2.hi else
+    result := int1.lo < int2.lo;
 end;
-//------------------------------------------------------------------------------
+//---------------------------------------------------------------------------
 
 function Int128Add(const int1, int2: TInt128): TInt128;
 begin
-  if (int1.lo = 0) and (int1.hi = 0) then result := int2
-  else if (int2.lo = 0) and (int2.hi = 0) then result := int1
-  else
-  begin
-    result.lo := int1.lo + int2.lo; //nb: overflow checking off here
-    result.hi := int1.hi + int2.hi;
-    if ((int1.lo < 0) and (int2.lo < 0)) or
-      (((int1.lo < 0) <> (int2.lo < 0)) and (result.lo >= 0)) then
-        inc(result.hi);  //ie: fixup for overflow
-  end;
+  result.lo := int1.lo + int2.lo;
+  result.hi := int1.hi + int2.hi;
+  if Int64Rec(result.lo).Hi < Int64Rec(int1.lo).Hi then inc(result.hi);
 end;
 //------------------------------------------------------------------------------
 
@@ -420,9 +402,10 @@ begin
   //result = a shl 64 + c shl 32 + b ...
   result.hi := a + (c shr 32);
   a := c shl 32;
+
   result.lo := a + b;
-  if ((a < 0) and (b < 0)) or
-    (((a < 0) <> (b < 0)) and (result.lo >= 0)) then inc(result.hi);
+  if Int64Rec(result.lo).Hi < Int64Rec(a).Hi then inc(result.hi);
+
   if negate then Int128Negate(result);
 end;
 //------------------------------------------------------------------------------
@@ -467,49 +450,6 @@ begin
 end;
 //---------------------------------------------------------------------------
 
-procedure int128DivBase(val: TInt128; base: cardinal; out result: TInt128; out remainder: Int64);
-var
-  i: integer;
-  negate: boolean;
-begin
-  negate := (val.hi < 0);
-  if negate then Int128Negate(val);
-
-  result.lo := 0;
-  result.hi := 0;
-  if (val.hi = 0) and (val.lo >= 0) and (base > val.lo) then
-  begin
-    if negate then remainder := -val.lo else remainder := val.lo;
-    Exit;
-  end;
-
-  remainder := 0;
-  for i := 63 downto 0 do
-  begin
-    if (val.hi and (int64(1) shl i)) <> 0 then
-      remainder := remainder * 2 + 1 else
-      remainder := remainder *2;
-    if remainder >= base then
-    begin
-      result.hi := result.hi + (int64(1) shl i);
-      dec(remainder, base);
-    end;
-  end;
-  for i := 63 downto 0 do
-  begin
-    if (val.lo and (int64(1) shl i)) <> 0 then
-      remainder := remainder * 2 + 1 else
-      remainder := remainder *2;
-    if remainder >= base then
-    begin
-      result.lo := result.lo + (int64(1) shl i);
-      dec(remainder, base);
-    end;
-  end;
-  if negate then Int128Negate(result);
-end;
-//------------------------------------------------------------------------------
-
 function Int128AsDouble(val: TInt128): double;
 const
   shift64: double = 18446744073709551616.0;
@@ -530,47 +470,75 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function int128AsString(val: TInt128): string;
-var
-  valDiv10: TInt128;
-  r: Int64;
-  isNeg: boolean;
-begin
-  result := '';
-  if val.hi < 0 then
-  begin
-    Int128Negate(val);
-    isNeg := true;
-  end else
-    isNeg := false;
-  while (val.hi <> 0) or (val.lo <> 0) do
-  begin
-    int128DivBase(val, 10, valDiv10, r);
-    result := inttostr(r) + result;
-    val := valDiv10;
-  end;
-  if result = '' then result := '0';
-  if isNeg then result := '-' + result;
-end;
+//procedure int128DivBase(val: TInt128; base: cardinal; out result: TInt128; out remainder: Int64);
+//var
+//  i: integer;
+//  negate: boolean;
+//begin
+//  negate := (val.hi < 0);
+//  if negate then Int128Negate(val);
+//
+//  result.lo := 0;
+//  result.hi := 0;
+//  if (val.hi = 0) and (val.lo >= 0) and (base > val.lo) then
+//  begin
+//    if negate then remainder := -val.lo else remainder := val.lo;
+//    Exit;
+//  end;
+//
+//  remainder := 0;
+//  for i := 63 downto 0 do
+//  begin
+//    if (val.hi and (int64(1) shl i)) <> 0 then
+//      remainder := remainder * 2 + 1 else
+//      remainder := remainder *2;
+//    if remainder >= base then
+//    begin
+//      result.hi := result.hi + (int64(1) shl i);
+//      dec(remainder, base);
+//    end;
+//  end;
+//  for i := 63 downto 0 do
+//  begin
+//    if (val.lo and (int64(1) shl i)) <> 0 then
+//      remainder := remainder * 2 + 1 else
+//      remainder := remainder *2;
+//    if remainder >= base then
+//    begin
+//      result.lo := result.lo + (int64(1) shl i);
+//      dec(remainder, base);
+//    end;
+//  end;
+//  if negate then Int128Negate(result);
+//end;
+//------------------------------------------------------------------------------
+
+//function int128AsString(val: TInt128): string;
+//var
+//  valDiv10: TInt128;
+//  r: Int64;
+//  isNeg: boolean;
+//begin
+//  result := '';
+//  if val.hi < 0 then
+//  begin
+//    Int128Negate(val);
+//    isNeg := true;
+//  end else
+//    isNeg := false;
+//  while (val.hi <> 0) or (val.lo <> 0) do
+//  begin
+//    int128DivBase(val, 10, valDiv10, r);
+//    result := inttostr(r) + result;
+//    val := valDiv10;
+//  end;
+//  if result = '' then result := '0';
+//  if isNeg then result := '-' + result;
+//end;
 {$OVERFLOWCHECKS ON}
 
 //------------------------------------------------------------------------------
 // Miscellaneous Functions ...
-//------------------------------------------------------------------------------
-
-function FullRangeNeeded(const pts: TPolygon): boolean;
-var
-  i: integer;
-begin
-  result := false;
-  for i := 0 to high(pts) do
-  begin
-    if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
-      raise exception.Create(rsInvalidInt)
-    else if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
-      result := true;
-  end;
-end;
 //------------------------------------------------------------------------------
 
 function PointCount(pts: POutPt): integer;
@@ -633,7 +601,7 @@ begin
       (abs(vec2.X) > hiRange) or (abs(vec2.Y) > hiRange) then
         raise exception.Create(rsInvalidInt);
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
-    result := cross.hi > 0;
+    result := cross.hi >= 0;
   end else
     result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
 end;
@@ -678,7 +646,7 @@ begin
   if UseFullInt64Range then
   begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
-    result := cross.hi > 0;
+    result := cross.hi >= 0;
   end else
     result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
 
@@ -688,53 +656,30 @@ end;
 function Area(const pts: TPolygon): double; overload;
 var
   i, highI: integer;
-  a: TInt128;
+  d: double;
 begin
   result := 0;
   highI := high(pts);
   if highI < 2 then exit;
-  if FullRangeNeeded(pts) then
-  begin
-    a := Int128Sub(Int128Mul(pts[highI].X, pts[0].Y),
-      Int128Mul(pts[0].X, pts[highI].Y));
-    for i := 0 to highI-1 do
-      a := Int128Add(a, Int128Sub(Int128Mul(pts[i].X, pts[i+1].Y),
-        Int128Mul(pts[i+1].X, pts[i].Y)));
-    result := Int128AsDouble(a) / 2;
-  end else
-  begin
-    a := int128(pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y);
-    for i := 1 to highI do
-      a := Int128Add(a, Int128(pts[i-1].X * pts[i].Y - pts[i].X * pts[i-1].Y));
-    result := Int128AsDouble(a) / 2;
-  end;
+  d := pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y;
+  for i := 1 to highI do
+    d := d + (pts[i-1].X * pts[i].Y) - (pts[i].X * pts[i-1].Y);
+  result := d / 2;
 end;
 //------------------------------------------------------------------------------
 
-function Area(outRec: POutRec; UseFullInt64Range: boolean): double; overload;
+function Area(outRec: POutRec): double; overload;
 var
   op: POutPt;
-  a: TInt128;
+  d: double;
 begin
   op := outRec.pts;
-  if UseFullInt64Range then
-  begin
-    a := Int128(0);
-    repeat
-      a := Int128Add(a, Int128Sub(Int128Mul(op.pt.X, op.next.pt.Y),
-        Int128Mul(op.next.pt.X, op.pt.Y)));
-      op := op.next;
-    until op = outRec.pts;
-    result := Int128AsDouble(a) / 2;
-  end else
-  begin
-    a := Int128(0);
-    repeat
-      a := Int128Add(a, Int128(op.pt.X * op.next.pt.Y - op.next.pt.X * op.pt.Y));
-      op := op.next;
-    until op = outRec.pts;
-    result := Int128AsDouble(a) / 2;
-  end;
+  d := 0;
+  repeat
+    d := d + (op.pt.X * op.next.pt.Y) - (op.next.pt.X * op.pt.Y);
+    op := op.next;
+  until op = outRec.pts;
+  result := d / 2;
 end;
 //------------------------------------------------------------------------------
 
@@ -1199,9 +1144,9 @@ function TClipperBase.AddPolygons(const polygons: TPolygons;
 var
   i: integer;
 begin
-  result := true;
+  result := false;
   for i := 0 to high(polygons) do
-    if AddPolygon(polygons[i], polyType) then result := false;
+    if AddPolygon(polygons[i], polyType) then result := true;
 end;
 //------------------------------------------------------------------------------
 
@@ -1475,8 +1420,7 @@ begin
         FixHoleLinkage(outRec);
       //outRec.bottomPt might've been cleaned up already so retest orientation
       if (outRec.bottomPt = outRec.bottomFlag) and
-        (Orientation(outRec, fUse64BitRange) <>
-          (Area(outRec, fUse64BitRange) > 0)) then
+        (Orientation(outRec, fUse64BitRange) <> (Area(outRec) > 0)) then
       begin
         DisposeBottomPt(outRec);
         FixupOutPolygon(outRec);

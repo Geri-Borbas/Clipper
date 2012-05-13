@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.0                                                           *
-* Date      :  30 April 2012                                                   *
+* Version   :  4.8.1                                                           *
+* Date      :  12 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -65,9 +65,10 @@ namespace ClipperLib
         public Int128(Int64 lo)
         {
             this.lo = lo;
-            this.hi = 0;
             if (lo < 0)
                 this.hi = -1;
+            else
+                this.hi = 0;
         }
 
 		public Int128(Int64 lo, Int64 hi)
@@ -80,11 +81,6 @@ namespace ClipperLib
         {
             hi = val.hi;
             lo = val.lo;
-        }
-
-        public bool IsPositive()
-        {
-            return hi > 0;
         }
 
         public bool IsNegative()
@@ -119,22 +115,18 @@ namespace ClipperLib
 
         public static bool operator> (Int128 val1, Int128 val2) 
         {
-            if (System.Object.ReferenceEquals(val1, val2)) return false;
-            else if (val2 == null) return true;
-            else if (val1 == null) return false;
-            else if (val1.hi > val2.hi) return true;
-            else if (val1.hi < val2.hi) return false;
-            else return (UInt64)val1.lo > (UInt64)val2.lo;
+            if (val1.hi != val2.hi)
+                return val1.hi > val2.hi;
+            else
+                return val1.lo > val2.lo;
         }
 
         public static bool operator< (Int128 val1, Int128 val2) 
         {
-            if (System.Object.ReferenceEquals(val1, val2)) return false;
-            else if (val2 == null) return false;
-            else if (val1 == null) return true;
-            if (val1.hi < val2.hi) return true;
-            else if (val1.hi > val2.hi) return false;
-            else return (UInt64)val1.lo < (UInt64)val2.lo;
+            if (val1.hi != val2.hi)
+                return val1.hi < val2.hi;
+            else
+                return val1.lo < val2.lo;
         }
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 
@@ -153,10 +145,10 @@ namespace ClipperLib
 		public static Int128 operator -(Int128 val)
 		{
 			if (val.lo == 0) {
-				if (val.hi == 0) return val;
-				return new Int128(~val.lo, ~val.hi + 1);
+                if (val.hi == 0) return val;
+                return new Int128(0, -val.hi);
 			} 
-			return new Int128(~val.lo + 1, ~val.hi);
+            else return new Int128(-val.lo, ~val.hi);
 		}
 
         //nb: Constructing two new Int128 objects every time we want to multiply longs  
@@ -1110,8 +1102,7 @@ namespace ClipperLib
                   if (outRec.isHole && fixHoleLinkages) FixHoleLinkage(outRec);
 
                   if (outRec.bottomPt == outRec.bottomFlag &&
-                    (Orientation(outRec, m_UseFullRange) !=
-                      (Area(outRec, m_UseFullRange) > 0)))
+                    (Orientation(outRec, m_UseFullRange) != (Area(outRec) > 0)))
                   {
                       DisposeBottomPt(outRec);
                       FixupOutPolygon(outRec);
@@ -2902,20 +2893,6 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private static bool FullRangeNeeded(Polygon pts)
-        {
-            bool result = false;
-            for (int i = 0; i <  pts.Count; i++) 
-            {
-                if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
-                    throw new ClipperException("Coordinate exceeds range bounds.");
-                else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
-                  result = true;
-            }
-            return result;
-        }
-        //------------------------------------------------------------------------------
-
         public static bool Orientation(Polygon poly)
         {
             int highI = poly.Count -1;
@@ -2941,7 +2918,7 @@ namespace ClipperLib
                     Math.Abs(vec2.X) > hiRange || Math.Abs(vec2.Y) > hiRange)
                     throw new ClipperException("Coordinate exceeds range bounds.");
                 Int128 cross = Int128.Int128Mul(vec1.X, vec2.Y) - Int128.Int128Mul(vec2.X, vec1.Y);
-                return cross.IsPositive();
+                return !cross.IsNegative();
             }
             else
                 return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
@@ -3304,50 +3281,24 @@ namespace ClipperLib
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            if (FullRangeNeeded(poly))
-            {
-                Int128 a = new Int128(0);
-                a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
-                    Int128.Int128Mul(poly[0].X, poly[highI].Y);
-                for (int i = 0; i < highI; ++i)
-                    a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
-                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
-                return a.ToDouble() / 2;
-            }
-            else
-            {
-                double area = (double)poly[highI].X * (double)poly[0].Y -
-                    (double)poly[0].X * (double)poly[highI].Y;
-                for (int i = 0; i < highI; ++i)
-                    area += (double)poly[i].X * (double)poly[i + 1].Y -
-                        (double)poly[i + 1].X * (double)poly[i].Y;
-                return area / 2;
-            }
+            double area = (double)poly[highI].X * (double)poly[0].Y -
+                (double)poly[0].X * (double)poly[highI].Y;
+            for (int i = 0; i < highI; ++i)
+                area += (double)poly[i].X * (double)poly[i + 1].Y -
+                    (double)poly[i + 1].X * (double)poly[i].Y;
+            return area / 2;
         }
         //------------------------------------------------------------------------------
         
-        double Area(OutRec outRec, bool UseFullInt64Range)
+        double Area(OutRec outRec)
         {
           OutPt op = outRec.pts;
-          if (UseFullInt64Range) {
-              Int128 a = new Int128(0);
-              do
-              {
-                  a += Int128.Int128Mul(op.prev.pt.X, op.pt.Y) -
-                    Int128.Int128Mul(op.pt.X, op.prev.pt.Y);
-                  op = op.next;
-              } while (op != outRec.pts);
-              return a.ToDouble() / 2;
-          }
-          else
-          {
-            double a = 0;
-            do {
-              a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
-              op = op.next;
-            } while (op != outRec.pts);
-            return a/2;
-          }
+          double a = 0;
+          do {
+            a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
+            op = op.next;
+          } while (op != outRec.pts);
+          return a/2;
         }
 
         //------------------------------------------------------------------------------
