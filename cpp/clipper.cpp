@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.1                                                           *
-* Date      :  12 May 2012                                                     *
+* Version   :  4.8.2                                                           *
+* Date      :  21 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -682,20 +682,6 @@ bool GetOverlapSegment(IntPoint pt1a, IntPoint pt1b, IntPoint pt2a,
     if (pt1b.Y > pt2b.Y) pt2 = pt1b; else pt2 = pt2b;
     return pt1.Y > pt2.Y;
   }
-}
-//------------------------------------------------------------------------------
-
-OutPt* PolygonBottom(OutPt* pp)
-{
-  OutPt* p = pp->next;
-  OutPt* result = pp;
-  while (p != pp)
-  {
-    if (p->pt.Y > result->pt.Y) result = p;
-    else if (p->pt.Y == result->pt.Y && p->pt.X < result->pt.X) result = p;
-    p = p->next;
-  }
-  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -2706,7 +2692,8 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
     }
   }
   if (!outRec.bottomPt) {
-    outRec.bottomPt = PolygonBottom(pp);
+    outRec.bottomPt = GetBottomPt(pp);
+    outRec.bottomPt->idx = outRec.idx;
     outRec.pts = outRec.bottomPt;
   }
 }
@@ -2987,14 +2974,14 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
     {
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      outRec1->pts = PolygonBottom(p1);
+      outRec1->pts = GetBottomPt(p1);
       outRec1->bottomPt = outRec1->pts;
       outRec1->bottomPt->idx = outRec1->idx;
       outRec2 = CreateOutRec();
       m_PolyOuts.push_back(outRec2);
       outRec2->idx = (int)m_PolyOuts.size()-1;
       j->poly2Idx = outRec2->idx;
-      outRec2->pts = PolygonBottom(p2);
+      outRec2->pts = GetBottomPt(p2);
       outRec2->bottomPt = outRec2->pts;
       outRec2->bottomPt->idx = outRec2->idx;
 

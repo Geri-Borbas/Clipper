@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.1                                                           *
-* Date      :  12 May 2012                                                     *
+* Version   :  4.8.2                                                           *
+* Date      :  21 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1364,7 +1364,8 @@ begin
   if assigned(outRec.bottomPt) then
     tmp := POutRec(fPolyOutList[outRec.bottomPt.idx]).FirstLeft else
     tmp := outRec.FirstLeft;
-  if outRec = tmp then raise exception.Create(rsHoleLinkError);
+    if (outRec = tmp) then
+      raise exception.Create(rsHoleLinkError);
 
   if assigned(tmp) then
   begin
@@ -3206,6 +3207,7 @@ begin
   if not assigned(outRec.bottomPt) then
   begin
     outRec.bottomPt := GetBottomPt(pp);
+    outRec.bottomPt.idx := outRec.idx;
     outRec.pts := outRec.bottomPt;
   end;
 end;

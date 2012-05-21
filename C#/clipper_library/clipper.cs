@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.1                                                           *
-* Date      :  12 May 2012                                                     *
+* Version   :  4.8.2                                                           *
+* Date      :  21 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1811,20 +1811,6 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private OutPt PolygonBottom(OutPt pp)
-        {
-            OutPt p = pp.next;
-            OutPt result = pp;
-            while (p != pp)
-            {
-            if (p.pt.Y > result.pt.Y) result = p;
-            else if (p.pt.Y == result.pt.Y && p.pt.X < result.pt.X) result = p;
-            p = p.next;
-            }
-            return result;
-        }
-        //------------------------------------------------------------------------------
-
         private bool FindSegment(ref OutPt pp, ref IntPoint pt1, ref IntPoint pt2)
         {
             if (pp == null) return false;
@@ -2893,6 +2879,12 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        public static void ReversePolygons(Polygons polys)
+        { 
+            foreach (var poly in polys) poly.Reverse();
+        }
+        //------------------------------------------------------------------------------
+
         public static bool Orientation(Polygon poly)
         {
             int highI = poly.Count -1;
@@ -3077,7 +3069,8 @@ namespace ClipperLib
             }
           if (outRec.bottomPt == null) 
           {
-            outRec.bottomPt = PolygonBottom(pp);
+            outRec.bottomPt = GetBottomPt(pp);
+            outRec.bottomPt.idx = outRec.idx;
             outRec.pts = outRec.bottomPt;
           }
         }
@@ -3188,14 +3181,14 @@ namespace ClipperLib
             {
                 //instead of joining two polygons, we've just created a new one by
                 //splitting one polygon into two.
-                outRec1.pts = PolygonBottom(p1);
+                outRec1.pts = GetBottomPt(p1);
                 outRec1.bottomPt = outRec1.pts;
                 outRec1.bottomPt.idx = outRec1.idx;
                 outRec2 = CreateOutRec();
                 m_PolyOuts.Add(outRec2);
                 outRec2.idx = m_PolyOuts.Count - 1;
                 j.poly2Idx = outRec2.idx;
-                outRec2.pts = PolygonBottom(p2);
+                outRec2.pts = GetBottomPt(p2);
                 outRec2.bottomPt = outRec2.pts;
                 outRec2.bottomPt.idx = outRec2.idx;
 
