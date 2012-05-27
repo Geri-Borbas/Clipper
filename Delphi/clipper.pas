@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.2                                                           *
-* Date      :  21 May 2012                                                     *
+* Version   :  4.8.3                                                           *
+* Date      :  27 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -541,6 +541,21 @@ end;
 // Miscellaneous Functions ...
 //------------------------------------------------------------------------------
 
+function FullRangeNeeded(const pts: TPolygon): boolean;
+var
+  i: integer;
+begin
+  result := false;
+  for i := 0 to high(pts) do
+  begin
+    if (abs(pts[i].X) > hiRange) or (abs(pts[i].Y) > hiRange) then
+      raise exception.Create(rsInvalidInt)
+    else if (abs(pts[i].X) > loRange) or (abs(pts[i].Y) > loRange) then
+      result := true;
+  end;
+end;
+//------------------------------------------------------------------------------
+
 function PointCount(pts: POutPt): integer;
 var
   p: POutPt;
@@ -656,30 +671,55 @@ end;
 function Area(const pts: TPolygon): double; overload;
 var
   i, highI: integer;
+  a: TInt128;
   d: double;
 begin
   result := 0;
   highI := high(pts);
   if highI < 2 then exit;
-  d := pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y;
-  for i := 1 to highI do
-    d := d + (pts[i-1].X * pts[i].Y) - (pts[i].X * pts[i-1].Y);
-  result := d / 2;
+  if FullRangeNeeded(pts) then
+  begin
+    a := Int128Sub(Int128Mul(pts[highI].X, pts[0].Y),
+      Int128Mul(pts[0].X, pts[highI].Y));
+    for i := 0 to highI-1 do
+      a := Int128Add(a, Int128Sub(Int128Mul(pts[i].X, pts[i+1].Y),
+    Int128Mul(pts[i+1].X, pts[i].Y)));
+    result := Int128AsDouble(a) / 2;
+  end else
+  begin
+    d := pts[highI].X * pts[0].Y - pts[0].X * pts[highI].Y;
+    for i := 1 to highI do
+      d := d + (pts[i-1].X * pts[i].Y) - (pts[i].X * pts[i-1].Y);
+    result := d / 2;
+  end;
 end;
 //------------------------------------------------------------------------------
 
-function Area(outRec: POutRec): double; overload;
+function Area(outRec: POutRec; UseFullInt64Range: boolean): double; overload;
 var
   op: POutPt;
   d: double;
+  a: TInt128;
 begin
   op := outRec.pts;
-  d := 0;
-  repeat
-    d := d + (op.pt.X * op.next.pt.Y) - (op.next.pt.X * op.pt.Y);
-    op := op.next;
-  until op = outRec.pts;
-  result := d / 2;
+  if UseFullInt64Range then
+  begin
+    a := Int128(0);
+    repeat
+      a := Int128Add(a, Int128Sub(
+          Int128Mul(op.pt.X, op.next.pt.Y), Int128Mul(op.next.pt.X, op.pt.Y)));
+      op := op.next;
+    until op = outRec.pts;
+    result := Int128AsDouble(a) / 2;
+  end else
+  begin
+    d := 0;
+    repeat
+      d := d + (op.pt.X * op.next.pt.Y) - (op.next.pt.X * op.pt.Y);
+      op := op.next;
+    until op = outRec.pts;
+    result := d / 2;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -1114,7 +1154,6 @@ begin
   for i := len-2 downto 1 do
     InitEdge(@edges[i], @edges[i+1], @edges[i-1], pg[i]);
   InitEdge(@edges[0], @edges[1], @edges[len-1], pg[0]);
-
   //reset xcurr & ycurr and find the 'highest' edge. (nb: since I'm much more
   //familiar with positive downwards Y axes, 'highest' here will be the edge
   //with the *smallest* ytop.)
@@ -1421,7 +1460,7 @@ begin
         FixHoleLinkage(outRec);
       //outRec.bottomPt might've been cleaned up already so retest orientation
       if (outRec.bottomPt = outRec.bottomFlag) and
-        (Orientation(outRec, fUse64BitRange) <> (Area(outRec) > 0)) then
+        (Orientation(outRec, fUse64BitRange) <> (Area(outRec, fUse64BitRange) > 0)) then
       begin
         DisposeBottomPt(outRec);
         FixupOutPolygon(outRec);

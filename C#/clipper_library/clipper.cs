@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.2                                                           *
-* Date      :  21 May 2012                                                     *
+* Version   :  4.8.3                                                           *
+* Date      :  27 May 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1102,7 +1102,7 @@ namespace ClipperLib
                   if (outRec.isHole && fixHoleLinkages) FixHoleLinkage(outRec);
 
                   if (outRec.bottomPt == outRec.bottomFlag &&
-                    (Orientation(outRec, m_UseFullRange) != (Area(outRec) > 0)))
+                    (Orientation(outRec, m_UseFullRange) != (Area(outRec, m_UseFullRange) > 0)))
                   {
                       DisposeBottomPt(outRec);
                       FixupOutPolygon(outRec);
@@ -2917,6 +2917,20 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        private static bool FullRangeNeeded(Polygon pts)
+        {
+            bool result = false;
+            for (int i = 0; i <  pts.Count; i++) 
+            {
+                if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
+                    throw new ClipperException("Coordinate exceeds range bounds.");
+                else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
+                  result = true;
+            }
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
         private bool Orientation(OutRec outRec, bool UseFull64BitRange)
         {
             //first make sure bottomPt is correctly assigned ...
@@ -3274,24 +3288,51 @@ namespace ClipperLib
         {
             int highI = poly.Count - 1;
             if (highI < 2) return 0;
-            double area = (double)poly[highI].X * (double)poly[0].Y -
-                (double)poly[0].X * (double)poly[highI].Y;
-            for (int i = 0; i < highI; ++i)
-                area += (double)poly[i].X * (double)poly[i + 1].Y -
-                    (double)poly[i + 1].X * (double)poly[i].Y;
-            return area / 2;
+            if (FullRangeNeeded(poly))
+            {
+                Int128 a = new Int128();
+                a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
+                    Int128.Int128Mul(poly[0].X, poly[highI].Y);
+                for (int i = 0; i < highI; ++i)
+                    a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
+                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
+                return a.ToDouble() / 2;
+            }
+            else
+            {
+                double area = (double)poly[highI].X * (double)poly[0].Y -
+                    (double)poly[0].X * (double)poly[highI].Y;
+                for (int i = 0; i < highI; ++i)
+                    area += (double)poly[i].X * (double)poly[i + 1].Y -
+                        (double)poly[i + 1].X * (double)poly[i].Y;
+                return area / 2;
+            }
         }
         //------------------------------------------------------------------------------
-        
-        double Area(OutRec outRec)
+
+        double Area(OutRec outRec, bool UseFull64BitRange)
         {
           OutPt op = outRec.pts;
-          double a = 0;
-          do {
-            a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
-            op = op.next;
-          } while (op != outRec.pts);
-          return a/2;
+          if (UseFull64BitRange) 
+          {
+            Int128 a = new Int128(0);
+            do
+            {
+                a += Int128.Int128Mul(op.prev.pt.X, op.pt.Y) -
+                    Int128.Int128Mul(op.pt.X, op.prev.pt.Y);
+                op = op.next;
+            } while (op != outRec.pts);
+            return a.ToDouble() / 2;          
+          }
+          else
+          {
+            double a = 0;
+            do {
+              a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
+              op = op.next;
+            } while (op != outRec.pts);
+            return a/2;
+          }
         }
 
         //------------------------------------------------------------------------------
