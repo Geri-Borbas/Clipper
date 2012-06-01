@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.3                                                           *
-* Date      :  27 May 2012                                                     *
+* Version   :  4.8.4                                                           *
+* Date      :  1 June 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1359,31 +1359,24 @@ var
   p1, p2: POutRec;
   i1, i2: integer;
 begin
-  if item1 = item2 then
-    result := 0
-  else
+  result := 0;
+  if item1 = item2 then exit;
+  p1 := item1; p2 := item2;
+  if not assigned(p1.pts) or not assigned(p2.pts) then
   begin
-    p1 := item1; p2 := item2;
-    if not assigned(p1.pts) or not assigned(p2.pts) then
-    begin
-      if assigned(p1.pts) <> assigned(p2.pts) then
-      begin
-        if assigned(p1.pts) then result := -1 else result := 1;
-      end
-      else result := 0;
-      Exit;
-    end;
-
-    if p1.isHole then
-      i1 := p1.FirstLeft.idx else
-      i1 := p1.idx;
-    if p2.isHole then
-      i2 := p2.FirstLeft.idx else
-      i2 := p2.idx;
-    result := i1 - i2;
-    if (result = 0) and (p1.isHole <> p2.isHole) then
-      if p1.isHole then result := 1
-      else result := -1;
+    if assigned(p1.pts) then result := -1
+    else if assigned(p2.pts) then result := 1;
+    exit;
+  end;
+  if p1.isHole then i1 := p1.FirstLeft.idx
+  else i1 := p1.idx;
+  if p2.isHole then i2 := p2.FirstLeft.idx
+  else i2 := p2.idx;
+  result := i1 - i2;
+  if (result = 0) and (p1.isHole <> p2.isHole) then
+  begin
+    if p1.isHole then result := 1
+    else result := -1;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1456,6 +1449,7 @@ begin
       if not assigned(outRec.pts) then continue;
       FixupOutPolygon(outRec);
       if not assigned(outRec.pts) then continue;
+
       if outRec.isHole and fixHoleLinkages then
         FixHoleLinkage(outRec);
       //outRec.bottomPt might've been cleaned up already so retest orientation
@@ -1473,7 +1467,6 @@ begin
       JoinCommonEdges(fixHoleLinkages);
 
     if fixHoleLinkages then fPolyOutList.Sort(PolySort);
-
     result := true;
   except
     result := false;
@@ -1713,7 +1706,8 @@ begin
     e2.side := esRight;
     e := e1;
     if e.prevInAEL = e2 then
-      prevE := e2.prevInAEL else
+      prevE := e2.prevInAEL
+    else
       prevE := e.prevInAEL;
   end else
   begin
@@ -1722,9 +1716,9 @@ begin
     e1.side := esRight;
     e2.side := esLeft;
     e := e2;
-    prevE := e2.prevInAEL;
     if e.prevInAEL = e1 then
-      prevE := e1.prevInAEL else
+      prevE := e1.prevInAEL
+    else
       prevE := e.prevInAEL;
   end;
 
@@ -1742,8 +1736,11 @@ begin
   begin
     e1.outIdx := -1;
     e2.outIdx := -1;
-  end else
-    AppendPolygon(e1, e2);
+  end
+  else if e1.outIdx < e2.outIdx then
+    AppendPolygon(e1, e2)
+  else
+    AppendPolygon(e2, e1);
 end;
 //------------------------------------------------------------------------------
 
@@ -2395,8 +2392,8 @@ begin
   outRec2.pts := nil;
   outRec2.bottomPt := nil;
   outRec2.AppendLink := outRec1;
-  OKIdx := e1.outIdx;
-  ObsoleteIdx := e2.outIdx;
+  OKIdx := outRec1.idx;
+  ObsoleteIdx := outRec2.idx;
 
   e1.outIdx := -1; //nb: safe because we only get here via AddLocalMaxPoly
   e2.outIdx := -1;
@@ -3169,7 +3166,7 @@ begin
     outRec := fPolyOutList[m];
     inc(m);
     op := outRec.pts;
-    if not assigned(op) then Continue;
+    if not assigned(op) then break;// continue;
     pCnt := PointCount(op);
     if (pCnt < 3) then continue;
     setLength(result[i].Outer, pCnt);

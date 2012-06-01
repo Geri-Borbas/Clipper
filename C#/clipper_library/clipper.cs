@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.3                                                           *
-* Date      :  27 May 2012                                                     *
+* Version   :  4.8.4                                                           *
+* Date      :  1 June 2012                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1015,7 +1015,7 @@ namespace ClipperLib
           {
             if ((or1.pts == null) != (or2.pts == null))
             {
-                if (or1.pts != null) return -1; else return 1;
+                return or1.pts == null ? 1 : -1;
             }
             else return 0;          
           }
@@ -1029,8 +1029,7 @@ namespace ClipperLib
           int result = i1 - i2;
           if (result == 0 && (or1.isHole != or2.isHole))
           {
-              if (or1.isHole) return 1;
-              else return -1;
+              return or1.isHole ? 1 : -1;
           }
           return result;
         }
@@ -1306,8 +1305,7 @@ namespace ClipperLib
 
         private bool E2InsertsBeforeE1(TEdge e1, TEdge e2)
         {
-          if (e2.xcurr == e1.xcurr) return e2.dx > e1.dx;
-          else return e2.xcurr < e1.xcurr;
+          return e2.xcurr == e1.xcurr? e2.dx > e1.dx : e2.xcurr < e1.xcurr;
         }
         //------------------------------------------------------------------------------
 
@@ -1641,7 +1639,10 @@ namespace ClipperLib
                 e1.outIdx = -1;
                 e2.outIdx = -1;
             }
-            else AppendPolygon(e1, e2);
+            else if (e1.outIdx < e2.outIdx) 
+                AppendPolygon(e1, e2);
+            else 
+                AppendPolygon(e2, e1);
         }
         //------------------------------------------------------------------------------
 
@@ -2466,8 +2467,7 @@ namespace ClipperLib
 
         private TEdge GetNextInAEL(TEdge e, Direction Direction)
         {
-            if (Direction == Direction.dLeftToRight) return e.nextInAEL;
-            else return e.prevInAEL;
+            return Direction == Direction.dLeftToRight ? e.nextInAEL: e.prevInAEL;
         }
         //------------------------------------------------------------------------------
 
@@ -2625,7 +2625,7 @@ namespace ClipperLib
 
         private static Int64 Round(double value)
         {
-            if ((value < 0)) return (Int64)(value - 0.5); else return (Int64)(value + 0.5);
+            return value < 0 ? (Int64)(value - 0.5) : (Int64)(value + 0.5);
         }
         //------------------------------------------------------------------------------
 
@@ -2683,12 +2683,12 @@ namespace ClipperLib
             if (node1.edge1 == node2.edge1 || node1.edge2 == node2.edge1)
             {
               result = node2.pt.X > node1.pt.X;
-              if (node2.edge1.dx > 0) return !result; else return result;
+                return node2.edge1.dx > 0 ? !result : result;
             }
             else if (node1.edge1 == node2.edge2 || node1.edge2 == node2.edge2)
             {
               result = node2.pt.X > node1.pt.X;
-              if (node2.edge2.dx > 0) return !result; else return result;
+                return node2.edge2.dx > 0 ? !result : result;
             }
             else return node2.pt.X > node1.pt.X;
           }
