@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.4                                                           *
-* Date      :  1 June 2012                                                     *
+* Version   :  4.8.5                                                           *
+* Date      :  15 July 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3594,10 +3594,11 @@ function BuildArc(const pt: TIntPoint; a1, a2, r: single): TPolygon;
 var
   i, N: Integer;
   a, da: double;
-  Steps: Integer;
+  Steps: int64;
   S, C: Extended; //sin & cos
 begin
   Steps := Max(6, Round(Sqrt(Abs(r)) * Abs(a2 - a1)));
+  if Steps > $100000 then Steps := $100000;
   SetLength(Result, Steps);
   N := Steps - 1;
   da := (a2 - a1) / N;
@@ -3639,7 +3640,7 @@ function OffsetPolygons(const pts: TPolygons; const delta: double;
 var
   i, j, k, len, out_len: integer;
   normals: TArrayOfDoublePoint;
-  a1, a2, R, RMin: double;
+  R, RMin: double;
   pt1, pt2: TIntPoint;
   outer: TPolygon;
   bounds: TIntRect;
@@ -3659,19 +3660,19 @@ const
 
   procedure DoSquare(mul: double = 1.0);
   var
-    dx: double;
+    sinAngle, dx: double;
   begin
     pt1.X := round(pts[i][j].X + normals[k].X * delta);
     pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
     pt2.X := round(pts[i][j].X + normals[j].X * delta);
     pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y)*delta >= 0) then
+    sinAngle := (normals[k].X*normals[j].Y-normals[j].X*normals[k].Y);
+    if (sinAngle * delta >= 0) then
     begin
-      a1 := ArcTan2(normals[k].Y, normals[k].X);
-      a2 := ArcTan2(-normals[j].Y, -normals[j].X);
-      a1 := abs(a2 - a1);
-      if a1 > pi then a1 := pi*2 - a1;
-      dx := tan((pi - a1)/4) * abs(delta*mul);
+      //very occasionally sinAngle can be very slightly > 1 so ...
+      if sinAngle > 1 then sinAngle := 1
+      else if sinAngle < -1 then sinAngle := -1;
+      dx := tan((pi - arcsin(sinAngle))/4) * abs(delta*mul);
       pt1 := IntPoint(round(pt1.X -normals[k].Y *dx),
         round(pt1.Y + normals[k].X *dx));
       AddPoint(pt1);
@@ -3711,6 +3712,7 @@ const
   var
     m: integer;
     arc: TPolygon;
+    a1, a2: double;
   begin
     pt1.X := round(pts[i][j].X + normals[k].X * delta);
     pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);

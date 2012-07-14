@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.4                                                           *
-* Date      :  1 June 2012                                                     *
+* Version   :  4.8.5                                                           *
+* Date      :  15 July 2012                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3341,12 +3341,13 @@ namespace ClipperLib
 
         internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
         {
-            int steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
-            Polygon result = new Polygon(steps);
-            int n = steps - 1;
-            double da = (a2 - a1) / n;
+            Int64 steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
+            if (steps > 0x100000) steps = 0x100000;
+            int n = (int)steps;
+            Polygon result = new Polygon(n);
+            double da = (a2 - a1) / (n -1);
             double a = a1;
-            for (int i = 0; i < steps; ++i)
+            for (int i = 0; i < n; ++i)
             {
                 result.Add(new IntPoint(pt.X + Round(Math.Cos(a) * r), pt.Y + Round(Math.Sin(a) * r)));
                 a += da;
@@ -3501,13 +3502,12 @@ namespace ClipperLib
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
                 IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta >= 0)
+                double sinAngle = normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y;
+                if (sinAngle * delta >= 0)
                 {
-                    double a1 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
-                    double a2 = Math.Atan2(-normals[m_j].Y, -normals[m_j].X);
-                    a1 = Math.Abs(a2 - a1);
-                    if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
+                    //occasionally (due to floating point math) sinAngle can be > 1 so ...
+                    if (sinAngle > 1) sinAngle = 1; else if (sinAngle < -1) sinAngle = -1;
+                    double dx = Math.Tan((Math.PI - Math.Asin(sinAngle)) / 4) * Math.Abs(delta * mul);
                     pt1 = new IntPoint((Int64)(pt1.X - normals[m_k].Y * dx),
                         (Int64)(pt1.Y + normals[m_k].X * dx));
                     AddPoint(pt1);
