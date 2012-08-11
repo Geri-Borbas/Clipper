@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.5                                                           *
-* Date      :  15 July 2012                                                    *
+* Version   :  4.8.6                                                           *
+* Date      :  11 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -419,8 +419,8 @@ namespace ClipperLib
     public class ClipperBase
     {
         protected const double horizontal = -3.4E+38;
-        internal const Int64 loRange = 1518500249;           //sqrt(2^63 -1)/2
-        internal const Int64 hiRange = 6521908912666391106L; //sqrt(2^127 -1)/2
+        internal const Int64 loRange = 0x3FFFFFFF;          
+        internal const Int64 hiRange = 0x3FFFFFFFFFFFFFFFL; 
 
         internal LocalMinima m_MinimaList;
         internal LocalMinima m_CurrentLM;
@@ -1958,6 +1958,17 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        bool Param1RightOfParam2(OutRec outRec1, OutRec outRec2)
+        {
+            do
+            {
+                outRec1 = outRec1.FirstLeft;
+                if (outRec1 == outRec2) return true;
+            } while (outRec1 != null);
+            return false;
+        }
+        //------------------------------------------------------------------------------
+
         private void AppendPolygon(TEdge e1, TEdge e2)
         {
           //get the start and ends of both output polygons ...
@@ -1965,8 +1976,8 @@ namespace ClipperLib
           OutRec outRec2 = m_PolyOuts[e2.outIdx];
 
           OutRec holeStateRec;
-          if (outRec1.FirstLeft == outRec2) holeStateRec = outRec2;
-          else if (outRec2.FirstLeft == outRec1) holeStateRec = outRec1;
+          if (Param1RightOfParam2(outRec1, outRec2)) holeStateRec = outRec2;
+          else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
           else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
           OutPt p1_lft = outRec1.pts;
@@ -2659,7 +2670,7 @@ namespace ClipperLib
           newNode.pt = pt;
           newNode.next = null;
           if (m_IntersectNodes == null) m_IntersectNodes = newNode;
-          else if( Process1Before2(newNode, m_IntersectNodes) )
+          else if (ProcessParam1BeforeParam2(newNode, m_IntersectNodes))
           {
             newNode.next = m_IntersectNodes;
             m_IntersectNodes = newNode;
@@ -2667,7 +2678,7 @@ namespace ClipperLib
           else
           {
             IntersectNode iNode = m_IntersectNodes;
-            while( iNode.next != null  && Process1Before2(iNode.next, newNode) )
+            while (iNode.next != null && ProcessParam1BeforeParam2(iNode.next, newNode))
                 iNode = iNode.next;
             newNode.next = iNode.next;
             iNode.next = newNode;
@@ -2675,7 +2686,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool Process1Before2(IntersectNode node1, IntersectNode node2)
+        private bool ProcessParam1BeforeParam2(IntersectNode node1, IntersectNode node2)
         {
           bool result;
           if (node1.pt.Y == node2.pt.Y)
@@ -2913,21 +2924,7 @@ namespace ClipperLib
                 return !cross.IsNegative();
             }
             else
-                return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
-        }
-        //------------------------------------------------------------------------------
-
-        private static bool FullRangeNeeded(Polygon pts)
-        {
-            bool result = false;
-            for (int i = 0; i <  pts.Count; i++) 
-            {
-                if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
-                    throw new ClipperException("Coordinate exceeds range bounds.");
-                else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
-                  result = true;
-            }
-            return result;
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) >= 0;
         }
         //------------------------------------------------------------------------------
 
@@ -2965,7 +2962,7 @@ namespace ClipperLib
                 return !cross.IsNegative();
             }
             else
-                return (vec1.X * vec2.Y - vec2.X * vec1.Y) > 0;
+                return (vec1.X * vec2.Y - vec2.X * vec1.Y) >= 0;
 
         }
         //------------------------------------------------------------------------------
@@ -3281,6 +3278,20 @@ namespace ClipperLib
                 }
             }
           }
+        }
+        //------------------------------------------------------------------------------
+
+        private static bool FullRangeNeeded(Polygon pts)
+        {
+            bool result = false;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (Math.Abs(pts[i].X) > hiRange || Math.Abs(pts[i].Y) > hiRange)
+                    throw new ClipperException("Coordinate exceeds range bounds.");
+                else if (Math.Abs(pts[i].X) > loRange || Math.Abs(pts[i].Y) > loRange)
+                    result = true;
+            }
+            return result;
         }
         //------------------------------------------------------------------------------
 
@@ -3607,22 +3618,24 @@ namespace ClipperLib
         // Convert self-intersecting polygons into simple polygons
         //------------------------------------------------------------------------------
 
-        public static Polygons SimplifyPolygon(Polygon poly)
+        public static Polygons SimplifyPolygon(Polygon poly, 
+              PolyFillType fillType = PolyFillType.pftEvenOdd)
         {
             Polygons result = new Polygons();
             Clipper c = new Clipper();
             c.AddPolygon(poly, PolyType.ptSubject);
-            c.Execute(ClipType.ctUnion, result);
+            c.Execute(ClipType.ctUnion, result, fillType, fillType);
             return result;
         }
         //------------------------------------------------------------------------------
 
-        public static Polygons SimplifyPolygons(Polygons polys)
+        public static Polygons SimplifyPolygons(Polygons polys,
+            PolyFillType fillType = PolyFillType.pftEvenOdd)
         {
             Polygons result = new Polygons();
             Clipper c = new Clipper();
             c.AddPolygons(polys, PolyType.ptSubject);
-            c.Execute(ClipType.ctUnion, result);
+            c.Execute(ClipType.ctUnion, result, fillType, fillType);
             return result;
         }
         //------------------------------------------------------------------------------

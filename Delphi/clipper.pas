@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.5                                                           *
-* Date      :  15 July 2012                                                    *
+* Version   :  4.8.6                                                           *
+* Date      :  11 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -164,16 +164,7 @@ type
     fEdgeList      : TList;
     fLmList        : PLocalMinima; //localMinima list
     fCurrLm        : PLocalMinima; //current localMinima node
-
-    //fUse64BitRange: This member will be false while polygon coordinates
-    //remain between +/-MAX_INT32 /2 (approx. 1.5e+9, exactly sqrt(2^63 -1)/2).
-    //If coordinates are larger than this but less than +/-MAX_INT64 /2
-    //(approx. 6.5e+18, exactly sqrt(2^127 -1)/2) then this member will be true.
-    //If the latter range is exceeded, an error will be thrown when attempting
-    //to add the polygon to the Clipper object. The benefit of keeping
-    //coordinates within the smaller range is a modest increase in performance
-    //(roughly 15-20%).
-    fUse64BitRange : boolean;
+    fUse64BitRange : boolean;      //see loRange and hiRange consts notes below
     procedure DisposeLocalMinimaList;
   protected
     procedure Reset; virtual;
@@ -283,8 +274,8 @@ function OffsetPolygons(const pts: TPolygons; const delta: double;
   JoinType: TJoinType = jtSquare; MiterLimit: double = 2): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
-function SimplifyPolygon(const poly: TPolygon): TPolygons;
-function SimplifyPolygons(const polys: TPolygons): TPolygons;
+function SimplifyPolygon(const poly: TPolygon; fillType: TPolyFillType = pftEvenOdd): TPolygons;
+function SimplifyPolygons(const polys: TPolygons; fillType: TPolyFillType = pftEvenOdd): TPolygons;
 
 implementation
 
@@ -294,13 +285,12 @@ type
 
 const
   horizontal: double = -3.4e+38;
-  //The SlopesEqual function below places the most limits on possible maximum
-  //polygon coordinate values.
-  //Given that MaxInt32 = 2^31 -1 and MaxInt64 = 2^63 -1 and the SlopesEqual()
-  //algorithm requires:  Sqr(IntVal - IntVal) < MaxInt, then IntVal must not
-  //exceed the following values ...
-  loRange: Int64 = 1518500249;          //sqrt(2^63 -1)/2
-  hiRange: Int64 = 6521908912666391106; //sqrt(2^127 -1)/2
+  //Cross-Product (see Orientation) places the most limits on coordinate values
+  //So, to avoid overflow errors, they must not exceed the following values...
+  loRange: Int64 = $3FFFFFFF;          //1.0e+9
+  hiRange: Int64 = $3FFFFFFFFFFFFFFF;  //4.6e+18
+  //Also, if all coordinates are within +/-loRange, then calculations will be
+  //faster. Otherwise using Int128 math will render the library ~10-15% slower.
 
 resourcestring
   rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing rightbound';
@@ -618,7 +608,7 @@ begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
     result := cross.hi >= 0;
   end else
-    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
+    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) >= 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -663,7 +653,7 @@ begin
     cross := Int128Sub(Int128Mul(vec1.X, vec2.Y), Int128Mul(vec2.X, vec1.Y));
     result := cross.hi >= 0;
   end else
-    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) > 0;
+    result := ((vec1.X * vec2.Y) - (vec2.X * vec1.Y)) >= 0;
 
 end;
 //------------------------------------------------------------------------------
@@ -2314,6 +2304,17 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function Param1RightOfParam2(outRec1, outRec2: POutRec): boolean;
+begin
+  result := true;
+  repeat
+    outRec1 := outRec1.FirstLeft;
+    if outRec1 = outRec2 then exit;
+  until not assigned(outRec1);
+  result := false;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.AppendPolygon(e1, e2: PEdge);
 var
   holeStateRec, outRec1, outRec2: POutRec;
@@ -2328,8 +2329,8 @@ begin
   outRec2 := fPolyOutList[e2.outIdx];
 
   //work out which polygon fragment has the correct hole state ...
-  if (outRec1.FirstLeft = outRec2) then holeStateRec := outRec2
-  else if (outRec2.FirstLeft = outRec1) then holeStateRec := outRec1
+  if Param1RightOfParam2(outRec1, outRec2) then holeStateRec := outRec2
+  else if Param1RightOfParam2(outRec2, outRec1) then holeStateRec := outRec1
   else holeStateRec := GetLowermostRec(outRec1, outRec2);
 
   //get the start and ends of both output polygons ...
@@ -2917,7 +2918,7 @@ end;
 
 procedure TClipper.AddIntersectNode(e1, e2: PEdge; const pt: TIntPoint);
 
-  function Process1Before2(node1, node2: PIntersectNode): boolean;
+  function ProcessParam1BeforeParam2(node1, node2: PIntersectNode): boolean;
   begin
     if node1.pt.Y = node2.pt.Y then
     begin
@@ -2947,7 +2948,7 @@ begin
   newNode.next := nil;
   if not assigned(fIntersectNodes) then
     fIntersectNodes := newNode
-  else if Process1Before2(newNode, fIntersectNodes) then
+  else if ProcessParam1BeforeParam2(newNode, fIntersectNodes) then
   begin
     newNode.next := fIntersectNodes;
     fIntersectNodes := newNode;
@@ -2955,7 +2956,7 @@ begin
   begin
     node := fIntersectNodes;
     while assigned(node.next) and
-      Process1Before2(node.next, newNode) do
+      ProcessParam1BeforeParam2(node.next, newNode) do
       node := node.next;
     newNode.next := node.next;
     node.next := newNode;
@@ -3669,7 +3670,7 @@ const
     sinAngle := (normals[k].X*normals[j].Y-normals[j].X*normals[k].Y);
     if (sinAngle * delta >= 0) then
     begin
-      //very occasionally sinAngle can be very slightly > 1 so ...
+      //occasionally (due to floating point math) sinAngle can be > 1 so ...
       if sinAngle > 1 then sinAngle := 1
       else if sinAngle < -1 then sinAngle := -1;
       dx := tan((pi - arcsin(sinAngle))/4) * abs(delta*mul);
@@ -3817,24 +3818,24 @@ begin
   end;
 end;
 
-function SimplifyPolygon(const poly: TPolygon): TPolygons;
+function SimplifyPolygon(const poly: TPolygon; fillType: TPolyFillType = pftEvenOdd): TPolygons;
 begin
   with TClipper.Create do
   try
     AddPolygon(poly, ptSubject);
-    Execute(ctUnion, Result);
+    Execute(ctUnion, Result, fillType, fillType);
   finally
     free;
   end;
 end;
 //------------------------------------------------------------------------------
 
-function SimplifyPolygons(const polys: TPolygons): TPolygons;
+function SimplifyPolygons(const polys: TPolygons; fillType: TPolyFillType = pftEvenOdd): TPolygons;
 begin
   with TClipper.Create do
   try
     AddPolygons(polys, ptSubject);
-    Execute(ctUnion, Result);
+    Execute(ctUnion, Result, fillType, fillType);
   finally
     free;
   end;
