@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.6                                                           *
-* Date      :  11 August 2012                                                  *
+* Version   :  4.8.7                                                           *
+* Date      :  24 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -265,8 +265,8 @@ type
 function Orientation(const pts: TPolygon): boolean; overload;
 function Area(const pts: TPolygon): double;
 function IntPoint(const X, Y: Int64): TIntPoint;
-function ReversePoints(const pts: TPolygon): TPolygon; overload;
-function ReversePoints(const pts: TPolygons): TPolygons; overload;
+function ReversePolygon(const pts: TPolygon): TPolygon;
+function ReversePolygons(const pts: TPolygons): TPolygons; 
 
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
@@ -713,7 +713,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function ReversePoints(const pts: TPolygon): TPolygon; overload;
+function ReversePolygon(const pts: TPolygon): TPolygon; 
 var
   i, highI: integer;
 begin
@@ -724,7 +724,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function ReversePoints(const pts: TPolygons): TPolygons; overload;
+function ReversePolygons(const pts: TPolygons): TPolygons;
 var
   i, j, highJ: integer;
 begin
@@ -1445,12 +1445,8 @@ begin
       //outRec.bottomPt might've been cleaned up already so retest orientation
       if (outRec.bottomPt = outRec.bottomFlag) and
         (Orientation(outRec, fUse64BitRange) <> (Area(outRec, fUse64BitRange) > 0)) then
-      begin
-        DisposeBottomPt(outRec);
-        FixupOutPolygon(outRec);
-      end;
-      if (outRec.isHole = fReverseOutput) xor
-        Orientation(outRec, fUse64BitRange) then
+          DisposeBottomPt(outRec);
+      if (outRec.isHole = fReverseOutput) xor Orientation(outRec, fUse64BitRange) then
           ReversePolyPtLinks(outRec.pts);
     end;
     if fJoinList.count > 0 then
@@ -1519,6 +1515,7 @@ begin
   next.prev := prev;
   prev.next := next;
   outRec.bottomPt := next;
+  FixupOutPolygon(outRec);
 end;
 //------------------------------------------------------------------------------
 
@@ -3496,7 +3493,7 @@ begin
         //outRec2 is contained by outRec1 ...
         outRec2.isHole := not outRec1.isHole;
         outRec2.FirstLeft := outRec1;
-        if (outRec2.isHole = Orientation(outRec2, fUse64BitRange)) then
+        if (outRec2.isHole = fReverseOutput) xor Orientation(outRec2, fUse64BitRange) then
           ReversePolyPtLinks(outRec2.pts);
       end else if PointInPolygon(outRec1.pts.pt, outRec2.pts, fUse64BitRange) then
       begin
@@ -3505,7 +3502,7 @@ begin
         outRec1.isHole := not outRec2.isHole;
         outRec2.FirstLeft := outRec1.FirstLeft;
         outRec1.FirstLeft := outRec2;
-        if (outRec1.isHole = Orientation(outRec1, fUse64BitRange)) then
+        if (outRec1.isHole = fReverseOutput) xor Orientation(outRec1, fUse64BitRange) then
           ReversePolyPtLinks(outRec1.pts);
         //make sure any contained holes now link to the correct polygon ...
         if fixHoleLinkages then CheckHoleLinkages1(outRec1, outRec2);
@@ -3530,6 +3527,12 @@ begin
       //cleanup edges ...
       FixupOutPolygon(outRec1);
       FixupOutPolygon(outRec2);
+
+      if (Orientation(outRec1, fUse64BitRange) <> (Area(outRec1, fUse64BitRange) > 0)) then
+        DisposeBottomPt(outRec1);
+      if (Orientation(outRec2, fUse64BitRange) <> (Area(outRec2, fUse64BitRange) > 0)) then
+        DisposeBottomPt(outRec2);
+
     end else
     begin
       //joined 2 polygons together ...
@@ -3811,7 +3814,7 @@ begin
       if len > 0 then
         setlength(result, len -1);
       //restore polygon orientation ...
-      result := ReversePoints(result);
+      result := ReversePolygons(result);
     end;
   finally
     free;
