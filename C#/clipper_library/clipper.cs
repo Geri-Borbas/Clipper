@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.7                                                           *
-* Date      :  24 August 2012                                                  *
+* Version   :  4.8.8                                                           *
+* Date      :  30 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3515,12 +3515,13 @@ namespace ClipperLib
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
                 IntPoint pt2 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
-                double sinAngle = normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y;
-                if (sinAngle * delta >= 0)
+                if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * delta >= 0)
                 {
-                    //occasionally (due to floating point math) sinAngle can be > 1 so ...
-                    if (sinAngle > 1) sinAngle = 1; else if (sinAngle < -1) sinAngle = -1;
-                    double dx = Math.Tan((Math.PI - Math.Asin(sinAngle)) / 4) * Math.Abs(delta * mul);
+                    double a1 = Math.Atan2(normals[m_k].Y, normals[m_k].X);
+                    double a2 = Math.Atan2(-normals[m_j].Y, -normals[m_j].X);
+                    a1 = Math.Abs(a2 - a1);
+                    if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
+                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
                     pt1 = new IntPoint((Int64)(pt1.X - normals[m_k].Y * dx),
                         (Int64)(pt1.Y + normals[m_k].X * dx));
                     AddPoint(pt1);

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.7                                                           *
-* Date      :  24 August 2012                                                  *
+* Version   :  4.8.8                                                           *
+* Date      :  30 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3307,12 +3307,13 @@ void DoSquare(double mul = 1.0)
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
     IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    double sinAngle = normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y;
-    if (sinAngle * m_delta >= 0)
+    if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
     {
-      //occasionally (due to floating point math) sinAngle can be > 1 so ...
-      if (sinAngle > 1) sinAngle = 1; else if (sinAngle < -1) sinAngle = -1;
-      double dx = std::tan((pi - std::asin(sinAngle))/4) * std::abs(m_delta*mul);
+      double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
+      double a2 = std::atan2(-normals[m_j].Y, -normals[m_j].X);
+      a1 = std::fabs(a2 - a1);
+      if (a1 > pi) a1 = pi * 2 - a1;
+      double dx = std::tan((pi - a1)/4) * std::fabs(m_delta * mul);
       pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx),
         (long64)(pt1.Y + normals[m_k].X * dx));
       AddPoint(pt1);
@@ -3322,9 +3323,9 @@ void DoSquare(double mul = 1.0)
     }
     else
     {
-        AddPoint(pt1);
-        AddPoint(m_p[m_i][m_j]);
-        AddPoint(pt2);
+      AddPoint(pt1);
+      AddPoint(m_p[m_i][m_j]);
+      AddPoint(pt2);
     }
 }
 //------------------------------------------------------------------------------

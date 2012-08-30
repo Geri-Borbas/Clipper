@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.7                                                           *
-* Date      :  24 August 2012                                                  *
+* Version   :  4.8.8                                                           *
+* Date      :  30 August 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3664,19 +3664,20 @@ const
 
   procedure DoSquare(mul: double = 1.0);
   var
-    sinAngle, dx: double;
+    a1, a2, dx: double;
   begin
     pt1.X := round(pts[i][j].X + normals[k].X * delta);
     pt1.Y := round(pts[i][j].Y + normals[k].Y * delta);
     pt2.X := round(pts[i][j].X + normals[j].X * delta);
     pt2.Y := round(pts[i][j].Y + normals[j].Y * delta);
-    sinAngle := (normals[k].X*normals[j].Y-normals[j].X*normals[k].Y);
-    if (sinAngle * delta >= 0) then
+    if ((normals[k].X*normals[j].Y-normals[j].X*normals[k].Y) * delta >= 0) then
     begin
-      //occasionally (due to floating point math) sinAngle can be > 1 so ...
-      if sinAngle > 1 then sinAngle := 1
-      else if sinAngle < -1 then sinAngle := -1;
-      dx := tan((pi - arcsin(sinAngle))/4) * abs(delta*mul);
+      a1 := ArcTan2(normals[k].Y, normals[k].X);
+      a2 := ArcTan2(-normals[j].Y, -normals[j].X);
+      a1 := abs(a2 - a1);
+      if a1 > pi then a1 := pi*2 - a1;
+      dx := tan((pi - a1)/4) * abs(delta*mul);
+
       pt1 := IntPoint(round(pt1.X -normals[k].Y *dx),
         round(pt1.Y + normals[k].X *dx));
       AddPoint(pt1);
