@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.8                                                           *
-* Date      :  30 August 2012                                                  *
+* Version   :  4.8.9                                                           *
+* Date      :  25 September 2012                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -906,11 +906,31 @@ begin
     ip.Y := round(b2);
     ip.X := round(edge1.dx * b2 + b1);
   end;
-  result :=
-    //can be *so close* to the top of one edge that the rounded Y equals one ytop ...
-    ((ip.Y = edge1.ytop) and (ip.Y >= edge2.ytop) and (edge1.tmpX > edge2.tmpX)) or
-    ((ip.Y = edge2.ytop) and (ip.Y >= edge1.ytop) and (edge1.tmpX > edge2.tmpX)) or
-    ((ip.Y > edge1.ytop) and (ip.Y > edge2.ytop));
+
+  //The precondition - e.tmpX > eNext.tmpX - indicates that the two edges do
+  //intersect below topY (and hence below the tops of either edge). However,
+  //when edges are almost parallel, rounding errors may cause false positives -
+  //indicating intersections when there really aren't any. Also, floating point
+  //imprecision can incorrectly place an intersect point beyond/above an edge.
+  //Therfore, further validation of the IP is warranted ...
+  if (ip.Y < edge1.ytop) or (ip.Y < edge2.ytop) then
+  begin
+    //Find the lower top of the two edges and compare X's at this Y.
+    //If edge1's X is greater than edge2's X then it's fair to assume an
+    //intersection really has occurred...
+    if (edge1.ytop > edge2.ytop) then
+    begin
+      result := TopX(edge2, edge1.ytop) < edge1.xtop;
+      ip.X := edge1.xtop;
+      ip.Y := edge1.ytop;
+    end else
+    begin
+      result := TopX(edge1, edge2.ytop) > edge2.xtop;
+      ip.X := edge2.xtop;
+      ip.Y := edge2.ytop;
+    end;
+  end else
+    result := true;
 end;
 //------------------------------------------------------------------------------
 
