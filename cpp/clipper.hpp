@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.0                                                           *
+* Version   :  4.9.1                                                           *
 * Date      :  9 October 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
@@ -278,8 +278,6 @@ private:
   void FixupOutPolygon(OutRec &outRec);
   bool IsHole(TEdge *e);
   void FixHoleLinkage(OutRec *outRec);
-  void CheckHoleLinkages1(OutRec *outRec1, OutRec *outRec2);
-  void CheckHoleLinkages2(OutRec *outRec1, OutRec *outRec2);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);

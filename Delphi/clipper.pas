@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.0                                                           *
+* Version   :  4.9.1                                                           *
 * Date      :  9 October 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
@@ -241,8 +241,6 @@ type
     procedure ClearJoins;
     procedure AddHorzJoin(E: PEdge; Idx: Integer);
     procedure ClearHorzJoins;
-    procedure CheckHoleLinkages1(const OutRec1, OutRec2: POutRec);
-    procedure CheckHoleLinkages2(const OutRec1, OutRec2: POutRec);
     procedure JoinCommonEdges(FixHoleLinkages: Boolean);
     procedure FixHoleLinkage(OutRec: POutRec);
   protected
@@ -3178,7 +3176,7 @@ begin
       end
       else if assigned(eNext) and (eNext.XCurr = E.XBot) and
         (eNext.YCurr = E.YBot) and (E.OutIdx >= 0) and
-        (eNext.OutIdx >= 0) and (eNext.YCurr > eNext.YTop) and
+          (eNext.OutIdx >= 0) and (eNext.YCurr > eNext.YTop) and
         SlopesEqual(E, eNext, FUse64BitRange) then
       begin
         AddOutPt(eNext, IntPoint(E.XBot, E.YBot));
@@ -3438,39 +3436,16 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.CheckHoleLinkages1(const OutRec1, OutRec2: POutRec);
-var
-  I: Integer;
-begin
-  //when A polygon is split into 2 polygons, make sure any holes the original
-  //polygon contained link to the correct polygon ...
-  if not OutRec1.IsHole then Exit; 
-  for I := 0 to FPolyOutList.Count - 1 do
-    with POutRec(fPolyOutList[I])^ do
-      if IsHole and assigned(BottomPt) and (FirstLeft = OutRec1) then
-        FirstLeft := OutRec2;
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipper.CheckHoleLinkages2(const OutRec1, OutRec2: POutRec);
-var
-  I: Integer;
-begin
-  //if A hole is owned by OutRec2 then make it owned by OutRec1 ...
-  for I := 0 to FPolyOutList.Count - 1 do
-    with POutRec(fPolyOutList[I])^ do
-      if IsHole and assigned(BottomPt) and (FirstLeft = OutRec2) then
-        FirstLeft := OutRec1;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.JoinCommonEdges(FixHoleLinkages: Boolean);
 var
-  I, J, OKIdx, ObsoleteIdx: Integer;
+  I, J, K, OKIdx, ObsoleteIdx: Integer;
   Jr, Jr2: PJoinRec;
   OutRec1, OutRec2: POutRec;
   Prev, p1, P2, p3, p4, Pp1a, Pp2a: POutPt;
   Pt1, Pt2, Pt3, Pt4: TIntPoint;
+const
+  OutRec2InOutRec1 = 1;
+  OutRec1InOutRec2 = 2;
 begin
   for I := 0 to FJoinList.count -1 do
   begin
@@ -3560,33 +3535,22 @@ begin
       if PointInPolygon(OutRec2.Pts.Pt, OutRec1.Pts, FUse64BitRange) then
       begin
         //OutRec2 is contained by OutRec1 ...
+        K := OutRec2InOutRec1;
         OutRec2.IsHole := not OutRec1.IsHole;
         OutRec2.FirstLeft := OutRec1;
-        FixupOutPolygon(OutRec1); //nb: do this before testing orientation
-        FixupOutPolygon(OutRec2);
-        if (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
-          ReversePolyPtLinks(OutRec2.Pts);
       end else if PointInPolygon(OutRec1.Pts.Pt, OutRec2.Pts, FUse64BitRange) then
       begin
         //OutRec1 is contained by OutRec2 ...
+        K := OutRec1InOutRec2;
         OutRec2.IsHole := OutRec1.IsHole;
         OutRec1.IsHole := not OutRec2.IsHole;
         OutRec2.FirstLeft := OutRec1.FirstLeft;
         OutRec1.FirstLeft := OutRec2;
-        FixupOutPolygon(OutRec1); //nb: do this before testing orientation
-        FixupOutPolygon(OutRec2);
-        if (OutRec1.IsHole = FReverseOutput) xor Orientation(OutRec1, FUse64BitRange) then
-          ReversePolyPtLinks(OutRec1.Pts);
-        //make sure any contained holes now link to the correct polygon ...
-        if FixHoleLinkages then CheckHoleLinkages1(OutRec1, OutRec2);
       end else
       begin
+        K := 0;
         OutRec2.IsHole := OutRec1.IsHole;
         OutRec2.FirstLeft := OutRec1.FirstLeft;
-        FixupOutPolygon(OutRec1);
-        FixupOutPolygon(OutRec2);
-        //make sure any contained holes now link to the correct polygon ...
-        if FixHoleLinkages then CheckHoleLinkages1(OutRec1, OutRec2);
       end;
 
       //now fixup any subsequent joins that match this polygon
@@ -3599,6 +3563,36 @@ begin
           Jr2.Poly2Idx := Jr.Poly2Idx;
       end;
 
+      FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
+      FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
+
+      case K of
+        OutRec2InOutRec1:
+          begin
+            if (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
+              ReversePolyPtLinks(OutRec2.Pts);
+          end;
+        OutRec1InOutRec2:
+          begin
+            if (OutRec1.IsHole = FReverseOutput) xor Orientation(OutRec1, FUse64BitRange) then
+              ReversePolyPtLinks(OutRec1.Pts);
+            //make sure any contained holes now link to the correct polygon ...
+            if FixHoleLinkages and OutRec1.IsHole then
+              for K := 0 to FPolyOutList.Count - 1 do
+                with POutRec(fPolyOutList[K])^ do
+                  if IsHole and assigned(BottomPt) and (FirstLeft = OutRec1) then
+                    FirstLeft := OutRec2;
+          end;
+        else
+          //make sure any contained holes now link to the correct polygon ...
+          if FixHoleLinkages then
+            for K := 0 to fPolyOutList.Count - 1 do
+              with POutRec(fPolyOutList[K])^ do
+                if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) and
+                   not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
+                     FirstLeft := outRec2;
+      end;
+
       if (Orientation(OutRec1, FUse64BitRange) <> (Area(OutRec1, FUse64BitRange) > 0)) then
         DisposeBottomPt(OutRec1);
       if (Orientation(OutRec2, FUse64BitRange) <> (Area(OutRec2, FUse64BitRange) > 0)) then
@@ -3609,7 +3603,11 @@ begin
       //joined 2 polygons together ...
 
       //make sure any holes contained by OutRec2 now link to OutRec1 ...
-      if FixHoleLinkages then CheckHoleLinkages2(OutRec1, OutRec2);
+      if FixHoleLinkages then
+        for K := 0 to FPolyOutList.Count - 1 do
+          with POutRec(fPolyOutList[K])^ do
+            if IsHole and assigned(BottomPt) and (FirstLeft = OutRec2) then
+              FirstLeft := OutRec1;
 
       //cleanup edges ...
       FixupOutPolygon(OutRec1);

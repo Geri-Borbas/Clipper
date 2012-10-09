@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.0                                                           *
+* Version   :  4.9.1                                                           *
 * Date      :  9 October 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
@@ -2940,30 +2940,6 @@ void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt)
 }
 //----------------------------------------------------------------------
 
-void Clipper::CheckHoleLinkages1(OutRec *outRec1, OutRec *outRec2)
-{
-  //when a polygon is split into 2 polygons, make sure any holes the original
-  //polygon contained link to the correct polygon ...
-  if (!outRec1->isHole) return; 
-  for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
-  {
-    OutRec *orec = m_PolyOuts[i];
-    if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
-      orec->FirstLeft = outRec2;
-  }
-}
-//----------------------------------------------------------------------
-
-void Clipper::CheckHoleLinkages2(OutRec *outRec1, OutRec *outRec2)
-{
-  //if a hole is owned by outRec2 then make it owned by outRec1 ...
-  for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
-    if (m_PolyOuts[i]->isHole && m_PolyOuts[i]->bottomPt &&
-      m_PolyOuts[i]->FirstLeft == outRec2)
-        m_PolyOuts[i]->FirstLeft = outRec1;
-}
-//----------------------------------------------------------------------
-
 void Clipper::JoinCommonEdges(bool fixHoleLinkages)
 {
   for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
@@ -3049,38 +3025,25 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       outRec2->bottomPt = outRec2->pts;
       outRec2->bottomPt->idx = outRec2->idx;
 
+      int K = 0;
       if (PointInPolygon(outRec2->pts->pt, outRec1->pts, m_UseFullRange))
       {
         //outRec2 is contained by outRec1 ...
+        K = 1;
         outRec2->isHole = !outRec1->isHole;
         outRec2->FirstLeft = outRec1;
-        FixupOutPolygon(*outRec1);
-        FixupOutPolygon(*outRec2);
-        if (outRec2->isHole ==
-          (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
-            ReversePolyPtLinks(*outRec2->pts);
       } else if (PointInPolygon(outRec1->pts->pt, outRec2->pts, m_UseFullRange))
       {
         //outRec1 is contained by outRec2 ...
+        K = 2;
         outRec2->isHole = outRec1->isHole;
         outRec1->isHole = !outRec2->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
         outRec1->FirstLeft = outRec2;
-        FixupOutPolygon(*outRec1);
-        FixupOutPolygon(*outRec2);
-        if (outRec1->isHole ==
-          (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
-            ReversePolyPtLinks(*outRec1->pts);
-        //make sure any contained holes now link to the correct polygon ...
-        if (fixHoleLinkages) CheckHoleLinkages1(outRec1, outRec2);
       } else
       {
         outRec2->isHole = outRec1->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
-        FixupOutPolygon(*outRec1);
-        FixupOutPolygon(*outRec2);
-        //make sure any contained holes now link to the correct polygon ...
-        if (fixHoleLinkages) CheckHoleLinkages1(outRec1, outRec2);
       }
 
       //now fixup any subsequent joins that match this polygon
@@ -3093,7 +3056,47 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
           j2->poly2Idx = j->poly2Idx;
       }
 
+      FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
+      FixupOutPolygon(*outRec2); //    but AFTER calling PointIsVertex()
 
+      switch( K ) {
+        case 1: 
+          {
+            if (outRec2->isHole ==
+              (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
+                ReversePolyPtLinks(*outRec2->pts);
+            break;
+          }
+        case 2: 
+          {
+            if (outRec1->isHole ==
+              (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
+                ReversePolyPtLinks(*outRec1->pts);
+            //make sure any contained holes now link to the correct polygon ...
+            if (fixHoleLinkages && outRec1->isHole) 
+              for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
+              {
+                OutRec *orec = m_PolyOuts[k];
+                if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
+                  orec->FirstLeft = outRec2;
+              }
+            break;
+          }
+        default: 
+          {
+            //make sure any contained holes now link to the correct polygon ...
+            if (fixHoleLinkages) 
+              for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
+              {
+                OutRec *orec = m_PolyOuts[k];
+                if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
+                  !PointInPolygon(orec->bottomPt->pt, outRec1->pts, m_UseFullRange))
+                    orec->FirstLeft = outRec2;
+              }
+
+          }
+      }
+     
       if (Orientation(outRec1, m_UseFullRange) != (Area(*outRec1, m_UseFullRange) > 0))
           DisposeBottomPt(*outRec1);
       if (Orientation(outRec2, m_UseFullRange) != (Area(*outRec2, m_UseFullRange) > 0))
@@ -3104,9 +3107,14 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       //joined 2 polygons together ...
 
       //make sure any holes contained by outRec2 now link to outRec1 ...
-      if (fixHoleLinkages) CheckHoleLinkages2(outRec1, outRec2);
+      if (fixHoleLinkages) 
+        for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
+          if (m_PolyOuts[k]->isHole && m_PolyOuts[k]->bottomPt &&
+            m_PolyOuts[k]->FirstLeft == outRec2)
+              m_PolyOuts[k]->FirstLeft = outRec1;
 
-      //now cleanup redundant edges too ...
+
+      //and cleanup redundant edges too ...
       FixupOutPolygon(*outRec1);
 
       if (outRec1->pts)
