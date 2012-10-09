@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+v4.9.0 - 9 October 2012
+* Bugfix: Obscure bug related to joining polygons.
+
 v4.8.9 - 25 September 2012
 * Bugfix: Obscure bug related to precision of intersections.
           

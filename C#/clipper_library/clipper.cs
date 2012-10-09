@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.9                                                           *
-* Date      :  25 September 2012                                               *
+* Version   :  4.9.0                                                           *
+* Date      :  9 October 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -342,6 +342,8 @@ namespace ClipperLib
         public Int64 xtop;
         public Int64 ytop;
         public double dx;
+        public Int64 deltaX;
+        public Int64 deltaY;
         public Int64 tmpX;
         public PolyType polyType;
         public EdgeSide side;
@@ -485,10 +487,10 @@ namespace ClipperLib
         internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullRange)
         {
             if (UseFullRange)
-              return Int128.Int128Mul(e1.ytop - e1.ybot, e2.xtop - e2.xbot) ==
-                  Int128.Int128Mul(e1.xtop - e1.xbot, e2.ytop - e2.ybot);
-            else return (Int64)(e1.ytop - e1.ybot) * (e2.xtop - e2.xbot) -
-              (Int64)(e1.xtop - e1.xbot)*(e2.ytop - e2.ybot) == 0;
+              return Int128.Int128Mul(e1.deltaY, e2.deltaX) ==
+                  Int128.Int128Mul(e1.deltaX, e2.deltaY);
+            else return (Int64)(e1.deltaY) * (e2.deltaX) ==
+              (Int64)(e1.deltaX) * (e2.deltaY);
         }
         //------------------------------------------------------------------------------
 
@@ -682,8 +684,10 @@ namespace ClipperLib
 
         private void SetDx(TEdge e)
         {
-          if (e.ybot == e.ytop) e.dx = horizontal;
-          else e.dx = (double)(e.xtop - e.xbot)/(e.ytop - e.ybot);
+          e.deltaX = (e.xtop - e.xbot);
+          e.deltaY = (e.ytop - e.ybot);
+          if (e.deltaY == 0) e.dx = horizontal;
+          else e.dx = (double)(e.deltaX)/(e.deltaY);
         }
         //---------------------------------------------------------------------------
 
@@ -2796,10 +2800,10 @@ namespace ClipperLib
             if( IsMaxima(e, topY) && GetMaximaPair(e).dx != horizontal )
             {
               //'e' might be removed from AEL, as may any following edges so ...
-              TEdge ePrior = e.prevInAEL;
+              TEdge ePrev = e.prevInAEL;
               DoMaxima(e, topY);
-              if( ePrior == null ) e = m_ActiveEdges;
-              else e = ePrior.nextInAEL;
+              if( ePrev == null ) e = m_ActiveEdges;
+              else e = ePrev.nextInAEL;
             }
             else
             {
@@ -2849,27 +2853,24 @@ namespace ClipperLib
               UpdateEdgeIntoAEL(ref e);
 
               //if output polygons share an edge, they'll need joining later ...
-              if (e.outIdx >= 0 && e.prevInAEL != null && e.prevInAEL.outIdx >= 0 &&
-                e.prevInAEL.xcurr == e.xbot && e.prevInAEL.ycurr == e.ybot &&
-                SlopesEqual(new IntPoint(e.xbot, e.ybot), new IntPoint(e.xtop, e.ytop),
-                  new IntPoint(e.xbot, e.ybot),
-                  new IntPoint(e.prevInAEL.xtop, e.prevInAEL.ytop), m_UseFullRange))
+              TEdge ePrev = e.prevInAEL;
+              TEdge eNext = e.nextInAEL;
+              if (ePrev != null && ePrev.xcurr == e.xbot &&
+                ePrev.ycurr == e.ybot && e.outIdx >= 0 &&
+                ePrev.outIdx >= 0 && ePrev.ycurr > ePrev.ytop &&
+                SlopesEqual(e, ePrev, m_UseFullRange))
               {
-                  AddOutPt(e.prevInAEL, new IntPoint(e.xbot, e.ybot));
-                  AddJoin(e, e.prevInAEL, -1, -1);
+                  AddOutPt(ePrev, new IntPoint(e.xbot, e.ybot));
+                  AddJoin(e, ePrev, -1, -1);
               }
-              else if (e.outIdx >= 0 && e.nextInAEL != null && e.nextInAEL.outIdx >= 0 &&
-                e.nextInAEL.ycurr > e.nextInAEL.ytop &&
-                e.nextInAEL.ycurr <= e.nextInAEL.ybot && 
-                e.nextInAEL.xcurr == e.xbot && e.nextInAEL.ycurr == e.ybot &&
-                SlopesEqual(new IntPoint(e.xbot, e.ybot), new IntPoint(e.xtop, e.ytop),
-                  new IntPoint(e.xbot, e.ybot),
-                  new IntPoint(e.nextInAEL.xtop, e.nextInAEL.ytop), m_UseFullRange))
+              else if (eNext != null && eNext.xcurr == e.xbot &&
+                eNext.ycurr == e.ybot && e.outIdx >= 0 &&
+                eNext.outIdx >= 0 && eNext.ycurr > eNext.ytop &&
+                SlopesEqual(e, eNext, m_UseFullRange))
               {
-                  AddOutPt(e.nextInAEL, new IntPoint(e.xbot, e.ybot));
-                  AddJoin(e, e.nextInAEL, -1, -1);
+                  AddOutPt(eNext, new IntPoint(e.xbot, e.ybot));
+                  AddJoin(e, eNext, -1, -1);
               }
-
             }
             e = e.nextInAEL;
           }
@@ -3099,15 +3100,14 @@ namespace ClipperLib
 
         private void CheckHoleLinkages1(OutRec outRec1, OutRec outRec2)
         {
+          if (!outRec1.isHole) return;
           //when a polygon is split into 2 polygons, make sure any holes the original
           //polygon contained link to the correct polygon ...
           for (int i = 0; i < m_PolyOuts.Count; ++i)
           {
             if (m_PolyOuts[i].isHole && m_PolyOuts[i].bottomPt != null &&
-                m_PolyOuts[i].FirstLeft == outRec1 &&
-                !PointInPolygon(m_PolyOuts[i].bottomPt.pt, 
-                outRec1.pts, m_UseFullRange))
-                    m_PolyOuts[i].FirstLeft = outRec2;
+                m_PolyOuts[i].FirstLeft == outRec1)
+                  m_PolyOuts[i].FirstLeft = outRec2;
           }
         }
         //----------------------------------------------------------------------
@@ -3218,6 +3218,8 @@ namespace ClipperLib
                     //outRec1 is contained by outRec2 ...
                     outRec2.isHole = !outRec1.isHole;
                     outRec2.FirstLeft = outRec1;
+                    FixupOutPolygon(outRec1);
+                    FixupOutPolygon(outRec2);
                     if (outRec2.isHole == (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
                         ReversePolyPtLinks(outRec2.pts);
                 }
@@ -3228,6 +3230,8 @@ namespace ClipperLib
                     outRec1.isHole = !outRec2.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
                     outRec1.FirstLeft = outRec2;
+                    FixupOutPolygon(outRec1);
+                    FixupOutPolygon(outRec2);
                     if (outRec1.isHole == (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
                         ReversePolyPtLinks(outRec1.pts);
                     //make sure any contained holes now link to the correct polygon ...
@@ -3237,6 +3241,8 @@ namespace ClipperLib
                 {
                     outRec2.isHole = outRec1.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
+                    FixupOutPolygon(outRec1);
+                    FixupOutPolygon(outRec2);
                     //make sure any contained holes now link to the correct polygon ...
                     if (fixHoleLinkages) CheckHoleLinkages1(outRec1, outRec2);
                 }
@@ -3251,9 +3257,6 @@ namespace ClipperLib
                         j2.poly2Idx = j.poly2Idx;
                 }
                 
-                //now cleanup redundant edges too ...
-                FixupOutPolygon(outRec1);
-                FixupOutPolygon(outRec2);
                 if (Orientation(outRec1, m_UseFullRange) != (Area(outRec1, m_UseFullRange) > 0))
                     DisposeBottomPt(outRec1);
                 if (Orientation(outRec2, m_UseFullRange) != (Area(outRec2, m_UseFullRange) > 0)) 

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.8.9                                                           *
-* Date      :  25 September 2012                                               *
+* Version   :  4.9.0                                                           *
+* Date      :  9 October 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -98,6 +98,8 @@ struct TEdge {
   long64 xtop;
   long64 ytop;
   double dx;
+  long64 deltaX;
+  long64 deltaY;
   long64 tmpX;
   PolyType polyType;
   EdgeSide side;
