@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.1                                                           *
-* Date      :  9 October 2012                                                  *
+* Version   :  4.9.3                                                           *
+* Date      :  1 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -103,7 +103,7 @@ class Int128
       if (hi != val.hi)
         return hi > val.hi;
       else
-        return lo > val.lo;
+        return ulong64(lo) > ulong64(val.lo);
     }
 
     bool operator < (const Int128 &val) const
@@ -111,7 +111,7 @@ class Int128
       if (hi != val.hi)
         return hi < val.hi;
       else
-        return lo < val.lo;
+        return ulong64(lo) < ulong64(val.lo);
     }
 
     bool operator >= (const Int128 &val) const
@@ -225,20 +225,15 @@ class Int128
     double AsDouble() const
     {
       const double shift64 = 18446744073709551616.0; //2^64
-      const double bit64 = 9223372036854775808.0;
       if (hi < 0)
       {
-        Int128 tmp(*this);
-        Negate(tmp);
-        if (tmp.lo < 0)
-          return (double)tmp.lo - bit64 - tmp.hi * shift64;
+        if (lo == 0)
+            return (double)hi * shift64;
         else
-          return -(double)tmp.lo - tmp.hi * shift64;
+          return -(double)(ulong64(-lo) + ~hi * shift64);
       }
-      else if (lo < 0)
-        return -(double)lo + bit64 + hi * shift64;
       else
-        return (double)lo + (double)hi * shift64;
+        return (double)(ulong64(lo) + hi * shift64);
     }
 
     //for bug testing ...
@@ -355,7 +350,7 @@ bool Orientation(const Polygon &poly)
         throw "Coordinate exceeds range bounds.";
     Int128 cross = Int128(vec1.X) * Int128(vec2.Y) -
       Int128(vec2.X) * Int128(vec1.Y);
-    return cross >= 0;
+    return (cross >= 0);
   }
   else
     return (vec1.X * vec2.Y - vec2.X * vec1.Y) >= 0;

@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.1                                                           *
-* Date      :  9 October 2012                                                  *
+* Version   :  4.9.3                                                           *
+* Date      :  1 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -118,7 +118,7 @@ namespace ClipperLib
             if (val1.hi != val2.hi)
                 return val1.hi > val2.hi;
             else
-                return val1.lo > val2.lo;
+                return (UInt64)val1.lo > (UInt64)val2.lo;
         }
 
         public static bool operator< (Int128 val1, Int128 val2) 
@@ -126,7 +126,7 @@ namespace ClipperLib
             if (val1.hi != val2.hi)
                 return val1.hi < val2.hi;
             else
-                return val1.lo < val2.lo;
+                return (UInt64)val1.lo < (UInt64)val2.lo;
         }
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 
@@ -213,20 +213,16 @@ namespace ClipperLib
         public double ToDouble()
         {
             const double shift64 = 18446744073709551616.0; //2^64
-            const double bit64 = 9223372036854775808.0; 
             if (hi < 0)
             {
-                Int128 tmp = new Int128(this);
-                tmp = -tmp;
-                if (tmp.lo < 0)
-                    return (double)tmp.lo - bit64 - tmp.hi * shift64;
+                if (lo == 0)
+                    return (double)hi * shift64;
                 else
-                    return -(double)tmp.lo - tmp.hi * shift64;
+                    return -(double)((UInt64)(-lo) + ~hi * shift64);
             }
-            else if (lo < 0)
-                return -(double)lo + bit64 + hi * shift64;
             else
-                return (double)lo + (double)hi * shift64;
+                return (double)((UInt64)lo + hi * shift64);
+
         }
 
         ////for bug testing ...

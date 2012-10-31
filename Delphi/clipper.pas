@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.1                                                           *
-* Date      :  9 October 2012                                                  *
+* Version   :  4.9.3                                                           *
+* Date      :  1 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -394,8 +394,11 @@ end;
 function Int128LessThan(const Int1, Int2: TInt128): Boolean;
 begin
   if (Int1.Hi <> Int2.Hi) then
-    Result := Int1.Hi < Int2.Hi else
-    Result := Int1.Lo < Int2.Lo;
+    Result := Int1.Hi < Int2.Hi
+  else if Int64Rec(Int1.Lo).Hi <> Int64Rec(Int2.Lo).Hi then
+    Result := Int64Rec(Int1.Lo).Hi < Int64Rec(Int2.Lo).Hi
+  else
+    Result := Int64Rec(Int1.Lo).Lo < Int64Rec(Int2.Lo).Lo;
 end;
 //---------------------------------------------------------------------------
 
@@ -490,20 +493,18 @@ end;
 function Int128AsDouble(val: TInt128): Double;
 const
   shift64: Double = 18446744073709551616.0;
-  bit64  : Double =  9223372036854775808.0; //ie high (sign) bit of Int64
+  shift32: Double = 4294967296.0;
+var
+  lo: Int64;
 begin
   if (val.Hi < 0) then
   begin
-    Int128Negate(val);
-    if val.Lo < 0 then
-      Result := val.Lo - bit64 - (val.Hi * shift64) else
-      Result := -val.Lo - (val.Hi * shift64);
+    lo := -val.Lo;
+    if lo = 0 then
+      Result := val.Hi * shift64 else
+      Result := -(not val.Hi * shift64 + Int64Rec(lo).Hi * shift32 + Int64Rec(lo).Lo);
   end else
-  begin
-    if val.Lo < 0 then
-      Result := -val.Lo + bit64 + (val.Hi * shift64) else
-      Result := val.Lo + (val.Hi * shift64);
-  end;
+    Result := val.Hi * shift64 + Int64Rec(val.Lo).Hi * shift32 + Int64Rec(val.Lo).Lo;
 end;
 //------------------------------------------------------------------------------
 
@@ -2555,11 +2556,11 @@ begin
         //Vertices of one Side of an output polygon are quite commonly close to
         //or even 'touching' edges of the other Side of the output polygon.
         //Very occasionally vertices from one Side can 'cross' an Edge on the
-        //the other Side. The distance 'crossed' is always less that A unit
+        //the other Side. The distance 'crossed' is always less that a unit
         //and is purely an artefact of coordinate rounding. Nevertheless, this
         //results in very tiny self-intersections. Because of the way
         //orientation is calculated, even tiny self-intersections can cause
-        //the Orientation function to return the wrong Result. Therefore, it's
+        //the Orientation function to return the wrong result. Therefore, it's
         //important to ensure that any self-intersections close to BottomPt are
         //detected and removed before orientation is assigned.
 
