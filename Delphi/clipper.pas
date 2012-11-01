@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.3                                                           *
-* Date      :  1 November 2012                                                 *
+* Version   :  4.9.4                                                           *
+* Date      :  2 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -273,7 +273,7 @@ function ReversePolygons(const Pts: TPolygons): TPolygons;
 function OffsetPolygons(const Pts: TPolygons; const Delta: Double;
   JoinType: TJoinType = jtSquare; MiterLimit: Double = 2): TPolygons;
 
-//SimplifyPolygon converts A self-intersecting polygon into A simple polygon.
+//SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
 function SimplifyPolygon(const poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 function SimplifyPolygons(const polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 
@@ -464,7 +464,7 @@ begin
   if Denom.Hi < 0 then Int128Negate(Denom);
   if (Denom.Hi > Num.Hi) or ((Denom.Hi = Num.Hi) and (Denom.Lo > Num.Lo)) then
   begin
-    Result := Int128(0); //Result is only A fraction of 1
+    Result := Int128(0); //Result is only a fraction of 1
     Exit;
   end;
   Int128Negate(Denom);
@@ -1109,11 +1109,11 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
       E := E.Next;
     until False;
 
-    //E and E.Prev are now at A local minima ...
+    //E and E.Prev are now at a local minima ...
     new(NewLm);
     NewLm.Y := E.Prev.YBot;
     NewLm.Next := nil;
-    if E.Dx = Horizontal then //Horizontal edges never start A left bound
+    if E.Dx = Horizontal then //Horizontal edges never start a left bound
     begin
       if (E.XBot <> E.Prev.XBot) then SwapX(E);
       NewLm.LeftBound := E.Prev;
@@ -1206,7 +1206,7 @@ begin
   GetMem(Edges, sizeof(TEdge)*len);
   FEdgeList.Add(Edges);
 
-  //convert vertices to A Double-linked-list of edges and initialize ...
+  //convert vertices to a Double-linked-list of edges and initialize ...
   Edges[0].XCurr := Pg[0].X;
   Edges[0].YCurr := Pg[0].Y;
   InitEdge(@Edges[len-1], @Edges[0], @Edges[len-2], Pg[len-1]);
@@ -1804,7 +1804,7 @@ end;
 
 procedure TClipper.AddEdgeToSEL(Edge: PEdge);
 begin
-  //SEL pointers in PEdge are reused to build A list of horizontal edges.
+  //SEL pointers in PEdge are reused to build a list of horizontal edges.
   //However, we don't need to worry about order with horizontal Edge processing.
   if not assigned(fSortedEdges) then
   begin
@@ -2762,7 +2762,7 @@ const
 begin
 (*******************************************************************************
 * Notes: Horizontal edges (HEs) at scanline intersections (ie at the top or    *
-* bottom of A scanbeam) are processed as if layered. The order in which HEs    *
+* bottom of a scanbeam) are processed as if layered. The order in which HEs    *
 * are processed doesn't matter. HEs intersect with other HE xbots only [#],    *
 * and with other non-horizontal edges [*]. Once these intersections are        *
 * processed, intermediate HEs then 'promote' the Edge above (NextInLML) into   *
@@ -2822,7 +2822,7 @@ begin
 
       if (E = eMaxPair) then
       begin
-        //HorzEdge is evidently A maxima horizontal and we've arrived at its end.
+        //HorzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
           IntersectEdges(HorzEdge, E, IntPoint(E.XCurr, HorzEdge.YCurr)) else
           IntersectEdges(E, HorzEdge, IntPoint(E.XCurr, HorzEdge.YCurr));
@@ -3086,8 +3086,8 @@ var
 begin
 (*******************************************************************************
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
-* of A scanbeam) needs to be done in multiple stages and in the correct order. *
-* Firstly, edges forming A 'maxima' need to be processed and then removed.     *
+* of a scanbeam) needs to be done in multiple stages and in the correct order. *
+* Firstly, edges forming a 'maxima' need to be processed and then removed.     *
 * Next, 'intermediate' and 'maxima' horizontal edges are processed. Then edges *
 * that intersect exactly at the top of the scanbeam are processed [%].         *
 * Finally, new minima are added and any intersects they create are processed.  *
@@ -3109,7 +3109,7 @@ begin
   while assigned(E) do
   begin
     //1. process maxima, treating them as if they're 'bent' horizontal edges,
-    //   but exclude maxima with Horizontal edges. nb: E can't be A Horizontal.
+    //   but exclude maxima with Horizontal edges. nb: E can't be a Horizontal.
     if IsMaxima(E, TopY) and (GetMaximaPair(E).Dx <> Horizontal) then
     begin
       //'E' might be removed from AEL, as may any following edges so ...
@@ -3290,7 +3290,7 @@ begin
     if PointsEqual(PP.Pt, PP.Next.Pt) or
       SlopesEqual(PP.Prev.Pt, PP.Pt, PP.Next.Pt, FUse64BitRange) then
     begin
-      //OK, we need to delete A point ...
+      //OK, we need to delete a point ...
       LastOK := nil;
       Tmp := PP;
       if PP = OutRec.BottomPt then
@@ -3521,7 +3521,7 @@ begin
 
     if (Jr.Poly2Idx = Jr.Poly1Idx) then
     begin
-      //instead of joining two polygons, we've just created A new one by
+      //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
       OutRec1.Pts := GetBottomPt(p1);
       OutRec1.BottomPt := OutRec1.Pts;
@@ -3549,6 +3549,7 @@ begin
         OutRec1.FirstLeft := OutRec2;
       end else
       begin
+        //2 separate polygons ...
         K := 0;
         OutRec2.IsHole := OutRec1.IsHole;
         OutRec2.FirstLeft := OutRec1.FirstLeft;
@@ -3569,11 +3570,11 @@ begin
 
       case K of
         OutRec2InOutRec1:
-          begin
-            if (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
+          if assigned(OutRec2.Pts) and
+            (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
               ReversePolyPtLinks(OutRec2.Pts);
-          end;
         OutRec1InOutRec2:
+          if assigned(OutRec1.Pts) then
           begin
             if (OutRec1.IsHole = FReverseOutput) xor Orientation(OutRec1, FUse64BitRange) then
               ReversePolyPtLinks(OutRec1.Pts);
@@ -3593,12 +3594,13 @@ begin
                    not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
                      FirstLeft := outRec2;
       end;
-
-      if (Orientation(OutRec1, FUse64BitRange) <> (Area(OutRec1, FUse64BitRange) > 0)) then
-        DisposeBottomPt(OutRec1);
-      if (Orientation(OutRec2, FUse64BitRange) <> (Area(OutRec2, FUse64BitRange) > 0)) then
-        DisposeBottomPt(OutRec2);
-
+      //check for self-intersection rounding artifacts and correct ...
+      if assigned(OutRec1.Pts) and
+        (Orientation(OutRec1, FUse64BitRange) <> (Area(OutRec1, FUse64BitRange) > 0)) then
+          DisposeBottomPt(OutRec1);
+      if assigned(OutRec2.Pts) and
+        (Orientation(OutRec2, FUse64BitRange) <> (Area(OutRec2, FUse64BitRange) > 0)) then
+          DisposeBottomPt(OutRec2);
     end else
     begin
       //joined 2 polygons together ...

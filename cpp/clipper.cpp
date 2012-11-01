@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.3                                                           *
-* Date      :  1 November 2012                                                 *
+* Version   :  4.9.4                                                           *
+* Date      :  2 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3057,24 +3057,27 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       switch( K ) {
         case 1: 
           {
-            if (outRec2->isHole ==
+            if (outRec2->pts && outRec2->isHole ==
               (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
                 ReversePolyPtLinks(*outRec2->pts);
             break;
           }
         case 2: 
           {
-            if (outRec1->isHole ==
-              (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
-                ReversePolyPtLinks(*outRec1->pts);
-            //make sure any contained holes now link to the correct polygon ...
-            if (fixHoleLinkages && outRec1->isHole) 
-              for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-              {
-                OutRec *orec = m_PolyOuts[k];
-                if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
-                  orec->FirstLeft = outRec2;
-              }
+            if (outRec1->pts)
+            {
+              if (outRec1->isHole ==
+                (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
+                  ReversePolyPtLinks(*outRec1->pts);
+              //make sure any contained holes now link to the correct polygon ...
+              if (fixHoleLinkages && outRec1->isHole) 
+                for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
+                {
+                  OutRec *orec = m_PolyOuts[k];
+                  if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
+                    orec->FirstLeft = outRec2;
+                }
+            }
             break;
           }
         default: 
@@ -3092,9 +3095,9 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
           }
       }
      
-      if (Orientation(outRec1, m_UseFullRange) != (Area(*outRec1, m_UseFullRange) > 0))
+      if (outRec1->pts && Orientation(outRec1, m_UseFullRange) != (Area(*outRec1, m_UseFullRange) > 0))
           DisposeBottomPt(*outRec1);
-      if (Orientation(outRec2, m_UseFullRange) != (Area(*outRec2, m_UseFullRange) > 0))
+      if (outRec2->pts && Orientation(outRec2, m_UseFullRange) != (Area(*outRec2, m_UseFullRange) > 0))
           DisposeBottomPt(*outRec2);
 
     } else
