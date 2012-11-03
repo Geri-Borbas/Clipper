@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.4                                                           *
-* Date      :  2 November 2012                                                 *
+* Version   :  4.9.5                                                           *
+* Date      :  5 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2074,6 +2074,7 @@ namespace ClipperLib
 
         private void ReversePolyPtLinks(OutPt pp)
         {
+            if (pp == null) return;
             OutPt pp1;
             OutPt pp2;
             pp1 = pp;
@@ -2938,7 +2939,9 @@ namespace ClipperLib
         private bool Orientation(OutRec outRec, bool UseFull64BitRange)
         {
             //first make sure bottomPt is correctly assigned ...
-            OutPt opBottom = outRec.pts, op = outRec.pts.next;
+            OutPt opBottom = outRec.pts;
+            if (opBottom == null) return true;
+            OutPt op = outRec.pts.next;
             while (op != outRec.pts) 
             {
 	            if (op.pt.Y >= opBottom.pt.Y) 
@@ -3094,35 +3097,30 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private void JoinCommonEdges(bool fixHoleLinkages)
+        private bool JoinPoints(JoinRec j, out OutPt p1, out OutPt p2)
         {
-          for (int i = 0; i < m_Joins.Count; i++)
-          {
-            JoinRec j = m_Joins[i];
+            p1 = null; p2 = null;
             OutRec outRec1 = m_PolyOuts[j.poly1Idx];
-            OutPt pp1a = outRec1.pts;
             OutRec outRec2 = m_PolyOuts[j.poly2Idx];
+            if (outRec1  == null || outRec2 == null)  return false;  
+            OutPt pp1a = outRec1.pts;
             OutPt pp2a = outRec2.pts;
-            IntPoint pt1 = new IntPoint(j.pt2a);
-            IntPoint pt2 = new IntPoint(j.pt2b);
-            IntPoint pt3 = new IntPoint(j.pt1a);
-            IntPoint pt4 = new IntPoint(j.pt1b);
-            if (!FindSegment(ref pp1a, ref pt1, ref pt2)) continue;
-            if (j.poly1Idx == j.poly2Idx)
+            IntPoint pt1 = j.pt2a, pt2 = j.pt2b;
+            IntPoint pt3 = j.pt1a, pt4 = j.pt1b;
+            if (!FindSegment(ref pp1a, ref pt1, ref pt2)) return false;
+            if (outRec1 == outRec2)
             {
-                //we're searching the same polygon for overlapping segments so
-                //segment 2 mustn't be the same as segment 1 ...
-                pp2a = pp1a.next;
-                if (!FindSegment(ref pp2a, ref pt3, ref pt4) || (pp2a == pp1a)) continue;
+              //we're searching the same polygon for overlapping segments so
+              //segment 2 mustn't be the same as segment 1 ...
+              pp2a = pp1a.next;
+              if (!FindSegment(ref pp2a, ref pt3, ref pt4) || (pp2a == pp1a)) return false;
             }
-            else if (!FindSegment(ref pp2a, ref pt3, ref pt4)) continue;
+            else if (!FindSegment(ref pp2a, ref pt3, ref pt4)) return false;
 
-            if (!GetOverlapSegment(pt1, pt2, pt3, pt4, ref pt1, ref pt2)) continue;
+            if (!GetOverlapSegment(pt1, pt2, pt3, pt4, ref pt1, ref pt2)) return false;
 
-            OutPt p1, p2, p3, p4;
-            OutPt prev = pp1a.prev;
+            OutPt p3, p4, prev = pp1a.prev;
             //get p1 & p2 polypts - the overlap start & endpoints on poly1
-            
             if (PointsEqual(pp1a.pt, pt1)) p1 = pp1a;
             else if (PointsEqual(prev.pt, pt1)) p1 = prev;
             else p1 = InsertPolyPtBetween(pp1a, prev, pt1);
@@ -3130,11 +3128,10 @@ namespace ClipperLib
             if (PointsEqual(pp1a.pt, pt2)) p2 = pp1a;
             else if (PointsEqual(prev.pt, pt2)) p2 = prev;
             else if ((p1 == pp1a) || (p1 == prev))
-                p2 = InsertPolyPtBetween(pp1a, prev, pt2);
+              p2 = InsertPolyPtBetween(pp1a, prev, pt2);
             else if (Pt3IsBetweenPt1AndPt2(pp1a.pt, p1.pt, pt2))
-                p2 = InsertPolyPtBetween(pp1a, p1, pt2); 
-            else
-                p2 = InsertPolyPtBetween(p1, prev, pt2);
+              p2 = InsertPolyPtBetween(pp1a, p1, pt2); else
+              p2 = InsertPolyPtBetween(p1, prev, pt2);
 
             //get p3 & p4 polypts - the overlap start & endpoints on poly2
             prev = pp2a.prev;
@@ -3145,32 +3142,57 @@ namespace ClipperLib
             if (PointsEqual(pp2a.pt, pt2)) p4 = pp2a;
             else if (PointsEqual(prev.pt, pt2)) p4 = prev;
             else if ((p3 == pp2a) || (p3 == prev))
-                p4 = InsertPolyPtBetween(pp2a, prev, pt2);
+              p4 = InsertPolyPtBetween(pp2a, prev, pt2);
             else if (Pt3IsBetweenPt1AndPt2(pp2a.pt, p3.pt, pt2))
-                p4 = InsertPolyPtBetween(pp2a, p3, pt2);
-            else
-                p4 = InsertPolyPtBetween(p3, prev, pt2);
+              p4 = InsertPolyPtBetween(pp2a, p3, pt2); else
+              p4 = InsertPolyPtBetween(p3, prev, pt2);
 
-            //p1.pt should equal p3.pt and p2.pt should equal p4.pt here, so ...
-            //join p1 to p3 and p2 to p4 ...
+            //p1.pt == p3.pt and p2.pt == p4.pt so join p1 to p3 and p2 to p4 ...
             if (p1.next == p2 && p3.prev == p4)
             {
-                p1.next = p3;
-                p3.prev = p1;
-                p2.prev = p4;
-                p4.next = p2;
+              p1.next = p3;
+              p3.prev = p1;
+              p2.prev = p4;
+              p4.next = p2;
+              return true;
             }
             else if (p1.prev == p2 && p3.next == p4)
             {
-                p1.prev = p3;
-                p3.next = p1;
-                p2.next = p4;
-                p4.prev = p2;
+              p1.prev = p3;
+              p3.next = p1;
+              p2.next = p4;
+              p4.prev = p2;
+              return true;
             }
             else
-                continue; //an orientation is probably wrong
+              return false; //an orientation is probably wrong
+        }
+        //----------------------------------------------------------------------
 
-            if (j.poly2Idx == j.poly1Idx)
+        private void FixupJoinRecs(JoinRec j, OutPt pt, int startIdx)
+        {
+          for (int k = startIdx; k < m_Joins.Count; k++)
+            {
+              JoinRec j2 = m_Joins[k];
+              if (j2.poly1Idx == j.poly1Idx && PointIsVertex(j2.pt1a, pt))
+                j2.poly1Idx = j.poly2Idx;
+              if (j2.poly2Idx == j.poly1Idx && PointIsVertex(j2.pt2a, pt))
+                j2.poly2Idx = j.poly2Idx;
+            }
+        }
+        //----------------------------------------------------------------------
+
+        private void JoinCommonEdges(bool fixHoleLinkages)
+        {
+          for (int i = 0; i < m_Joins.Count; i++)
+          {
+            JoinRec j = m_Joins[i];
+            OutPt p1, p2;
+            if (!JoinPoints(j, out p1, out p2)) return;
+            OutRec outRec1 = m_PolyOuts[j.poly1Idx];
+            OutRec outRec2 = m_PolyOuts[j.poly2Idx];
+
+            if (outRec1 == outRec2)
             {
                 //instead of joining two polygons, we've just created a new one by
                 //splitting one polygon into two.
@@ -3185,92 +3207,67 @@ namespace ClipperLib
                 outRec2.bottomPt = outRec2.pts;
                 outRec2.bottomPt.idx = outRec2.idx;
 
-                int K = 0;
                 if (PointInPolygon(outRec2.pts.pt, outRec1.pts, m_UseFullRange))
                 {
                     //outRec2 is contained by outRec1 ...
-                    K = 1;
                     outRec2.isHole = !outRec1.isHole;
                     outRec2.FirstLeft = outRec1;
-                    //if (outRec2.isHole == (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
-                    //    ReversePolyPtLinks(outRec2.pts);
+
+                    FixupJoinRecs(j, p2, i + 1);
+                    FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
+                    FixupOutPolygon(outRec2); //    but AFTER calling FixupJoinRecs()
+
+                    if (outRec2.pts != null && outRec2.isHole ==
+                      (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
+                        ReversePolyPtLinks(outRec2.pts);
+
                 }
                 else if (PointInPolygon(outRec1.pts.pt, outRec2.pts, m_UseFullRange))
                 {
                     //outRec1 is contained by outRec2 ...
-                    K = 2;
                     outRec2.isHole = outRec1.isHole;
                     outRec1.isHole = !outRec2.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
                     outRec1.FirstLeft = outRec2;
-                    //if (outRec1.isHole == (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
-                    //    ReversePolyPtLinks(outRec1.pts);
+
+                    FixupJoinRecs(j, p2, i + 1);
+                    FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
+                    FixupOutPolygon(outRec2); //    but AFTER calling FixupJoinRecs()
+
+                    if (outRec1.isHole ==
+                      (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
+                        ReversePolyPtLinks(outRec1.pts);
+                    //make sure any contained holes now link to the correct polygon ...
+                    if (fixHoleLinkages && outRec1.isHole)
+                        for (int k = 0; k < m_PolyOuts.Count; ++k)
+                        {
+                            OutRec orec = m_PolyOuts[k];
+                            if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1)
+                                orec.FirstLeft = outRec2;
+                        }
                 }
                 else
                 {
                     outRec2.isHole = outRec1.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
-                }
 
-                //now fixup any subsequent m_Joins that match this polygon
-                for (int k = i + 1; k < m_Joins.Count; k++)
-                {
-                    JoinRec j2 = m_Joins[k];
-                    if (j2.poly1Idx == j.poly1Idx && PointIsVertex(j2.pt1a, p2))
-                        j2.poly1Idx = j.poly2Idx;
-                    if (j2.poly2Idx == j.poly1Idx && PointIsVertex(j2.pt2a, p2))
-                        j2.poly2Idx = j.poly2Idx;
-                }
+                    FixupJoinRecs(j, p2, i + 1);
+                    FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
+                    FixupOutPolygon(outRec2); //    but AFTER calling FixupJoinRecs()
 
-                FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
-                FixupOutPolygon(outRec2); //    but AFTER calling PointIsVertex()
-
-                switch( K ) {
-                case 1: 
-                  {
-                    if (outRec2.pts != null && 
-                      outRec2.isHole == (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
-                        ReversePolyPtLinks(outRec2.pts);
-                    break;
-                  }
-                case 2: 
-                  {
-                    if (outRec1.pts != null)
-                    {
-                      if (outRec1.isHole ==
-                        (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
-                          ReversePolyPtLinks(outRec1.pts);
-                      //make sure any contained holes now link to the correct polygon ...
-                      if (fixHoleLinkages && outRec1.isHole)
-                        for (int k = 0; k < m_PolyOuts.Count; ++k)
-                        {
-                          OutRec orec = m_PolyOuts[k];
-                          if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1)
-                              orec.FirstLeft = outRec2;
-                        }
-                    }
-                    break;
-                  }
-                default: 
-                  {
-                    //make sure any contained holes now link to the correct polygon ...
                     if (fixHoleLinkages) 
-                        for (int k = 0; k < m_PolyOuts.Count; ++k)
-                        {
+                      for (int k = 0; k < m_PolyOuts.Count; ++k)
+                      {
                         OutRec orec = m_PolyOuts[k];
                         if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1 &&
-                            !PointInPolygon(orec.bottomPt.pt, outRec1.pts, m_UseFullRange))
+                          !PointInPolygon(orec.bottomPt.pt, outRec1.pts, m_UseFullRange))
                             orec.FirstLeft = outRec2;
-                        }
-                    break;
-                  }
+                      }
                 }
 
-                if (outRec1.pts != null && 
-                  Orientation(outRec1, m_UseFullRange) != (Area(outRec1, m_UseFullRange) > 0))
+                if (Orientation(outRec1, m_UseFullRange) != (Area(outRec1, m_UseFullRange) >= 0))
                     DisposeBottomPt(outRec1);
-                if (outRec2.pts != null && 
-                  Orientation(outRec2, m_UseFullRange) != (Area(outRec2, m_UseFullRange) > 0)) 
+                if (Orientation(outRec2, m_UseFullRange) != (Area(outRec2, m_UseFullRange) >= 0)) 
                     DisposeBottomPt(outRec2);
             }
             else
@@ -3356,6 +3353,7 @@ namespace ClipperLib
         double Area(OutRec outRec, bool UseFull64BitRange)
         {
           OutPt op = outRec.pts;
+          if (op == null) return 0;
           if (UseFull64BitRange) 
           {
             Int128 a = new Int128(0);
@@ -3433,7 +3431,8 @@ namespace ClipperLib
             private int m_i, m_j, m_k;
             private const int buffLength = 128;
 
-            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, JoinType jointype, double MiterLimit = 2)
+            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, 
+                JoinType jointype, double MiterLimit = 2, bool CheckInputs = true)
             {
                 //precondtion: solution != pts
 
@@ -3445,6 +3444,38 @@ namespace ClipperLib
 
                 this.pts = pts;
                 this.delta = delta;
+
+                //ChecksInput - fixes polygon orientation if necessary and removes 
+                //duplicate vertices. Can be set false when you're sure that polygon
+                //orientation is correct and that there are no duplicate vertices.
+                if (CheckInputs)
+                {
+                    int Len = pts.Count, botI = 0;
+                    while (botI < Len && pts[botI].Count == 0) botI++;
+                    if (botI == Len) return;
+
+                    //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
+                    //This point (on pts[botI]) must be on an outer polygon ring and if 
+                    //its orientation is false (counterclockwise) then assume all polygons 
+                    //need reversing ...
+                    IntPoint botPt = pts[botI][0];
+                    for (int i = botI; i < Len; ++i)
+                    {
+                        for (int j = pts[i].Count -1; j > 0; j--)
+                        {
+                            if (PointsEqual(pts[i][j], pts[i][j -1]))
+                                pts[i].RemoveAt(j);
+                            else if (pts[i][j].Y > botPt.Y || (pts[i][j].Y == botPt.Y && pts[i][j].X < botPt.X))
+                            {
+                                botI = i;
+                                botPt = pts[i][j];
+                            }
+                        }
+                    }
+                    if (!Orientation(pts[botI]))
+                        ReversePolygons(pts);
+                }
+
                 if (MiterLimit <= 1) MiterLimit = 1;
                 double RMin = 2/(MiterLimit*MiterLimit);
 
@@ -3623,10 +3654,19 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public static Polygons OffsetPolygons(Polygons poly, double delta,
+            JoinType jointype, double MiterLimit, bool CheckInputs)
+        {
+            Polygons result = new Polygons(poly.Count);
+            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, CheckInputs);
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygons OffsetPolygons(Polygons poly, double delta,
             JoinType jointype, double MiterLimit)
         {
             Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit);
+            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, true);
             return result;
         }
         //------------------------------------------------------------------------------
@@ -3634,7 +3674,7 @@ namespace ClipperLib
         public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype)
         {
             Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, 2.0);
+            new PolyOffsetBuilder(poly, result, delta, jointype, 2.0, true);
             return result;
         }
         //------------------------------------------------------------------------------
@@ -3642,7 +3682,7 @@ namespace ClipperLib
         public static Polygons OffsetPolygons(Polygons poly, double delta)
         {
             Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, JoinType.jtSquare, 2.0);
+            new PolyOffsetBuilder(poly, result, delta, JoinType.jtSquare, 2.0, true);
             return result;
         }
 

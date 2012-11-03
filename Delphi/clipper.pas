@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.4                                                           *
-* Date      :  2 November 2012                                                 *
+* Version   :  4.9.5                                                           *
+* Date      :  5 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -241,6 +241,8 @@ type
     procedure ClearJoins;
     procedure AddHorzJoin(E: PEdge; Idx: Integer);
     procedure ClearHorzJoins;
+    function JoinPoints(JR: PJoinRec; out P1, P2: POutPt): Boolean;
+    procedure FixupJoinRecs(JR: PJoinRec; Pt: POutPt; StartIdx: integer);
     procedure JoinCommonEdges(FixHoleLinkages: Boolean);
     procedure FixHoleLinkage(OutRec: POutRec);
   protected
@@ -270,8 +272,9 @@ function ReversePolygons(const Pts: TPolygons): TPolygons;
 
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
-function OffsetPolygons(const Pts: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2): TPolygons;
+function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
+  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
+  ChecksInput: Boolean = true): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
 function SimplifyPolygon(const poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
@@ -668,6 +671,11 @@ var
 begin
   //first make sure BottomPt is correctly assigned ...
   OpBottom := OutRec.Pts;
+  if not assigned(OpBottom) then
+  begin
+    Result := True;
+    Exit;
+  end;
   Op := OpBottom.Next;
   while Op <> OutRec.Pts do
   begin
@@ -740,6 +748,11 @@ var
   A: TInt128;
 begin
   Op := OutRec.Pts;
+  if not assigned(Op) then
+  begin
+    Result := 0;
+    Exit;
+  end;
   if UseFullInt64Range then
   begin
     A := Int128(0);
@@ -987,6 +1000,7 @@ procedure ReversePolyPtLinks(PP: POutPt);
 var
   Pp1,Pp2: POutPt;
 begin
+  if not assigned(PP) then Exit;
   Pp1 := PP;
   repeat
     Pp2:= Pp1.Next;
@@ -1517,8 +1531,6 @@ begin
           DisposeBottomPt(OutRec);
       if (OutRec.IsHole = FReverseOutput) xor Orientation(OutRec, FUse64BitRange) then
           ReversePolyPtLinks(OutRec.Pts);
-
-      //DebugLog(DebugPts(OutRec.Pts), false);
     end;
     if FJoinList.count > 0 then
       JoinCommonEdges(FixHoleLinkages);
@@ -3437,13 +3449,102 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function TClipper.JoinPoints(JR: PJoinRec; out P1, P2: POutPt): Boolean;
+var
+  OutRec1, OutRec2: POutRec;
+  Prev, p3, p4, Pp1a, Pp2a: POutPt;
+  Pt1, Pt2, Pt3, Pt4: TIntPoint;
+begin
+  Result := False;
+  OutRec1 := FPolyOutList[Jr.Poly1Idx];
+  OutRec2 := FPolyOutList[Jr.Poly2Idx];
+  if not assigned(OutRec1) then Exit;
+  if not assigned(OutRec2) then Exit;
+
+  Pp1a := OutRec1.Pts;
+  Pp2a := OutRec2.Pts;
+  Pt1 := Jr.Pt2a; Pt2 := Jr.Pt2b;
+  Pt3 := Jr.Pt1a; Pt4 := Jr.Pt1b;
+  if not FindSegment(Pp1a, Pt1, Pt2) then Exit;
+  if (OutRec1 = OutRec2) then
+  begin
+    //we're searching the same polygon for overlapping segments so
+    //segment 2 mustn't be the same as segment 1 ...
+    Pp2a := Pp1a.Next;
+    if not FindSegment(Pp2a, Pt3, Pt4) or (Pp2a = Pp1a) then Exit;
+  end else
+    if not FindSegment(Pp2a, Pt3, Pt4) then Exit;
+
+  if not GetOverlapSegment(Pt1, Pt2, Pt3, Pt4, Pt1, Pt2) then Exit;
+
+  Prev := Pp1a.Prev;
+  if PointsEqual(Pp1a.Pt, Pt1) then P1 := Pp1a
+  else if PointsEqual(Prev.Pt, Pt1) then P1 := Prev
+  else P1 := InsertPolyPtBetween(Pp1a, Prev, Pt1);
+
+  if PointsEqual(Pp1a.Pt, Pt2) then P2 := Pp1a
+  else if PointsEqual(Prev.Pt, Pt2) then P2 := Prev
+  else if (P1 = Pp1a) or (P1 = Prev) then
+    P2 := InsertPolyPtBetween(Pp1a, Prev, Pt2)
+  else if Pt3IsBetweenPt1AndPt2(Pp1a.Pt, P1.Pt, Pt2) then
+    P2 := InsertPolyPtBetween(Pp1a, P1, Pt2)
+  else
+    P2 := InsertPolyPtBetween(P1, Prev, Pt2);
+
+  Prev := Pp2a.Prev;
+  if PointsEqual(Pp2a.Pt, Pt1) then p3 := Pp2a
+  else if PointsEqual(Prev.Pt, Pt1) then p3 := Prev
+  else p3 := InsertPolyPtBetween(Pp2a, Prev, Pt1);
+
+  if PointsEqual(Pp2a.Pt, Pt2) then p4 := Pp2a
+  else if PointsEqual(Prev.Pt, Pt2) then p4 := Prev
+  else if (p3 = Pp2a) or (p3 = Prev) then
+    p4 := InsertPolyPtBetween(Pp2a, Prev, Pt2)
+  else if Pt3IsBetweenPt1AndPt2(Pp2a.Pt, p3.Pt, Pt2) then
+    p4 := InsertPolyPtBetween(Pp2a, p3, Pt2)
+  else
+    p4 := InsertPolyPtBetween(p3, Prev, Pt2);
+
+  if (P1.Next = P2) and (p3.Prev = p4) then
+  begin
+    P1.Next := p3;
+    p3.Prev := P1;
+    P2.Prev := p4;
+    p4.Next := P2;
+    Result := True;
+  end
+  else if (P1.Prev = P2) and (p3.Next = p4) then
+  begin
+    P1.Prev := p3;
+    p3.Next := P1;
+    P2.Next := p4;
+    p4.Prev := P2;
+    Result := True;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.FixupJoinRecs(JR: PJoinRec; Pt: POutPt; StartIdx: integer);
+var
+  JR2: PJoinRec;
+begin
+  for StartIdx := StartIdx to FJoinList.count -1 do
+  begin
+    Jr2 := FJoinList[StartIdx];
+    if (Jr2.Poly1Idx = Jr.Poly1Idx) and PointIsVertex(Jr2.Pt1a, Pt) then
+      Jr2.Poly1Idx := Jr.Poly2Idx;
+    if (Jr2.Poly2Idx = Jr.Poly1Idx) and PointIsVertex(Jr2.Pt2a, Pt) then
+      Jr2.Poly2Idx := Jr.Poly2Idx;
+  end;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.JoinCommonEdges(FixHoleLinkages: Boolean);
 var
-  I, J, K, OKIdx, ObsoleteIdx: Integer;
+  I, J, OKIdx, ObsoleteIdx: Integer;
   Jr, Jr2: PJoinRec;
   OutRec1, OutRec2: POutRec;
-  Prev, p1, P2, p3, p4, Pp1a, Pp2a: POutPt;
-  Pt1, Pt2, Pt3, Pt4: TIntPoint;
+  P1, P2: POutPt;
 const
   OutRec2InOutRec1 = 1;
   OutRec1InOutRec2 = 2;
@@ -3451,79 +3552,16 @@ begin
   for I := 0 to FJoinList.count -1 do
   begin
     Jr := FJoinList[I];
+    if not JoinPoints(JR, P1, P2) then Continue;
+
     OutRec1 := FPolyOutList[Jr.Poly1Idx];
-    if not assigned(OutRec1) then Continue;
-    Pp1a := OutRec1.Pts;
     OutRec2 := FPolyOutList[Jr.Poly2Idx];
-    if not assigned(OutRec2) then Continue;
-    Pp2a := OutRec2.Pts;
-    Pt1 := Jr.Pt2a; Pt2 := Jr.Pt2b;
-    Pt3 := Jr.Pt1a; Pt4 := Jr.Pt1b;
-    if not FindSegment(Pp1a, Pt1, Pt2) then Continue;
-    if (Jr.Poly1Idx = Jr.Poly2Idx) then
-    begin
-      //we're searching the same polygon for overlapping segments so
-      //segment 2 mustn't be the same as segment 1 ...
-      Pp2a := Pp1a.Next;
-      if not FindSegment(Pp2a, Pt3, Pt4) or (Pp2a = Pp1a) then Continue;
-    end else
-      if not FindSegment(Pp2a, Pt3, Pt4) then Continue;
 
-    if not GetOverlapSegment(Pt1, Pt2, Pt3, Pt4, Pt1, Pt2) then Continue;
-
-    Prev := Pp1a.Prev;
-    if PointsEqual(Pp1a.Pt, Pt1) then p1 := Pp1a
-    else if PointsEqual(Prev.Pt, Pt1) then p1 := Prev
-    else p1 := InsertPolyPtBetween(Pp1a, Prev, Pt1);
-
-    if PointsEqual(Pp1a.Pt, Pt2) then P2 := Pp1a
-    else if PointsEqual(Prev.Pt, Pt2) then P2 := Prev
-    else if (p1 = Pp1a) or (p1 = Prev) then
-      P2 := InsertPolyPtBetween(Pp1a, Prev, Pt2)
-    else if Pt3IsBetweenPt1AndPt2(Pp1a.Pt, p1.Pt, Pt2) then
-      P2 := InsertPolyPtBetween(Pp1a, p1, Pt2)
-    else
-      P2 := InsertPolyPtBetween(p1, Prev, Pt2);
-
-    Prev := Pp2a.Prev;
-    if PointsEqual(Pp2a.Pt, Pt1) then p3 := Pp2a
-    else if PointsEqual(Prev.Pt, Pt1) then p3 := Prev
-    else p3 := InsertPolyPtBetween(Pp2a, Prev, Pt1);
-
-    if PointsEqual(Pp2a.Pt, Pt2) then p4 := Pp2a
-    else if PointsEqual(Prev.Pt, Pt2) then p4 := Prev
-    else if (p3 = Pp2a) or (p3 = Prev) then
-      p4 := InsertPolyPtBetween(Pp2a, Prev, Pt2)
-    else if Pt3IsBetweenPt1AndPt2(Pp2a.Pt, p3.Pt, Pt2) then
-      p4 := InsertPolyPtBetween(Pp2a, p3, Pt2)
-    else
-      p4 := InsertPolyPtBetween(p3, Prev, Pt2);
-
-    //p1.Pt == p3.Pt and P2.Pt == p4.Pt so join p1 to p3 and P2 to p4 ...
-    if (p1.Next = P2) and (p3.Prev = p4) then
-    begin
-      p1.Next := p3;
-      p3.Prev := p1;
-      P2.Prev := p4;
-      p4.Next := P2;
-    end
-    else if (p1.Prev = P2) and (p3.Next = p4) then
-    begin
-      p1.Prev := p3;
-      p3.Next := p1;
-      P2.Next := p4;
-      p4.Prev := P2;
-    end
-    else
-      //it's very rare to get here, and when we do almost invariably
-      //p1.Idx == P2.Idx, otherwise it's an orientation error.
-      Continue;
-
-    if (Jr.Poly2Idx = Jr.Poly1Idx) then
+    if (OutRec1 = OutRec2) then
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      OutRec1.Pts := GetBottomPt(p1);
+      OutRec1.Pts := GetBottomPt(P1);
       OutRec1.BottomPt := OutRec1.Pts;
       OutRec1.BottomPt.Idx := OutRec1.Idx;
       OutRec2 := CreateOutRec;
@@ -3536,79 +3574,72 @@ begin
       if PointInPolygon(OutRec2.Pts.Pt, OutRec1.Pts, FUse64BitRange) then
       begin
         //OutRec2 is contained by OutRec1 ...
-        K := OutRec2InOutRec1;
         OutRec2.IsHole := not OutRec1.IsHole;
         OutRec2.FirstLeft := OutRec1;
+
+        //now fixup any subsequent joins that match the new polygon ...
+        FixupJoinRecs(Jr, P2, I + 1);
+
+        FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(OutRec2); //    but AFTER calling FixupJoinRecs()
+
+        if (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
+            ReversePolyPtLinks(OutRec2.Pts);
       end else if PointInPolygon(OutRec1.Pts.Pt, OutRec2.Pts, FUse64BitRange) then
       begin
         //OutRec1 is contained by OutRec2 ...
-        K := OutRec1InOutRec2;
         OutRec2.IsHole := OutRec1.IsHole;
         OutRec1.IsHole := not OutRec2.IsHole;
         OutRec2.FirstLeft := OutRec1.FirstLeft;
         OutRec1.FirstLeft := OutRec2;
+
+        //now fixup any subsequent joins that match the new polygon ...
+        FixupJoinRecs(Jr, P2, I + 1);
+
+        FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
+
+        if (OutRec1.IsHole = FReverseOutput) xor Orientation(OutRec1, FUse64BitRange) then
+          ReversePolyPtLinks(OutRec1.Pts);
+        //make sure any contained holes now link to the correct polygon ...
+        if FixHoleLinkages and OutRec1.IsHole then
+          for J := 0 to FPolyOutList.Count - 1 do
+            with POutRec(fPolyOutList[J])^ do
+              if IsHole and assigned(BottomPt) and (FirstLeft = OutRec1) then
+                FirstLeft := OutRec2;
       end else
       begin
-        //2 separate polygons ...
-        K := 0;
+        //the 2 polygons are completely separate ...
         OutRec2.IsHole := OutRec1.IsHole;
         OutRec2.FirstLeft := OutRec1.FirstLeft;
+
+        //now fixup any subsequent joins that match the new polygon ...
+        FixupJoinRecs(Jr, P2, I + 1);
+
+        FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
+
+        if FixHoleLinkages then
+          for J := 0 to fPolyOutList.Count - 1 do
+            with POutRec(fPolyOutList[J])^ do
+              if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) and
+                 not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
+                   FirstLeft := outRec2;
       end;
 
-      //now fixup any subsequent joins that match this polygon
-      for J := I+1 to FJoinList.count -1 do
-      begin
-        Jr2 := FJoinList[J];
-        if (Jr2.Poly1Idx = Jr.Poly1Idx) and PointIsVertex(Jr2.Pt1a, P2) then
-          Jr2.Poly1Idx := Jr.Poly2Idx;
-        if (Jr2.Poly2Idx = Jr.Poly1Idx) and PointIsVertex(Jr2.Pt2a, P2) then
-          Jr2.Poly2Idx := Jr.Poly2Idx;
-      end;
-
-      FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
-      FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
-
-      case K of
-        OutRec2InOutRec1:
-          if assigned(OutRec2.Pts) and
-            (OutRec2.IsHole = FReverseOutput) xor Orientation(OutRec2, FUse64BitRange) then
-              ReversePolyPtLinks(OutRec2.Pts);
-        OutRec1InOutRec2:
-          if assigned(OutRec1.Pts) then
-          begin
-            if (OutRec1.IsHole = FReverseOutput) xor Orientation(OutRec1, FUse64BitRange) then
-              ReversePolyPtLinks(OutRec1.Pts);
-            //make sure any contained holes now link to the correct polygon ...
-            if FixHoleLinkages and OutRec1.IsHole then
-              for K := 0 to FPolyOutList.Count - 1 do
-                with POutRec(fPolyOutList[K])^ do
-                  if IsHole and assigned(BottomPt) and (FirstLeft = OutRec1) then
-                    FirstLeft := OutRec2;
-          end;
-        else
-          //make sure any contained holes now link to the correct polygon ...
-          if FixHoleLinkages then
-            for K := 0 to fPolyOutList.Count - 1 do
-              with POutRec(fPolyOutList[K])^ do
-                if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) and
-                   not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
-                     FirstLeft := outRec2;
-      end;
       //check for self-intersection rounding artifacts and correct ...
-      if assigned(OutRec1.Pts) and
-        (Orientation(OutRec1, FUse64BitRange) <> (Area(OutRec1, FUse64BitRange) > 0)) then
-          DisposeBottomPt(OutRec1);
-      if assigned(OutRec2.Pts) and
-        (Orientation(OutRec2, FUse64BitRange) <> (Area(OutRec2, FUse64BitRange) > 0)) then
-          DisposeBottomPt(OutRec2);
+      if (Orientation(OutRec1, FUse64BitRange) <> (Area(OutRec1, FUse64BitRange) >= 0)) then
+        DisposeBottomPt(OutRec1);
+      if (Orientation(OutRec2, FUse64BitRange) <> (Area(OutRec2, FUse64BitRange) >= 0)) then
+        DisposeBottomPt(OutRec2);
     end else
     begin
       //joined 2 polygons together ...
 
       //make sure any holes contained by OutRec2 now link to OutRec1 ...
       if FixHoleLinkages then
-        for K := 0 to FPolyOutList.Count - 1 do
-          with POutRec(fPolyOutList[K])^ do
+        for J := 0 to FPolyOutList.Count - 1 do
+          with POutRec(fPolyOutList[J])^ do
             if IsHole and assigned(BottomPt) and (FirstLeft = OutRec2) then
               FirstLeft := OutRec1;
 
@@ -3711,15 +3742,17 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function OffsetPolygons(const Pts: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2): TPolygons;
+function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
+  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
+  ChecksInput: Boolean = True): TPolygons;
 var
-  I, J, K, Len, OutLen: Integer;
+  I, J, K, Len, OutLen, BotI, BotJ: Integer;
   Normals: TArrayOfDoublePoint;
   R, RMin: Double;
   Pt1, Pt2: TIntPoint;
   Outer: TPolygon;
   Bounds: TIntRect;
+  Pts: TPolygons;
 const
   BuffLength: Integer = 128;
 
@@ -3817,7 +3850,54 @@ const
     AddPoint(Pt2);
   end;
 
+  procedure CheckBotPoint(I, J: Integer);
+  var
+    Dy: Int64;
+  begin
+    Dy := (Pts[I][J].Y - Pts[BotI][BotJ].Y);
+    if (Dy < 0) or ((Dy = 0) and (Pts[I][J].X >= Pts[BotI][BotJ].X)) then
+      Exit;
+    BotI := I;
+    BotJ := J;
+  end;
+
 begin
+  Result := nil;
+
+  //ChecksInput - fixes polygon orientation if necessary and removes
+  //duplicate vertices. Can be set false when you're sure that polygon
+  //orientation is correct and that there are no duplicate vertices.
+  if ChecksInput then
+  begin
+    Len := Length(Polys);
+    SetLength(Pts, Len);
+    BotI := 0; //index of outermost polygon
+    BotJ := 0; //index of lowermost vertex in outermost polygon
+    while (BotI < Len) and (Length(Polys[BotI]) = 0) do Inc(BotI);
+    if (BotI = Len) then Exit;
+    for I := BotI to Len - 1 do
+    begin
+      Len := Length(Polys[I]);
+      SetLength(Pts[I], Len);
+      if Len = 0 then Continue;
+      Pts[I][0] := Polys[I][0];
+      CheckBotPoint(I, 0);
+      K := 0;
+      for J := 1 to Len - 1 do
+        if not PointsEqual(Pts[I][K], Polys[I][J]) then
+        begin
+          Inc(K);
+          Pts[I][K] := Polys[I][J];
+          CheckBotPoint(I, J);
+        end;
+      if K + 1 < Len then
+        SetLength(Pts[I], K + 1);
+    end;
+    if not Orientation(Pts[BotI]) then
+      Pts := ReversePolygons(Pts);
+  end else
+    Pts := Polys;
+
   //MiterLimit defaults to twice Delta's width ...
   if MiterLimit <= 1 then MiterLimit := 1;
   RMin := 2/(sqr(MiterLimit));
@@ -3830,9 +3910,9 @@ begin
     if (Len > 1) and (Pts[I][0].X = Pts[I][Len - 1].X) and
         (Pts[I][0].Y = Pts[I][Len - 1].Y) then dec(Len);
 
-    if (Len < 3) and (Delta < 0) then Continue;
-
-    if (Len = 1) then
+    if (Len = 0) or (Len < 3 and Delta <= 0) then
+      Continue
+    else if (Len = 1) then
     begin
       Result[I] := BuildArc(Pts[I][0], 0, 2*pi, Delta);
       Continue;

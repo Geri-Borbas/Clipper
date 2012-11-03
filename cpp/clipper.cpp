@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.4                                                           *
-* Date      :  2 November 2012                                                 *
+* Version   :  4.9.5                                                           *
+* Date      :  5 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -366,7 +366,9 @@ inline bool PointsEqual( const IntPoint &pt1, const IntPoint &pt2)
 bool Orientation(OutRec *outRec, bool UseFullInt64Range)
 {
   //first make sure bottomPt is correctly assigned ...
-  OutPt *opBottom = outRec->pts, *op = outRec->pts->next;
+  OutPt *opBottom = outRec->pts;
+  if (!opBottom) return true;
+  OutPt *op = outRec->pts->next;
   while (op != outRec->pts)
   {
     if (op->pt.Y >= opBottom->pt.Y)
@@ -429,6 +431,7 @@ double Area(const Polygon &poly)
 double Area(const OutRec &outRec, bool UseFullInt64Range)
 {
   OutPt *op = outRec.pts;
+  if (!op) return 0;
   if (UseFullInt64Range) {
     Int128 a(0);
     do {
@@ -640,16 +643,17 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
 }
 //------------------------------------------------------------------------------
 
-void ReversePolyPtLinks(OutPt &pp)
+void ReversePolyPtLinks(OutPt *pp)
 {
+  if (!pp) return;
   OutPt *pp1, *pp2;
-  pp1 = &pp;
+  pp1 = pp;
   do {
   pp2 = pp1->next;
   pp1->next = pp1->prev;
   pp1->prev = pp2;
   pp1 = pp2;
-  } while( pp1 != &pp );
+  } while( pp1 != pp );
 }
 //------------------------------------------------------------------------------
 
@@ -1325,7 +1329,7 @@ bool Clipper::ExecuteInternal(bool fixHoleLinkages)
 
       if (outRec->isHole ==
         (m_ReverseOutput ^ Orientation(outRec, m_UseFullRange)))
-          ReversePolyPtLinks(*outRec->pts);
+          ReversePolyPtLinks(outRec->pts);
     }
 
     JoinCommonEdges(fixHoleLinkages);
@@ -1994,7 +1998,7 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     if(  e2->side == esLeft )
     {
       //z y x a b c
-      ReversePolyPtLinks(*p2_lft);
+      ReversePolyPtLinks(p2_lft);
       p2_lft->next = p1_lft;
       p1_lft->prev = p2_lft;
       p1_rt->next = p2_rt;
@@ -2015,7 +2019,7 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
     if(  e2->side == esRight )
     {
       //a b c z y x
-      ReversePolyPtLinks( *p2_lft );
+      ReversePolyPtLinks(p2_lft);
       p1_rt->next = p2_rt;
       p2_rt->prev = p1_rt;
       p2_lft->next = p1_lft;
@@ -2935,31 +2939,28 @@ void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt)
 }
 //----------------------------------------------------------------------
 
-void Clipper::JoinCommonEdges(bool fixHoleLinkages)
+bool Clipper::JoinPoints(JoinRec *j, OutPt *&p1, OutPt *&p2)
 {
-  for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
-  {
-    JoinRec* j = m_Joins[i];
     OutRec *outRec1 = m_PolyOuts[j->poly1Idx];
-    OutPt *pp1a = outRec1->pts;
     OutRec *outRec2 = m_PolyOuts[j->poly2Idx];
+    if (!outRec1 || !outRec2)  return false;  
+    OutPt *pp1a = outRec1->pts;
     OutPt *pp2a = outRec2->pts;
     IntPoint pt1 = j->pt2a, pt2 = j->pt2b;
     IntPoint pt3 = j->pt1a, pt4 = j->pt1b;
-    if (!FindSegment(pp1a, pt1, pt2)) continue;
-    if (j->poly1Idx == j->poly2Idx)
+    if (!FindSegment(pp1a, pt1, pt2)) return false;
+    if (outRec1 == outRec2)
     {
       //we're searching the same polygon for overlapping segments so
       //segment 2 mustn't be the same as segment 1 ...
       pp2a = pp1a->next;
-      if (!FindSegment(pp2a, pt3, pt4) || (pp2a == pp1a)) continue;
+      if (!FindSegment(pp2a, pt3, pt4) || (pp2a == pp1a)) return false;
     }
-    else if (!FindSegment(pp2a, pt3, pt4)) continue;
+    else if (!FindSegment(pp2a, pt3, pt4)) return false;
 
-    if (!GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2)) continue;
+    if (!GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2)) return false;
 
-    OutPt *p1, *p2, *p3, *p4;
-    OutPt *prev = pp1a->prev;
+    OutPt *p3, *p4, *prev = pp1a->prev;
     //get p1 & p2 polypts - the overlap start & endpoints on poly1
     if (PointsEqual(pp1a->pt, pt1)) p1 = pp1a;
     else if (PointsEqual(prev->pt, pt1)) p1 = prev;
@@ -2994,6 +2995,7 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       p3->prev = p1;
       p2->prev = p4;
       p4->next = p2;
+      return true;
     }
     else if (p1->prev == p2 && p3->next == p4)
     {
@@ -3001,11 +3003,38 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       p3->next = p1;
       p2->next = p4;
       p4->prev = p2;
+      return true;
     }
     else
-      continue; //an orientation is probably wrong
+      return false; //an orientation is probably wrong
+}
+//----------------------------------------------------------------------
 
-    if (j->poly2Idx == j->poly1Idx)
+void Clipper::FixupJoinRecs(JoinRec *j, OutPt *pt, unsigned startIdx)
+{
+  for (JoinList::size_type k = startIdx; k < m_Joins.size(); k++)
+    {
+      JoinRec* j2 = m_Joins[k];
+      if (j2->poly1Idx == j->poly1Idx && PointIsVertex(j2->pt1a, pt))
+        j2->poly1Idx = j->poly2Idx;
+      if (j2->poly2Idx == j->poly1Idx && PointIsVertex(j2->pt2a, pt))
+        j2->poly2Idx = j->poly2Idx;
+    }
+}
+//----------------------------------------------------------------------
+
+void Clipper::JoinCommonEdges(bool fixHoleLinkages)
+{
+  for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
+  {
+    JoinRec* j = m_Joins[i];
+    OutPt *p1, *p2;
+    if (!JoinPoints(j, p1, p2)) return;
+
+    OutRec *outRec1 = m_PolyOuts[j->poly1Idx];
+    OutRec *outRec2 = m_PolyOuts[j->poly2Idx];
+
+    if (outRec1 == outRec2)
     {
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
@@ -3020,84 +3049,66 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       outRec2->bottomPt = outRec2->pts;
       outRec2->bottomPt->idx = outRec2->idx;
 
-      int K = 0;
       if (PointInPolygon(outRec2->pts->pt, outRec1->pts, m_UseFullRange))
       {
         //outRec2 is contained by outRec1 ...
-        K = 1;
         outRec2->isHole = !outRec1->isHole;
         outRec2->FirstLeft = outRec1;
+
+        FixupJoinRecs(j, p2, i+1);
+        FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(*outRec2); //    but AFTER calling FixupJoinRecs()
+
+        if (outRec2->pts && outRec2->isHole ==
+          (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
+            ReversePolyPtLinks(outRec2->pts);
+
       } else if (PointInPolygon(outRec1->pts->pt, outRec2->pts, m_UseFullRange))
       {
         //outRec1 is contained by outRec2 ...
-        K = 2;
         outRec2->isHole = outRec1->isHole;
         outRec1->isHole = !outRec2->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
         outRec1->FirstLeft = outRec2;
-      } else
+
+        FixupJoinRecs(j, p2, i+1);
+        FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(*outRec2); //    but AFTER calling FixupJoinRecs()
+
+        if (outRec1->isHole ==
+          (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
+            ReversePolyPtLinks(outRec1->pts);
+        //make sure any contained holes now link to the correct polygon ...
+        if (fixHoleLinkages && outRec1->isHole) 
+          for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
+          {
+            OutRec *orec = m_PolyOuts[k];
+            if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
+              orec->FirstLeft = outRec2;
+          }
+      } 
+      else
       {
         outRec2->isHole = outRec1->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
-      }
 
-      //now fixup any subsequent joins that match this polygon
-      for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)
-      {
-        JoinRec* j2 = m_Joins[k];
-        if (j2->poly1Idx == j->poly1Idx && PointIsVertex(j2->pt1a, p2))
-          j2->poly1Idx = j->poly2Idx;
-        if (j2->poly2Idx == j->poly1Idx && PointIsVertex(j2->pt2a, p2))
-          j2->poly2Idx = j->poly2Idx;
-      }
+        FixupJoinRecs(j, p2, i+1);
+        FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
+        FixupOutPolygon(*outRec2); //    but AFTER calling FixupJoinRecs()
 
-      FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
-      FixupOutPolygon(*outRec2); //    but AFTER calling PointIsVertex()
-
-      switch( K ) {
-        case 1: 
+        if (fixHoleLinkages) 
+          for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
           {
-            if (outRec2->pts && outRec2->isHole ==
-              (m_ReverseOutput ^ Orientation(outRec2, m_UseFullRange)))
-                ReversePolyPtLinks(*outRec2->pts);
-            break;
-          }
-        case 2: 
-          {
-            if (outRec1->pts)
-            {
-              if (outRec1->isHole ==
-                (m_ReverseOutput ^ Orientation(outRec1, m_UseFullRange)))
-                  ReversePolyPtLinks(*outRec1->pts);
-              //make sure any contained holes now link to the correct polygon ...
-              if (fixHoleLinkages && outRec1->isHole) 
-                for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-                {
-                  OutRec *orec = m_PolyOuts[k];
-                  if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
-                    orec->FirstLeft = outRec2;
-                }
-            }
-            break;
-          }
-        default: 
-          {
-            //make sure any contained holes now link to the correct polygon ...
-            if (fixHoleLinkages) 
-              for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-              {
-                OutRec *orec = m_PolyOuts[k];
-                if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
-                  !PointInPolygon(orec->bottomPt->pt, outRec1->pts, m_UseFullRange))
-                    orec->FirstLeft = outRec2;
-              }
-
+            OutRec *orec = m_PolyOuts[k];
+            if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
+              !PointInPolygon(orec->bottomPt->pt, outRec1->pts, m_UseFullRange))
+                orec->FirstLeft = outRec2;
           }
       }
      
-      if (outRec1->pts && Orientation(outRec1, m_UseFullRange) != (Area(*outRec1, m_UseFullRange) > 0))
+      if (Orientation(outRec1, m_UseFullRange) != (Area(*outRec1, m_UseFullRange) >= 0))
           DisposeBottomPt(*outRec1);
-      if (outRec2->pts && Orientation(outRec2, m_UseFullRange) != (Area(*outRec2, m_UseFullRange) > 0))
+      if (Orientation(outRec2, m_UseFullRange) != (Area(*outRec2, m_UseFullRange) >= 0))
           DisposeBottomPt(*outRec2);
 
     } else
@@ -3214,7 +3225,7 @@ private:
 public:
 
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
-  double delta, JoinType jointype, double MiterLimit)
+  double delta, JoinType jointype, double MiterLimit, bool CheckInputs)
 {
     //nb precondition - out_polys != ptsin_polys
     if (NEAR_ZERO(delta))
@@ -3226,22 +3237,60 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     this->m_p = in_polys;
     this->m_delta = delta;
     this->m_jointype = jointype;
+
+    //ChecksInput - fixes polygon orientation if necessary and removes 
+    //duplicate vertices. Can be set false when you're sure that polygon
+    //orientation is correct and that there are no duplicate vertices.
+    if (CheckInputs) 
+    {
+      size_t Len = m_p.size(), botI = 0;
+      while (botI < Len && m_p[botI].size() == 0) botI++;
+      if (botI == Len) return;
+      
+      //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
+      //This point (on m_p[botI]) must be on an outer polygon ring and if 
+      //its orientation is false (counterclockwise) then assume all polygons 
+      //need reversing ...
+      IntPoint botPt = m_p[botI][0];      
+      
+      for (size_t i = botI; i < Len; ++i)
+      {
+        Polygon::iterator it = m_p[i].begin() +1;
+        while (it != m_p[i].end())
+        {
+          if (PointsEqual(*it, *(it -1)))
+            it = m_p[i].erase(it);
+          else 
+          {
+            if ((*it).Y > botPt.Y || ((*it).Y == botPt.Y && (*it).X < botPt.X))
+            {
+              botI = i;
+              botPt = (*it);
+            }
+            ++it;
+          }
+        }
+      }
+      if (!Orientation(m_p[botI]))
+        ReversePolygons(m_p);
+    }
+
     if (MiterLimit <= 1) MiterLimit = 1;
     m_RMin = 2/(MiterLimit*MiterLimit);
  
     double deltaSq = delta*delta;
     out_polys.clear();
-    out_polys.resize(in_polys.size());
-    for (m_i = 0; m_i < in_polys.size(); m_i++)
+    out_polys.resize(m_p.size());
+    for (m_i = 0; m_i < m_p.size(); m_i++)
     {
         m_curr_poly = &out_polys[m_i];
-        size_t len = in_polys[m_i].size();
+        size_t len = m_p[m_i].size();
         if (len > 1 && m_p[m_i][0].X == m_p[m_i][len - 1].X &&
             m_p[m_i][0].Y == m_p[m_i][len-1].Y) len--;
 
         //when 'shrinking' polygons - to minimize artefacts
         //strip those polygons that have an area < pi * delta^2 ...
-        double a1 = Area(in_polys[m_i]);
+        double a1 = Area(m_p[m_i]);
         if (delta < 0) { if (a1 > 0 && a1 < deltaSq *pi) len = 0; }
         else if (a1 < 0 && -a1 < deltaSq *pi) len = 0; //holes have neg. area
 
@@ -3250,7 +3299,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         else if (len == 1)
         {
             Polygon arc;
-            arc = BuildArc(in_polys[m_i][len-1], 0, 2 * pi, delta);
+            arc = BuildArc(m_p[m_i][len-1], 0, 2 * pi, delta);
             out_polys[m_i] = arc;
             continue;
         }
@@ -3258,9 +3307,9 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         //build normals ...
         normals.clear();
         normals.resize(len);
-        normals[len-1] = GetUnitNormal(in_polys[m_i][len-1], in_polys[m_i][0]);
+        normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
         for (m_j = 0; m_j < len -1; ++m_j)
-            normals[m_j] = GetUnitNormal(in_polys[m_i][m_j], in_polys[m_i][m_j+1]);
+            normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j+1]);
         
         m_k = len -1;
         for (m_j = 0; m_j < len; ++m_j)
@@ -3405,14 +3454,14 @@ void DoRound()
 //------------------------------------------------------------------------------
 
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double MiterLimit)
+  double delta, JoinType jointype, double MiterLimit, bool CheckInputs)
 {
   if (&out_polys == &in_polys)
   {
     Polygons poly2(in_polys);
-    PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit);
+    PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit, CheckInputs);
   }
-  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit);
+  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit, CheckInputs);
 }
 //------------------------------------------------------------------------------
 

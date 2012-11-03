@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.4                                                           *
-* Date      :  2 November 2012                                                 *
+* Version   :  4.9.5                                                           *
+* Date      :  5 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -78,7 +78,7 @@ enum JoinType { jtSquare, jtRound, jtMiter };
 bool Orientation(const Polygon &poly);
 double Area(const Polygon &poly);
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype = jtSquare, double MiterLimit = 2);
+  double delta, JoinType jointype = jtSquare, double MiterLimit = 2, bool CheckInputs = true);
 void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(Polygons &polys, PolyFillType fillType = pftEvenOdd);
@@ -282,6 +282,8 @@ private:
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
   void ClearHorzJoins();
+  bool JoinPoints(JoinRec *j, OutPt *&p1, OutPt *&p2);
+  void FixupJoinRecs(JoinRec *j, OutPt *pt, unsigned startIdx);
   void JoinCommonEdges(bool fixHoleLinkages);
 };
 
