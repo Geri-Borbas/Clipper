@@ -3746,13 +3746,14 @@ function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
   JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
   ChecksInput: Boolean = True): TPolygons;
 var
-  I, J, K, Len, OutLen, BotI, BotJ: Integer;
+  I, J, K, Len, OutLen, BotI: Integer;
   Normals: TArrayOfDoublePoint;
   R, RMin: Double;
   Pt1, Pt2: TIntPoint;
   Outer: TPolygon;
   Bounds: TIntRect;
   Pts: TPolygons;
+  BotPt: TIntPoint;
 const
   BuffLength: Integer = 128;
 
@@ -3850,15 +3851,14 @@ const
     AddPoint(Pt2);
   end;
 
-  procedure CheckBotPoint(I, J: Integer);
-  var
-    Dy: Int64;
+  function UpdateBotPt(const Pt: TIntPoint; var BotPt: TIntPoint): Boolean;
   begin
-    Dy := (Pts[I][J].Y - Pts[BotI][BotJ].Y);
-    if (Dy < 0) or ((Dy = 0) and (Pts[I][J].X >= Pts[BotI][BotJ].X)) then
-      Exit;
-    BotI := I;
-    BotJ := J;
+    if (pt.Y > BotPt.Y) or ((pt.Y = BotPt.Y) and (Pt.X < BotPt.X)) then
+    begin
+      BotPt := Pt;
+      Result := True;
+    end
+    else Result := False;
   end;
 
 begin
@@ -3872,23 +3872,23 @@ begin
     Len := Length(Polys);
     SetLength(Pts, Len);
     BotI := 0; //index of outermost polygon
-    BotJ := 0; //index of lowermost vertex in outermost polygon
     while (BotI < Len) and (Length(Polys[BotI]) = 0) do Inc(BotI);
     if (BotI = Len) then Exit;
+    BotPt := Polys[BotI][0];
     for I := BotI to Len - 1 do
     begin
       Len := Length(Polys[I]);
       SetLength(Pts[I], Len);
       if Len = 0 then Continue;
       Pts[I][0] := Polys[I][0];
-      CheckBotPoint(I, 0);
+      if UpdateBotPt(Pts[I][0], BotPt) then BotI := I;
       K := 0;
       for J := 1 to Len - 1 do
         if not PointsEqual(Pts[I][K], Polys[I][J]) then
         begin
           Inc(K);
           Pts[I][K] := Polys[I][J];
-          CheckBotPoint(I, J);
+          if UpdateBotPt(Pts[I][K], BotPt) then BotI := I;
         end;
       if K + 1 < Len then
         SetLength(Pts[I], K + 1);
@@ -3910,7 +3910,7 @@ begin
     if (Len > 1) and (Pts[I][0].X = Pts[I][Len - 1].X) and
         (Pts[I][0].Y = Pts[I][Len - 1].Y) then dec(Len);
 
-    if (Len = 0) or (Len < 3 and Delta <= 0) then
+    if (Len = 0) or ((Len < 3) and (Delta <= 0)) then
       Continue
     else if (Len = 1) then
     begin

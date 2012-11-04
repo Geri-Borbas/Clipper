@@ -3461,15 +3461,13 @@ namespace ClipperLib
                     IntPoint botPt = pts[botI][0];
                     for (int i = botI; i < Len; ++i)
                     {
+                        if (UpdateBotPt(pts[i][0], ref botPt)) botI = i;
                         for (int j = pts[i].Count -1; j > 0; j--)
                         {
                             if (PointsEqual(pts[i][j], pts[i][j -1]))
                                 pts[i].RemoveAt(j);
-                            else if (pts[i][j].Y > botPt.Y || (pts[i][j].Y == botPt.Y && pts[i][j].X < botPt.X))
-                            {
+                            else if (UpdateBotPt(pts[i][j], ref botPt))
                                 botI = i;
-                                botPt = pts[i][j];
-                            }
                         }
                     }
                     if (!Orientation(pts[botI]))
@@ -3560,7 +3558,18 @@ namespace ClipperLib
                 }
             }
             //------------------------------------------------------------------------------
-            
+
+            internal bool UpdateBotPt(IntPoint pt, ref IntPoint botPt)
+            {
+                if (pt.Y > botPt.Y || (pt.Y == botPt.Y && pt.X < botPt.X))
+                {
+                    botPt = pt;
+                    return true;
+                }
+                else return false;
+            }
+            //------------------------------------------------------------------------------
+
             internal void AddPoint(IntPoint pt)
             {
                 int len = currentPoly.Count;

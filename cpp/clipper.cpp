@@ -1678,7 +1678,7 @@ void Clipper::ClearHorzJoins()
 }
 //------------------------------------------------------------------------------
 
-void Clipper::InsertLocalMinimaIntoAEL( const long64 botY)
+void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
 {
   while(  m_CurrentLM  && ( m_CurrentLM->Y == botY ) )
   {
@@ -1782,7 +1782,7 @@ void Clipper::DeleteFromSEL(TEdge *e)
 //------------------------------------------------------------------------------
 
 void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
-     const IntPoint &pt, IntersectProtects protects)
+     const IntPoint &pt, const IntersectProtects protects)
 {
   //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
   //e2 in AEL except when e1 is being inserted at the intersection point ...
@@ -2547,7 +2547,7 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
 }
 //------------------------------------------------------------------------------
 
-bool ProcessParam1BeforeParam2(IntersectNode &node1, IntersectNode &node2)
+bool ProcessParam1BeforeParam2(const IntersectNode &node1, const IntersectNode &node2)
 {
   bool result;
   if (node1.pt.Y == node2.pt.Y)
@@ -2939,7 +2939,7 @@ void Clipper::DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt)
 }
 //----------------------------------------------------------------------
 
-bool Clipper::JoinPoints(JoinRec *j, OutPt *&p1, OutPt *&p2)
+bool Clipper::JoinPoints(const JoinRec *j, OutPt *&p1, OutPt *&p2)
 {
     OutRec *outRec1 = m_PolyOuts[j->poly1Idx];
     OutRec *outRec2 = m_PolyOuts[j->poly2Idx];
@@ -3195,7 +3195,7 @@ Polygon BuildArc(const IntPoint &pt,
 }
 //------------------------------------------------------------------------------
 
-DoublePoint GetUnitNormal( const IntPoint &pt1, const IntPoint &pt2)
+DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 {
   if(pt2.X == pt1.X && pt2.Y == pt1.Y) 
     return DoublePoint(0, 0);
@@ -3252,9 +3252,10 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
       //its orientation is false (counterclockwise) then assume all polygons 
       //need reversing ...
       IntPoint botPt = m_p[botI][0];      
-      
       for (size_t i = botI; i < Len; ++i)
       {
+        if (m_p[i].size() < 3) continue;
+        if (UpdateBotPt(m_p[i][0], botPt)) botI = i;
         Polygon::iterator it = m_p[i].begin() +1;
         while (it != m_p[i].end())
         {
@@ -3262,11 +3263,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
             it = m_p[i].erase(it);
           else 
           {
-            if ((*it).Y > botPt.Y || ((*it).Y == botPt.Y && (*it).X < botPt.X))
-            {
-              botI = i;
-              botPt = (*it);
-            }
+            if (UpdateBotPt(*it, botPt)) botI = i;
             ++it;
           }
         }
@@ -3445,6 +3442,17 @@ void DoRound()
     else
       AddPoint(m_p[m_i][m_j]);
     AddPoint(pt2);
+}
+//--------------------------------------------------------------------------
+
+bool UpdateBotPt(const IntPoint &pt, IntPoint &botPt)
+{
+    if (pt.Y > botPt.Y || (pt.Y == botPt.Y && pt.X < botPt.X))
+    {
+        botPt = pt;
+        return true;
+    }
+    else return false;
 }
 //--------------------------------------------------------------------------
 
