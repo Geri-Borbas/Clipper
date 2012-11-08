@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.5                                                           *
-* Date      :  5 November 2012                                                 *
+* Version   :  4.9.6                                                           *
+* Date      :  9 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -303,53 +303,6 @@ resourcestring
   rsInvalidInt = 'Coordinate exceeds range bounds';
   rsJoinError = 'Join Output polygons error';
   rsHoleLinkError = 'HoleLinkage error';
-
-procedure DebugLog(const s: string; append: boolean);
-var
-  ss: TStringStream;
-  fs: TFileStream;
-const
-  filename: string = 'debug.txt';
-begin
-  ss := TStringStream.create(s);
-  if fileExists(filename) then
-  begin
-    fs := TFileStream.Create(filename, fmOpenWrite);
-    if append then
-      fs.Seek(0, soFromEnd) else
-      fs.Size := 0;
-  end else
-    fs := TFileStream.Create(filename, fmCreate);
-  try
-    fs.CopyFrom(ss, ss.Size);
-  finally
-    ss.Free;
-    fs.Free;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function DebugPts(pts: POutPt): string;
-var
-  i, cnt: integer;
-  p: POutPt;
-begin
-  if not assigned(pts) then exit;
-  cnt := 0;
-  p := pts;
-  repeat
-    inc(cnt);
-    p := p.next;
-  until p = pts;
-  result := #13#10 + inttostr(cnt);
-  for i := 1 to cnt do
-  begin
-    result := format('%s'#13#10'%d, %d,',[result, p.pt.X, p.pt.Y]);
-    p := p.next;
-  end;
-  result := result + #13#10;
-end;
-//------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
 // Int128 Functions ...
@@ -932,7 +885,7 @@ end;
 function IntersectPoint(Edge1, Edge2: PEdge;
   out ip: TIntPoint; UseFullInt64Range: Boolean): Boolean; overload;
 var
-  B1,B2: Double;
+  B1,B2,M: Double;
 begin
   if SlopesEqual(Edge1, Edge2, UseFullInt64Range) then
   begin
@@ -964,9 +917,12 @@ begin
   begin
     with Edge1^ do B1 := XBot - YBot * Dx;
     with Edge2^ do B2 := XBot - YBot * Dx;
-    B2 := (B2-B1)/(Edge1.Dx - Edge2.Dx);
-    ip.Y := round(B2);
-    ip.X := round(Edge1.Dx * B2 + B1);
+    M := (B2-B1)/(Edge1.Dx - Edge2.Dx);
+    ip.Y := round(M);
+    if Abs(Edge1.Dx) < Abs(Edge2.Dx) then
+      ip.X := round(Edge1.Dx * M + B1)
+    else
+      ip.X := round(Edge2.Dx * M + B2);
   end;
 
   //The precondition - E.TmpX > eNext.TmpX - indicates that the two edges do
@@ -3619,12 +3575,12 @@ begin
         FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
         FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
 
-        if FixHoleLinkages then
+        if FixHoleLinkages and assigned(OutRec2.Pts) then
           for J := 0 to fPolyOutList.Count - 1 do
             with POutRec(fPolyOutList[J])^ do
-              if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) and
-                 not PointInPolygon(BottomPt.pt, outRec1.pts, fUse64BitRange) then
-                   FirstLeft := outRec2;
+              if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) then
+                if PointInPolygon(BottomPt.pt, outRec2.pts, fUse64BitRange) then
+                  FirstLeft := outRec2;
       end;
 
       //check for self-intersection rounding artifacts and correct ...

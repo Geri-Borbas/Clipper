@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.5                                                           *
-* Date      :  5 November 2012                                                 *
+* Version   :  4.9.6                                                           *
+* Date      :  9 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -615,13 +615,16 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
       b1 = edge1.ybot - (edge1.xbot/edge1.dx);
       ip.Y = Round(ip.X/edge1.dx + b1);
     }
-  } else
+  } else 
   {
     b1 = edge1.xbot - edge1.ybot * edge1.dx;
     b2 = edge2.xbot - edge2.ybot * edge2.dx;
-    b2 = (b2-b1)/(edge1.dx - edge2.dx);
-    ip.Y = Round(b2);
-    ip.X = Round(edge1.dx * b2 + b1);
+    double q = (b2-b1)/(edge1.dx - edge2.dx);
+    ip.Y = Round(q);
+    if (std::fabs(edge1.dx) < std::fabs(edge2.dx))
+      ip.X = Round(edge1.dx * q + b1);
+    else 
+      ip.X = Round(edge2.dx * q + b2);
   }
 
   if (ip.Y < edge1.ytop || ip.Y < edge2.ytop) 
@@ -869,6 +872,7 @@ bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
 {
   int len = (int)pg.size();
   if (len < 3) return false;
+
   Polygon p(len);
   p[0] = pg[0];
   int j = 0;
@@ -3089,6 +3093,7 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
       } 
       else
       {
+        //the 2 polygons are completely separate ...
         outRec2->isHole = outRec1->isHole;
         outRec2->FirstLeft = outRec1->FirstLeft;
 
@@ -3096,12 +3101,12 @@ void Clipper::JoinCommonEdges(bool fixHoleLinkages)
         FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
         FixupOutPolygon(*outRec2); //    but AFTER calling FixupJoinRecs()
 
-        if (fixHoleLinkages) 
+        if (fixHoleLinkages && outRec2->pts) 
           for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
           {
             OutRec *orec = m_PolyOuts[k];
             if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
-              !PointInPolygon(orec->bottomPt->pt, outRec1->pts, m_UseFullRange))
+              PointInPolygon(orec->bottomPt->pt, outRec2->pts, m_UseFullRange))
                 orec->FirstLeft = outRec2;
           }
       }

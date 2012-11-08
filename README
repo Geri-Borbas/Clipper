@@ -2,6 +2,9 @@
 Clipper Change Log
 ============================================================
 
+v4.9.6 - 9 November 2012
+* Bugfix: Another obscure bug related to joining polygons.
+
 v4.9.4 - 2 November 2012
 * Bugfix: Bugs in Int128 class occasionally causing 
   wrong orientations.

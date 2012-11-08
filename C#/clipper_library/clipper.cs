@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.5                                                           *
-* Date      :  5 November 2012                                                 *
+* Version   :  4.9.6                                                           *
+* Date      :  9 November 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2751,9 +2751,12 @@ namespace ClipperLib
           {
             b1 = edge1.xbot - edge1.ybot * edge1.dx;
             b2 = edge2.xbot - edge2.ybot * edge2.dx;
-            b2 = (b2-b1)/(edge1.dx - edge2.dx);
-            ip.Y = Round(b2);
-            ip.X = Round(edge1.dx * b2 + b1);
+            double q = (b2-b1)/(edge1.dx - edge2.dx);
+            ip.Y = Round(q);
+            if (Math.Abs(edge1.dx) < Math.Abs(edge2.dx))
+                ip.X = Round(edge1.dx * q + b1);
+            else
+                ip.X = Round(edge2.dx * q + b2);
           }
 
           if (ip.Y < edge1.ytop || ip.Y < edge2.ytop)
@@ -3248,6 +3251,7 @@ namespace ClipperLib
                 }
                 else
                 {
+                    //the 2 polygons are completely separate ...
                     outRec2.isHole = outRec1.isHole;
                     outRec2.FirstLeft = outRec1.FirstLeft;
 
@@ -3255,12 +3259,12 @@ namespace ClipperLib
                     FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
                     FixupOutPolygon(outRec2); //    but AFTER calling FixupJoinRecs()
 
-                    if (fixHoleLinkages) 
+                    if (fixHoleLinkages && outRec2.pts != null) 
                       for (int k = 0; k < m_PolyOuts.Count; ++k)
                       {
                         OutRec orec = m_PolyOuts[k];
                         if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1 &&
-                          !PointInPolygon(orec.bottomPt.pt, outRec1.pts, m_UseFullRange))
+                          PointInPolygon(orec.bottomPt.pt, outRec2.pts, m_UseFullRange))
                             orec.FirstLeft = outRec2;
                       }
                 }
