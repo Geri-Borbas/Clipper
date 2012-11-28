@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.6                                                           *
-* Date      :  9 November 2012                                                 *
+* Version   :  4.9.7                                                           *
+* Date      :  29 November 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2763,6 +2763,7 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
     outRec.bottomPt = GetBottomPt(pp);
     outRec.bottomPt->idx = outRec.idx;
     outRec.pts = outRec.bottomPt;
+    outRec.bottomFlag = outRec.bottomPt;
   }
 }
 //------------------------------------------------------------------------------
@@ -3185,7 +3186,7 @@ Polygon BuildArc(const IntPoint &pt,
   const double a1, const double a2, const double r)
 {
   long64 steps = std::max(6, int(std::sqrt(std::fabs(r)) * std::fabs(a2 - a1)));
-  if (steps > 0x100000) steps = 0x100000;
+  if (steps > 0x100) steps = 0x100;
   int n = (unsigned)steps;
   Polygon result(n);
   double da = (a2 - a1) / (n -1);

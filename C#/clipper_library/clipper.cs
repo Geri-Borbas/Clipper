@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.6                                                           *
-* Date      :  9 November 2012                                                 *
+* Version   :  4.9.7                                                           *
+* Date      :  29 November 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3096,6 +3096,7 @@ namespace ClipperLib
             outRec.bottomPt = GetBottomPt(pp);
             outRec.bottomPt.idx = outRec.idx;
             outRec.pts = outRec.bottomPt;
+            outRec.bottomFlag = outRec.bottomPt;
           }
         }
         //------------------------------------------------------------------------------
@@ -3387,7 +3388,7 @@ namespace ClipperLib
         internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
         {
             Int64 steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
-            if (steps > 0x100000) steps = 0x100000;
+            if (steps > 0x100) steps = 0x100;
             int n = (int)steps;
             Polygon result = new Polygon(n);
             double da = (a2 - a1) / (n -1);

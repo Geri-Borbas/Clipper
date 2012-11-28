@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.6                                                           *
-* Date      :  9 November 2012                                                 *
+* Version   :  4.9.7                                                           *
+* Date      :  29 November 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -3280,6 +3280,7 @@ begin
     OutRec.BottomPt := GetBottomPt(PP);
     OutRec.BottomPt.Idx := OutRec.Idx;
     OutRec.Pts := OutRec.BottomPt;
+    OutRec.BottomFlag := OutRec.BottomPt;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -3661,7 +3662,7 @@ var
   S, C: Extended; //sin & cos
 begin
   Steps := Max(6, Round(Sqrt(Abs(R)) * Abs(A2 - A1)));
-  if Steps > $100000 then Steps := $100000;
+  if Steps > $100 then Steps := $100;
   SetLength(Result, Steps);
   N := Steps - 1;
   D := (A2 - A1) / N;
