@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.7                                                           *
-* Date      :  29 November 2012                                                *
+* Version   :  4.9.8                                                           *
+* Date      :  1 December 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -2366,9 +2366,18 @@ begin
   OutRec2 := FPolyOutList[E2.OutIdx];
 
   //work out which polygon fragment has the correct hole state ...
-  if Param1RightOfParam2(OutRec1, OutRec2) then HoleStateRec := OutRec2
-  else if Param1RightOfParam2(OutRec2, OutRec1) then HoleStateRec := OutRec1
-  else HoleStateRec := GetLowermostRec(OutRec1, OutRec2);
+  if Param1RightOfParam2(OutRec1, OutRec2) then
+    HoleStateRec := OutRec2
+  else if Param1RightOfParam2(OutRec2, OutRec1) then
+    HoleStateRec := OutRec1
+  else
+  begin
+    HoleStateRec := GetLowermostRec(OutRec1, OutRec2);
+    //if HoleStateRec contains a single vertex, then set flag so that
+    //polygon orientation is rechecked later ...
+    if HoleStateRec.Pts = HoleStateRec.Pts.Prev then
+      HoleStateRec.BottomFlag := HoleStateRec.Pts;
+  end;
 
   //get the start and ends of both output polygons ...
   P1_lft := OutRec1.Pts;
@@ -2536,16 +2545,30 @@ begin
         begin
           opBot := OutRec.Pts;
           op2 := opBot.Next; //op2 == right Side
-          if (opBot.Pt.Y <> op2.Pt.Y) and (opBot.Pt.Y <> Pt.Y) and
-            ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) <
+          if (opBot.Pt.Y = op2.Pt.Y) then
+          begin
+            if opBot.Pt.X > op2.Pt.X then OutRec.BottomFlag := opBot;
+          end
+          else if (opBot.Pt.Y = Pt.Y) then
+          begin
+            if opBot.Pt.X < Pt.X then OutRec.BottomFlag := opBot;
+          end
+          else if ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) <
             (opBot.Pt.X - op2.Pt.X)/(opBot.Pt.Y - op2.Pt.Y)) then
                OutRec.BottomFlag := opBot;
         end else
         begin
           opBot := OutRec.Pts.Prev;
           op2 := opBot.Prev; //op2 == left Side
-          if (opBot.Pt.Y <> op2.Pt.Y) and (opBot.Pt.Y <> Pt.Y) and
-            ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) >
+          if (opBot.Pt.Y = op2.Pt.Y) then
+          begin
+            if opBot.Pt.X < op2.Pt.X then OutRec.BottomFlag := opBot;
+          end
+          else if (opBot.Pt.Y = Pt.Y) then
+          begin
+            if opBot.Pt.X > Pt.X then OutRec.BottomFlag := opBot;
+          end
+          else if ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) >
             (opBot.Pt.X - op2.Pt.X)/(opBot.Pt.Y - op2.Pt.Y)) then
                OutRec.BottomFlag := opBot;
         end;

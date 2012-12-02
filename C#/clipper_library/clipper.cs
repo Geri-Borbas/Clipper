@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.7                                                           *
-* Date      :  29 November 2012                                                *
+* Version   :  4.9.8                                                           *
+* Date      :  1 December 2012                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -1748,18 +1748,32 @@ namespace ClipperLib
                     {
                       opBot = outRec.pts;
                       op2 = opBot.next; //op2 == right side
-                      if (opBot.pt.Y != op2.pt.Y && opBot.pt.Y != pt.Y &&
-                        ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) <
-                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y)))
+                      if (opBot.pt.Y == op2.pt.Y) 
+                      {
+                        if (opBot.pt.X > op2.pt.X) outRec.bottomFlag = opBot;
+                      }
+                      else if (opBot.pt.Y == pt.Y)
+                      {
+                          if (opBot.pt.X < pt.X) outRec.bottomFlag = opBot;
+                      }
+                      else if ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) <
+                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
                           outRec.bottomFlag = opBot;
                     }
                     else
                     {
                       opBot = outRec.pts.prev;
                       op2 = opBot.next; //op2 == left side
-                      if (opBot.pt.Y != op2.pt.Y && opBot.pt.Y != pt.Y &&
-                        ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) >
-                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y)))
+                      if (opBot.pt.Y == op2.pt.Y)
+                      {
+                          if (opBot.pt.X < op2.pt.X) outRec.bottomFlag = opBot;
+                      }
+                      else if (opBot.pt.Y == pt.Y)
+                      {
+                          if (opBot.pt.X > pt.X) outRec.bottomFlag = opBot;
+                      }
+                      else if ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) >
+                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
                           outRec.bottomFlag = opBot;
                     }
                   }
@@ -1974,9 +1988,18 @@ namespace ClipperLib
           OutRec outRec2 = m_PolyOuts[e2.outIdx];
 
           OutRec holeStateRec;
-          if (Param1RightOfParam2(outRec1, outRec2)) holeStateRec = outRec2;
-          else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
-          else holeStateRec = GetLowermostRec(outRec1, outRec2);
+          if (Param1RightOfParam2(outRec1, outRec2)) 
+              holeStateRec = outRec2;
+          else if (Param1RightOfParam2(outRec2, outRec1))
+              holeStateRec = outRec1;
+          else
+          {
+              holeStateRec = GetLowermostRec(outRec1, outRec2);
+              //if HoleStateRec contains a single vertex, then 
+              //set the flag so orientation is rechecked later ...
+              if (holeStateRec.pts == holeStateRec.pts.prev)
+                  holeStateRec.bottomFlag = holeStateRec.pts;
+          }
 
           OutPt p1_lft = outRec1.pts;
           OutPt p1_rt = p1_lft.prev;
