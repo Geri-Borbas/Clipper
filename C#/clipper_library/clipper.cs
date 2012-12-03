@@ -1763,7 +1763,7 @@ namespace ClipperLib
                     else
                     {
                       opBot = outRec.pts.prev;
-                      op2 = opBot.next; //op2 == left side
+                      op2 = opBot.prev; //op2 == left side
                       if (opBot.pt.Y == op2.pt.Y)
                       {
                           if (opBot.pt.X < op2.pt.X) outRec.bottomFlag = opBot;
