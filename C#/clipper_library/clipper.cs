@@ -683,7 +683,7 @@ namespace ClipperLib
           e.deltaX = (e.xtop - e.xbot);
           e.deltaY = (e.ytop - e.ybot);
           if (e.deltaY == 0) e.dx = horizontal;
-          else e.dx = (double)(e.deltaX)/(e.deltaY);
+          else e.dx = (double)(e.deltaX) / (e.deltaY);
         }
         //---------------------------------------------------------------------------
 
@@ -1756,8 +1756,8 @@ namespace ClipperLib
                       {
                           if (opBot.pt.X < pt.X) outRec.bottomFlag = opBot;
                       }
-                      else if ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) <
-                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
+                      else if ((double)(opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) <
+                        (double)(opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
                           outRec.bottomFlag = opBot;
                     }
                     else
@@ -1772,8 +1772,8 @@ namespace ClipperLib
                       {
                           if (opBot.pt.X > pt.X) outRec.bottomFlag = opBot;
                       }
-                      else if ((opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) >
-                        (opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
+                      else if ((double)(opBot.pt.X - pt.X) / (opBot.pt.Y - pt.Y) >
+                        (double)(opBot.pt.X - op2.pt.X) / (opBot.pt.Y - op2.pt.Y))
                           outRec.bottomFlag = opBot;
                     }
                   }
@@ -1806,7 +1806,7 @@ namespace ClipperLib
             IntPoint pt2b, ref IntPoint pt1, ref IntPoint pt2)
         {
             //precondition: segments are colinear.
-            if ( pt1a.Y == pt1b.Y || Math.Abs((pt1a.X - pt1b.X)/(pt1a.Y - pt1b.Y)) > 1 )
+            if (Math.Abs(pt1a.X - pt1b.X) > Math.Abs(pt1a.Y - pt1b.Y))
             {
             if (pt1a.X > pt1b.X) SwapPoints(ref pt1a, ref pt1b);
             if (pt2a.X > pt2b.X) SwapPoints(ref pt2a, ref pt2b);
@@ -1893,7 +1893,7 @@ namespace ClipperLib
         private double GetDx(IntPoint pt1, IntPoint pt2)
         {
             if (pt1.Y == pt2.Y) return horizontal;
-            else return (double)(pt2.X - pt1.X) / (double)(pt2.Y - pt1.Y);
+            else return (double)(pt2.X - pt1.X) / (pt2.Y - pt1.Y);
         }
         //---------------------------------------------------------------------------
 
@@ -2670,20 +2670,6 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private Int64 TopX(IntPoint pt1, IntPoint pt2, Int64 currentY)
-        {
-          //preconditions: pt1.Y <> pt2.Y and pt1.Y > pt2.Y
-          if (currentY >= pt1.Y) return pt1.X;
-          else if (currentY == pt2.Y) return pt2.X;
-          else if (pt1.X == pt2.X) return pt1.X;
-          else
-          {
-            double q = (pt1.X-pt2.X)/(pt1.Y-pt2.Y);
-            return (Int64)Round(pt1.X + (currentY - pt1.Y) * q);
-          }
-        }
-        //------------------------------------------------------------------------------
-
         private void AddIntersectNode(TEdge e1, TEdge e2, IntPoint pt)
         {
           IntersectNode newNode = new IntersectNode();
@@ -2755,8 +2741,8 @@ namespace ClipperLib
               ip.Y = edge2.ybot;
             } else
             {
-              b2 = edge2.ybot - (edge2.xbot/edge2.dx);
-              ip.Y = Round(ip.X/edge2.dx + b2);
+              b2 = edge2.ybot - (edge2.xbot / edge2.dx);
+              ip.Y = Round(ip.X / edge2.dx + b2);
             }
           }
           else if (edge2.dx == 0)
@@ -2767,14 +2753,14 @@ namespace ClipperLib
               ip.Y = edge1.ybot;
             } else
             {
-              b1 = edge1.ybot - (edge1.xbot/edge1.dx);
-              ip.Y = Round(ip.X/edge1.dx + b1);
+              b1 = edge1.ybot - (edge1.xbot / edge1.dx);
+              ip.Y = Round(ip.X / edge1.dx + b1);
             }
           } else
           {
             b1 = edge1.xbot - edge1.ybot * edge1.dx;
             b2 = edge2.xbot - edge2.ybot * edge2.dx;
-            double q = (b2-b1)/(edge1.dx - edge2.dx);
+            double q = (b2-b1) / (edge1.dx - edge2.dx);
             ip.Y = Round(q);
             if (Math.Abs(edge1.dx) < Math.Abs(edge2.dx))
                 ip.X = Round(edge1.dx * q + b1);
@@ -3368,11 +3354,11 @@ namespace ClipperLib
             }
             else
             {
-                double area = (double)poly[highI].X * (double)poly[0].Y -
-                    (double)poly[0].X * (double)poly[highI].Y;
+                double area = (double)poly[highI].X * poly[0].Y -
+                    (double)poly[0].X * poly[highI].Y;
                 for (int i = 0; i < highI; ++i)
-                    area += (double)poly[i].X * (double)poly[i + 1].Y -
-                        (double)poly[i + 1].X * (double)poly[i].Y;
+                    area += (double)poly[i].X * poly[i + 1].Y -
+                        (double)poly[i + 1].X * poly[i].Y;
                 return area / 2;
             }
         }
@@ -3414,7 +3400,7 @@ namespace ClipperLib
             if (steps > 0x100) steps = 0x100;
             int n = (int)steps;
             Polygon result = new Polygon(n);
-            double da = (a2 - a1) / (n -1);
+            double da = (a2 - a1) / (n - 1);
             double a = a1;
             for (int i = 0; i < n; ++i)
             {
@@ -3503,7 +3489,7 @@ namespace ClipperLib
                 }
 
                 if (MiterLimit <= 1) MiterLimit = 1;
-                double RMin = 2/(MiterLimit*MiterLimit);
+                double RMin = 2.0 / (MiterLimit*MiterLimit);
 
                 normals = new List<DoublePoint>();
 

@@ -423,7 +423,7 @@ double Area(const Polygon &poly)
     a = (double)poly[highI].X * poly[0].Y - (double)poly[0].X * poly[highI].Y;
     for (int i = 0; i < highI; ++i)
       a += (double)poly[i].X * poly[i+1].Y - (double)poly[i+1].X * poly[i].Y;
-    return a/2;
+    return a / 2;
   }
 }
 //------------------------------------------------------------------------------
@@ -448,7 +448,7 @@ double Area(const OutRec &outRec, bool UseFullInt64Range)
       a += (op->prev->pt.X * op->pt.Y) - (op->pt.X * op->prev->pt.Y);
       op = op->next;
     } while (op != outRec.pts);
-    return a/2;
+    return a / 2;
   }
 }
 //------------------------------------------------------------------------------
@@ -530,7 +530,7 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2,
 double GetDx(const IntPoint pt1, const IntPoint pt2)
 {
   return (pt1.Y == pt2.Y) ?
-    HORIZONTAL : (double)(pt2.X - pt1.X) / (double)(pt2.Y - pt1.Y);
+    HORIZONTAL : (double)(pt2.X - pt1.X) / (pt2.Y - pt1.Y);
 }
 //---------------------------------------------------------------------------
 
@@ -540,7 +540,7 @@ void SetDx(TEdge &e)
   e.deltaY = (e.ytop - e.ybot);
 
   if (e.deltaY == 0) e.dx = HORIZONTAL;
-  else e.dx = (double)(e.deltaX) / (double)(e.deltaY);
+  else e.dx = (double)(e.deltaX) / (e.deltaY);
 }
 //---------------------------------------------------------------------------
 
@@ -573,20 +573,6 @@ long64 TopX(TEdge &edge, const long64 currentY)
 }
 //------------------------------------------------------------------------------
 
-long64 TopX(const IntPoint pt1, const IntPoint pt2, const long64 currentY)
-{
-  //preconditions: pt1.Y <> pt2.Y and pt1.Y > pt2.Y
-  if (currentY >= pt1.Y) return pt1.X;
-  else if (currentY == pt2.Y) return pt2.X;
-  else if (pt1.X == pt2.X) return pt1.X;
-  else
-  {
-    double q = (double)(pt1.X-pt2.X)/(double)(pt1.Y-pt2.Y);
-    return Round(pt1.X + (currentY - pt1.Y) *q);
-  }
-}
-//------------------------------------------------------------------------------
-
 bool IntersectPoint(TEdge &edge1, TEdge &edge2,
   IntPoint &ip, bool UseFullInt64Range)
 {
@@ -600,8 +586,8 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
       ip.Y = edge2.ybot;
     } else
     {
-      b2 = edge2.ybot - (edge2.xbot/edge2.dx);
-      ip.Y = Round(ip.X/edge2.dx + b2);
+      b2 = edge2.ybot - (edge2.xbot / edge2.dx);
+      ip.Y = Round(ip.X / edge2.dx + b2);
     }
   }
   else if (NEAR_ZERO(edge2.dx))
@@ -612,14 +598,14 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
       ip.Y = edge1.ybot;
     } else
     {
-      b1 = edge1.ybot - (edge1.xbot/edge1.dx);
-      ip.Y = Round(ip.X/edge1.dx + b1);
+      b1 = edge1.ybot - (edge1.xbot / edge1.dx);
+      ip.Y = Round(ip.X / edge1.dx + b1);
     }
   } else 
   {
     b1 = edge1.xbot - edge1.ybot * edge1.dx;
     b2 = edge2.xbot - edge2.ybot * edge2.dx;
-    double q = (b2-b1)/(edge1.dx - edge2.dx);
+    double q = (b2-b1) / (edge1.dx - edge2.dx);
     ip.Y = Round(q);
     if (std::fabs(edge1.dx) < std::fabs(edge2.dx))
       ip.X = Round(edge1.dx * q + b1);
@@ -726,7 +712,7 @@ bool GetOverlapSegment(IntPoint pt1a, IntPoint pt1b, IntPoint pt2a,
   IntPoint pt2b, IntPoint &pt1, IntPoint &pt2)
 {
   //precondition: segments are colinear.
-  if ( pt1a.Y == pt1b.Y || Abs((pt1a.X - pt1b.X)/(pt1a.Y - pt1b.Y)) > 1 )
+  if (Abs(pt1a.X - pt1b.X) > Abs(pt1a.Y - pt1b.Y))
   {
     if (pt1a.X > pt1b.X) SwapPoints(pt1a, pt1b);
     if (pt2a.X > pt2b.X) SwapPoints(pt2a, pt2b);
@@ -2183,8 +2169,8 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
           {
               if (opBot->pt.X < pt.X) outRec->bottomFlag = opBot;
           }
-          else if ((opBot->pt.X - pt.X)/(opBot->pt.Y - pt.Y) <
-            (opBot->pt.X - op2->pt.X)/(opBot->pt.Y - op2->pt.Y))
+          else if ((double)(opBot->pt.X - pt.X) / (opBot->pt.Y - pt.Y) <
+            (double)(opBot->pt.X - op2->pt.X) / (opBot->pt.Y - op2->pt.Y))
                outRec->bottomFlag = opBot;
         } else
         {
@@ -2198,8 +2184,8 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
           {
               if (opBot->pt.X > pt.X) outRec->bottomFlag = opBot;
           }
-          else if ((opBot->pt.X - pt.X)/(opBot->pt.Y - pt.Y) >
-            (opBot->pt.X - op2->pt.X)/(opBot->pt.Y - op2->pt.Y))
+          else if ((double)(opBot->pt.X - pt.X) / (opBot->pt.Y - pt.Y) >
+            (double)(opBot->pt.X - op2->pt.X) / (opBot->pt.Y - op2->pt.Y))
                outRec->bottomFlag = opBot;
         }
       }
@@ -3302,7 +3288,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     }
 
     if (MiterLimit <= 1) MiterLimit = 1;
-    m_RMin = 2/(MiterLimit*MiterLimit);
+    m_RMin = 2.0/(MiterLimit*MiterLimit);
  
     double deltaSq = delta*delta;
     out_polys.clear();
@@ -3408,7 +3394,7 @@ void DoSquare(double mul = 1.0)
       double a2 = std::atan2(-normals[m_j].Y, -normals[m_j].X);
       a1 = std::fabs(a2 - a1);
       if (a1 > pi) a1 = pi * 2 - a1;
-      double dx = std::tan((pi - a1)/4) * std::fabs(m_delta * mul);
+      double dx = std::tan((pi - a1) / 4) * std::fabs(m_delta * mul);
       pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx),
         (long64)(pt1.Y + normals[m_k].X * dx));
       AddPoint(pt1);

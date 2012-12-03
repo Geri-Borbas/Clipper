@@ -1898,7 +1898,7 @@ function GetOverlapSegment(Pt1a, Pt1b, Pt2a, Pt2b: TIntPoint;
   out Pt1, Pt2: TIntPoint): Boolean;
 begin
   //precondition: segments are colinear
-  if (Pt1a.Y = Pt1b.Y) or (abs((Pt1a.X - Pt1b.X)/(Pt1a.Y - Pt1b.Y)) > 1) then
+  if abs(Pt1a.X - Pt1b.X) > abs(Pt1a.Y - Pt1b.Y) then
   begin
     if Pt1a.X > Pt1b.X then SwapPoints(Pt1a, Pt1b);
     if Pt2a.X > Pt2b.X then SwapPoints(Pt2a, Pt2b);
@@ -2547,11 +2547,11 @@ begin
           op2 := opBot.Next; //op2 == right Side
           if (opBot.Pt.Y = op2.Pt.Y) then
           begin
-            if opBot.Pt.X > op2.Pt.X then OutRec.BottomFlag := opBot;
+            if (opBot.Pt.X > op2.Pt.X) then OutRec.BottomFlag := opBot;
           end
           else if (opBot.Pt.Y = Pt.Y) then
           begin
-            if opBot.Pt.X < Pt.X then OutRec.BottomFlag := opBot;
+            if (opBot.Pt.X < Pt.X) then OutRec.BottomFlag := opBot;
           end
           else if ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) <
             (opBot.Pt.X - op2.Pt.X)/(opBot.Pt.Y - op2.Pt.Y)) then
@@ -2562,11 +2562,11 @@ begin
           op2 := opBot.Prev; //op2 == left Side
           if (opBot.Pt.Y = op2.Pt.Y) then
           begin
-            if opBot.Pt.X < op2.Pt.X then OutRec.BottomFlag := opBot;
+            if (opBot.Pt.X < op2.Pt.X) then OutRec.BottomFlag := opBot;
           end
           else if (opBot.Pt.Y = Pt.Y) then
           begin
-            if opBot.Pt.X > Pt.X then OutRec.BottomFlag := opBot;
+            if (opBot.Pt.X > Pt.X) then OutRec.BottomFlag := opBot;
           end
           else if ((opBot.Pt.X - Pt.X)/(opBot.Pt.Y - Pt.Y) >
             (opBot.Pt.X - op2.Pt.X)/(opBot.Pt.Y - op2.Pt.Y)) then
