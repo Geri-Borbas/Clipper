@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.8                                                           *
-* Date      :  1 December 2012                                                 *
+* Version   :  4.9.9                                                           *
+* Date      :  15 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -87,7 +87,7 @@ void ReversePolygon(Polygon& p);
 void ReversePolygons(Polygons& p);
 
 //used internally ...
-enum EdgeSide { esNeither = 0, esLeft = 1, esRight = 2, esBoth = 3 };
+enum EdgeSide { esLeft = 1, esRight = 2};
 enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
 
 struct TEdge {
@@ -144,8 +144,6 @@ struct OutRec {
   OutRec *AppendLink;
   OutPt  *pts;
   OutPt  *bottomPt;
-  OutPt  *bottomFlag;
-  EdgeSide sides;
 };
 
 struct OutPt {
@@ -218,7 +216,7 @@ public:
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
 protected:
   void Reset();
-  virtual bool ExecuteInternal(bool fixHoleLinkages);
+  virtual bool ExecuteInternal();
 private:
   PolyOutList       m_PolyOuts;
   JoinList          m_Joins;
@@ -232,6 +230,7 @@ private:
   PolyFillType      m_ClipFillType;
   PolyFillType      m_SubjFillType;
   bool              m_ReverseOutput;
+  bool              m_UsingExPolygons;
   void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
   bool IsEvenOddFillType(const TEdge& edge) const;
@@ -262,7 +261,6 @@ private:
     const IntPoint &pt, const IntersectProtects protects);
   OutRec* CreateOutRec();
   void AddOutPt(TEdge *e, const IntPoint &pt);
-  void DisposeBottomPt(OutRec &outRec);
   void DisposeAllPolyPts();
   void DisposeOutRec(PolyOutList::size_type index);
   bool ProcessIntersections(const long64 botY, const long64 topY);
@@ -284,7 +282,7 @@ private:
   void ClearHorzJoins();
   bool JoinPoints(const JoinRec *j, OutPt *&p1, OutPt *&p2);
   void FixupJoinRecs(JoinRec *j, OutPt *pt, unsigned startIdx);
-  void JoinCommonEdges(bool fixHoleLinkages);
+  void JoinCommonEdges();
 };
 
 //------------------------------------------------------------------------------
