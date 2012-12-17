@@ -3215,8 +3215,8 @@ namespace ClipperLib
             Int128 a = new Int128(0);
             do
             {
-                a += Int128.Int128Mul(op.prev.pt.X, op.pt.Y) -
-                    Int128.Int128Mul(op.pt.X, op.prev.pt.Y);
+                a += Int128.Int128Mul(op.prev.pt.Y, op.pt.X) -
+                    Int128.Int128Mul(op.pt.Y, op.prev.pt.X);
                 op = op.prev;
             } while (op != outRec.pts);
             return a.ToDouble() / 2;          
@@ -3225,7 +3225,7 @@ namespace ClipperLib
           {
             double a = 0;
             do {
-              a += (op.prev.pt.X * op.pt.Y) - (op.pt.X * op.prev.pt.Y);
+                a += (op.prev.pt.Y * op.pt.X) - (op.pt.Y * op.prev.pt.X);
               op = op.prev;
             } while (op != outRec.pts);
             return a/2;

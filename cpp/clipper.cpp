@@ -363,8 +363,8 @@ double Area(const OutRec &outRec, bool UseFullInt64Range)
   if (UseFullInt64Range) {
     Int128 a(0);
     do {
-      a += (Int128(op->prev->pt.X) * Int128(op->pt.Y)) -
-        Int128(op->pt.X) * Int128(op->prev->pt.Y);
+      a += (Int128(op->prev->pt.Y) * Int128(op->pt.X)) -
+        Int128(op->pt.Y) * Int128(op->prev->pt.X);
       op = op->prev;
     } while (op != outRec.pts);
     return a.AsDouble() / 2;
@@ -373,7 +373,7 @@ double Area(const OutRec &outRec, bool UseFullInt64Range)
   {
     double a = 0;
     do {
-      a += (op->prev->pt.X * op->pt.Y) - (op->pt.X * op->prev->pt.Y);
+      a += (op->prev->pt.Y * op->pt.X) - (op->pt.Y * op->prev->pt.X);
       op = op->prev;
     } while (op != outRec.pts);
     return a / 2;
