@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.9                                                           *
-* Date      :  15 December 2012                                                *
+* Version   :  4.10.0                                                          *
+* Date      :  25 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -184,30 +184,59 @@ namespace ClipperLib
         {
             if (rhs.lo == 0 && rhs.hi == 0)
                 throw new ClipperException("Int128: divide by zero");
-            bool negate = (rhs.hi < 0) != (lhs.hi < 0);
-            Int128 result = new Int128(lhs), denom = new Int128(rhs);
-            if (result.hi < 0) result = -result;
-            if (denom.hi < 0) denom = -denom;
-            if (denom > result) return new Int128(0); //result is only a fraction of 1
-            denom = -denom;
 
-            Int128 p = new Int128(0), p2 = new Int128(0);
-            for (int i = 0; i < 128; ++i)
+            bool negate = (rhs.hi < 0) != (lhs.hi < 0);
+            if (lhs.hi < 0) lhs = -lhs;
+            if (rhs.hi < 0) rhs = -rhs;
+
+            if (rhs < lhs)
             {
-                p.hi = p.hi << 1;
-                if (p.lo < 0) p.hi++;
-                p.lo = (Int64)p.lo << 1;
-                if (result.hi < 0) p.lo++;
-                result.hi = result.hi << 1;
-                if (result.lo < 0) result.hi++;
-                result.lo = (Int64)result.lo << 1;
-                if (p.hi >= 0)
+                Int128 result = new Int128(0);
+                Int128 cntr = new Int128(1);
+                while (!(rhs > lhs))
                 {
-                    p += denom;
-                    result.lo++;
+                    rhs.hi <<= 1;
+                    if (rhs.lo < 0) rhs.hi++;
+                    rhs.lo <<= 1;
+
+                    cntr.hi <<= 1;
+                    if (cntr.lo < 0) cntr.hi++;
+                    cntr.lo <<= 1;
                 }
+                rhs.lo = (Int64)((UInt64)rhs.lo >> 1);
+                if ((rhs.hi & 1) == 1)
+                    unchecked { rhs.lo |= (Int64)0x8000000000000000; }
+                rhs.hi >>= 1;
+
+                cntr.lo = (Int64)((UInt64)cntr.lo >> 1);
+                if ((cntr.hi & 1) == 1)
+                    unchecked { cntr.lo |= (Int64)0x8000000000000000; }
+                cntr.hi >>= 1;
+
+                while (cntr.hi != 0 || cntr.lo != 0)
+                {
+                    if (!(lhs < rhs))
+                    {
+                        lhs -= rhs;
+                        result.hi |= cntr.hi;
+                        result.lo |= cntr.lo;
+                    }
+                    rhs.lo = (Int64)((UInt64)rhs.lo >> 1);
+                    if ((rhs.hi & 1) == 1)
+                        unchecked { rhs.lo |= (Int64)0x8000000000000000; }
+                    rhs.hi >>= 1;
+
+                    cntr.lo = (Int64)((UInt64)cntr.lo >> 1);
+                    if ((cntr.hi & 1) == 1)
+                        unchecked { cntr.lo |= (Int64)0x8000000000000000; }
+                    cntr.hi >>= 1;
+                }
+                return negate ? -result : result;
             }
-            return negate ? -result : result;
+            else if (rhs == lhs)
+                return new Int128(1);
+            else
+                return new Int128(0);
         }
 
         public double ToDouble()
@@ -222,57 +251,8 @@ namespace ClipperLib
             }
             else
                 return (double)((UInt64)lo + hi * shift64);
-
         }
 
-        ////for bug testing ...
-        //public override string ToString()
-        //{
-        //    int r = 0;
-        //    Int128 tmp = new Int128(0), val = new Int128(this);
-        //    if (hi < 0) Negate(val);
-        //    StringBuilder builder = new StringBuilder(50);
-        //    while (val.hi != 0 || val.lo != 0)
-        //    {
-        //        Div10(val, ref tmp, ref r);
-        //        builder.Insert(0, (char)('0' + r));
-        //        val = tmp;
-        //    }
-        //    if (hi < 0) return '-' + builder.ToString();
-        //    if (builder.Length == 0) return "0";
-        //    return builder.ToString();
-        //}
-
-        ////debugging only ...
-        //private void Div10(Int128 val, ref Int128 result, ref int remainder)
-        //{
-        //    remainder = 0;
-        //    result = new Int128(0);
-        //    for (int i = 63; i >= 0; --i)
-        //    {
-        //        if ((val.hi & ((Int64)1 << i)) != 0)
-        //            remainder = (remainder * 2) + 1;
-        //        else
-        //            remainder *= 2;
-        //        if (remainder >= 10)
-        //        {
-        //            result.hi += ((Int64)1 << i);
-        //            remainder -= 10;
-        //        }
-        //    }
-        //    for (int i = 63; i >= 0; --i)
-        //    {
-        //        if ((val.lo & ((Int64)1 << i)) != 0)
-        //            remainder = (remainder * 2) + 1;
-        //        else
-        //            remainder *= 2;
-        //        if (remainder >= 10)
-        //        {
-        //            result.lo += ((Int64)1 << i);
-        //            remainder -= 10;
-        //        }
-        //    }
-        //}
     };
 
     //------------------------------------------------------------------------------

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.9                                                           *
-* Date      :  15 December 2012                                                *
+* Version   :  4.10.0                                                          *
+* Date      :  25 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -344,35 +344,35 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+//Note on UInt64 in Delphi 7...
+//while this type isn't implemented in D7, it can still be used in typecasts.
+
 function Int128LessThan(const Int1, Int2: TInt128): Boolean;
 begin
-  if (Int1.Hi <> Int2.Hi) then
-    Result := Int1.Hi < Int2.Hi
-  else if Int64Rec(Int1.Lo).Hi <> Int64Rec(Int2.Lo).Hi then
-    Result := Int64Rec(Int1.Lo).Hi < Int64Rec(Int2.Lo).Hi
-  else
-    Result := Int64Rec(Int1.Lo).Lo < Int64Rec(Int2.Lo).Lo;
+  if (Int1.Hi <> Int2.Hi) then Result := Int1.Hi < Int2.Hi
+  else Result := UInt64(Int1.Lo) < UInt64(Int2.Lo);
 end;
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 function Int128Add(const Int1, Int2: TInt128): TInt128;
 begin
   Result.Lo := Int1.Lo + Int2.Lo;
   Result.Hi := Int1.Hi + Int2.Hi;
-  if Int64Rec(Result.Lo).Hi < Int64Rec(Int1.Lo).Hi then inc(Result.Hi);
+  if UInt64(Result.Lo) < UInt64(Int1.Lo) then inc(Result.Hi);
 end;
 //------------------------------------------------------------------------------
 
-function Int128Sub(Int1, Int2: TInt128): TInt128;
+function Int128Sub(const Int1, Int2: TInt128): TInt128;
 begin
-  Int128Negate(Int2);
-  Result := Int128Add(Int1, Int2);
+  Result.Hi := Int1.Hi - Int2.Hi;
+  Result.Lo := Int1.Lo - Int2.Lo;
+  if UInt64(Result.Lo) > UInt64(Int1.Lo) then dec(Result.Hi);
 end;
 //------------------------------------------------------------------------------
 
 function Int128Mul(Int1, Int2: Int64): TInt128;
 var
-  A, B, c: Int64;
+  A, B, C: Int64;
   Int1Hi, Int1Lo, Int2Hi, Int2Lo: Int64;
   Negate: Boolean;
 begin
@@ -391,62 +391,103 @@ begin
   //because the high (sign) bits in both int1Hi & int2Hi have been zeroed,
   //there's no risk of 64 bit overflow in the following assignment
   //(ie: $7FFFFFFF*$FFFFFFFF + $7FFFFFFF*$FFFFFFFF < 64bits)
-  c := Int1Hi*Int2Lo + Int2Hi*Int1Lo;
-  //Result = A shl 64 + c shl 32 + B ...
-  Result.Hi := A + (c shr 32);
-  A := c shl 32;
+  C := Int1Hi*Int2Lo + Int2Hi*Int1Lo;
+  //Result = A shl 64 + C shl 32 + B ...
+  Result.Hi := A + (C shr 32);
+  A := C shl 32;
 
   Result.Lo := A + B;
-  if Int64Rec(Result.Lo).Hi < Int64Rec(A).Hi then inc(Result.Hi);
+  if UInt64(Result.Lo) < UInt64(A) then
+    inc(Result.Hi);
 
   if Negate then Int128Negate(Result);
 end;
 //------------------------------------------------------------------------------
 
-function Int128Div(Num, Denom: TInt128): TInt128;
+function Int128Div(Dividend, Divisor: TInt128{; out Remainder: TInt128}): TInt128;
 var
-  I: Integer;
-  P, P2: TInt128;
+  Cntr: TInt128;
   Negate: Boolean;
 begin
-  if (Denom.Lo = 0) and (Denom.Hi = 0) then
+  if (Divisor.Lo = 0) and (Divisor.Hi = 0) then
     raise Exception.create('int128Div error: divide by zero');
 
-  Negate := (Denom.Hi < 0) <> (Num.Hi < 0);
-  if Num.Hi < 0 then Int128Negate(Num);
-  if Denom.Hi < 0 then Int128Negate(Denom);
-  if (Denom.Hi > Num.Hi) or ((Denom.Hi = Num.Hi) and (Denom.Lo > Num.Lo)) then
-  begin
-    Result := Int128(0); //Result is only a fraction of 1
-    Exit;
-  end;
-  Int128Negate(Denom);
+  Negate := (Divisor.Hi < 0) <> (Dividend.Hi < 0);
+  if Dividend.Hi < 0 then Int128Negate(Dividend);
+  if Divisor.Hi < 0 then Int128Negate(Divisor);
 
-  P := int128(0);
-  Result := Num;
-  for I := 0 to 127 do //long division
+  if Int128LessThan(Divisor, Dividend) then
   begin
-    P.Hi := P.Hi shl 1;
-    if P.Lo < 0 then inc(P.Hi);
-    P.Lo := P.Lo shl 1;
-    if Result.Hi < 0 then inc(P.Lo);
-    Result.Hi := Result.Hi shl 1;
-    if Result.Lo < 0 then inc(Result.Hi);
-    Result.Lo := Result.Lo shl 1;
-    P2 := P;
-    P := Int128Add(P, Denom);
-    if P.Hi < 0 then
-      P := P2 else
-      inc(Result.Lo);
+    Result.Hi := 0;
+    Result.Lo := 0;
+    Cntr.Lo := 1;
+    Cntr.Hi := 0;
+    //while (Dividend >= Divisor) do
+    while not Int128LessThan(Dividend, Divisor) do
+    begin
+      //divisor := divisor shl 1;
+      Divisor.Hi := Divisor.Hi shl 1;
+      if Divisor.Lo < 0 then inc(Divisor.Hi);
+      Divisor.Lo := Divisor.Lo shl 1;
+
+      //Cntr := Cntr shl 1;
+      Cntr.Hi := Cntr.Hi shl 1;
+      if Cntr.Lo < 0 then inc(Cntr.Hi);
+      Cntr.Lo := Cntr.Lo shl 1;
+    end;
+    //Divisor := Divisor shr 1;
+    Divisor.Lo := Divisor.Lo shr 1;
+    if Divisor.Hi and $1 = $1 then
+      Int64Rec(Divisor.Lo).Hi := Cardinal(Int64Rec(Divisor.Lo).Hi) or $80000000;
+    Divisor.Hi := Divisor.Hi shr 1;
+
+    //Cntr := Cntr shr 1;
+    Cntr.Lo := Cntr.Lo shr 1;
+    if Cntr.Hi and $1 = $1 then
+      Int64Rec(Cntr.Lo).Hi := Cardinal(Int64Rec(Cntr.Lo).Hi) or $80000000;
+    Cntr.Hi := Cntr.Hi shr 1;
+
+    //while (Cntr > 0) do
+    while not ((Cntr.Hi = 0) and (Cntr.Lo = 0)) do
+    begin
+      //if ( Dividend >= Divisor) then
+      if not Int128LessThan(Dividend, Divisor) then
+      begin
+        //Dividend := Dividend - Divisor;
+        Dividend := Int128Sub(Dividend, Divisor);
+
+        //result := result or Cntr;
+        result.Hi := result.Hi or Cntr.Hi;
+        result.Lo := result.Lo or Cntr.Lo;
+      end;
+      //Divisor := Divisor shr 1;
+      Divisor.Lo := Divisor.Lo shr 1;
+      if Divisor.Hi and $1 = $1 then
+        Int64Rec(Divisor.Lo).Hi := Cardinal(Int64Rec(Divisor.Lo).Hi) or $80000000;
+      Divisor.Hi := Divisor.Hi shr 1;
+
+      //Cntr := Cntr shr 1;
+      Cntr.Lo := Cntr.Lo shr 1;
+      if Cntr.Hi and $1 = $1 then
+        Int64Rec(Cntr.Lo).Hi := Cardinal(Int64Rec(Cntr.Lo).Hi) or $80000000;
+      Cntr.Hi := Cntr.Hi shr 1;
+    end;
+    if Negate then Int128Negate(Result);
+    //Remainder := Dividend;
+  end
+  else if (Divisor.Hi = Dividend.Hi) and (Divisor.Lo = Dividend.Lo) then
+  begin
+    Result := Int128(1);
+  end else
+  begin
+    Result := Int128(0);
   end;
-  if Negate then Int128Negate(Result);
 end;
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 function Int128AsDouble(val: TInt128): Double;
 const
   shift64: Double = 18446744073709551616.0;
-  shift32: Double = 4294967296.0;
 var
   lo: Int64;
 begin
@@ -455,77 +496,12 @@ begin
     lo := -val.Lo;
     if lo = 0 then
       Result := val.Hi * shift64 else
-      Result := -(not val.Hi * shift64 + Int64Rec(lo).Hi * shift32 + Int64Rec(lo).Lo);
+      Result := -(not val.Hi * shift64 + UInt64(lo));
   end else
-    Result := val.Hi * shift64 + Int64Rec(val.Lo).Hi * shift32 + Int64Rec(val.Lo).Lo;
+    Result := val.Hi * shift64 + UInt64(val.Lo);
 end;
 //------------------------------------------------------------------------------
 
-//procedure int128DivBase(val: TInt128; base: cardinal; out Result: TInt128; out remainder: Int64);
-//var
-//  I: Integer;
-//  Negate: Boolean;
-//begin
-//  Negate := (val.Hi < 0);
-//  if Negate then Int128Negate(val);
-//
-//  Result.Lo := 0;
-//  Result.Hi := 0;
-//  if (val.Hi = 0) and (val.Lo >= 0) and (base > val.Lo) then
-//  begin
-//    if Negate then remainder := -val.Lo else remainder := val.Lo;
-//    Exit;
-//  end;
-//
-//  remainder := 0;
-//  for I := 63 downto 0 do
-//  begin
-//    if (val.Hi and (Int64(1) shl I)) <> 0 then
-//      remainder := remainder * 2 + 1 else
-//      remainder := remainder *2;
-//    if remainder >= base then
-//    begin
-//      Result.Hi := Result.Hi + (Int64(1) shl I);
-//      dec(remainder, base);
-//    end;
-//  end;
-//  for I := 63 downto 0 do
-//  begin
-//    if (val.Lo and (Int64(1) shl I)) <> 0 then
-//      remainder := remainder * 2 + 1 else
-//      remainder := remainder *2;
-//    if remainder >= base then
-//    begin
-//      Result.Lo := Result.Lo + (Int64(1) shl I);
-//      dec(remainder, base);
-//    end;
-//  end;
-//  if Negate then Int128Negate(Result);
-//end;
-//------------------------------------------------------------------------------
-
-//function int128AsString(val: TInt128): string;
-//var
-//  valDiv10: TInt128;
-//  R: Int64;
-//  isNeg: Boolean;
-//begin
-//  Result := '';
-//  if val.Hi < 0 then
-//  begin
-//    Int128Negate(val);
-//    isNeg := True;
-//  end else
-//    isNeg := False;
-//  while (val.Hi <> 0) or (val.Lo <> 0) do
-//  begin
-//    int128DivBase(val, 10, valDiv10, R);
-//    Result := inttostr(R) + Result;
-//    val := valDiv10;
-//  end;
-//  if Result = '' then Result := '0';
-//  if isNeg then Result := '-' + Result;
-//end;
 {$OVERFLOWCHECKS ON}
 
 //------------------------------------------------------------------------------

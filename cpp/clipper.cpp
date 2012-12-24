@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.9.9                                                           *
-* Date      :  15 December 2012                                                *
+* Version   :  4.10.0                                                          *
+* Date      :  25 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -143,19 +143,6 @@ class Int128
       return *this;
     }
 
-    //Int128 operator -() const
-    //{
-    //  Int128 result(*this);
-    //  if (result.lo == 0) {
-    //    if (result.hi != 0) result.hi = -1;
-    //  }
-    //  else {
-    //    result.lo = -result.lo;
-    //    result.hi = ~result.hi;
-    //  }
-    //  return result;
-    //}
-
     Int128 operator - (const Int128 &rhs) const
     {
       Int128 result(*this);
@@ -196,30 +183,62 @@ class Int128
     {
       if (rhs.lo == 0 && rhs.hi == 0)
         throw "Int128 operator/: divide by zero";
-      bool negate = (rhs.hi < 0) != (hi < 0);
-      Int128 result(*this), denom(rhs);
-      if (result.hi < 0) Negate(result);
-      if (denom.hi < 0)  Negate(denom);
-      if (denom > result) return Int128(0); //result is only a fraction of 1
-      Negate(denom);
 
-      Int128 p(0);
-      for (int i = 0; i < 128; ++i)
+      bool negate = (rhs.hi < 0) != (hi < 0);
+      Int128 dividend = *this;
+      Int128 divisor = rhs;
+      if (dividend.hi < 0) Negate(dividend);
+      if (divisor.hi < 0) Negate(divisor);
+
+      if (divisor < dividend)
       {
-        p.hi = p.hi << 1;
-        if (p.lo < 0) p.hi++;
-        p.lo = long64(p.lo) << 1;
-        if (result.hi < 0) p.lo++;
-        result.hi = result.hi << 1;
-        if (result.lo < 0) result.hi++;
-        result.lo = long64(result.lo) << 1;
-        Int128 p2(p);
-        p += denom;
-        if (p.hi < 0) p = p2;
-        else result.lo++;
+          Int128 result = Int128(0);
+          Int128 cntr = Int128(1);
+          while (!(divisor > dividend))
+          {
+              divisor.hi <<= 1;
+              if (divisor.lo < 0) divisor.hi++;
+              divisor.lo <<= 1;
+
+              cntr.hi <<= 1;
+              if (cntr.lo < 0) cntr.hi++;
+              cntr.lo <<= 1;
+          }
+          divisor.lo = divisor.lo >> 1;
+          if ((divisor.hi & 1) == 1)
+              divisor.lo |= 0x8000000000000000LL; 
+          divisor.hi >>= 1;
+
+          cntr.lo = cntr.lo >> 1;
+          if ((cntr.hi & 1) == 1)
+              cntr.lo |= 0x8000000000000000LL;
+          cntr.hi >>= 1;
+
+          while (cntr.hi != 0 || cntr.lo != 0)
+          {
+              if (!(dividend < divisor))
+              {
+                  dividend -= divisor;
+                  result.hi |= cntr.hi;
+                  result.lo |= cntr.lo;
+              }
+              divisor.lo = divisor.lo >> 1;
+              if ((divisor.hi & 1) == 1)
+                  divisor.lo |= 0x8000000000000000LL;
+              divisor.hi >>= 1;
+
+              cntr.lo = cntr.lo >> 1;
+              if ((cntr.hi & 1) == 1)
+                  cntr.lo |= 0x8000000000000000LL;
+              cntr.hi >>= 1;
+          }
+          if (negate) Negate(result);
+          return result;
       }
-      if (negate) Negate(result);
-      return result;
+      else if (rhs.hi == this->hi && rhs.lo == this->lo)
+          return Int128(1);
+      else
+          return Int128(0);
     }
 
     double AsDouble() const
@@ -236,27 +255,6 @@ class Int128
         return (double)(ulong64(lo) + hi * shift64);
     }
 
-    //for bug testing ...
-    //std::string AsString() const
-    //{
-    //  std::string result;
-    //  unsigned char r = 0;
-    //  Int128 tmp(0), val(*this);
-    //  if (hi < 0) Negate(val);
-    //  result.resize(50);
-    //  std::string::size_type i = result.size() -1;
-    //  while (val.hi != 0 || val.lo != 0)
-    //  {
-    //    Div10(val, tmp, r);
-    //    result[i--] = char('0' + r);
-    //    val = tmp;
-    //  }
-    //  if (hi < 0) result[i--] = '-';
-    //  result.erase(0,i+1);
-    //  if (result.size() == 0) result = "0";
-    //  return result;
-    //}
-
 private:
     long64 hi;
     long64 lo;
@@ -271,35 +269,6 @@ private:
         val.hi = ~val.hi;
       }
     }
-
-    //debugging only ...
-    //void Div10(const Int128 val, Int128& result, unsigned char & remainder) const
-    //{
-    //  remainder = 0;
-    //  result = 0;
-    //  for (int i = 63; i >= 0; --i)
-    //  {
-    //    if ((val.hi & ((long64)1 << i)) != 0)
-    //      remainder = char((remainder * 2) + 1); else
-    //      remainder *= char(2);
-    //    if (remainder >= 10)
-    //    {
-    //      result.hi += ((long64)1 << i);
-    //      remainder -= char(10);
-    //    }
-    //  }
-    //  for (int i = 63; i >= 0; --i)
-    //  {
-    //    if ((val.lo & ((long64)1 << i)) != 0)
-    //      remainder = char((remainder * 2) + 1); else
-    //      remainder *= char(2);
-    //    if (remainder >= 10)
-    //    {
-    //      result.lo += ((long64)1 << i);
-    //      remainder -= char(10);
-    //    }
-    //  }
-    //}
 };
 
 //------------------------------------------------------------------------------

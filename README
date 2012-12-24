@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v4.10.0 - 25 December 2012
+* Bugfix: Orientation bugs should now be resolved (finally!).
+* Bugfix: Bug in Int128 class
+
 v4.9.8 - 2 December 2012
 * Bugfix: Further fixes to rare Orientation bug.
 
