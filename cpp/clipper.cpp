@@ -92,7 +92,7 @@ class Int128
 
     long64 operator = (const long64 &val)
     {
-      lo = val;
+      lo = (ulong64)val;
       if (val < 0) hi = -1; else hi = 0;
       return val;
     }
