@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.10.0                                                          *
-* Date      :  25 December 2012                                                *
+* Version   :  5.0.1                                                           *
+* Date      :  30 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -77,18 +77,23 @@ class Int128
 {
   public:
 
+    ulong64 lo;
+    long64 hi;
+
     Int128(long64 _lo = 0)
     {
-      lo = _lo;
-      if (lo < 0) hi = -1; else hi = 0;
+      lo = (ulong64)_lo;   
+      if (_lo < 0)  hi = -1; else hi = 0; 
     }
 
     Int128(const Int128 &val): hi(val.hi), lo(val.lo){}
 
+    Int128(const long64& _hi, const ulong64& _lo): hi(_hi), lo(_lo){}
+
     long64 operator = (const long64 &val)
     {
       lo = val;
-      if (lo < 0) hi = -1; else hi = 0;
+      if (val < 0) hi = -1; else hi = 0;
       return val;
     }
 
@@ -103,7 +108,7 @@ class Int128
       if (hi != val.hi)
         return hi > val.hi;
       else
-        return ulong64(lo) > ulong64(val.lo);
+        return lo > val.lo;
     }
 
     bool operator < (const Int128 &val) const
@@ -111,7 +116,7 @@ class Int128
       if (hi != val.hi)
         return hi < val.hi;
       else
-        return ulong64(lo) < ulong64(val.lo);
+        return lo < val.lo;
     }
 
     bool operator >= (const Int128 &val) const
@@ -124,7 +129,7 @@ class Int128
     {
       hi += rhs.hi;
       lo += rhs.lo;
-      if (ulong64(lo) < ulong64(rhs.lo)) hi++;
+      if (lo < rhs.lo) hi++;
       return *this;
     }
 
@@ -137,9 +142,7 @@ class Int128
 
     Int128& operator -= (const Int128 &rhs)
     {
-      Int128 tmp(rhs);
-      Negate(tmp);
-      *this += tmp;
+      *this += -rhs;
       return *this;
     }
 
@@ -150,33 +153,12 @@ class Int128
       return result;
     }
 
-    Int128 operator * (const Int128 &rhs) const
+    Int128 operator-() const //unary negation
     {
-      if ( !(hi == 0 || hi == -1) || !(rhs.hi == 0 || rhs.hi == -1))
-        throw "Int128 operator*: overflow error";
-      bool negate = (hi < 0) != (rhs.hi < 0);
-
-      Int128 tmp(*this);
-      if (tmp.hi < 0) Negate(tmp);
-      ulong64 int1Hi = ulong64(tmp.lo) >> 32;
-      ulong64 int1Lo = ulong64(tmp.lo & 0xFFFFFFFF);
-
-      tmp = rhs;
-      if (tmp.hi < 0) Negate(tmp);
-      ulong64 int2Hi = ulong64(tmp.lo) >> 32;
-      ulong64 int2Lo = ulong64(tmp.lo & 0xFFFFFFFF);
-
-      //nb: see comments in clipper.pas
-      ulong64 a = int1Hi * int2Hi;
-      ulong64 b = int1Lo * int2Lo;
-      ulong64 c = int1Hi * int2Lo + int1Lo * int2Hi;
-
-      tmp.hi = long64(a + (c >> 32));
-      tmp.lo = long64(c << 32);
-      tmp.lo += long64(b);
-      if (ulong64(tmp.lo) < b) tmp.hi++;
-      if (negate) Negate(tmp);
-      return tmp;
+      if (lo == 0)
+        return Int128(-hi,0);
+      else 
+        return Int128(~hi,~lo +1);
     }
 
     Int128 operator/ (const Int128 &rhs) const
@@ -187,31 +169,31 @@ class Int128
       bool negate = (rhs.hi < 0) != (hi < 0);
       Int128 dividend = *this;
       Int128 divisor = rhs;
-      if (dividend.hi < 0) Negate(dividend);
-      if (divisor.hi < 0) Negate(divisor);
+      if (dividend.hi < 0) dividend = -dividend;
+      if (divisor.hi < 0) divisor = -divisor;
 
       if (divisor < dividend)
       {
           Int128 result = Int128(0);
           Int128 cntr = Int128(1);
-          while (!(divisor > dividend))
+          while (divisor.hi >= 0 && !(divisor > dividend))
           {
               divisor.hi <<= 1;
-              if (divisor.lo < 0) divisor.hi++;
+              if ((long64)divisor.lo < 0) divisor.hi++;
               divisor.lo <<= 1;
 
               cntr.hi <<= 1;
-              if (cntr.lo < 0) cntr.hi++;
+              if ((long64)cntr.lo < 0) cntr.hi++;
               cntr.lo <<= 1;
           }
-          divisor.lo = divisor.lo >> 1;
+          divisor.lo >>= 1;
           if ((divisor.hi & 1) == 1)
               divisor.lo |= 0x8000000000000000LL; 
-          divisor.hi >>= 1;
+          divisor.hi = (ulong64)divisor.hi >> 1;
 
-          cntr.lo = cntr.lo >> 1;
+          cntr.lo >>= 1;
           if ((cntr.hi & 1) == 1)
-              cntr.lo |= 0x8000000000000000LL;
+              cntr.lo |= 0x8000000000000000LL; 
           cntr.hi >>= 1;
 
           while (cntr.hi != 0 || cntr.lo != 0)
@@ -222,17 +204,17 @@ class Int128
                   result.hi |= cntr.hi;
                   result.lo |= cntr.lo;
               }
-              divisor.lo = divisor.lo >> 1;
+              divisor.lo >>= 1;
               if ((divisor.hi & 1) == 1)
-                  divisor.lo |= 0x8000000000000000LL;
+                  divisor.lo |= 0x8000000000000000LL; 
               divisor.hi >>= 1;
 
-              cntr.lo = cntr.lo >> 1;
+              cntr.lo >>= 1;
               if ((cntr.hi & 1) == 1)
-                  cntr.lo |= 0x8000000000000000LL;
+                  cntr.lo |= 0x8000000000000000LL; 
               cntr.hi >>= 1;
           }
-          if (negate) Negate(result);
+          if (negate) result = -result;
           return result;
       }
       else if (rhs.hi == this->hi && rhs.lo == this->lo)
@@ -246,30 +228,39 @@ class Int128
       const double shift64 = 18446744073709551616.0; //2^64
       if (hi < 0)
       {
-        if (lo == 0)
-            return (double)hi * shift64;
-        else
-          return -(double)(ulong64(-lo) + ~hi * shift64);
+        if (lo == 0) return (double)hi * shift64;
+        else return -(double)(~lo + ~hi * shift64);
       }
       else
-        return (double)(ulong64(lo) + hi * shift64);
-    }
-
-private:
-    long64 hi;
-    long64 lo;
-
-    static void Negate(Int128 &val)
-    {
-      if (val.lo == 0) {
-        if (val.hi != 0) val.hi = -val.hi;;
-      }
-      else {
-        val.lo = -val.lo;
-        val.hi = ~val.hi;
-      }
+        return (double)(lo + hi * shift64);
     }
 };
+
+Int128 Int128Mul (long64 lhs, long64 rhs)
+{
+  bool negate = (lhs < 0) != (rhs < 0);
+
+  if (lhs < 0) lhs = -lhs;
+  ulong64 int1Hi = ulong64(lhs) >> 32;
+  ulong64 int1Lo = ulong64(lhs & 0xFFFFFFFF);
+
+  if (rhs < 0) rhs = -rhs;
+  ulong64 int2Hi = ulong64(rhs) >> 32;
+  ulong64 int2Lo = ulong64(rhs & 0xFFFFFFFF);
+
+  //nb: see comments in clipper.pas
+  ulong64 a = int1Hi * int2Hi;
+  ulong64 b = int1Lo * int2Lo;
+  ulong64 c = int1Hi * int2Lo + int1Lo * int2Hi;
+
+  Int128 tmp;
+  tmp.hi = long64(a + (c >> 32));
+  tmp.lo = long64(c << 32);
+  tmp.lo += long64(b);
+  if (tmp.lo < b) tmp.hi++;
+  if (negate) tmp = -tmp;
+  return tmp;
+}
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -307,19 +298,17 @@ double Area(const Polygon &poly)
 
   if (FullRangeNeeded(poly)) {
     Int128 a;
-    a = (Int128(poly[highI].X) * Int128(poly[0].Y)) -
-      Int128(poly[0].X) * Int128(poly[highI].Y);
-    for (int i = 0; i < highI; ++i)
-      a += Int128(poly[i].X) * Int128(poly[i+1].Y) -
-        Int128(poly[i+1].X) * Int128(poly[i].Y);
+    a = Int128Mul(poly[highI].X + poly[0].X, poly[0].Y - poly[highI].Y);
+    for (int i = 1; i <= highI; ++i)
+      a += Int128Mul(poly[i - 1].X + poly[i].X, poly[i].X - poly[i -1].Y);
     return a.AsDouble() / 2;
   }
   else
   {
     double a;
-    a = (double)poly[highI].X * poly[0].Y - (double)poly[0].X * poly[highI].Y;
-    for (int i = 0; i < highI; ++i)
-      a += (double)poly[i].X * poly[i+1].Y - (double)poly[i+1].X * poly[i].Y;
+    a = ((double)poly[highI].X + poly[0].X) * ((double)poly[0].Y - poly[highI].Y);
+    for (int i = 1; i <= highI; ++i)
+      a += ((double)poly[i - 1].X + poly[i].X) * ((double)poly[i].Y - poly[i - 1].Y);
     return a / 2;
   }
 }
@@ -332,9 +321,8 @@ double Area(const OutRec &outRec, bool UseFullInt64Range)
   if (UseFullInt64Range) {
     Int128 a(0);
     do {
-      a += (Int128(op->prev->pt.Y) * Int128(op->pt.X)) -
-        Int128(op->pt.Y) * Int128(op->prev->pt.X);
-      op = op->prev;
+      a += Int128Mul(op->pt.X + op->prev->pt.X, op->prev->pt.Y - op->pt.Y);
+      op = op->next;
     } while (op != outRec.pts);
     return a.AsDouble() / 2;
   }
@@ -342,8 +330,8 @@ double Area(const OutRec &outRec, bool UseFullInt64Range)
   {
     double a = 0;
     do {
-      a += (op->prev->pt.Y * op->pt.X) - (op->pt.Y * op->prev->pt.X);
-      op = op->prev;
+      a = a + (op->pt.X + op->prev->pt.X) * (op->prev->pt.Y - op->pt.Y);
+      op = op->next;
     } while (op != outRec.pts);
     return a / 2;
   }
@@ -372,8 +360,9 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
     {
       if ((((pp2->pt.Y <= pt.Y) && (pt.Y < pp2->prev->pt.Y)) ||
           ((pp2->prev->pt.Y <= pt.Y) && (pt.Y < pp2->pt.Y))) &&
-          Int128(pt.X - pp2->pt.X) < (Int128(pp2->prev->pt.X - pp2->pt.X) *
-          Int128(pt.Y - pp2->pt.Y)) / Int128(pp2->prev->pt.Y - pp2->pt.Y))
+          Int128(pt.X - pp2->pt.X) < 
+          Int128Mul(pp2->prev->pt.X - pp2->pt.X, pt.Y - pp2->pt.Y) / 
+          Int128(pp2->prev->pt.Y - pp2->pt.Y))
             result = !result;
       pp2 = pp2->next;
     }
@@ -398,8 +387,7 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
 bool SlopesEqual(TEdge &e1, TEdge &e2, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
-    return Int128(e1.deltaY) * Int128(e2.deltaX) ==
-      Int128(e1.deltaX) * Int128(e2.deltaY);
+    return Int128Mul(e1.deltaY, e2.deltaX) == Int128Mul(e1.deltaX, e2.deltaY);
   else return e1.deltaY * e2.deltaX == e1.deltaX * e2.deltaY;
 }
 //------------------------------------------------------------------------------
@@ -408,8 +396,7 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2,
   const IntPoint pt3, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
-    return Int128(pt1.Y-pt2.Y) * Int128(pt2.X-pt3.X) ==
-      Int128(pt1.X-pt2.X) * Int128(pt2.Y-pt3.Y);
+    return Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X) == Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y);
   else return (pt1.Y-pt2.Y)*(pt2.X-pt3.X) == (pt1.X-pt2.X)*(pt2.Y-pt3.Y);
 }
 //------------------------------------------------------------------------------
@@ -418,8 +405,7 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2,
   const IntPoint pt3, const IntPoint pt4, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
-    return Int128(pt1.Y-pt2.Y) * Int128(pt3.X-pt4.X) ==
-      Int128(pt1.X-pt2.X) * Int128(pt3.Y-pt4.Y);
+    return Int128Mul(pt1.Y-pt2.Y, pt3.X-pt4.X) == Int128Mul(pt1.X-pt2.X, pt3.Y-pt4.Y);
   else return (pt1.Y-pt2.Y)*(pt3.X-pt4.X) == (pt1.X-pt2.X)*(pt3.Y-pt4.Y);
 }
 //------------------------------------------------------------------------------
@@ -3044,7 +3030,7 @@ private:
 public:
 
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
-  double delta, JoinType jointype, double MiterLimit, bool CheckInputs)
+  double delta, JoinType jointype, double MiterLimit, bool AutoFix)
 {
     //nb precondition - out_polys != ptsin_polys
     if (NEAR_ZERO(delta))
@@ -3060,7 +3046,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     //ChecksInput - fixes polygon orientation if necessary and removes 
     //duplicate vertices. Can be set false when you're sure that polygon
     //orientation is correct and that there are no duplicate vertices.
-    if (CheckInputs) 
+    if (AutoFix) 
     {
       size_t Len = m_p.size(), botI = 0;
       while (botI < Len && m_p[botI].size() == 0) botI++;
@@ -3281,14 +3267,14 @@ bool UpdateBotPt(const IntPoint &pt, IntPoint &botPt)
 //------------------------------------------------------------------------------
 
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double MiterLimit, bool CheckInputs)
+  double delta, JoinType jointype, double MiterLimit, bool AutoFix)
 {
   if (&out_polys == &in_polys)
   {
     Polygons poly2(in_polys);
-    PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit, CheckInputs);
+    PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit, AutoFix);
   }
-  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit, CheckInputs);
+  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit, AutoFix);
 }
 //------------------------------------------------------------------------------
 

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.10.0                                                          *
-* Date      :  25 December 2012                                                *
+* Version   :  5.0.1                                                           *
+* Date      :  30 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -271,7 +271,7 @@ function ReversePolygons(const Pts: TPolygons): TPolygons;
 //and inner 'hole' polygons must be oriented counter-clockwise ...
 function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
   JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
-  ChecksInput: Boolean = true): TPolygons;
+  AutoFix: Boolean = true): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
 function SimplifyPolygon(const poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
@@ -285,7 +285,7 @@ type
 
 const
   Horizontal: Double = -3.4e+38;
-  //Cross-Product (see Orientation) places the most limits on coordinate values
+  //The Area function places the most limits on coordinate values
   //So, to avoid overflow errors, they must not exceed the following values...
   LoRange: Int64 = $3FFFFFFF;          //1.0e+9
   HiRange: Int64 = $3FFFFFFFFFFFFFFF;  //4.6e+18
@@ -309,9 +309,13 @@ const
   Mask32Bits = $FFFFFFFF;
 
 type
+
+  //nb: TInt128.Lo is typed Int64 instead of UInt64 to provide Delphi 7
+  //compatability. However while UInt64 isn't a recognised type in
+  //Delphi 7, it can still be used in typecasts.
   TInt128 = record
-    Lo   : Int64;
     Hi   : Int64;
+    Lo   : Int64;
   end;
 
 {$OVERFLOWCHECKS OFF}
@@ -319,7 +323,6 @@ procedure Int128Negate(var Val: TInt128);
 begin
   if Val.Lo = 0 then
   begin
-    if Val.Hi = 0 then Exit;
     Val.Hi := -Val.Hi;
   end else
   begin
@@ -343,9 +346,6 @@ begin
   Result := (Int1.Lo = Int2.Lo) and (Int1.Hi = Int2.Hi);
 end;
 //------------------------------------------------------------------------------
-
-//Note on UInt64 in Delphi 7...
-//while this type isn't implemented in D7, it can still be used in typecasts.
 
 function Int128LessThan(const Int1, Int2: TInt128): Boolean;
 begin
@@ -569,9 +569,10 @@ begin
     Result := Int128AsDouble(A) / 2;
   end else
   begin
-    D := Pts[HighI].X * Pts[0].Y - Pts[0].X * Pts[HighI].Y;
+    //see http://www.mathopenref.com/coordpolygonarea2.html
+    D := (Pts[HighI].X + Pts[0].X) * (Pts[0].Y - Pts[HighI].Y);
     for I := 1 to HighI do
-      D := D + (Pts[I-1].X * Pts[I].Y) - (Pts[I].X * Pts[I-1].Y);
+      D := D + (Pts[I-1].X + Pts[I].X) * (Pts[I].Y - Pts[I-1].Y);
     Result := D / 2;
   end;
 end;
@@ -583,28 +584,28 @@ var
   D: Double;
   A: TInt128;
 begin
-  //nb: OutRec points are stored in reverse order to orientation hence Op.Prev
   Op := OutRec.Pts;
   if not assigned(Op) then
   begin
-    Result := 0;               
+    Result := 0;
     Exit;
   end;
   if UseFullInt64Range then
   begin
     A := Int128(0);
     repeat
-      A := Int128Add(A, Int128Sub(
-          Int128Mul(Op.Pt.X, Op.Prev.Pt.Y), Int128Mul(Op.Prev.Pt.X, Op.Pt.Y)));
-      Op := Op.Prev;
+      A := Int128Add(A,
+        Int128Mul(Op.Pt.X + Op.Prev.Pt.X, Op.Prev.Pt.Y - Op.Pt.Y));
+      Op := Op.Next;
     until Op = OutRec.Pts;
     Result := Int128AsDouble(A) / 2;
   end else
   begin
     D := 0;
     repeat
-      D := D + (Op.Pt.X * Op.Prev.Pt.Y) - (Op.Prev.Pt.X * Op.Pt.Y);
-      Op := Op.Prev;
+      //nb: subtraction reversed since vertices are stored in reverse order ...
+      D := D + (Op.Pt.X + Op.Prev.Pt.X) * (Op.Prev.Pt.Y - Op.Pt.Y);
+      Op := Op.Next;
     until Op = OutRec.Pts;
     Result := D / 2;
   end;
@@ -3516,7 +3517,7 @@ end;
 
 function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
   JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
-  ChecksInput: Boolean = True): TPolygons;
+  AutoFix: Boolean = True): TPolygons;
 var
   I, J, K, Len, OutLen, BotI: Integer;
   Normals: TArrayOfDoublePoint;
@@ -3636,10 +3637,10 @@ const
 begin
   Result := nil;
 
-  //ChecksInput - fixes polygon orientation if necessary and removes
+  //AutoFix - fixes polygon orientation if necessary and removes
   //duplicate vertices. Can be set false when you're sure that polygon
   //orientation is correct and that there are no duplicate vertices.
-  if ChecksInput then
+  if AutoFix then
   begin
     Len := Length(Polys);
     SetLength(Pts, Len);

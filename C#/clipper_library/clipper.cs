@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  4.10.0                                                          *
-* Date      :  25 December 2012                                                *
+* Version   :  5.0.1                                                           *
+* Date      :  30 December 2012                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2012                                         *
 *                                                                              *
@@ -60,22 +60,20 @@ namespace ClipperLib
     internal struct Int128
     {
         private Int64 hi;
-        private Int64 lo;
+        private UInt64 lo;
 
-        public Int128(Int64 lo)
+        public Int128(Int64 _lo)
         {
-            this.lo = lo;
-            if (lo < 0)
-                this.hi = -1;
-            else
-                this.hi = 0;
+            lo = (UInt64)_lo;
+            if (_lo < 0) hi = -1; 
+            else hi = 0;
         }
 
-		public Int128(Int64 lo, Int64 hi)
-		{
-			this.lo = lo;
-			this.hi = hi;
-		}
+        public Int128(Int64 _hi, UInt64 _lo)
+        {
+            lo = _lo;
+            hi = _hi;
+        }
  
         public Int128(Int128 val)
         {
@@ -118,7 +116,7 @@ namespace ClipperLib
             if (val1.hi != val2.hi)
                 return val1.hi > val2.hi;
             else
-                return (UInt64)val1.lo > (UInt64)val2.lo;
+                return val1.lo > val2.lo;
         }
 
         public static bool operator< (Int128 val1, Int128 val2) 
@@ -126,14 +124,14 @@ namespace ClipperLib
             if (val1.hi != val2.hi)
                 return val1.hi < val2.hi;
             else
-                return (UInt64)val1.lo < (UInt64)val2.lo;
+                return val1.lo < val2.lo;
         }
 
         public static Int128 operator+ (Int128 lhs, Int128 rhs) 
         {
             lhs.hi += rhs.hi;
             lhs.lo += rhs.lo;
-            if ( (UInt64)lhs.lo < (UInt64)rhs.lo) lhs.hi++;
+            if (lhs.lo < rhs.lo) lhs.hi++;
             return lhs;
         }
 
@@ -144,11 +142,10 @@ namespace ClipperLib
 
 		public static Int128 operator -(Int128 val)
 		{
-			if (val.lo == 0) {
-                if (val.hi == 0) return val;
-                return new Int128(0, -val.hi);
-			} 
-            else return new Int128(-val.lo, ~val.hi);
+            if (val.lo == 0) 
+                return new Int128(-val.hi, 0);
+            else 
+                return new Int128(~val.hi, ~val.lo +1);
 		}
 
         //nb: Constructing two new Int128 objects every time we want to multiply longs  
@@ -168,15 +165,15 @@ namespace ClipperLib
             //nb: see comments in clipper.pas
             UInt64 a = int1Hi * int2Hi;
             UInt64 b = int1Lo * int2Lo;
-            UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi; 
+            UInt64 c = int1Hi * int2Lo + int1Lo * int2Hi;
 
-            Int64 lo, hi;
+            UInt64 lo; 
+            Int64 hi;
             hi = (Int64)(a + (c >> 32));
 
-            lo = (Int64)(c << 32);
-            lo += (Int64)b;
-            if ((UInt64)lo < b) hi++;
-            var result = new Int128(lo, hi);
+            unchecked { lo = (c << 32) + b; }
+            if (lo < b) hi++;
+            Int128 result = new Int128(hi, lo);
             return negate ? -result : result;            
         }
 
@@ -193,24 +190,24 @@ namespace ClipperLib
             {
                 Int128 result = new Int128(0);
                 Int128 cntr = new Int128(1);
-                while (!(rhs > lhs))
+                while (rhs.hi >= 0 && !(rhs > lhs))
                 {
                     rhs.hi <<= 1;
-                    if (rhs.lo < 0) rhs.hi++;
+                    if ((Int64)rhs.lo < 0) rhs.hi++;
                     rhs.lo <<= 1;
 
                     cntr.hi <<= 1;
-                    if (cntr.lo < 0) cntr.hi++;
+                    if ((Int64)cntr.lo < 0) cntr.hi++;
                     cntr.lo <<= 1;
                 }
-                rhs.lo = (Int64)((UInt64)rhs.lo >> 1);
+                rhs.lo >>= 1;
                 if ((rhs.hi & 1) == 1)
-                    unchecked { rhs.lo |= (Int64)0x8000000000000000; }
-                rhs.hi >>= 1;
+                    rhs.lo |= 0x8000000000000000;
+                rhs.hi = (Int64)((UInt64)rhs.hi >> 1);
 
-                cntr.lo = (Int64)((UInt64)cntr.lo >> 1);
+                cntr.lo >>= 1;
                 if ((cntr.hi & 1) == 1)
-                    unchecked { cntr.lo |= (Int64)0x8000000000000000; }
+                    cntr.lo |= 0x8000000000000000;
                 cntr.hi >>= 1;
 
                 while (cntr.hi != 0 || cntr.lo != 0)
@@ -221,14 +218,14 @@ namespace ClipperLib
                         result.hi |= cntr.hi;
                         result.lo |= cntr.lo;
                     }
-                    rhs.lo = (Int64)((UInt64)rhs.lo >> 1);
+                    rhs.lo >>= 1;
                     if ((rhs.hi & 1) == 1)
-                        unchecked { rhs.lo |= (Int64)0x8000000000000000; }
+                        rhs.lo |= 0x8000000000000000; 
                     rhs.hi >>= 1;
 
-                    cntr.lo = (Int64)((UInt64)cntr.lo >> 1);
+                    cntr.lo >>= 1;
                     if ((cntr.hi & 1) == 1)
-                        unchecked { cntr.lo |= (Int64)0x8000000000000000; }
+                        cntr.lo |= 0x8000000000000000;
                     cntr.hi >>= 1;
                 }
                 return negate ? -result : result;
@@ -247,10 +244,10 @@ namespace ClipperLib
                 if (lo == 0)
                     return (double)hi * shift64;
                 else
-                    return -(double)((UInt64)(-lo) + ~hi * shift64);
+                    return -(double)(~lo + ~hi * shift64);
             }
             else
-                return (double)((UInt64)lo + hi * shift64);
+                return (double)(lo + hi * shift64);
         }
 
     };
@@ -3166,21 +3163,17 @@ namespace ClipperLib
             if (highI < 2) return 0;
             if (FullRangeNeeded(poly))
             {
-                Int128 a = new Int128();
-                a = Int128.Int128Mul(poly[highI].X, poly[0].Y) -
-                    Int128.Int128Mul(poly[0].X, poly[highI].Y);
-                for (int i = 0; i < highI; ++i)
-                    a += Int128.Int128Mul(poly[i].X, poly[i + 1].Y) -
-                    Int128.Int128Mul(poly[i + 1].X, poly[i].Y);
+                Int128 a = new Int128(0);
+                a = Int128.Int128Mul(poly[highI].X + poly[0].X, poly[0].Y - poly[highI].Y);
+                for (int i = 1; i <= highI; ++i)
+                    a += Int128.Int128Mul(poly[i - 1].X + poly[i].X, poly[i].Y - poly[i - 1].Y);
                 return a.ToDouble() / 2;
             }
             else
             {
-                double area = (double)poly[highI].X * poly[0].Y -
-                    (double)poly[0].X * poly[highI].Y;
-                for (int i = 0; i < highI; ++i)
-                    area += (double)poly[i].X * poly[i + 1].Y -
-                        (double)poly[i + 1].X * poly[i].Y;
+                double area = ((double)poly[highI].X + poly[0].X) * ((double)poly[0].Y - poly[highI].Y);
+                for (int i = 1; i <= highI; ++i)
+                    area += ((double)poly[i - 1].X + poly[i].X) * ((double)poly[i].Y - poly[i -1].Y);
                 return area / 2;
             }
         }
@@ -3195,9 +3188,8 @@ namespace ClipperLib
             Int128 a = new Int128(0);
             do
             {
-                a += Int128.Int128Mul(op.prev.pt.Y, op.pt.X) -
-                    Int128.Int128Mul(op.pt.Y, op.prev.pt.X);
-                op = op.prev;
+                a += Int128.Int128Mul(op.pt.X + op.prev.pt.X, op.prev.pt.Y - op.pt.Y);
+                op = op.next;
             } while (op != outRec.pts);
             return a.ToDouble() / 2;          
           }
@@ -3205,8 +3197,8 @@ namespace ClipperLib
           {
             double a = 0;
             do {
-                a += (op.prev.pt.Y * op.pt.X) - (op.pt.Y * op.prev.pt.X);
-              op = op.prev;
+                a = a + (op.pt.X + op.prev.pt.X) * (op.prev.pt.Y - op.pt.Y);
+              op = op.next;
             } while (op != outRec.pts);
             return a/2;
           }
@@ -3268,7 +3260,7 @@ namespace ClipperLib
             private const int buffLength = 128;
 
             public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, 
-                JoinType jointype, double MiterLimit = 2, bool CheckInputs = true)
+                JoinType jointype, double MiterLimit = 2, bool AutoFix = true)
             {
                 //precondtion: solution != pts
 
@@ -3281,10 +3273,10 @@ namespace ClipperLib
                 this.pts = pts;
                 this.delta = delta;
 
-                //ChecksInput - fixes polygon orientation if necessary and removes 
+                //AutoFix - fixes polygon orientation if necessary and removes 
                 //duplicate vertices. Can be set false when you're sure that polygon
                 //orientation is correct and that there are no duplicate vertices.
-                if (CheckInputs)
+                if (AutoFix)
                 {
                     int Len = pts.Count, botI = 0;
                     while (botI < Len && pts[botI].Count == 0) botI++;
@@ -3499,10 +3491,10 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         public static Polygons OffsetPolygons(Polygons poly, double delta,
-            JoinType jointype, double MiterLimit, bool CheckInputs)
+            JoinType jointype, double MiterLimit, bool AutoFix)
         {
             Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, CheckInputs);
+            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, AutoFix);
             return result;
         }
         //------------------------------------------------------------------------------
