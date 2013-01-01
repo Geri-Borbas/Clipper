@@ -2107,11 +2107,16 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FirstIsBottomPt(btmPt1, btmPt2: POutPt): Boolean;
+function FirstParamIsBottomPt(btmPt1, btmPt2: POutPt): Boolean;
 var
   Dx1n, Dx1p, Dx2n, Dx2p: Double;
   P: POutPt;
 begin
+  //Precondition: bottom-points share the same vertex.
+  //Use inverse slopes of adjacent edges (ie dx/dy) to determine the outer
+  //contour and hence the 'real' bottompoint.
+  //nb: Slope is vertical when dx == 0. If the greater abs(dx) of param1
+  //is greater than or equal both abs(dx) in param2 then param1 is outer.
   P := btmPt1.Prev;
   while PointsEqual(P.Pt, btmPt1.Pt) and (P <> btmPt1) do P := P.Prev;
   Dx1p := abs(GetDx(btmPt1.Pt, P.Pt));
@@ -2161,7 +2166,7 @@ begin
     //there appears to be at least 2 vertices at BottomPt so ...
     while Dups <> P do
     begin
-      if not FirstIsBottomPt(P, Dups) then PP := Dups;
+      if not FirstParamIsBottomPt(P, Dups) then PP := Dups;
       Dups := Dups.Next;
       while not PointsEqual(Dups.Pt, PP.Pt) do Dups := Dups.Next;
     end;
@@ -2204,9 +2209,8 @@ begin
   else if (OutPt1.Pt.X > OutPt2.Pt.X) then Result := OutRec2
   else if (OutPt1.Next = OutPt1) then Result := OutRec2
   else if (OutPt2.Next = OutPt2) then Result := OutRec1
-  else if FirstIsBottomPt(OutPt1, OutPt2) then
-    Result := OutRec1 else
-    Result := OutRec2;
+  else if FirstParamIsBottomPt(OutPt1, OutPt2) then Result := OutRec1
+  else Result := OutRec2;
 end;
 //------------------------------------------------------------------------------
 
@@ -2234,7 +2238,9 @@ begin
   OutRec1 := FPolyOutList[E1.OutIdx];
   OutRec2 := FPolyOutList[E2.OutIdx];
 
-  //work out which polygon fragment has the correct hole state ...
+  //First work out which polygon fragment has the correct hole state.
+  //Since we're working from the bottom upward and left to right, the left most
+  //and lowermost contour is outermost and must have the correct hole state ...
   if Param1RightOfParam2(OutRec1, OutRec2) then HoleStateRec := OutRec2
   else if Param1RightOfParam2(OutRec2, OutRec1) then HoleStateRec := OutRec1
   else HoleStateRec := GetLowermostRec(OutRec1, OutRec2);
@@ -2300,7 +2306,7 @@ begin
   OutRec2.Pts := nil;
   OutRec2.BottomPt := nil;
 
-  //when an outrec becomes obsolete, FirstLeft becomes a pointer to the
+  //when an OutRec becomes obsolete, FirstLeft is reused as a pointer to the
   //new contour owner (needed to find ownership of holes for ExPolygons) ...
   OutRec2.FirstLeft := OutRec1;
 
@@ -2732,15 +2738,11 @@ begin
 
   //prepare for sorting ...
   E := FActiveEdges;
-  E.TmpX := TopX(E, TopY);
   FSortedEdges := E;
-  FSortedEdges.PrevInSEL := nil;
-  E := E.NextInAEL;
   while assigned(E) do
   begin
     E.PrevInSEL := E.PrevInAEL;
-    E.PrevInSEL.NextInSEL := E;
-    E.NextInSEL := nil;
+    E.NextInSEL := E.NextInAEL;
     E.TmpX := TopX(E, TopY);
     E := E.NextInAEL;
   end;

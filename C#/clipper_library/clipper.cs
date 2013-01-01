@@ -2434,15 +2434,11 @@ namespace ClipperLib
 
           //prepare for sorting ...
           TEdge e = m_ActiveEdges;
-          e.tmpX = TopX( e, topY );
           m_SortedEdges = e;
-          m_SortedEdges.prevInSEL = null;
-          e = e.nextInAEL;
           while( e != null )
           {
             e.prevInSEL = e.prevInAEL;
-            e.prevInSEL.nextInSEL = e;
-            e.nextInSEL = null;
+            e.nextInSEL = e.nextInAEL;
             e.tmpX = TopX( e, topY );
             e = e.nextInAEL;
           }

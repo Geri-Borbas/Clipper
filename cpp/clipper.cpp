@@ -423,7 +423,7 @@ void SetDx(TEdge &e)
   e.deltaY = (e.ytop - e.ybot);
 
   if (e.deltaY == 0) e.dx = HORIZONTAL;
-  else e.dx = (double)(e.deltaX) / (e.deltaY);
+  else e.dx = (double)(e.deltaX) / e.deltaY;
 }
 //---------------------------------------------------------------------------
 
@@ -2303,15 +2303,11 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
 
   //prepare for sorting ...
   TEdge* e = m_ActiveEdges;
-  e->tmpX = TopX( *e, topY );
   m_SortedEdges = e;
-  m_SortedEdges->prevInSEL = 0;
-  e = e->nextInAEL;
   while( e )
   {
     e->prevInSEL = e->prevInAEL;
-    e->prevInSEL->nextInSEL = e;
-    e->nextInSEL = 0;
+    e->nextInSEL = e->nextInAEL;
     e->tmpX = TopX( *e, topY );
     e = e->nextInAEL;
   }
