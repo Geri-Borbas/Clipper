@@ -1,10 +1,10 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.0.1                                                           *
-* Date      :  30 December 2012                                                *
+* Version   :  5.1.0                                                           *
+* Date      :  1 January 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2012                                         *
+* Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -1133,35 +1133,18 @@ bool PolySort(OutRec *or1, OutRec *or2)
 }
 //------------------------------------------------------------------------------
 
-OutRec* FindAppendLinkEnd(OutRec *outRec)
+void Clipper::FixHoleLinkage(OutRec &outRec)
 {
-  while (outRec->AppendLink) outRec = outRec->AppendLink;
-  return outRec;
-}
-//------------------------------------------------------------------------------
+  //skip OutRecs that are (a) obsolete or (b) contain outermost polygons or
+  //(c) already have the correct owner/child linkage ...
+  if (!outRec.pts || !outRec.FirstLeft ||                
+      (outRec.isHole != outRec.FirstLeft->isHole &&
+      outRec.FirstLeft->pts)) return;
 
-void Clipper::FixHoleLinkage(OutRec *outRec)
-{
-  OutRec *tmp;
-  if (outRec->bottomPt)
-    tmp = m_PolyOuts[outRec->bottomPt->idx]->FirstLeft;
-  else
-    tmp = outRec->FirstLeft;
-  if (outRec == tmp) throw clipperException("HoleLinkage error");
-
-  if (tmp)
-  {
-    if (tmp->AppendLink) tmp = FindAppendLinkEnd(tmp);
-    if (tmp == outRec) tmp = 0;
-    else if (tmp->isHole)
-    {
-      FixHoleLinkage(tmp);
-      tmp = tmp->FirstLeft;
-    }
-  }
-  outRec->FirstLeft = tmp;
-  if (!tmp) outRec->isHole = false;
-  outRec->AppendLink = 0;
+  OutRec* orfl = outRec.FirstLeft;
+  while (orfl && ((orfl->isHole == outRec.isHole) || !orfl->pts))
+      orfl = orfl->FirstLeft;
+  outRec.FirstLeft = orfl;
 }
 //------------------------------------------------------------------------------
 
@@ -1196,15 +1179,20 @@ bool Clipper::ExecuteInternal()
       if (!outRec->pts) continue;
       FixupOutPolygon(*outRec);
       if (!outRec->pts) continue;
-      if (outRec->isHole && m_UsingExPolygons) FixHoleLinkage(outRec);
 
       if ((outRec->isHole ^ m_ReverseOutput) == (Area(*outRec, m_UseFullRange) > 0))
         ReversePolyPtLinks(outRec->pts);
     }
 
     if (m_Joins.size() > 0) JoinCommonEdges();
+
+
     if (m_UsingExPolygons)
+    {
+      for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
+        FixHoleLinkage(*m_PolyOuts[i]);
       std::sort(m_PolyOuts.begin(), m_PolyOuts.end(), PolySort);
+    }
   }
 
   ClearJoins();
@@ -1918,7 +1906,11 @@ void Clipper::AppendPolygon(TEdge *e1, TEdge *e2)
   }
   outRec2->pts = 0;
   outRec2->bottomPt = 0;
-  outRec2->AppendLink = outRec1;
+
+  //when an outrec becomes obsolete, FirstLeft becomes a pointer to the
+  //new contour owner (needed to find ownership of holes for ExPolygons) ...
+  outRec2->FirstLeft = outRec1;
+
   int OKIdx = e1->outIdx;
   int ObsoleteIdx = e2->outIdx;
 
@@ -1957,7 +1949,6 @@ OutRec* Clipper::CreateOutRec()
   OutRec* result = new OutRec;
   result->isHole = false;
   result->FirstLeft = 0;
-  result->AppendLink = 0;
   result->pts = 0;
   result->bottomPt = 0;
   return result;
@@ -2838,11 +2829,23 @@ void Clipper::JoinCommonEdges()
   for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
   {
     JoinRec* j = m_Joins[i];
-    OutPt *p1, *p2;
-    if (!JoinPoints(j, p1, p2)) continue;
 
     OutRec *outRec1 = m_PolyOuts[j->poly1Idx];
     OutRec *outRec2 = m_PolyOuts[j->poly2Idx];
+
+    if (!outRec1->pts || !outRec2->pts) continue;
+
+    //get the polygon fragment with the correct hole state (FirstLeft)
+    //before calling JoinPoints() ...
+    OutRec *holeStateRec;
+    if (Param1RightOfParam2(outRec1, outRec2)) holeStateRec = outRec2;
+    else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
+    else holeStateRec = GetLowermostRec(outRec1, outRec2);
+
+
+    OutPt *p1, *p2;
+    if (!JoinPoints(j, p1, p2)) continue;
+
 
     if (outRec1 == outRec2)
     {
@@ -2887,14 +2890,6 @@ void Clipper::JoinCommonEdges()
 
         if ((outRec1->isHole ^ m_ReverseOutput) == (Area(*outRec1, m_UseFullRange) > 0))
           ReversePolyPtLinks(outRec1->pts);
-        //make sure any contained holes now link to the correct polygon ...
-        if (m_UsingExPolygons && outRec1->isHole) 
-          for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-          {
-            OutRec *orec = m_PolyOuts[k];
-            if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1)
-              orec->FirstLeft = outRec2;
-          }
       } 
       else
       {
@@ -2905,45 +2900,25 @@ void Clipper::JoinCommonEdges()
         FixupJoinRecs(j, p2, i+1);
         FixupOutPolygon(*outRec1); //nb: do this BEFORE testing orientation
         FixupOutPolygon(*outRec2); //    but AFTER calling FixupJoinRecs()
-
-        if (m_UsingExPolygons && outRec2->pts) 
-          for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-          {
-            OutRec *orec = m_PolyOuts[k];
-            if (orec->isHole && orec->bottomPt && orec->FirstLeft == outRec1 &&
-              PointInPolygon(orec->bottomPt->pt, outRec2->pts, m_UseFullRange))
-                orec->FirstLeft = outRec2;
-          }
       }
      
     } else
     {
       //joined 2 polygons together ...
 
-      //make sure any holes contained by outRec2 now link to outRec1 ...
-      if (m_UsingExPolygons) 
-        for (PolyOutList::size_type k = 0; k < m_PolyOuts.size(); ++k)
-          if (m_PolyOuts[k]->isHole && m_PolyOuts[k]->bottomPt &&
-            m_PolyOuts[k]->FirstLeft == outRec2)
-              m_PolyOuts[k]->FirstLeft = outRec1;
-
-
-      //and cleanup redundant edges too ...
+      //cleanup redundant edges ...
       FixupOutPolygon(*outRec1);
-
-      if (outRec1->pts)
-      {
-        outRec1->isHole = Area(*outRec1, m_UseFullRange) < 0;
-        if (outRec1->isHole && !outRec1->FirstLeft)
-          outRec1->FirstLeft = outRec2->FirstLeft;
-      }
 
       //delete the obsolete pointer ...
       int OKIdx = outRec1->idx;
       int ObsoleteIdx = outRec2->idx;
       outRec2->pts = 0;
       outRec2->bottomPt = 0;
-      outRec2->AppendLink = outRec1;
+
+      outRec1->isHole = holeStateRec->isHole;
+      if (holeStateRec == outRec2) 
+        outRec1->FirstLeft = outRec2->FirstLeft;
+      outRec2->FirstLeft = outRec1;
 
       //now fixup any subsequent Joins that match this polygon
       for (JoinList::size_type k = i+1; k < m_Joins.size(); k++)

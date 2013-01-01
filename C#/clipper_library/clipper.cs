@@ -1,10 +1,10 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.0.1                                                           *
-* Date      :  30 December 2012                                                *
+* Version   :  5.1.0                                                           *
+* Date      :  1 January 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2012                                         *
+* Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -359,8 +359,7 @@ namespace ClipperLib
     {
         public int idx;
         public bool isHole;
-        public OutRec FirstLeft;
-        public OutRec AppendLink;
+        public OutRec FirstLeft; //see comments in clipper.pas
         public OutPt pts;
         public OutPt bottomPt;
     };
@@ -1013,36 +1012,18 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        internal OutRec FindAppendLinkEnd(OutRec outRec)
-        {
-          while (outRec.AppendLink != null) outRec = outRec.AppendLink;
-          return outRec;
-        }
-        //------------------------------------------------------------------------------
-
         internal void FixHoleLinkage(OutRec outRec)
         {
-            OutRec tmp;
-            if (outRec.bottomPt != null) 
-                tmp = m_PolyOuts[outRec.bottomPt.idx].FirstLeft; 
-            else
-                tmp = outRec.FirstLeft;
-            if (outRec == tmp) throw new ClipperException("HoleLinkage error");
+              //skip OutRecs that are (a) obsolete or (b) contain outermost polygons or
+              //(c) already have the correct owner/child linkage ...
+              if (outRec.pts == null || outRec.FirstLeft == null ||                
+                  (outRec.isHole != outRec.FirstLeft.isHole &&
+                  outRec.FirstLeft.pts != null)) return;
 
-            if (tmp != null) 
-            {
-                if (tmp.AppendLink != null) tmp = FindAppendLinkEnd(tmp);
-
-                if (tmp == outRec) tmp = null;
-                else if (tmp.isHole)
-                {
-                    FixHoleLinkage(tmp);
-                    tmp = tmp.FirstLeft;
-                }
-            }
-            outRec.FirstLeft = tmp;
-            if (tmp == null) outRec.isHole = false;
-            outRec.AppendLink = null;
+              OutRec orfl = outRec.FirstLeft;
+              while (orfl != null && ((orfl.isHole == outRec.isHole) || orfl.pts == null))
+                  orfl = orfl.FirstLeft;
+              outRec.FirstLeft = orfl;
         }
         //------------------------------------------------------------------------------
 
@@ -1076,14 +1057,17 @@ namespace ClipperLib
                   if (outRec.pts == null) continue;
                   FixupOutPolygon(outRec);
                   if (outRec.pts == null) continue;
-                  if (outRec.isHole && m_UsingExPolygons) FixHoleLinkage(outRec);
-
                   if ((outRec.isHole ^ m_ReverseOutput) == (Area(outRec, m_UseFullRange) > 0))
                       ReversePolyPtLinks(outRec.pts);
                 }
 
                 JoinCommonEdges();
-                if (m_UsingExPolygons) m_PolyOuts.Sort(new Comparison<OutRec>(PolySort));
+                if (m_UsingExPolygons)
+                {
+                    foreach (OutRec outRec in m_PolyOuts)
+                        FixHoleLinkage(outRec);
+                    m_PolyOuts.Sort(new Comparison<OutRec>(PolySort));
+                }
             }
             m_Joins.Clear();
             m_HorizJoins.Clear();
@@ -1647,7 +1631,6 @@ namespace ClipperLib
           result.idx = -1;
           result.isHole = false;
           result.FirstLeft = null;
-          result.AppendLink = null;
           result.pts = null;
           result.bottomPt = null;
           return result;
@@ -1953,7 +1936,11 @@ namespace ClipperLib
           }
           outRec2.pts = null;
           outRec2.bottomPt = null;
-          outRec2.AppendLink = outRec1;
+
+          //when an outrec becomes obsolete, FirstLeft becomes a pointer to the
+          //new contour owner (needed to find ownership of holes for ExPolygons) ...
+          outRec2.FirstLeft = outRec1;
+
           int OKIdx = e1.outIdx;
           int ObsoleteIdx = e2.outIdx;
 
@@ -3025,10 +3012,21 @@ namespace ClipperLib
           for (int i = 0; i < m_Joins.Count; i++)
           {
             JoinRec j = m_Joins[i];
-            OutPt p1, p2;
-            if (!JoinPoints(j, out p1, out p2)) continue;
+
             OutRec outRec1 = m_PolyOuts[j.poly1Idx];
             OutRec outRec2 = m_PolyOuts[j.poly2Idx];
+
+            if (outRec1.pts == null || outRec2.pts == null) continue;
+
+            //get the polygon fragment with the correct hole state (FirstLeft)
+            //before calling JoinPoints() ...
+            OutRec holeStateRec;
+            if (Param1RightOfParam2(outRec1, outRec2)) holeStateRec = outRec2;
+            else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
+            else holeStateRec = GetLowermostRec(outRec1, outRec2);
+
+            OutPt p1, p2;
+            if (!JoinPoints(j, out p1, out p2)) continue;
 
             if (outRec1 == outRec2)
             {
@@ -3073,15 +3071,6 @@ namespace ClipperLib
 
                     if ((outRec1.isHole ^ m_ReverseOutput) == (Area(outRec1, m_UseFullRange) > 0))
                         ReversePolyPtLinks(outRec1.pts);
-
-                    //make sure any contained holes now link to the correct polygon ...
-                    if (m_UsingExPolygons && outRec1.isHole)
-                        for (int k = 0; k < m_PolyOuts.Count; ++k)
-                        {
-                            OutRec orec = m_PolyOuts[k];
-                            if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1)
-                                orec.FirstLeft = outRec2;
-                        }
                 }
                 else
                 {
@@ -3092,44 +3081,25 @@ namespace ClipperLib
                     FixupJoinRecs(j, p2, i + 1);
                     FixupOutPolygon(outRec1); //nb: do this BEFORE testing orientation
                     FixupOutPolygon(outRec2); //    but AFTER calling FixupJoinRecs()
-
-                    if (m_UsingExPolygons && outRec2.pts != null) 
-                      for (int k = 0; k < m_PolyOuts.Count; ++k)
-                      {
-                        OutRec orec = m_PolyOuts[k];
-                        if (orec.isHole && orec.bottomPt != null && orec.FirstLeft == outRec1 &&
-                          PointInPolygon(orec.bottomPt.pt, outRec2.pts, m_UseFullRange))
-                            orec.FirstLeft = outRec2;
-                      }
                 }
             }
             else
             {
                 //joined 2 polygons together ...
 
-                //make sure any holes contained by outRec2 now link to outRec1 ...
-                if (m_UsingExPolygons) 
-                for (int k = 0; k < m_PolyOuts.Count; ++k)
-                    if (m_PolyOuts[k].isHole && m_PolyOuts[k].bottomPt != null &&
-                    m_PolyOuts[k].FirstLeft == outRec2)
-                        m_PolyOuts[k].FirstLeft = outRec1;
-
-                //and cleanup redundant edges too ...
+                //cleanup redundant edges ...
                 FixupOutPolygon(outRec1);
-
-                if (outRec1.pts != null)
-                {
-                    outRec1.isHole = Area(outRec1, m_UseFullRange) < 0;
-                    if (outRec1.isHole &&  outRec1.FirstLeft == null) 
-                      outRec1.FirstLeft = outRec2.FirstLeft;
-                }
 
                 //delete the obsolete pointer ...
                 int OKIdx = outRec1.idx;
                 int ObsoleteIdx = outRec2.idx;
                 outRec2.pts = null;
                 outRec2.bottomPt = null;
-                outRec2.AppendLink = outRec1;
+
+                outRec1.isHole = holeStateRec.isHole;
+                if (holeStateRec == outRec2) 
+                  outRec1.FirstLeft = outRec2.FirstLeft;
+                outRec2.FirstLeft = outRec1;
 
                 //now fixup any subsequent joins that match this polygon
                 for (int k = i + 1; k < m_Joins.Count; k++)

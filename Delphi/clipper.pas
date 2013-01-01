@@ -3,10 +3,10 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.0.1                                                           *
-* Date      :  30 December 2012                                                *
+* Version   :  5.1.0                                                           *
+* Date      :  1 January 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2012                                         *
+* Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -121,8 +121,17 @@ type
     Idx         : Integer;
     BottomPt    : POutPt;
     IsHole      : Boolean;
+    //When single polygons (contours) are contained within other polygons, the
+    //'outer' polygons will be either immediately to the left of or also contain
+    //the sibling polygon immediately to the left of a given polygon. By
+    //storing and later parsing this FirstLeft field, it's easy to group into
+    //ExPolygon structs polygons that contain/own other polygons.
+    //However to potentially confuse this, when an OutRec struct is discarded
+    //(ie whenever a contour is merged with another), FirstLeft is reused
+    //by the 'obsolete' OutRec as a pointer to the new contour owner. This way
+    //it's easy to find the outer contour for any inner contour that's still
+    //pointing to an obsolete OutRec struct.
     FirstLeft   : POutRec;
-    AppendLink  : POutRec;
     Pts         : POutPt;
   end;
   TArrayOfOutRec = array of POutRec;
@@ -1303,38 +1312,22 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FindAppendLinkEnd(OutRec: POutRec): POutRec;
-begin
-  while assigned(OutRec.AppendLink) do
-    OutRec := OutRec.AppendLink;
-  Result := OutRec;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.FixHoleLinkage(OutRec: POutRec);
 var
-  Tmp: POutRec;
+  orfl: POutRec;
 begin
-  if assigned(OutRec.BottomPt) then
-    Tmp := POutRec(fPolyOutList[OutRec.BottomPt.Idx]).FirstLeft else
-    Tmp := OutRec.FirstLeft;
-    if (OutRec = Tmp) then
-      raise exception.Create(rsHoleLinkError);
+  //skip OutRecs that are (a) obsolete or (b) contain outermost polygons or
+  //(c) already have the correct owner/child linkage ...
+  if not assigned(OutRec.Pts) or
+    not assigned(OutRec.FirstLeft) or
+    ((OutRec.IsHole <> OutRec.FirstLeft.IsHole) and
+      assigned(OutRec.FirstLeft.Pts)) then exit;
 
-  if assigned(Tmp) then
-  begin
-    if assigned(Tmp.AppendLink) then
-      Tmp := FindAppendLinkEnd(Tmp);
-    if Tmp = OutRec then Tmp := nil
-    else if Tmp.IsHole then
-    begin
-      FixHoleLinkage(Tmp);
-      Tmp := Tmp.FirstLeft;
-    end;
-  end;
-  OutRec.FirstLeft := Tmp;
-  if not assigned(Tmp) then OutRec.IsHole := False;
-  OutRec.AppendLink := nil;
+  orfl := OutRec.FirstLeft;
+  while assigned(orfl) and
+    ((orfl.IsHole = OutRec.IsHole) or not assigned(orfl.Pts)) do
+      orfl := orfl.FirstLeft;
+  OutRec.FirstLeft := orfl;
 end;
 //------------------------------------------------------------------------------
 
@@ -1371,16 +1364,18 @@ begin
       if not assigned(OutRec.Pts) then Continue;
       FixupOutPolygon(OutRec);
       if not assigned(OutRec.Pts) then Continue;
-
-      if OutRec.IsHole and FUsingExPolygons then
-        FixHoleLinkage(OutRec);
-
       if (OutRec.IsHole xor FReverseOutput) = (Area(OutRec, FUse64BitRange) > 0) then
         ReversePolyPtLinks(OutRec.Pts);
     end;
 
     if FJoinList.count > 0 then JoinCommonEdges;
-    if FUsingExPolygons then FPolyOutList.Sort(PolySort);
+
+    if FUsingExPolygons then
+    begin
+      for I := 0 to FPolyOutList.Count -1 do
+        FixHoleLinkage(FPolyOutList[I]);
+      FPolyOutList.Sort(PolySort);
+    end;
 
     Result := True;
   except
@@ -2304,7 +2299,11 @@ begin
 
   OutRec2.Pts := nil;
   OutRec2.BottomPt := nil;
-  OutRec2.AppendLink := OutRec1;
+
+  //when an outrec becomes obsolete, FirstLeft becomes a pointer to the
+  //new contour owner (needed to find ownership of holes for ExPolygons) ...
+  OutRec2.FirstLeft := OutRec1;
+
   OKIdx := OutRec1.Idx;
   ObsoleteIdx := OutRec2.Idx;
 
@@ -2345,7 +2344,6 @@ begin
   new(Result);
   Result.IsHole := False;
   Result.FirstLeft := nil;
-  Result.AppendLink := nil;
   Result.Pts := nil;
   Result.BottomPt := nil;
 end;
@@ -3325,17 +3323,25 @@ procedure TClipper.JoinCommonEdges;
 var
   I, J, OKIdx, ObsoleteIdx: Integer;
   Jr, Jr2: PJoinRec;
-  OutRec1, OutRec2: POutRec;
+  OutRec1, OutRec2, HoleStateRec: POutRec;
   P1, P2: POutPt;
 begin
   for I := 0 to FJoinList.count -1 do
   begin
     Jr := FJoinList[I];
 
-    if not JoinPoints(JR, P1, P2) then Continue;
-
     OutRec1 := FPolyOutList[Jr.Poly1Idx];
     OutRec2 := FPolyOutList[Jr.Poly2Idx];
+
+    if not assigned(OutRec1.Pts) or not assigned(OutRec2.Pts) then continue;
+
+    //get the polygon fragment with the correct hole state (FirstLeft)
+    //before calling JoinPoints() ...
+    if Param1RightOfParam2(OutRec1, OutRec2) then HoleStateRec := OutRec2
+    else if Param1RightOfParam2(OutRec2, OutRec1) then HoleStateRec := OutRec1
+    else HoleStateRec := GetLowermostRec(OutRec1, OutRec2);
+
+    if not JoinPoints(JR, P1, P2) then Continue;
 
     if (OutRec1 = OutRec2) then
     begin
@@ -3381,12 +3387,6 @@ begin
 
         if (OutRec1.IsHole xor FReverseOutput) = (Area(OutRec1, FUse64BitRange) > 0) then
           ReversePolyPtLinks(OutRec1.Pts);
-        //make sure any contained holes now link to the correct polygon ...
-        if FUsingExPolygons and OutRec1.IsHole then
-          for J := 0 to FPolyOutList.Count - 1 do
-            with POutRec(fPolyOutList[J])^ do
-              if IsHole and assigned(BottomPt) and (FirstLeft = OutRec1) then
-                FirstLeft := OutRec2;
       end else
       begin
         //the 2 polygons are completely separate ...
@@ -3398,40 +3398,24 @@ begin
 
         FixupOutPolygon(OutRec1); //nb: do this BEFORE testing orientation
         FixupOutPolygon(OutRec2); //    but AFTER calling PointIsVertex()
-
-        if FUsingExPolygons and assigned(OutRec2.Pts) then
-          for J := 0 to fPolyOutList.Count - 1 do
-            with POutRec(fPolyOutList[J])^ do
-              if isHole and assigned(bottomPt) and (FirstLeft = OutRec1) then
-                if PointInPolygon(BottomPt.pt, outRec2.pts, fUse64BitRange) then
-                  FirstLeft := outRec2;
       end;
     end else
     begin
       //joined 2 polygons together ...
-      //make sure any holes contained by OutRec2 now link to OutRec1 ...
-      if FUsingExPolygons then
-        for J := 0 to FPolyOutList.Count - 1 do
-          with POutRec(fPolyOutList[J])^ do
-            if IsHole and assigned(BottomPt) and (FirstLeft = OutRec2) then
-              FirstLeft := OutRec1;
 
       //cleanup edges ...
       FixupOutPolygon(OutRec1);
-
-      if assigned(OutRec1.Pts) then
-      begin
-        OutRec1.IsHole := Area(OutRec1, FUse64BitRange) < 0;
-        if OutRec1.IsHole and not assigned(OutRec1.FirstLeft) then
-          OutRec1.FirstLeft := OutRec2.FirstLeft;
-      end;
 
       //delete the obsolete pointer ...
       OKIdx := OutRec1.Idx;
       ObsoleteIdx := OutRec2.Idx;
       OutRec2.Pts := nil;
       OutRec2.BottomPt := nil;
-      OutRec2.AppendLink := OutRec1;
+
+      OutRec1.IsHole := HoleStateRec.IsHole;
+      if HoleStateRec = OutRec2 then
+        OutRec1.FirstLeft := OutRec2.FirstLeft;
+      OutRec2.FirstLeft := OutRec1;
 
       //now fixup any subsequent joins ...
       for J := I+1 to FJoinList.count -1 do

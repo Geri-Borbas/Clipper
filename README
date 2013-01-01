@@ -2,14 +2,15 @@
 Clipper Change Log
 ============================================================
 
-v5.0.1 - 30 December 2012
-* Bugfix: Significant tidy of and fixes in the internal Int128 
-  class which is used only when polygon coordinate values are 
-  greater than ±0x3FFFFFFF (~1.07e9). 
+v5.0.2 - 30 December 2012
+* Bugfix: Significant fixes in and tidy of the internal 
+  Int128 class (which is used only when polygon coordinate 
+  values are greater than ±0x3FFFFFFF (~1.07e9)). 
 * Update: The Area algorithm has been updated and is faster. 
-* Update: The newish but undocumented 'CheckInputs' parameter 
-  of the OffsetPolygons function has been renamed 'AutoFix'. 
-  It's now documented too.
+* Update: Documentation updates. The newish but undocumented 
+  'CheckInputs' parameter of the OffsetPolygons function has been 
+  renamed 'AutoFix' and documented too. The comments on rounding 
+  have also been improved (ie clearer and expanded).
 
 v4.10.0 - 25 December 2012
 * Bugfix: Orientation bugs should now be resolved (finally!).

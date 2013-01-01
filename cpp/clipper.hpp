@@ -1,10 +1,10 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.0.1                                                           *
-* Date      :  30 December 2012                                                *
+* Version   :  5.1.0                                                           *
+* Date      :  1 January 2012                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2012                                         *
+* Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -140,8 +140,7 @@ struct OutPt; //forward declaration
 struct OutRec {
   int     idx;
   bool    isHole;
-  OutRec *FirstLeft;
-  OutRec *AppendLink;
+  OutRec *FirstLeft; //see comments in clipper.pas
   OutPt  *pts;
   OutPt  *bottomPt;
 };
@@ -275,7 +274,7 @@ private:
   bool FixupIntersections();
   void FixupOutPolygon(OutRec &outRec);
   bool IsHole(TEdge *e);
-  void FixHoleLinkage(OutRec *outRec);
+  void FixHoleLinkage(OutRec &outRec);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
