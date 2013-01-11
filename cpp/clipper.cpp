@@ -300,7 +300,7 @@ double Area(const Polygon &poly)
     Int128 a;
     a = Int128Mul(poly[highI].X + poly[0].X, poly[0].Y - poly[highI].Y);
     for (int i = 1; i <= highI; ++i)
-      a += Int128Mul(poly[i - 1].X + poly[i].X, poly[i].X - poly[i -1].Y);
+      a += Int128Mul(poly[i - 1].X + poly[i].X, poly[i].Y - poly[i -1].Y);
     return a.AsDouble() / 2;
   }
   else

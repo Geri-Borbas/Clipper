@@ -3255,6 +3255,7 @@ namespace ClipperLib
                     IntPoint botPt = pts[botI][0];
                     for (int i = botI; i < Len; ++i)
                     {
+                        if (pts[i].Count == 0) continue;
                         if (UpdateBotPt(pts[i][0], ref botPt)) botI = i;
                         for (int j = pts[i].Count -1; j > 0; j--)
                         {
