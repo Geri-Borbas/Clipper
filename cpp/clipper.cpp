@@ -86,9 +86,9 @@ class Int128
       if (_lo < 0)  hi = -1; else hi = 0; 
     }
 
-    Int128(const Int128 &val): hi(val.hi), lo(val.lo){}
+    Int128(const Int128 &val): lo(val.lo), hi(val.hi){}
 
-    Int128(const long64& _hi, const ulong64& _lo): hi(_hi), lo(_lo){}
+    Int128(const long64& _hi, const ulong64& _lo): lo(_lo), hi(_hi){}
 
     long64 operator = (const long64 &val)
     {
