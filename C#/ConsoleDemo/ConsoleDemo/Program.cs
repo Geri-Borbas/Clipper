@@ -12,7 +12,6 @@ namespace ClipperTest1
 {
     using Polygon = List<IntPoint>;
     using Polygons = List<List<IntPoint>>;
-    using ExPolygons = List<ExPolygon>;
 
     class Program
     {
@@ -274,19 +273,6 @@ namespace ClipperTest1
 
         ////////////////////////////////////////////////
 
-        static Polygons ExPolygons2Polygons(ExPolygons epgs)
-        {
-            Polygons result = new Polygons();
-            foreach (ExPolygon epg in epgs)
-            {
-                result.Add(epg.outer);
-                foreach (Polygon hole in epg.holes)
-                    result.Add(hole);
-            }
-            return result;
-        }
-
-        ////////////////////////////////////////////////
         static Polygon IntsToPolygon(int[] ints)
         {
             int len1 = ints.Length /2;

@@ -31,19 +31,6 @@ static float GetAlphaAsFrac(unsigned clr)
 }
 //------------------------------------------------------------------------------
 
-void ExPolygonsToPolygons(const ExPolygons &expolys, Polygons &polys)
-{
-  //precondition: 'expolys' outer and holes polygons must be oriented correctly
-  polys.clear();
-  for (int i = 0; i < (int)expolys.size(); ++i)
-  {
-    polys.push_back(expolys[i].outer);
-    for (int j = 0; j < (int)expolys[i].holes.size(); ++j)
-      polys.push_back(expolys[i].holes[j]);
-  }
-}
-//------------------------------------------------------------------------------
-
 //a simple class that builds an SVG file with any number of polygons
 class SVGBuilder
 {
@@ -92,14 +79,6 @@ public:
 
   void AddPolygons(Polygons& poly)
   {
-    if (poly.size() == 0) return;
-    polyInfos.push_back(PolyInfo(poly, style));
-  }
-
-  void AddPolygons(ExPolygons& expoly)
-  {
-    Polygons poly;
-    ExPolygonsToPolygons(expoly, poly);
     if (poly.size() == 0) return;
     polyInfos.push_back(PolyInfo(poly, style));
   }
@@ -297,63 +276,6 @@ void SaveToFile(char *filename, Polygons &pp, double scale = 1)
       for (unsigned j = 0; j < pp[i].size(); ++j)
         fprintf(f, "%lld, %lld,\n", pp[i][j].X, pp[i][j].Y );
     }
-  }
-  fclose(f);
-}
-//---------------------------------------------------------------------------
-
-void SaveToFile(char *filename, ExPolygons &pp, double scale = 1)
-{
-  FILE *f = fopen(filename, "w");
-  if (!f) return;
-  int cnt = 0;
-  for (ExPolygons::size_type i = 0; i < pp.size(); ++i)
-    cnt += pp[i].holes.size() +1;
-  fprintf(f, "%d\n", cnt);
-  for (ExPolygons::size_type i = 0; i < pp.size(); ++i)
-  {
-    fprintf(f, "%d\n", pp[i].outer.size());
-    if (scale > 1.01 || scale < 0.99)
-    {
-      //do outer polygon ...
-      for (Polygon::size_type j = 0; j < pp[i].outer.size(); ++j)
-      {
-        IntPoint *p = &pp[i].outer[j];
-        fprintf(f, "%.6lf, %.6lf,\n", (double)p->X /scale, (double)p->Y /scale);
-      }
-      //do hole polygons ...
-      for (Polygon::size_type j = 0; j < pp[i].holes.size(); ++j)
-      {
-        Polygon *h = &pp[i].holes[j];
-        fprintf(f, "%d\n", h->size());
-        for (Polygon::iterator it = h->begin(); it != h->end(); it++)
-        {
-          fprintf(f, "%.6lf, %.6lf,\n",
-            (double)it->X /scale, (double)it->Y /scale);
-        }
-      }
-    }
-    else
-    {
-      //do outer polygon ...
-      for (Polygon::size_type j = 0; j < pp[i].outer.size(); ++j)
-      {
-        IntPoint *p = &pp[i].outer[j];
-        fprintf(f, "%lld, %lld,\n", p->X, p->Y );
-      }
-      //do hole polygons ...
-      for (Polygon::size_type j = 0; j < pp[i].holes.size(); ++j)
-      {
-        Polygon *h = &pp[i].holes[j];
-        fprintf(f, "%d\n", h->size());
-        for (Polygon::iterator it = h->begin(); it != h->end(); it++)
-        {
-          fprintf(f, "%lld, %lld,\n", it->X, it->Y );
-        }
-      }
-    }
-
-
   }
   fclose(f);
 }
