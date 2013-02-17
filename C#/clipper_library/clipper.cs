@@ -1248,22 +1248,19 @@ namespace ClipperLib
                 AddLocalMinPoly(lb, rb, new IntPoint(lb.xcurr, m_CurrentLM.Y));
 
             //if any output polygons share an edge, they'll need joining later ...
-            if (rb.outIdx >= 0)
+            if (rb.outIdx >= 0 && rb.dx == horizontal)
             {
-                if (rb.dx == horizontal)
+                for (int i = 0; i < m_HorizJoins.Count; i++)
                 {
-                    for (int i = 0; i < m_HorizJoins.Count; i++)
-                    {
-                        IntPoint pt = new IntPoint(), pt2 = new IntPoint(); //used as dummy params.
-                        HorzJoinRec hj = m_HorizJoins[i];
-                        //if horizontals rb and hj.edge overlap, flag for joining later ...
-                        if (GetOverlapSegment(new IntPoint(hj.edge.xbot, hj.edge.ybot),
-                            new IntPoint(hj.edge.xtop, hj.edge.ytop),
-                            new IntPoint(rb.xbot, rb.ybot),
-                            new IntPoint(rb.xtop, rb.ytop), 
-                            ref pt, ref pt2))
-                            AddJoin(hj.edge, rb, hj.savedIdx, -1);
-                    }
+                    IntPoint pt = new IntPoint(), pt2 = new IntPoint(); //used as dummy params.
+                    HorzJoinRec hj = m_HorizJoins[i];
+                    //if horizontals rb and hj.edge overlap, flag for joining later ...
+                    if (GetOverlapSegment(new IntPoint(hj.edge.xbot, hj.edge.ybot),
+                        new IntPoint(hj.edge.xtop, hj.edge.ytop),
+                        new IntPoint(rb.xbot, rb.ybot),
+                        new IntPoint(rb.xtop, rb.ytop), 
+                        ref pt, ref pt2))
+                        AddJoin(hj.edge, rb, hj.savedIdx, -1);
                 }
             }
 
@@ -1514,15 +1511,10 @@ namespace ClipperLib
         {
             TEdge e = m_ActiveEdges;
             m_SortedEdges = e;
-            if (m_ActiveEdges == null)
-                return;
-            m_SortedEdges.prevInSEL = null;
-            e = e.nextInAEL;
             while (e != null)
             {
                 e.prevInSEL = e.prevInAEL;
-                e.prevInSEL.nextInSEL = e;
-                e.nextInSEL = null;
+                e.nextInSEL = e.nextInAEL;
                 e = e.nextInAEL;
             }
         }
@@ -2932,11 +2924,7 @@ namespace ClipperLib
                 OutRec outRec = m_PolyOuts[i];
                 if (outRec.polyNode == null) continue;
                 if (outRec.FirstLeft == null)
-                {
-                    outRec.polyNode.m_Index = polytree.m_Childs.Count;
-                    polytree.m_Childs.Add(outRec.polyNode);
-                    outRec.polyNode.m_Parent = polytree;
-                }
+                    polytree.AddChild(outRec.polyNode);
                 else
                     outRec.FirstLeft.polyNode.AddChild(outRec.polyNode);
             }

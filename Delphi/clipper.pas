@@ -1093,21 +1093,22 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
     //form the left and right (or right and left) bounds of the local minima.
     E.NextInLML := nil;
     E := E.Next;
-    repeat
+    while True do
+    begin
       if E.Dx = Horizontal then
       begin
         //nb: proceed through horizontals when approaching from their right,
         //    but break on horizontal minima if approaching from their left.
         //    This ensures 'local minima' are always on the left of horizontals.
-        if (E.Next.YTop < E.YTop) and (E.Next.XBot > E.Prev.XBot) then break;
+        if (E.Next.YTop < E.YTop) and (E.Next.XBot > E.Prev.XBot) then Break;
         if (E.XTop <> E.Prev.XBot) then SwapX(E);
         //E.WindDelta := 0; safe option to consider when redesigning
         E.NextInLML := E.Prev;
       end
-      else if (E.YBot = E.Prev.YBot) then break
+      else if (E.YBot = E.Prev.YBot) then Break
       else E.NextInLML := E.Prev;
       E := E.Next;
-    until False;
+    end;
 
     //E and E.Prev are now at a local minima ...
     new(NewLm);
@@ -1132,12 +1133,13 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
 
     InsertLocalMinima(NewLm);
     //now process the ascending bound ....
-    repeat
-      if (E.Next.YTop = E.YTop) and not (E.Next.Dx = Horizontal) then break;
+    while True do
+    begin
+      if (E.Next.YTop = E.YTop) and not (E.Next.Dx = Horizontal) then Break;
       E.NextInLML := E.Next;
       E := E.Next;
       if (E.Dx = Horizontal) and (E.XBot <> E.Prev.XTop) then SwapX(E);
-    until False;
+    end;
     Result := E.Next;
   end;
   //----------------------------------------------------------------------
@@ -1197,7 +1199,7 @@ begin
       Dec(J);
     end
     else
-      break;
+      Break;
     Dec(len);
   end;
   if len < 3 then Exit;
@@ -1754,15 +1756,10 @@ var
 begin
   E := FActiveEdges;
   FSortedEdges := E;
-  if not Assigned(fActiveEdges) then Exit;
-
-  FSortedEdges.PrevInSEL := nil;
-  E := E.NextInAEL;
   while Assigned(E) do
   begin
     E.PrevInSEL := E.PrevInAEL;
-    E.PrevInSEL.NextInSEL := E;
-    E.NextInSEL := nil;
+    E.NextInSEL := E.NextInAEL;
     E := E.NextInAEL;
   end;
 end;
@@ -1952,23 +1949,17 @@ begin
       AddLocalMinPoly(Lb, Rb, IntPoint(Lb.XCurr, CurrentLm.Y));
 
     //if output polygons share an Edge with rb, they'll need joining later ...
-    if (Rb.OutIdx >= 0) then
+    if (Rb.OutIdx >= 0) and (Rb.Dx = Horizontal) and Assigned(fHorizJoins) then
     begin
-      if (Rb.Dx = Horizontal) then
-      begin
-        if Assigned(fHorizJoins) then
-        begin
-          Hj := FHorizJoins;
-          repeat
-            //if horizontals rb & hj.Edge overlap, flag for joining later ...
-            if GetOverlapSegment(IntPoint(Hj.Edge.XBot, Hj.Edge.YBot),
-              IntPoint(Hj.Edge.XTop, Hj.Edge.YTop), IntPoint(Rb.XBot, Rb.YBot),
-              IntPoint(Rb.XTop, Rb.YTop), Pt, Pt2) then
-                AddJoin(Hj.Edge, Rb, Hj.SavedIdx);
-            Hj := Hj.Next;
-          until Hj = FHorizJoins;
-        end;
-      end;
+      Hj := FHorizJoins;
+      repeat
+        //if horizontals rb & hj.Edge overlap, flag for joining later ...
+        if GetOverlapSegment(IntPoint(Hj.Edge.XBot, Hj.Edge.YBot),
+          IntPoint(Hj.Edge.XTop, Hj.Edge.YTop), IntPoint(Rb.XBot, Rb.YBot),
+          IntPoint(Rb.XTop, Rb.YTop), Pt, Pt2) then
+            AddJoin(Hj.Edge, Rb, Hj.SavedIdx);
+        Hj := Hj.Next;
+      until Hj = FHorizJoins;
     end;
 
     if (Lb.NextInAEL <> Rb) then
@@ -2410,7 +2401,7 @@ begin
     begin
       E.OutIdx := OKIdx;
       E.Side := NewSide;
-      break;
+      Break;
     end;
     E := E.NextInAEL;
   end;
@@ -2695,12 +2686,12 @@ begin
           //if output polygons share an Edge, they'll need joining later ...
           if (HorzEdge.OutIdx >= 0) and (E.OutIdx >= 0) then
             AddJoin(HorzEdge.NextInLML, E, HorzEdge.OutIdx);
-          break; //we've reached the end of the horizontal line
+          Break; //we've reached the end of the horizontal line
         end
         else if (E.Dx < HorzEdge.NextInLML.Dx) then
         //we really have got to the end of the intermediate horz Edge so quit.
         //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
-          break;
+          Break;
       end;
 
       if (E = eMaxPair) then
@@ -2738,7 +2729,7 @@ begin
       (E.XCurr > HorzRight) and Assigned(fSortedEdges)) or
       ((Direction = dRightToLeft) and
       (E.XCurr < HorzLeft) and Assigned(fSortedEdges)) then
-        break;
+        Break;
     E := eNext;
   end;
 
@@ -2856,7 +2847,7 @@ begin
         end else
           E := eNext;
       end;
-      if Assigned(E.PrevInSEL) then E.PrevInSEL.NextInSEL := nil else break;
+      if Assigned(E.PrevInSEL) then E.PrevInSEL.NextInSEL := nil else Break;
     end;
   finally
     FSortedEdges := nil;
@@ -3139,15 +3130,8 @@ begin
       OutRec := fPolyOutList[I];
       if Assigned(OutRec.PolyNode) then
         if Assigned(OutRec.FirstLeft) then
-        begin
-          OutRec.FirstLeft.PolyNode.AddChild(OutRec.PolyNode);
-        end else
-        begin
-          PolyTree.FChilds[PolyTree.FCount] := OutRec.PolyNode;
-          OutRec.PolyNode.FIndex := PolyTree.FCount;
-          OutRec.PolyNode.FParent := PolyTree;
-          Inc(PolyTree.FCount);
-        end;
+          OutRec.FirstLeft.PolyNode.AddChild(OutRec.PolyNode) else
+          PolyTree.AddChild(OutRec.PolyNode);
     end;
     SetLength(PolyTree.FChilds, PolyTree.FCount);
     Result := True;
@@ -3190,7 +3174,7 @@ begin
       PP := PP.Prev;
       dispose(Tmp);
     end
-    else if PP = LastOK then break
+    else if PP = LastOK then Break
     else
     begin
       if not Assigned(LastOK) then LastOK := PP;
@@ -3230,7 +3214,7 @@ begin
         while Assigned(Int2) do
         begin
           if (Int2.Edge1.NextInSEL = Int2.Edge2) or
-            (Int2.Edge1.PrevInSEL = Int2.Edge2) then break
+            (Int2.Edge1.PrevInSEL = Int2.Edge2) then Break
           else Int2 := Int2.Next;
         end;
         if not Assigned(Int2) then Exit; //oops!!!
@@ -3352,7 +3336,6 @@ begin
     if not FindSegment(Pp2a, Pt3, Pt4) or (Pp2a = Pp1a) then Exit;
   end else
     if not FindSegment(Pp2a, Pt3, Pt4) then Exit;
-
   if not GetOverlapSegment(Pt1, Pt2, Pt3, Pt4, Pt1, Pt2) then Exit;
 
   Prev := Pp1a.Prev;
@@ -3424,7 +3407,7 @@ var
 begin
   OutPt := OutPt1;
   repeat
-    if not PointIsVertex(OutPt.Pt, OutPt2) then break;
+    if not PointIsVertex(OutPt.Pt, OutPt2) then Break;
     OutPt := OutPt.Next;
   until OutPt = OutPt1;
   //sometimes points can be touching the other polygon so

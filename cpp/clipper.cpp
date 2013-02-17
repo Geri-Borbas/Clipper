@@ -1524,14 +1524,10 @@ void Clipper::CopyAELToSEL()
 {
   TEdge* e = m_ActiveEdges;
   m_SortedEdges = e;
-  if (!m_ActiveEdges) return;
-  m_SortedEdges->prevInSEL = 0;
-  e = e->nextInAEL;
   while ( e )
   {
     e->prevInSEL = e->prevInAEL;
-    e->prevInSEL->nextInSEL = e;
-    e->nextInSEL = 0;
+    e->nextInSEL = e->nextInAEL;
     e = e->nextInAEL;
   }
 }
@@ -1616,21 +1612,18 @@ void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
       AddLocalMinPoly( lb, rb, IntPoint(lb->xcurr, m_CurrentLM->Y) );
 
     //if any output polygons share an edge, they'll need joining later ...
-    if (rb->outIdx >= 0)
+    if (rb->outIdx >= 0 && NEAR_EQUAL(rb->dx, HORIZONTAL))
     {
-      if (NEAR_EQUAL(rb->dx, HORIZONTAL))
+      for (HorzJoinList::size_type i = 0; i < m_HorizJoins.size(); ++i)
       {
-        for (HorzJoinList::size_type i = 0; i < m_HorizJoins.size(); ++i)
-        {
-          IntPoint pt, pt2; //returned by GetOverlapSegment() but unused here.
-          HorzJoinRec* hj = m_HorizJoins[i];
-          //if horizontals rb and hj.edge overlap, flag for joining later ...
-          if (GetOverlapSegment(IntPoint(hj->edge->xbot, hj->edge->ybot),
-            IntPoint(hj->edge->xtop, hj->edge->ytop),
-            IntPoint(rb->xbot, rb->ybot),
-            IntPoint(rb->xtop, rb->ytop), pt, pt2))
-              AddJoin(hj->edge, rb, hj->savedIdx);
-        }
+        IntPoint pt, pt2; //returned by GetOverlapSegment() but unused here.
+        HorzJoinRec* hj = m_HorizJoins[i];
+        //if horizontals rb and hj.edge overlap, flag for joining later ...
+        if (GetOverlapSegment(IntPoint(hj->edge->xbot, hj->edge->ybot),
+          IntPoint(hj->edge->xtop, hj->edge->ytop),
+          IntPoint(rb->xbot, rb->ybot),
+          IntPoint(rb->xtop, rb->ytop), pt, pt2))
+            AddJoin(hj->edge, rb, hj->savedIdx);
       }
     }
 
@@ -2671,16 +2664,10 @@ void Clipper::BuildResult2(PolyTree& polytree)
     {
         OutRec* outRec = m_PolyOuts[i];
         if (!outRec->polyNode) continue;
-        if (!outRec->FirstLeft) 
-        {
-          outRec->polyNode->Index = polytree.Childs.size();
-          polytree.Childs.push_back(outRec->polyNode);
-          outRec->polyNode->Parent = &polytree;
-        }
-        else
-        {
+        if (outRec->FirstLeft) 
           outRec->FirstLeft->polyNode->AddChild(*outRec->polyNode);
-        }
+        else
+          polytree.AddChild(*outRec->polyNode);
     }
 }
 //------------------------------------------------------------------------------
