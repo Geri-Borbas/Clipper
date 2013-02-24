@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.0                                                           *
-* Date      :  1 February 2013                                                 *
+* Version   :  5.1.1                                                           *
+* Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1765,7 +1765,8 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool FindSegment(ref OutPt pp, ref IntPoint pt1, ref IntPoint pt2)
+        private bool FindSegment(ref OutPt pp, bool UseFullInt64Range, 
+            ref IntPoint pt1, ref IntPoint pt2)
         {
             if (pp == null) return false;
             OutPt pp2 = pp;
@@ -1773,8 +1774,8 @@ namespace ClipperLib
             IntPoint pt2a = new IntPoint(pt2);
             do
             {
-                if (SlopesEqual(pt1a, pt2a, pp.pt, pp.prev.pt, true) &&
-                    SlopesEqual(pt1a, pt2a, pp.pt, true) &&
+                if (SlopesEqual(pt1a, pt2a, pp.pt, pp.prev.pt, UseFullInt64Range) &&
+                    SlopesEqual(pt1a, pt2a, pp.pt, UseFullInt64Range) &&
                     GetOverlapSegment(pt1a, pt2a, pp.pt, pp.prev.pt, ref pt1, ref pt2))
                         return true;
             pp = pp.next;
@@ -2473,7 +2474,7 @@ namespace ClipperLib
           try {
             BuildIntersectList(botY, topY);
             if ( m_IntersectNodes == null) return true;
-            if ( FixupIntersections() ) ProcessIntersectList();
+            if ( FixupIntersectionOrder() ) ProcessIntersectList();
             else return false;
           }
           catch {
@@ -2531,7 +2532,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool FixupIntersections()
+        private bool FixupIntersectionOrder()
         {
           if ( m_IntersectNodes.next == null ) return true;
 
@@ -2986,15 +2987,16 @@ namespace ClipperLib
             OutPt pp2a = outRec2.pts;
             IntPoint pt1 = j.pt2a, pt2 = j.pt2b;
             IntPoint pt3 = j.pt1a, pt4 = j.pt1b;
-            if (!FindSegment(ref pp1a, ref pt1, ref pt2)) return false;
+            if (!FindSegment(ref pp1a, m_UseFullRange, ref pt1, ref pt2)) return false;
             if (outRec1 == outRec2)
             {
               //we're searching the same polygon for overlapping segments so
               //segment 2 mustn't be the same as segment 1 ...
               pp2a = pp1a.next;
-              if (!FindSegment(ref pp2a, ref pt3, ref pt4) || (pp2a == pp1a)) return false;
+              if (!FindSegment(ref pp2a, m_UseFullRange, ref pt3, ref pt4) || (pp2a == pp1a)) 
+                  return false;
             }
-            else if (!FindSegment(ref pp2a, ref pt3, ref pt4)) return false;
+            else if (!FindSegment(ref pp2a, m_UseFullRange, ref pt3, ref pt4)) return false;
 
             if (!GetOverlapSegment(pt1, pt2, pt3, pt4, ref pt1, ref pt2)) return false;
 
@@ -3294,16 +3296,25 @@ namespace ClipperLib
 
         internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
         {
-            Int64 steps = Math.Max(6, (int)(Math.Sqrt(Math.Abs(r)) * Math.Abs(a2 - a1)));
-            if (steps > 0x100) steps = 0x100;
-            int n = (int)steps;
-            Polygon result = new Polygon(n);
-            double da = (a2 - a1) / (n - 1);
-            double a = a1;
-            for (int i = 0; i < n; ++i)
+            //see notes in clipper.pas regarding steps
+            double arcFrac = Math.Abs(a2 - a1) / (2 * Math.PI);
+            int steps = (int)(arcFrac * Math.PI / Math.Acos(1 - 0.125 / Math.Abs(r)));
+            if (steps < 2) 
+                steps = 2;
+            else if (steps > (int)(222.0 * arcFrac)) 
+                steps = (int)(222.0 * arcFrac);
+
+            double x = Math.Cos(a1); 
+            double y = Math.Sin(a1);
+            double c = Math.Cos((a2 - a1) / steps);
+            double s = Math.Sin((a2 - a1) / steps);
+            Polygon result = new Polygon(steps +1);
+            for (int i = 0; i <= steps; ++i)
             {
-                result.Add(new IntPoint(pt.X + Round(Math.Cos(a) * r), pt.Y + Round(Math.Sin(a) * r)));
-                a += da;
+                result.Add(new IntPoint(pt.X + Round(x * r), pt.Y + Round(y * r)));
+                double x2 = x;
+                x = x * c - s * y;  //cross product
+                y = x2 * s + y * c; //dot product
             }
             return result;
         }

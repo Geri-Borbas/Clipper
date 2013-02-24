@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.0                                                           *
-* Date      :  1 February 2013                                                 *
+* Version   :  5.1.1                                                           *
+* Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -77,7 +77,7 @@ void PolyTree::Clear()
 }
 //------------------------------------------------------------------------------
 
-PolyNode* PolyTree::GetFirst()
+PolyNode* PolyTree::GetFirst() const
 {
   if (Childs.size() > 0)
       return Childs[0];
@@ -86,7 +86,7 @@ PolyNode* PolyTree::GetFirst()
 }
 //------------------------------------------------------------------------------
 
-int PolyTree::Total()
+int PolyTree::Total() const
 {
   return AllNodes.size();
 }
@@ -96,7 +96,7 @@ int PolyTree::Total()
 //------------------------------------------------------------------------------
 
 
-int PolyNode::ChildCount()
+int PolyNode::ChildCount() const
 {
   return Childs.size();
 }
@@ -111,16 +111,16 @@ void PolyNode::AddChild(PolyNode& child)
 }
 //------------------------------------------------------------------------------
 
-PolyNode* PolyNode::GetNext()
+PolyNode* PolyNode::GetNext() const
 { 
   if (Childs.size() > 0) 
       return Childs[0]; 
   else
-      return GetNextSiblingUp();        
+      return GetNextSiblingUp();    
 }  
 //------------------------------------------------------------------------------
 
-PolyNode* PolyNode::GetNextSiblingUp()
+PolyNode* PolyNode::GetNextSiblingUp() const
 { 
   if (!Parent) //protects against PolyTree.GetNextSiblingUp()
       return 0;
@@ -131,7 +131,7 @@ PolyNode* PolyNode::GetNextSiblingUp()
 }  
 //------------------------------------------------------------------------------
 
-bool PolyNode::IsHole()
+bool PolyNode::IsHole() const
 { 
   bool result = true;
   PolyNode* node = Parent;
@@ -749,7 +749,8 @@ OutPt* GetBottomPt(OutPt *pp)
 }
 //------------------------------------------------------------------------------
 
-bool FindSegment(OutPt* &pp, IntPoint &pt1, IntPoint &pt2)
+bool FindSegment(OutPt* &pp, bool UseFullInt64Range, 
+  IntPoint &pt1, IntPoint &pt2)
 {
   //outPt1 & outPt2 => the overlap segment (if the function returns true)
   if (!pp) return false;
@@ -757,8 +758,8 @@ bool FindSegment(OutPt* &pp, IntPoint &pt1, IntPoint &pt2)
   IntPoint pt1a = pt1, pt2a = pt2;
   do
   {
-    if (SlopesEqual(pt1a, pt2a, pp->pt, pp->prev->pt, true) &&
-      SlopesEqual(pt1a, pt2a, pp->pt, true) &&
+    if (SlopesEqual(pt1a, pt2a, pp->pt, pp->prev->pt, UseFullInt64Range) &&
+      SlopesEqual(pt1a, pt2a, pp->pt, UseFullInt64Range) &&
       GetOverlapSegment(pt1a, pt2a, pp->pt, pp->prev->pt, pt1, pt2))
         return true;
     pp = pp->next;
@@ -2306,7 +2307,7 @@ bool Clipper::ProcessIntersections(const long64 botY, const long64 topY)
   try {
     BuildIntersectList(botY, topY);
     if ( !m_IntersectNodes) return true;
-    if ( FixupIntersections() ) ProcessIntersectList();
+    if ( FixupIntersectionOrder() ) ProcessIntersectList();
     else return false;
   }
   catch(...) {
@@ -2688,7 +2689,7 @@ void SwapIntersectNodes(IntersectNode &int1, IntersectNode &int2)
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::FixupIntersections()
+bool Clipper::FixupIntersectionOrder()
 {
   if ( !m_IntersectNodes->next ) return true;
 
@@ -2703,8 +2704,8 @@ bool Clipper::FixupIntersections()
     else if (e1->nextInSEL == int1->edge2) e2 = e1->nextInSEL;
     else
     {
-      //The current intersection is out of order, so try and swap it with
-      //a subsequent intersection ...
+      //The current intersection (Int1) is out of order (since it doesn't
+      //contain adjacent edges), so swap it with a subsequent intersection ...
       while (int2)
       {
         if (int2->edge1->nextInSEL == int2->edge2 ||
@@ -2713,7 +2714,8 @@ bool Clipper::FixupIntersections()
       }
       if ( !int2 ) return false; //oops!!!
 
-      //found an intersect node that can be swapped ...
+      //found an intersect node (Int2) that does contain adjacent edges,
+      //so prepare to process it before Int1 ...
       SwapIntersectNodes(*int1, *int2);
       e1 = int1->edge1;
       e2 = int1->edge2;
@@ -2797,15 +2799,16 @@ bool Clipper::JoinPoints(const JoinRec *j, OutPt *&p1, OutPt *&p2)
   OutPt *pp2a = outRec2->pts;
   IntPoint pt1 = j->pt2a, pt2 = j->pt2b;
   IntPoint pt3 = j->pt1a, pt4 = j->pt1b;
-  if (!FindSegment(pp1a, pt1, pt2)) return false;
+  if (!FindSegment(pp1a, m_UseFullRange, pt1, pt2)) return false;
   if (outRec1 == outRec2)
   {
     //we're searching the same polygon for overlapping segments so
     //segment 2 mustn't be the same as segment 1 ...
     pp2a = pp1a->next;
-    if (!FindSegment(pp2a, pt3, pt4) || (pp2a == pp1a)) return false;
+    if (!FindSegment(pp2a, m_UseFullRange, pt3, pt4) || (pp2a == pp1a)) 
+      return false;
   }
-  else if (!FindSegment(pp2a, pt3, pt4)) return false;
+  else if (!FindSegment(pp2a, m_UseFullRange, pt3, pt4)) return false;
 
   if (!GetOverlapSegment(pt1, pt2, pt3, pt4, pt1, pt2)) return false;
 
@@ -3069,17 +3072,24 @@ struct DoublePoint
 Polygon BuildArc(const IntPoint &pt,
   const double a1, const double a2, const double r)
 {
-  long64 steps = std::max(6, int(std::sqrt(std::fabs(r)) * std::fabs(a2 - a1)));
-  if (steps > 0x100) steps = 0x100;
-  int n = (unsigned)steps;
-  Polygon result(n);
-  double da = (a2 - a1) / (n -1);
-  double a = a1;
-  for (int i = 0; i < n; ++i)
+  //see notes in clipper.pas regarding steps
+  double arcFrac = std::fabs(a2 - a1) / (2 * pi);
+  int steps = (int)(arcFrac * pi / std::acos(1 - 0.125 / std::fabs(r)));
+  if (steps < 2) steps = 2;
+  else if (steps > (int)(222.0 * arcFrac)) steps = (int)(222.0 * arcFrac);
+
+  double x = std::cos(a1); 
+  double y = std::sin(a1);
+  double c = std::cos((a2 - a1) / steps);
+  double s = std::sin((a2 - a1) / steps);
+  Polygon result(steps +1);
+  for (int i = 0; i <= steps; ++i)
   {
-    result[i].X = pt.X + Round(std::cos(a)*r);
-    result[i].Y = pt.Y + Round(std::sin(a)*r);
-    a += da;
+      result[i].X = pt.X + Round(x * r);
+      result[i].Y = pt.Y + Round(y * r);
+      double x2 = x;
+      x = x * c - s * y;  //cross product
+      y = x2 * s + y * c; //dot product
   }
   return result;
 }

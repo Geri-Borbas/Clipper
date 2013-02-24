@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.0                                                           *
-* Date      :  1 February 2013                                                 *
+* Version   :  5.1.1                                                           *
+* Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -77,11 +77,11 @@ public:
     Polygon Contour;
     PolyNodes Childs;
     PolyNode* Parent;
-    PolyNode* GetNext();
-    bool IsHole();
-    int ChildCount();
+    PolyNode* GetNext() const;
+    bool IsHole() const;
+    int ChildCount() const;
 private:
-    PolyNode* GetNextSiblingUp();
+    PolyNode* GetNextSiblingUp() const;
     unsigned Index; //node index in Parent.Childs
     void AddChild(PolyNode& child);
     friend class Clipper; //to access Index
@@ -91,9 +91,9 @@ class PolyTree: public PolyNode
 { 
 public:
     ~PolyTree(){Clear();};
-    PolyNode* GetFirst();
+    PolyNode* GetFirst() const;
     void Clear();
-    int Total();
+    int Total() const;
 private:
     PolyNodes AllNodes;
     friend class Clipper; //to access AllNodes
@@ -304,7 +304,7 @@ private:
   void BuildResult2(PolyTree& polytree);
   void SetHoleState(TEdge *e, OutRec *OutRec);
   void DisposeIntersectNodes();
-  bool FixupIntersections();
+  bool FixupIntersectionOrder();
   void FixupOutPolygon(OutRec &outRec);
   bool IsHole(TEdge *e);
   void FixHoleLinkage(OutRec &outRec);

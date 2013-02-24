@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.0                                                           *
-* Date      :  1 February 2013                                                 *
+* Version   :  5.1.1                                                           *
+* Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -254,7 +254,7 @@ type
       const Pt: TIntPoint; protects: TIntersectProtects = []);
     procedure DoMaxima(E: PEdge; const TopY: Int64);
     procedure UpdateEdgeIntoAEL(var E: PEdge);
-    function FixupIntersections: Boolean;
+    function FixupIntersectionOrder: Boolean;
     procedure SwapIntersectNodes(Int1, Int2: PIntersectNode);
     procedure ProcessEdgesAtTopOfScanbeam(const TopY: Int64);
     function IsContributing(Edge: PEdge): Boolean;
@@ -2782,7 +2782,7 @@ begin
   try
     BuildIntersectList(BotY, TopY);
     if FIntersectNodes = nil then Exit;
-    if FixupIntersections then ProcessIntersectList
+    if FixupIntersectionOrder then ProcessIntersectList
     else Result := False;
   finally
     //if there's been an error, clean up the mess ...
@@ -3190,14 +3190,16 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.FixupIntersections: Boolean;
+function TClipper.FixupIntersectionOrder: Boolean;
 var
   E1, E2: PEdge;
   Int1, Int2: PIntersectNode;
 begin
   Result := not Assigned(fIntersectNodes.Next);
   if Result then Exit;
-  //logic: only swap (intersect) adjacent edges ...
+  //pre-condition: intersections are sorted bottom-most (then left-most) first.
+  //Now to safely manage multiple intersections occuring at the same point, they
+  //must be processed in order such that only adjacent edges in AEL are swapped.
   try
     CopyAELToSEL;
     Int1 := FIntersectNodes;
@@ -3209,8 +3211,8 @@ begin
       else if (E1.NextInSEL = Int1.Edge2) then E2 := E1.NextInSEL
       else
       begin
-        //The current intersection is out of order, so try and swap it with
-        //A subsequent intersection ...
+        //The current intersection (Int1) is out of order (since it doesn't
+        //contain adjacent edges), so swap it with a subsequent intersection ...
         while Assigned(Int2) do
         begin
           if (Int2.Edge1.NextInSEL = Int2.Edge2) or
@@ -3218,7 +3220,8 @@ begin
           else Int2 := Int2.Next;
         end;
         if not Assigned(Int2) then Exit; //oops!!!
-        //found an intersect node that can be swapped ...
+        //found an intersect node (Int2) that does contain adjacent edges,
+        //so prepare to process it before Int1 ...
         SwapIntersectNodes(Int1, Int2);
         E1 := Int1.Edge1;
         E2 := Int1.Edge2;
@@ -3239,28 +3242,20 @@ end;
 
 procedure TClipper.SwapIntersectNodes(Int1, Int2: PIntersectNode);
 var
-  E1,E2: PEdge;
-  P: TIntPoint;
+  Int: TIntersectNode;
+  Int2Next: PIntersectNode;
 begin
-  with Int1^ do
-  begin
-    E1 := Edge1;
-    Edge1 := Int2.Edge1;
-    E2 := Edge2;
-    Edge2 := Int2.Edge2;
-    P := Pt;
-    Pt := Int2.Pt;
-  end;
-  with Int2^ do
-  begin
-    Edge1 := E1;
-    Edge2 := E2;
-    Pt := P;
-  end;
+  Int := Int1^;
+  Int2Next := Int2.Next;
+  Int1^ := Int2^;
+  Int2^ := Int;
+  Int1.Next := Int.Next;
+  Int2.Next := Int2Next;
 end;
 //------------------------------------------------------------------------------
 
-function FindSegment(var PP: POutPt; var Pt1, Pt2: TIntPoint): Boolean;
+function FindSegment(var PP: POutPt; UseFullInt64Range: Boolean;
+  var Pt1, Pt2: TIntPoint): Boolean;
 var
   Pp2: POutPt;
   Pt1a, Pt2a: TIntPoint;
@@ -3271,8 +3266,8 @@ begin
   Pp2 := PP;
   repeat
     //test for co-linearity before testing for overlap ...
-    if SlopesEqual(Pt1a, Pt2a, PP.Pt, PP.Prev.Pt, True) and
-      SlopesEqual(Pt1a, Pt2a, PP.Pt, True) and
+    if SlopesEqual(Pt1a, Pt2a, PP.Pt, PP.Prev.Pt, UseFullInt64Range) and
+      SlopesEqual(Pt1a, Pt2a, PP.Pt, UseFullInt64Range) and
         GetOverlapSegment(Pt1a, Pt2a, PP.Pt, PP.Prev.Pt, Pt1, Pt2) then Exit;
     PP := PP.Next;
   until PP = Pp2;
@@ -3327,15 +3322,16 @@ begin
   Pp2a := OutRec2.Pts;
   Pt1 := Jr.Pt2a; Pt2 := Jr.Pt2b;
   Pt3 := Jr.Pt1a; Pt4 := Jr.Pt1b;
-  if not FindSegment(Pp1a, Pt1, Pt2) then Exit;
+  if not FindSegment(Pp1a, FUse64BitRange, Pt1, Pt2) then Exit;
   if (OutRec1 = OutRec2) then
   begin
     //we're searching the same polygon for overlapping segments so
     //segment 2 mustn't be the same as segment 1 ...
     Pp2a := Pp1a.Next;
-    if not FindSegment(Pp2a, Pt3, Pt4) or (Pp2a = Pp1a) then Exit;
+    if not FindSegment(Pp2a, FUse64BitRange, Pt3, Pt4) or (Pp2a = Pp1a) then
+      Exit;
   end else
-    if not FindSegment(Pp2a, Pt3, Pt4) then Exit;
+    if not FindSegment(Pp2a, FUse64BitRange, Pt3, Pt4) then Exit;
   if not GetOverlapSegment(Pt1, Pt2, Pt3, Pt4, Pt1, Pt2) then Exit;
 
   Prev := Pp1a.Prev;
@@ -3593,25 +3589,51 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+//Notes on the number of steps used to build an arc:
+//Given S = arbitrary no. steps used to construct chords approximating a CIRCLE,
+//then the angle (A) of each step = 2 * Pi / S
+//The chord between two steps (pt1) & (pt2) is perpendicular to the line
+//segment between the circle's center (pt3) to the chord's midpoint (pt4).
+//Let the length of the line segment (pt3) & (Pt4) = D, and let the distance
+//from the chord's midpoint (pt4) to the circle = Q, such that R - Q = D
+//If Q is a pre-defined constant (ie the maximum allowed deviation from circle),
+//then given that cos(angle) = adjacent/hypotenuse ...
+//  cos(A/2) = D/R
+//           = (R - Q)/R
+//           = 1 - Q/R
+//       A/2 = ArcCos(1 - Q/R)
+//         A = 2 * ArcCos(1 - Q/R)
+//2 * Pi / S = 2 * ArcCos(1 - Q/R)
+//         S = Pi / ArcCos(1 - Q/R)
+//Instead of a CIRCLE, given an ARC from angle A1 to angle A2 ...
+//   ArcFrac = Abs(A2 - A1)/(2 * Pi)
+//     Steps = ArcFrac * Pi / ArcCos(1 - Q/R)
 function BuildArc(const Pt: TIntPoint; A1, A2, R: Single): TPolygon;
 var
-  I, N: Integer;
-  A, D: Double;
+  I: Integer;
   Steps: Int64;
-  S, C: Extended; //sin & cos
+  X, X2, Y, ArcFrac: Double;
+  S, C: Extended;
+const
+  Q = 0.125; //ie the maximum dist. a chord will be from the true arc
 begin
-  Steps := Max(6, Round(Sqrt(Abs(R)) * Abs(A2 - A1)));
-  if Steps > $100 then Steps := $100;
-  SetLength(Result, Steps);
-  N := Steps - 1;
-  D := (A2 - A1) / N;
-  A := A1;
-  for I := 0 to N do
+  ArcFrac := Abs(A2 - A1) / (2 * Pi);
+  Steps := Trunc(ArcFrac * Pi / ArcCos(1 - Q / Abs(R)));
+  if Steps < 2 then Steps := 2
+  else if Steps > 222.0 * ArcFrac then //ie R > 10000 * Q
+    Steps := Trunc(222.0 * ArcFrac);
+    
+  Math.SinCos(A1, S, C);
+  X := C; Y := S;
+  Math.SinCos((A2 - A1) / Steps, S, C);
+  SetLength(Result, Steps + 1);
+  for I := 0 to Steps do
   begin
-    SinCos(A, S, C);
-    Result[I].X := Pt.X + Round(C * R);
-    Result[I].Y := Pt.Y + Round(S * R);
-    A := A + D;
+    Result[I].X := Pt.X + Round(X * R);
+    Result[I].Y := Pt.Y + Round(Y * R);
+    X2 := X;
+    X := X * C - S * Y;  //cross product & dot product here ...
+    Y := X2 * S + Y * C; //avoids repeat calls to the much slower SinCos()
   end;
 end;
 //------------------------------------------------------------------------------
