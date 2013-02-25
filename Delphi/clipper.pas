@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.1                                                           *
+* Version   :  5.1.2                                                           *
 * Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -310,7 +310,7 @@ function ReversePolygons(const Pts: TPolygons): TPolygons;
 //OffsetPolygons precondition: outer polygons MUST be oriented clockwise,
 //and inner 'hole' polygons must be oriented counter-clockwise ...
 function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
+  JoinType: TJoinType = jtSquare; Limit: Double = 0;
   AutoFix: Boolean = True): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
@@ -3608,21 +3608,21 @@ end;
 //Instead of a CIRCLE, given an ARC from angle A1 to angle A2 ...
 //   ArcFrac = Abs(A2 - A1)/(2 * Pi)
 //     Steps = ArcFrac * Pi / ArcCos(1 - Q/R)
-function BuildArc(const Pt: TIntPoint; A1, A2, R: Single): TPolygon;
+function BuildArc(const Pt: TIntPoint;
+  A1, A2, R: Single; Limit: Double): TPolygon;
 var
   I: Integer;
   Steps: Int64;
   X, X2, Y, ArcFrac: Double;
   S, C: Extended;
-const
-  Q = 0.125; //ie the maximum dist. a chord will be from the true arc
 begin
   ArcFrac := Abs(A2 - A1) / (2 * Pi);
-  Steps := Trunc(ArcFrac * Pi / ArcCos(1 - Q / Abs(R)));
+  //Limit == Q in comments above ...
+  Steps := Trunc(ArcFrac * Pi / ArcCos(1 - Limit / Abs(R)));
   if Steps < 2 then Steps := 2
-  else if Steps > 222.0 * ArcFrac then //ie R > 10000 * Q
+  else if Steps > 222.0 * ArcFrac then //ie R > 10000 * Limit
     Steps := Trunc(222.0 * ArcFrac);
-    
+
   Math.SinCos(A1, S, C);
   X := C; Y := S;
   Math.SinCos((A2 - A1) / Steps, S, C);
@@ -3661,7 +3661,7 @@ end;
 //------------------------------------------------------------------------------
 
 function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; MiterLimit: Double = 2;
+  JoinType: TJoinType = jtSquare; Limit: Double = 0;
   AutoFix: Boolean = True): TPolygons;
 var
   I, J, K, Len, OutLen, BotI: Integer;
@@ -3686,7 +3686,7 @@ const
     Inc(OutLen);
   end;
 
-  procedure DoSquare(mul: Double = 1.0);
+  procedure DoSquare(Mul: Double);
   var
     A1, A2, Dx: Double;
   begin
@@ -3700,7 +3700,7 @@ const
       A2 := ArcTan2(-Normals[J].Y, -Normals[J].X);
       A1 := abs(A2 - A1);
       if A1 > pi then A1 := pi*2 - A1;
-      Dx := tan((pi - A1)/4) * abs(Delta*mul);
+      Dx := tan((pi - A1)/4) * abs(Delta * Mul);
 
       Pt1 := IntPoint(round(Pt1.X -Normals[K].Y * Dx),
         round(Pt1.Y + Normals[K].X * Dx));
@@ -3737,7 +3737,7 @@ const
     end;
   end;
 
-  procedure DoRound;
+  procedure DoRound(Limit: Double);
   var
     M: Integer;
     Arc: TPolygon;
@@ -3760,7 +3760,7 @@ const
         A2 := ArcTan2(Normals[J].Y, Normals[J].X);
         if (Delta > 0) and (A2 < A1) then A2 := A2 + pi*2
         else if (Delta < 0) and (A2 > A1) then A2 := A2 - pi*2;
-        Arc := BuildArc(Pts[I][J], A1, A2, Delta);
+        Arc := BuildArc(Pts[I][J], A1, A2, Delta, Limit);
         for M := 0 to high(Arc) do
           AddPoint(Arc[M]);
       end;
@@ -3816,9 +3816,14 @@ begin
   end else
     Pts := Polys;
 
-  //MiterLimit defaults to twice Delta's width ...
-  if MiterLimit <= 1 then MiterLimit := 1;
-  RMin := 2/(sqr(MiterLimit));
+  case JoinType of
+    jtRound:
+      if Limit <= 0 then Limit := 0.125
+      else if Limit > abs(Delta) then Limit := abs(Delta);
+    jtMiter: if Limit < 2 then Limit := 2;  //default to twice Delta's width
+    else Limit := 1;
+  end;
+  RMin := 2/(sqr(Limit));
 
   SetLength(Result, length(Pts));
   for I := 0 to high(Pts) do
@@ -3832,7 +3837,7 @@ begin
       Continue
     else if (Len = 1) then
     begin
-      Result[I] := BuildArc(Pts[I][0], 0, 2*pi, Delta);
+      Result[I] := BuildArc(Pts[I][0], 0, 2*pi, Delta, Limit);
       Continue;
     end;
 
@@ -3852,10 +3857,10 @@ begin
           R := 1 + (Normals[J].X*Normals[K].X + Normals[J].Y*Normals[K].Y);
           if (R >= RMin) then
             DoMiter else
-            DoSquare(MiterLimit);
+            DoSquare(Limit);
         end;
-        jtSquare: DoSquare;
-        jtRound: DoRound;
+        jtSquare: DoSquare(1);
+        jtRound: DoRound(Limit);
       end;
       K := J;
     end;

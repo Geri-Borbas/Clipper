@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.1                                                           *
+* Version   :  5.1.2                                                           *
 * Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -3070,11 +3070,11 @@ struct DoublePoint
 //------------------------------------------------------------------------------
 
 Polygon BuildArc(const IntPoint &pt,
-  const double a1, const double a2, const double r)
+  const double a1, const double a2, const double r, double limit)
 {
   //see notes in clipper.pas regarding steps
   double arcFrac = std::fabs(a2 - a1) / (2 * pi);
-  int steps = (int)(arcFrac * pi / std::acos(1 - 0.125 / std::fabs(r)));
+  int steps = (int)(arcFrac * pi / std::acos(1 - limit / std::fabs(r)));
   if (steps < 2) steps = 2;
   else if (steps > (int)(222.0 * arcFrac)) steps = (int)(222.0 * arcFrac);
 
@@ -3125,7 +3125,7 @@ private:
 public:
 
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
-  double delta, JoinType jointype, double MiterLimit, bool AutoFix)
+  double delta, JoinType jointype, double limit, bool autoFix)
 {
     //nb precondition - out_polys != ptsin_polys
     if (NEAR_ZERO(delta))
@@ -3141,7 +3141,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     //ChecksInput - fixes polygon orientation if necessary and removes 
     //duplicate vertices. Can be set false when you're sure that polygon
     //orientation is correct and that there are no duplicate vertices.
-    if (AutoFix) 
+    if (autoFix) 
     {
       size_t Len = m_p.size(), botI = 0;
       while (botI < Len && m_p[botI].size() == 0) botI++;
@@ -3172,8 +3172,19 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         ReversePolygons(m_p);
     }
 
-    if (MiterLimit <= 1) MiterLimit = 1;
-    m_RMin = 2.0/(MiterLimit*MiterLimit);
+    switch (jointype)
+    {
+        case jtRound:  //limit defaults to 0.125
+            if (limit <= 0) limit = 0.125;
+            else if (limit > std::fabs(delta)) limit = std::fabs(delta);
+            break;  
+        case jtMiter:  //limit defaults to twice delta's width ...
+            if (limit < 2) limit = 2; 
+            break;       
+        default:       //otherwise limit is unused
+            limit = 1;   
+    }
+    m_RMin = 2.0/(limit*limit);
  
     double deltaSq = delta*delta;
     out_polys.clear();
@@ -3196,7 +3207,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         else if (len == 1)
         {
             Polygon arc;
-            arc = BuildArc(m_p[m_i][len-1], 0, 2 * pi, delta);
+            arc = BuildArc(m_p[m_i][len-1], 0, 2 * pi, delta, limit);
             out_polys[m_i] = arc;
             continue;
         }
@@ -3217,11 +3228,11 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
             {
               m_R = 1 + (normals[m_j].X*normals[m_k].X + 
                 normals[m_j].Y*normals[m_k].Y);
-              if (m_R >= m_RMin) DoMiter(); else DoSquare(MiterLimit);
+              if (m_R >= m_RMin) DoMiter(); else DoSquare(limit);
               break;
             }
-            case jtSquare: DoSquare(); break;
-            case jtRound: DoRound(); break;
+            case jtSquare: DoSquare(1.0); break;
+            case jtRound: DoRound(limit); break;
           }
         m_k = m_j;
         }
@@ -3267,7 +3278,7 @@ void AddPoint(const IntPoint& pt)
 }
 //------------------------------------------------------------------------------
 
-void DoSquare(double mul = 1.0)
+void DoSquare(double mul)
 {
     IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
@@ -3318,7 +3329,7 @@ void DoMiter()
 }
 //------------------------------------------------------------------------------
 
-void DoRound()
+void DoRound(double limit)
 {
     IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
@@ -3334,7 +3345,7 @@ void DoRound()
         double a2 = std::atan2(normals[m_j].Y, normals[m_j].X);
         if (m_delta > 0 && a2 < a1) a2 += pi *2;
         else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
-        Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta);
+        Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta, limit);
         for (Polygon::size_type m = 0; m < arc.size(); m++)
           AddPoint(arc[m]);
       }
@@ -3362,14 +3373,14 @@ bool UpdateBotPt(const IntPoint &pt, IntPoint &botPt)
 //------------------------------------------------------------------------------
 
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double MiterLimit, bool AutoFix)
+  double delta, JoinType jointype, double limit, bool autoFix)
 {
   if (&out_polys == &in_polys)
   {
     Polygons poly2(in_polys);
-    PolyOffsetBuilder(poly2, out_polys, delta, jointype, MiterLimit, AutoFix);
+    PolyOffsetBuilder(poly2, out_polys, delta, jointype, limit, autoFix);
   }
-  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, MiterLimit, AutoFix);
+  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, limit, autoFix);
 }
 //------------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.1                                                           *
+* Version   :  5.1.2                                                           *
 * Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -103,8 +103,9 @@ enum JoinType { jtSquare, jtRound, jtMiter };
 
 bool Orientation(const Polygon &poly);
 double Area(const Polygon &poly);
+
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype = jtSquare, double MiterLimit = 2, bool AutoFix = true);
+  double delta, JoinType jointype = jtSquare, double limit = 0, bool autoFix = true);
 
 void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);

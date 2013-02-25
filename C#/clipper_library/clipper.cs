@@ -1,7 +1,7 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.1                                                           *
+* Version   :  5.1.2                                                           *
 * Date      :  25 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -2212,29 +2212,21 @@ namespace ClipperLib
                     switch (m_ClipType)
                     {
                         case ClipType.ctIntersection:
-                            {
-                                if (e1Wc2 > 0 && e2Wc2 > 0)
-                                    AddLocalMinPoly(e1, e2, pt);
-                                break;
-                            }
-                        case ClipType.ctUnion:
-                            {
-                                if (e1Wc2 <= 0 && e2Wc2 <= 0)
-                                    AddLocalMinPoly(e1, e2, pt);
-                                break;
-                            }
-                        case ClipType.ctDifference:
-                            {
-                                if (((e1.polyType == PolyType.ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
-                                   ((e1.polyType == PolyType.ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
-                                        AddLocalMinPoly(e1, e2, pt);
-                                break;
-                            }
-                        case ClipType.ctXor:
-                            {
+                            if (e1Wc2 > 0 && e2Wc2 > 0)
                                 AddLocalMinPoly(e1, e2, pt);
-                                break;
-                            }
+                            break;
+                        case ClipType.ctUnion:
+                            if (e1Wc2 <= 0 && e2Wc2 <= 0)
+                                AddLocalMinPoly(e1, e2, pt);
+                            break;
+                        case ClipType.ctDifference:
+                            if (((e1.polyType == PolyType.ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
+                                ((e1.polyType == PolyType.ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
+                                    AddLocalMinPoly(e1, e2, pt);
+                            break;
+                        case ClipType.ctXor:
+                            AddLocalMinPoly(e1, e2, pt);
+                            break;
                     }
                 else 
                     SwapSides(e1, e2);
@@ -3294,11 +3286,11 @@ namespace ClipperLib
         // OffsetPolygon functions ...
         //------------------------------------------------------------------------------
 
-        internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r)
+        internal static Polygon BuildArc(IntPoint pt, double a1, double a2, double r, double limit)
         {
             //see notes in clipper.pas regarding steps
             double arcFrac = Math.Abs(a2 - a1) / (2 * Math.PI);
-            int steps = (int)(arcFrac * Math.PI / Math.Acos(1 - 0.125 / Math.Abs(r)));
+            int steps = (int)(arcFrac * Math.PI / Math.Acos(1 - limit / Math.Abs(r)));
             if (steps < 2) 
                 steps = 2;
             else if (steps > (int)(222.0 * arcFrac)) 
@@ -3355,7 +3347,7 @@ namespace ClipperLib
             private const int buffLength = 128;
 
             public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, 
-                JoinType jointype, double MiterLimit = 2, bool AutoFix = true)
+                JoinType jointype, double limit = 0, bool AutoFix = true)
             {
                 //precondtion: solution != pts
 
@@ -3398,8 +3390,20 @@ namespace ClipperLib
                         ReversePolygons(pts);
                 }
 
-                if (MiterLimit <= 1) MiterLimit = 1;
-                double RMin = 2.0 / (MiterLimit*MiterLimit);
+                switch (jointype)
+                {
+                    case JoinType.jtRound: //limit defaults to 0.125 ...
+                        if (limit <= 0) limit = 0.125; //ie defaults to 0.125
+                        else if (limit > Math.Abs(delta)) limit = Math.Abs(delta);
+                        break;
+                    case JoinType.jtMiter: //limit defaults to 2 * delta's width ...
+                        if (limit < 2) limit = 2; 
+                        break;
+                    default:               //otherwise limit is unused 
+                        limit = 1; break; 
+                }
+
+                double RMin = 2.0 / (limit * limit);
 
                 normals = new List<DoublePoint>();
 
@@ -3417,7 +3421,7 @@ namespace ClipperLib
                     else if (len == 1)
                     {
                         Polygon arc;
-                        arc = BuildArc(pts[m_i][len - 1], 0, 2 * Math.PI, delta);
+                        arc = BuildArc(pts[m_i][len - 1], 0, 2 * Math.PI, delta, limit);
                         solution.Add(arc);
                         continue;
                     }
@@ -3436,14 +3440,12 @@ namespace ClipperLib
                         switch (jointype)
                         {
                             case JoinType.jtMiter:
-                            {
                                 m_R = 1 + (normals[m_j].X*normals[m_k].X + 
                                     normals[m_j].Y*normals[m_k].Y);
-                                if (m_R >= RMin) DoMiter(); else DoSquare(MiterLimit);
+                                if (m_R >= RMin) DoMiter(); else DoSquare(limit);
                                 break;
-                            }
                             case JoinType.jtRound: 
-                                DoRound();
+                                DoRound(limit);
                                 break;
                             case JoinType.jtSquare:
                                 DoSquare(1);
@@ -3554,7 +3556,7 @@ namespace ClipperLib
             }
             //------------------------------------------------------------------------------
 
-            internal void DoRound()
+            internal void DoRound(double Limit)
             {
                 IntPoint pt1 = new IntPoint(Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
@@ -3572,7 +3574,7 @@ namespace ClipperLib
                         double a2 = Math.Atan2(normals[m_j].Y, normals[m_j].X);
                         if (delta > 0 && a2 < a1) a2 += Math.PI * 2;
                         else if (delta < 0 && a2 > a1) a2 -= Math.PI * 2;
-                        Polygon arc = BuildArc(pts[m_i][m_j], a1, a2, delta);
+                        Polygon arc = BuildArc(pts[m_i][m_j], a1, a2, delta, Limit);
                         for (int m = 0; m < arc.Count; m++)
                             AddPoint(arc[m]);
                     }
@@ -3607,7 +3609,7 @@ namespace ClipperLib
         public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype)
         {
             Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, 2.0, true);
+            new PolyOffsetBuilder(poly, result, delta, jointype, 0, true);
             return result;
         }
         //------------------------------------------------------------------------------
