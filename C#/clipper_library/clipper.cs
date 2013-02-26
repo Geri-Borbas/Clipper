@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.2                                                           *
-* Date      :  25 February 2013                                                *
+* Version   :  5.1.3                                                           *
+* Date      :  27 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2164,7 +2164,6 @@ namespace ClipperLib
                 default: e2Wc = Math.Abs(e2.windCnt); break;
             }
 
-
             if (e1Contributing && e2contributing)
             {
                 if ( e1stops || e2stops || 
@@ -2176,17 +2175,11 @@ namespace ClipperLib
             }
             else if (e1Contributing)
             {
-                if ((e2Wc == 0 || e2Wc == 1) && 
-                  (m_ClipType != ClipType.ctIntersection || 
-                    e2.polyType == PolyType.ptSubject || (e2.windCnt2 != 0))) 
-                        DoEdge1(e1, e2, pt);
+                if (e2Wc == 0 || e2Wc == 1) DoEdge1(e1, e2, pt);
             }
             else if (e2contributing)
             {
-                if ((e1Wc == 0 || e1Wc == 1) &&
-                  (m_ClipType != ClipType.ctIntersection ||
-                                e1.polyType == PolyType.ptSubject || (e1.windCnt2 != 0))) 
-                        DoEdge2(e1, e2, pt);
+                if (e1Wc == 0 || e1Wc == 1) DoEdge2(e1, e2, pt);
             }
             else if ( (e1Wc == 0 || e1Wc == 1) && 
                 (e2Wc == 0 || e2Wc == 1) && !e1stops && !e2stops )
@@ -2341,8 +2334,8 @@ namespace ClipperLib
             {
                 TEdge eNext = GetNextInAEL(e, Direction);
                 if (eMaxPair != null ||
-                  ((Direction == Direction.dLeftToRight) && (e.xcurr <= horzRight)) ||
-                  ((Direction == Direction.dRightToLeft) && (e.xcurr >= horzLeft)))
+                  ((Direction == Direction.dLeftToRight) && (e.xcurr < horzRight)) ||
+                  ((Direction == Direction.dRightToLeft) && (e.xcurr > horzLeft)))
                 {
                     //ok, so far it looks like we're still in range of the horizontal edge
                     if (e.xcurr == horzEdge.xtop && eMaxPair == null)
@@ -2822,7 +2815,7 @@ namespace ClipperLib
             if (eNext == null) throw new ClipperException("DoMaxima error");
             IntersectEdges( e, eNext, new IntPoint(X, topY), Protects.ipBoth );
             SwapPositionsInAEL(e, eNext);
-            eNext = eNext.nextInAEL;
+            eNext = e.nextInAEL;
           }
           if( e.outIdx < 0 && eMaxPair.outIdx < 0 )
           {

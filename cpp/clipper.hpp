@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.2                                                           *
-* Date      :  25 February 2013                                                *
+* Version   :  5.1.3                                                           *
+* Date      :  27 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -74,6 +74,7 @@ typedef std::vector< PolyNode* > PolyNodes;
 class PolyNode 
 { 
 public:
+    PolyNode();
     Polygon Contour;
     PolyNodes Childs;
     PolyNode* Parent;

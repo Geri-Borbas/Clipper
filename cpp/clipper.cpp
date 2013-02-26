@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.2                                                           *
-* Date      :  25 February 2013                                                *
+* Version   :  5.1.3                                                           *
+* Date      :  27 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -95,6 +95,10 @@ int PolyTree::Total() const
 // PolyNode methods ...
 //------------------------------------------------------------------------------
 
+PolyNode::PolyNode(): Childs(), Parent(0), Index(0)
+{
+}
+//------------------------------------------------------------------------------
 
 int PolyNode::ChildCount() const
 {
@@ -1757,17 +1761,11 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   }
   else if ( e1Contributing )
   {
-    if ((e2Wc == 0 || e2Wc == 1) && 
-      (m_ClipType != ctIntersection || 
-      e2->polyType == ptSubject || (e2->windCnt2 != 0))) 
-        DoEdge1(e1, e2, pt);
+    if (e2Wc == 0 || e2Wc == 1) DoEdge1(e1, e2, pt);
   }
   else if ( e2contributing )
   {
-    if ((e1Wc == 0 || e1Wc == 1) && 
-      (m_ClipType != ctIntersection || 
-      e1->polyType == ptSubject || (e1->windCnt2 != 0))) 
-        DoEdge2(e1, e2, pt);
+    if (e1Wc == 0 || e1Wc == 1) DoEdge2(e1, e2, pt);
   } 
   else if ( (e1Wc == 0 || e1Wc == 1) && 
     (e2Wc == 0 || e2Wc == 1) && !e1stops && !e2stops )
@@ -2203,8 +2201,8 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     TEdge* eNext = GetNextInAEL( e, dir );
 
     if (eMaxPair ||
-      ((dir == dLeftToRight) && (e->xcurr <= horzRight)) ||
-      ((dir == dRightToLeft) && (e->xcurr >= horzLeft)))
+      ((dir == dLeftToRight) && (e->xcurr < horzRight)) ||
+      ((dir == dRightToLeft) && (e->xcurr > horzLeft)))
     {
       //ok, so far it looks like we're still in range of the horizontal edge
       if ( e->xcurr == horzEdge->xtop && !eMaxPair )
@@ -2448,7 +2446,7 @@ void Clipper::DoMaxima(TEdge *e, long64 topY)
     if (!eNext) throw clipperException("DoMaxima error");
     IntersectEdges( e, eNext, IntPoint(X, topY), ipBoth );
     SwapPositionsInAEL(e, eNext);
-    eNext = eNext->nextInAEL;
+    eNext = e->nextInAEL;
   }
   if( e->outIdx < 0 && eMaxPair->outIdx < 0 )
   {

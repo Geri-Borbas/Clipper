@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.2                                                           *
-* Date      :  25 February 2013                                                *
+* Version   :  5.1.3                                                           *
+* Date      :  27 February 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2128,15 +2128,11 @@ begin
         DoBothEdges;
   end else if E1Contributing then
   begin
-    if ((E2Wc = 0) or (E2Wc = 1)) and
-      ((fClipType <> ctIntersection) or (E2.PolyType = ptSubject) or
-        (E2.WindCnt2 <> 0)) then DoEdge1;
+    if (E2Wc = 0) or (E2Wc = 1) then DoEdge1;
   end
   else if E2contributing then
   begin
-    if ((E1Wc = 0) or (E1Wc = 1)) and
-      ((fClipType <> ctIntersection) or (E1.PolyType = ptSubject) or
-        (E1.WindCnt2 <> 0)) then DoEdge2;
+    if (E1Wc = 0) or (E1Wc = 1) then DoEdge2;
   end
   else if  ((E1Wc = 0) or (E1Wc = 1)) and ((E2Wc = 0) or (E2Wc = 1)) and
     not E1stops and not E2stops then
@@ -2674,8 +2670,8 @@ begin
   begin
     eNext := GetNextInAEL(E, Direction);
     if Assigned(eMaxPair) or
-       ((Direction = dLeftToRight) and (E.XCurr <= HorzRight)) or
-      ((Direction = dRightToLeft) and (E.XCurr >= HorzLeft)) then
+       ((Direction = dLeftToRight) and (E.XCurr < HorzRight)) or
+      ((Direction = dRightToLeft) and (E.XCurr > HorzLeft)) then 
     begin
       //ok, so far it looks like we're still in range of the horizontal Edge
 
@@ -2934,7 +2930,7 @@ begin
     if not Assigned(ENext) then raise exception.Create(rsDoMaxima);
     IntersectEdges(E, ENext, IntPoint(X, TopY), [ipLeft, ipRight]);
     SwapPositionsInAEL(E, ENext);
-    ENext := ENext.NextInAEL;
+    ENext := E.NextInAEL;
   end;
   if (E.OutIdx < 0) and (EMaxPair.OutIdx < 0) then
   begin
