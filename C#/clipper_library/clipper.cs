@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  27 February 2013                                                *
+* Date      :  3 March 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -44,11 +44,9 @@ using System.Collections.Generic;
 
 namespace ClipperLib
 {
-
    
     using Polygon = List<IntPoint>;
     using Polygons = List<List<IntPoint>>;
-
 
     //------------------------------------------------------------------------------
     // PolyTree & PolyNode classes
@@ -420,7 +418,6 @@ namespace ClipperLib
         public double dx;
         public Int64 deltaX;
         public Int64 deltaY;
-        public Int64 tmpX;
         public PolyType polyType;
         public EdgeSide side;
         public int windDelta; //1 or -1 depending on winding direction
@@ -2332,26 +2329,27 @@ namespace ClipperLib
             TEdge e = GetNextInAEL(horzEdge, Direction);
             while (e != null)
             {
+                if (e.xcurr == horzEdge.xtop && eMaxPair == null)
+                {
+                    if (SlopesEqual(e, horzEdge.nextInLML, m_UseFullRange))
+                    {
+                        //if output polygons share an edge, they'll need joining later ...
+                        if (horzEdge.outIdx >= 0 && e.outIdx >= 0)
+                            AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx, -1);
+                        break; //we've reached the end of the horizontal line
+                    }
+                    else if (e.dx < horzEdge.nextInLML.dx)
+                        //we really have got to the end of the intermediate horz edge so quit.
+                        //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
+                        break;
+                }
+                
                 TEdge eNext = GetNextInAEL(e, Direction);
                 if (eMaxPair != null ||
                   ((Direction == Direction.dLeftToRight) && (e.xcurr < horzRight)) ||
                   ((Direction == Direction.dRightToLeft) && (e.xcurr > horzLeft)))
                 {
-                    //ok, so far it looks like we're still in range of the horizontal edge
-                    if (e.xcurr == horzEdge.xtop && eMaxPair == null)
-                    {
-                        if (SlopesEqual(e, horzEdge.nextInLML, m_UseFullRange))
-                        {
-                            //if output polygons share an edge, they'll need joining later ...
-                            if (horzEdge.outIdx >= 0 && e.outIdx >= 0)
-                                AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx, -1);
-                            break; //we've reached the end of the horizontal line
-                        }
-                        else if (e.dx < horzEdge.nextInLML.dx)
-                            //we really have got to the end of the intermediate horz edge so quit.
-                            //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
-                            break;
-                    }
+                    //so far we're still in range of the horizontal edge
 
                     if (e == eMaxPair)
                     {
@@ -2384,10 +2382,8 @@ namespace ClipperLib
                     }
                     SwapPositionsInAEL(horzEdge, e);
                 }
-                else if ( (Direction == Direction.dLeftToRight && 
-                    e.xcurr > horzRight && horzEdge.nextInSEL == null) || 
-                    (Direction == Direction.dRightToLeft && 
-                    e.xcurr < horzLeft && horzEdge.nextInSEL == null) ) break;
+                else if ( (Direction == Direction.dLeftToRight && e.xcurr >= horzRight) || 
+                    (Direction == Direction.dRightToLeft && e.xcurr <= horzLeft) ) break;
                 e = eNext;
             } //end while ( e )
 
@@ -2482,7 +2478,7 @@ namespace ClipperLib
           {
             e.prevInSEL = e.prevInAEL;
             e.nextInSEL = e.nextInAEL;
-            e.tmpX = TopX( e, topY );
+            e.xcurr = TopX( e, topY );
             e = e.nextInAEL;
           }
 
@@ -2496,8 +2492,10 @@ namespace ClipperLib
             {
               TEdge eNext = e.nextInSEL;
               IntPoint pt = new IntPoint();
-              if(e.tmpX > eNext.tmpX && IntersectPoint(e, eNext, ref pt))
+              if (e.xcurr > eNext.xcurr)
               {
+                  if (!IntersectPoint(e, eNext, ref pt) && e.xcurr > eNext.xcurr +1)
+                      throw new ClipperException("Intersection error");
                   if (pt.Y > botY)
                   {
                       pt.Y = botY;
@@ -2651,40 +2649,50 @@ namespace ClipperLib
         private bool IntersectPoint(TEdge edge1, TEdge edge2, ref IntPoint ip)
         {
           double b1, b2;
-          if (SlopesEqual(edge1, edge2, m_UseFullRange)) return false;
+          if (SlopesEqual(edge1, edge2, m_UseFullRange))
+          {
+              if (edge2.ybot > edge1.ybot)
+                ip.Y = edge2.ybot;
+              else
+                ip.Y = edge1.ybot;
+              return false;
+          }
           else if (edge1.dx == 0)
           {
-            ip.X = edge1.xbot;
-            if (edge2.dx == horizontal)
-            {
-              ip.Y = edge2.ybot;
-            } else
-            {
-              b2 = edge2.ybot - (edge2.xbot / edge2.dx);
-              ip.Y = Round(ip.X / edge2.dx + b2);
-            }
+              ip.X = edge1.xbot;
+              if (edge2.dx == horizontal)
+              {
+                  ip.Y = edge2.ybot;
+              }
+              else
+              {
+                  b2 = edge2.ybot - (edge2.xbot / edge2.dx);
+                  ip.Y = Round(ip.X / edge2.dx + b2);
+              }
           }
           else if (edge2.dx == 0)
           {
-            ip.X = edge2.xbot;
-            if (edge1.dx == horizontal)
-            {
-              ip.Y = edge1.ybot;
-            } else
-            {
-              b1 = edge1.ybot - (edge1.xbot / edge1.dx);
-              ip.Y = Round(ip.X / edge1.dx + b1);
-            }
-          } else
+              ip.X = edge2.xbot;
+              if (edge1.dx == horizontal)
+              {
+                  ip.Y = edge1.ybot;
+              }
+              else
+              {
+                  b1 = edge1.ybot - (edge1.xbot / edge1.dx);
+                  ip.Y = Round(ip.X / edge1.dx + b1);
+              }
+          }
+          else
           {
-            b1 = edge1.xbot - edge1.ybot * edge1.dx;
-            b2 = edge2.xbot - edge2.ybot * edge2.dx;
-            double q = (b2-b1) / (edge1.dx - edge2.dx);
-            ip.Y = Round(q);
-            if (Math.Abs(edge1.dx) < Math.Abs(edge2.dx))
-                ip.X = Round(edge1.dx * q + b1);
-            else
-                ip.X = Round(edge2.dx * q + b2);
+              b1 = edge1.xbot - edge1.ybot * edge1.dx;
+              b2 = edge2.xbot - edge2.ybot * edge2.dx;
+              double q = (b2 - b1) / (edge1.dx - edge2.dx);
+              ip.Y = Round(q);
+              if (Math.Abs(edge1.dx) < Math.Abs(edge2.dx))
+                  ip.X = Round(edge1.dx * q + b1);
+              else
+                  ip.X = Round(edge2.dx * q + b2);
           }
 
           if (ip.Y < edge1.ytop || ip.Y < edge2.ytop)

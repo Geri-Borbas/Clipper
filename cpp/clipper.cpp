@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  27 February 2013                                                *
+* Date      :  3 March 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -543,14 +543,18 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
   IntPoint &ip, bool UseFullInt64Range)
 {
   double b1, b2;
-  if (SlopesEqual(edge1, edge2, UseFullInt64Range)) return false;
+  if (SlopesEqual(edge1, edge2, UseFullInt64Range))
+  {
+    if (edge2.ybot > edge1.ybot) ip.Y = edge2.ybot;
+    else ip.Y = edge1.ybot;
+    return false;
+  }
   else if (NEAR_ZERO(edge1.dx))
   {
     ip.X = edge1.xbot;
     if (NEAR_EQUAL(edge2.dx, HORIZONTAL))
-    {
       ip.Y = edge2.ybot;
-    } else
+    else
     {
       b2 = edge2.ybot - (edge2.xbot / edge2.dx);
       ip.Y = Round(ip.X / edge2.dx + b2);
@@ -560,14 +564,14 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
   {
     ip.X = edge2.xbot;
     if (NEAR_EQUAL(edge1.dx, HORIZONTAL))
-    {
       ip.Y = edge1.ybot;
-    } else
+    else
     {
       b1 = edge1.ybot - (edge1.xbot / edge1.dx);
       ip.Y = Round(ip.X / edge1.dx + b1);
     }
-  } else 
+  } 
+  else 
   {
     b1 = edge1.xbot - edge1.ybot * edge1.dx;
     b2 = edge2.xbot - edge2.ybot * edge2.dx;
@@ -586,7 +590,8 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
       ip.X = edge1.xtop;
       ip.Y = edge1.ytop;
       return TopX(edge2, edge1.ytop) < edge1.xtop;
-    } else
+    } 
+    else
     {
       ip.X = edge2.xtop;
       ip.Y = edge2.ytop;
@@ -2198,28 +2203,28 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   TEdge* e = GetNextInAEL( horzEdge , dir );
   while( e )
   {
+    if ( e->xcurr == horzEdge->xtop && !eMaxPair )
+    {
+      if (SlopesEqual(*e, *horzEdge->nextInLML, m_UseFullRange))
+      {
+        //if output polygons share an edge, they'll need joining later ...
+        if (horzEdge->outIdx >= 0 && e->outIdx >= 0)
+          AddJoin(horzEdge->nextInLML, e, horzEdge->outIdx);
+        break; //we've reached the end of the horizontal line
+      }
+      else if (e->dx < horzEdge->nextInLML->dx)
+      //we really have got to the end of the intermediate horz edge so quit.
+      //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
+        break;
+    }
+
     TEdge* eNext = GetNextInAEL( e, dir );
 
     if (eMaxPair ||
       ((dir == dLeftToRight) && (e->xcurr < horzRight)) ||
       ((dir == dRightToLeft) && (e->xcurr > horzLeft)))
     {
-      //ok, so far it looks like we're still in range of the horizontal edge
-      if ( e->xcurr == horzEdge->xtop && !eMaxPair )
-      {
-        if (SlopesEqual(*e, *horzEdge->nextInLML, m_UseFullRange))
-        {
-          //if output polygons share an edge, they'll need joining later ...
-          if (horzEdge->outIdx >= 0 && e->outIdx >= 0)
-            AddJoin(horzEdge->nextInLML, e, horzEdge->outIdx);
-          break; //we've reached the end of the horizontal line
-        }
-        else if (e->dx < horzEdge->nextInLML->dx)
-        //we really have got to the end of the intermediate horz edge so quit.
-        //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
-          break;
-      }
-
+      //so far we're still in range of the horizontal edge
       if( e == eMaxPair )
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
@@ -2255,8 +2260,8 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       }
       SwapPositionsInAEL( horzEdge, e );
     }
-    else if( (dir == dLeftToRight && e->xcurr > horzRight  && m_SortedEdges) ||
-     (dir == dRightToLeft && e->xcurr < horzLeft && m_SortedEdges) ) break;
+    else if( (dir == dLeftToRight && e->xcurr >= horzRight) ||
+     (dir == dRightToLeft && e->xcurr <= horzLeft) ) break;
     e = eNext;
   } //end while
 
@@ -2339,7 +2344,7 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
   {
     e->prevInSEL = e->prevInAEL;
     e->nextInSEL = e->nextInAEL;
-    e->tmpX = TopX( *e, topY );
+    e->xcurr = TopX( *e, topY );
     e = e->nextInAEL;
   }
 
@@ -2353,9 +2358,10 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
     {
       TEdge *eNext = e->nextInSEL;
       IntPoint pt;
-      if(e->tmpX > eNext->tmpX &&
-        IntersectPoint(*e, *eNext, pt, m_UseFullRange))
+      if(e->xcurr > eNext->xcurr)
       {
+        if (!IntersectPoint(*e, *eNext, pt, m_UseFullRange) && e->xcurr > eNext->xcurr +1)
+          throw clipperException("Intersection error");
         if (pt.Y > botY)
         {
             pt.Y = botY;

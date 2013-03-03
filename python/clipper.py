@@ -1,8 +1,8 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.0                                                           #
-# Date      :  1 February 2013                                                 #
+# Version   :  5.1.3                                                           #
+# Date      :  3 March 2013                                                    #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -204,7 +204,7 @@ class Edge(object):
 
     def __init__(self):
         self.xBot, self.yBot, self.xCurr, self.yCurr, = 0, 0, 0, 0
-        self.xTop, self.yTop, self.tmpX = 0, 0, 0
+        self.xTop, self.yTop = 0, 0
         self.dx, self.deltaX , self.deltaY = Decimal(0), Decimal(0), Decimal(0)
         self.polyType = PolyType.Subject 
         self.side = EdgeSide.Left
@@ -419,7 +419,10 @@ class ClipperBase(object):
 # Clipper class (+ data structs & ancilliary functions)
 #===============================================================================
 def _IntersectPoint(edge1, edge2):
-    if _SlopesEqual2(edge1, edge2): return Point(0,0), False
+    if _SlopesEqual2(edge1, edge2):
+        if (edge2.ybot > edge1.ybot): y = edge2.ybot 
+        else: y = edge1.ybot
+        return Point(0, y), False
     if edge1.dx == 0:
         x = edge1.xBot
         if edge2.dx == horizontal:
@@ -1092,16 +1095,16 @@ class Clipper(ClipperBase):
             eMaxPair = _GetMaximaPair(horzEdge)
         e = _GetnextInAEL(horzEdge, direction)
         while e is not None:
+            if (e.xCurr == horzEdge.xTop) and eMaxPair is None:
+                if _SlopesEqual2(e, horzEdge.nextInLML): 
+                    if horzEdge.outIdx >= 0 and e.outIdx >= 0:
+                        self._AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx)
+                    break
+                elif e.dx < horzEdge.nextInLML.dx: break
             eNext = _GetnextInAEL(e, direction)
             if eMaxPair is not None or \
-                ((direction == Direction.LeftToRight) and (e.xCurr <= horzRight)) or \
-                ((direction == Direction.RightToLeft) and (e.xCurr >= horzLeft)):
-                if (e.xCurr == horzEdge.xTop) and eMaxPair is None:
-                    if _SlopesEqual2(e, horzEdge.nextInLML): 
-                        if horzEdge.outIdx >= 0 and e.outIdx >= 0:
-                            self._AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx)
-                        break
-                    elif e.dx < horzEdge.nextInLML.dx: break
+                ((direction == Direction.LeftToRight) and (e.xCurr < horzRight)) or \
+                ((direction == Direction.RightToLeft) and (e.xCurr > horzLeft)):
                 if e == eMaxPair:
                     if direction == Direction.LeftToRight:
                         self._IntersectEdges(horzEdge, e, Point(e.xCurr, horzEdge.yCurr))
@@ -1122,9 +1125,8 @@ class Clipper(ClipperBase):
                     self._IntersectEdges(e, horzEdge, Point(e.xCurr, horzEdge.yCurr),
                         _ProtectLeft(not self._IsTopHorz(e.xCurr)))
                 self._SwapPositionsInAEL(horzEdge, e)
-            elif (self._SortedEdges is not None) and \
-                ((direction == Direction.LeftToRight and e.xCurr > horzRight) or \
-                (direction == Direction.RightToLeft and e.xCurr < horzLeft)): break
+            elif ((direction == Direction.LeftToRight and e.xCurr >= horzRight) or \
+                (direction == Direction.RightToLeft and e.xCurr <= horzLeft)): break
             e = eNext
         if horzEdge.nextInLML is not None:
             if horzEdge.outIdx >= 0:
@@ -1209,7 +1211,7 @@ class Clipper(ClipperBase):
         while e is not None:
             e.prevInSEL = e.prevInAEL
             e.nextInSEL = e.nextInAEL
-            e.tmpX = _TopX(e, topY)
+            e.xCurr = _TopX(e, topY)
             e = e.nextInAEL
         try:
             isModified = True
@@ -1218,13 +1220,12 @@ class Clipper(ClipperBase):
                 e = self._SortedEdges
                 while e.nextInSEL is not None:
                     eNext = e.nextInSEL
-                    if e.tmpX <= eNext.tmpX:
+                    if e.xCurr <= eNext.xCurr:
                         e = eNext
                         continue
                     pt, intersected = _IntersectPoint(e, eNext)
-                    if not intersected:
-                        e = eNext
-                        continue
+                    if not intersected and e.xCurr > eNext.xCurr +1: 
+                        raise Exception("Intersect Error")  
                     if pt.y > botY:
                         pt = Point(_TopX(e, botY), botY)
                     self._AddIntersectNode(e, eNext, pt)
@@ -1330,15 +1331,9 @@ class Clipper(ClipperBase):
             else:
                 _DoBothEdges(e1, e2, pt, self._PolyOutList)
         elif e1Contributing:
-            if (e2Wc == 0 or e2Wc == 1) and \
-                (self._ClipType != ClipType.Intersection or \
-                e2.PolyType == PolyType.Subject or \
-                e2.windCnt2 != 0): _DoEdge1(e1, e2, pt, self._PolyOutList)
+            if (e2Wc == 0 or e2Wc == 1): _DoEdge1(e1, e2, pt, self._PolyOutList)
         elif e2contributing:
-            if (e1Wc == 0 or e1Wc == 1) and \
-                (self._ClipType != ClipType.Intersection or \
-                e1.PolyType == PolyType.Subject or \
-                e1.windCnt2 != 0): _DoEdge2(e1, e2, pt, self._PolyOutList)
+            if (e1Wc == 0 or e1Wc == 1): _DoEdge2(e1, e2, pt, self._PolyOutList)
 
         elif    (e1Wc == 0 or e1Wc == 1) and (e2Wc == 0 or e2Wc == 1) and \
             not e1stops and not e2stops:
@@ -1384,7 +1379,7 @@ class Clipper(ClipperBase):
             if eNext is None: raise Exception("DoMaxima error")
             self._IntersectEdges(e, eNext, Point(x, topY), Protects.Both)
             self._SwapPositionsInAEL(e, eNext)
-            eNext = eNext.nextInAEL
+            eNext = e.nextInAEL
         if e.outIdx < 0 and eMaxPair.outIdx < 0:
             self._DeleteFromAEL(e)
             self._DeleteFromAEL(eMaxPair)
@@ -1912,17 +1907,23 @@ def _GetUnitNormal(pt1, pt2):
     return FloatPoint(dy, -dx)
 
 def _BuildArc(pt, a1, a2, r):
-    steps = max(6, round(math.sqrt(abs(r)) * abs(a2 - a1)))
-    if steps > 0x100: steps = 0x100
+    arcFrac = abs(a2 - a1) / (2 * math.pi);
+    steps = int(arcFrac * math.pi / math.acos(1 - 0.125 / abs(r)))
+    if steps < 2: steps = 2
+    elif steps > 222.0 * arcFrac: # ie R > 10000 * Q
+        steps = int(222.0 * arcFrac)
+    
     result = []
-    n = steps - 1
-    d = (a2 - a1) / n
-    a = a1
-    for _ in range(n):
-        s = math.sin(a)
-        c = math.cos(a)
-        result.append(FloatPoint(pt.x + round(c * r), pt.y + round(s * r)))
-        a += d
+    y = math.sin(a1)
+    x = math.cos(a1)
+    s = math.sin((a2-a1)/steps)
+    c = math.cos((a2-a1)/steps)
+    for _ in range(steps+1):
+        result.append(FloatPoint(pt.x + round(x * r), pt.y + round(y * r)))
+        x2 = x
+        x = x * c - s * y    # cross product & dot product here ...
+        y = x2 * s + y * c   # avoids repeat calls to the much slower sin() & cos()
+        
     return result
 
 def _GetBounds(pts):
@@ -2081,7 +2082,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
         outer.append(Point(bounds.left-10, bounds.top-10))
         c.AddPolygon(outer, PolyType.Subject)
         c.Execute(ClipType.Union, res, PolyFillType.Negative, PolyFillType.Negative)
-        res.pop(0)
+        if len(res) > 0: res.pop(0)
         for poly in res:
             poly = poly[::-1]             
     return res

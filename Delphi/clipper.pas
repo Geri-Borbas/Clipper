@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  27 February 2013                                                *
+* Date      :  3 March 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -107,7 +107,6 @@ type
     YCurr: Int64;
     XTop : Int64;         //top
     YTop : Int64;
-    TmpX :  Int64;
     Dx   : Double;        //the inverse of slope
     DeltaX: Int64;
     DeltaY: Int64;
@@ -345,6 +344,7 @@ resourcestring
   rsHorizontal = 'ProcessHorizontal error';
   rsInvalidInt = 'Coordinate exceeds range bounds';
   rsJoinError = 'Join Output polygons error';
+  rsIntersect = 'Intersection error';
 
 //------------------------------------------------------------------------------
 // TPolyNode methods ...
@@ -904,7 +904,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TopX(Edge: PEdge; const currentY: Int64): Int64; overload;
+function TopX(Edge: PEdge; const currentY: Int64): Int64;
 begin
   if currentY = Edge.YTop then Result := Edge.XTop
   else if Edge.XTop = Edge.XBot then Result := Edge.XBot
@@ -919,6 +919,11 @@ var
 begin
   if SlopesEqual(Edge1, Edge2, UseFullInt64Range) then
   begin
+    //parallel edges, but nevertheless prepare to force the intersection
+    //since Edge2.XCurr < Edge1.XCurr ...
+    if Edge2.YBot > Edge1.YBot then
+      ip.Y := Edge2.YBot else
+      ip.Y := Edge1.YBot;
     Result := False;
     Exit;
   end;
@@ -955,7 +960,7 @@ begin
       ip.X := round(Edge2.Dx * M + B2);
   end;
 
-  //The precondition - E.TmpX > eNext.TmpX - indicates that the two edges do
+  //The precondition - E.XCurr > eNext.XCurr - indicates that the two edges do
   //intersect below TopY (and hence below the tops of either Edge). However,
   //when edges are almost parallel, rounding errors may cause False positives -
   //indicating intersections when there really aren't any. Also, floating point
@@ -1874,7 +1879,7 @@ end;
 
 procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: Int64);
 
-  function E2InsertsBeforeE1(E1,E2: PEdge): Boolean;
+  function E2InsertsBeforeE1(E1, E2: PEdge): Boolean;
   begin
     if E2.XCurr = E1.XCurr then
       Result := E2.Dx > E1.Dx else
@@ -2668,28 +2673,27 @@ begin
   E := GetNextInAEL(HorzEdge, Direction);
   while Assigned(E) do
   begin
+    if (E.XCurr = HorzEdge.XTop) and not Assigned(eMaxPair) then
+    begin
+      if SlopesEqual(E, HorzEdge.NextInLML, FUse64BitRange) then
+      begin
+        //if output polygons share an Edge, they'll need joining later ...
+        if (HorzEdge.OutIdx >= 0) and (E.OutIdx >= 0) then
+          AddJoin(HorzEdge.NextInLML, E, HorzEdge.OutIdx);
+        Break; //we've reached the end of the horizontal line
+      end
+      else if (E.Dx < HorzEdge.NextInLML.Dx) then
+      //we really have got to the end of the intermediate horz Edge so quit.
+      //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
+        Break;
+    end;
+
     eNext := GetNextInAEL(E, Direction);
     if Assigned(eMaxPair) or
        ((Direction = dLeftToRight) and (E.XCurr < HorzRight)) or
-      ((Direction = dRightToLeft) and (E.XCurr > HorzLeft)) then 
+      ((Direction = dRightToLeft) and (E.XCurr > HorzLeft)) then
     begin
-      //ok, so far it looks like we're still in range of the horizontal Edge
-
-      if (E.XCurr = HorzEdge.XTop) and not Assigned(eMaxPair) then
-      begin
-        if SlopesEqual(E, HorzEdge.NextInLML, FUse64BitRange) then
-        begin
-          //if output polygons share an Edge, they'll need joining later ...
-          if (HorzEdge.OutIdx >= 0) and (E.OutIdx >= 0) then
-            AddJoin(HorzEdge.NextInLML, E, HorzEdge.OutIdx);
-          Break; //we've reached the end of the horizontal line
-        end
-        else if (E.Dx < HorzEdge.NextInLML.Dx) then
-        //we really have got to the end of the intermediate horz Edge so quit.
-        //nb: More -ve slopes follow more +ve slopes ABOVE the horizontal.
-          Break;
-      end;
-
+      //so far we're still in range of the horizontal Edge
       if (E = eMaxPair) then
       begin
         //HorzEdge is evidently a maxima horizontal and we've arrived at its end.
@@ -2721,10 +2725,8 @@ begin
           ProtectLeft[not IsTopHorz(E.XCurr)]);
       SwapPositionsInAEL(HorzEdge, E);
     end
-    else if ((Direction = dLeftToRight) and
-      (E.XCurr > HorzRight) and Assigned(fSortedEdges)) or
-      ((Direction = dRightToLeft) and
-      (E.XCurr < HorzLeft) and Assigned(fSortedEdges)) then
+    else if ((Direction = dLeftToRight) and (E.XCurr >= HorzRight)) or
+      ((Direction = dRightToLeft) and (E.XCurr <= HorzLeft)) then
         Break;
     E := eNext;
   end;
@@ -2815,7 +2817,7 @@ begin
   begin
     E.PrevInSEL := E.PrevInAEL;
     E.NextInSEL := E.NextInAEL;
-    E.TmpX := TopX(E, TopY);
+    E.XCurr := TopX(E, TopY);
     E := E.NextInAEL;
   end;
 
@@ -2829,9 +2831,11 @@ begin
       while Assigned(E.NextInSEL) do
       begin
         eNext := E.NextInSEL;
-        if (E.TmpX > eNext.TmpX) and
-          IntersectPoint(E, eNext, Pt, FUse64BitRange) then
+        if (E.XCurr > eNext.XCurr) then
         begin
+          if not IntersectPoint(E, eNext, Pt, FUse64BitRange) and
+            (E.XCurr > eNext.XCurr +1) then
+              raise Exception.Create(rsIntersect);
           if Pt.Y > BotY then
           begin
             Pt.Y := BotY;
@@ -3215,7 +3219,8 @@ begin
             (Int2.Edge1.PrevInSEL = Int2.Edge2) then Break
           else Int2 := Int2.Next;
         end;
-        if not Assigned(Int2) then Exit; //oops!!!
+        if not Assigned(Int2) then Exit; //returns False
+
         //found an intersect node (Int2) that does contain adjacent edges,
         //so prepare to process it before Int1 ...
         SwapIntersectNodes(Int1, Int2);
