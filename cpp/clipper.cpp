@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  3 March 2013                                                    *
+* Date      :  14 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2600,25 +2600,22 @@ void Clipper::FixupOutPolygon(OutRec &outRec)
 
 void Clipper::BuildResult(Polygons &polys)
 {
-  int k = 0;
-  polys.resize(m_PolyOuts.size());
+  polys.reserve(m_PolyOuts.size());
   for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
   {
     if (m_PolyOuts[i]->pts)
     {
-      Polygon* pg = &polys[k];
-      pg->clear();
+      Polygon pg;
       OutPt* p = m_PolyOuts[i]->pts;
       do
       {
-        pg->push_back(p->pt);
+        pg.push_back(p->pt);
         p = p->prev;
       } while (p != m_PolyOuts[i]->pts);
-      //make sure each polygon has at least 3 vertices ...
-      if (pg->size() < 3) pg->clear(); else k++;
+      if (pg.size() > 2) 
+        polys.push_back(pg);
     }
   }
-  polys.resize(k);
 }
 //------------------------------------------------------------------------------
 
@@ -3178,14 +3175,14 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
     switch (jointype)
     {
-        case jtRound:  //limit defaults to 0.125
-            if (limit <= 0) limit = 0.125;
+        case jtRound:  
+            if (limit <= 0) limit = 0.25;
             else if (limit > std::fabs(delta)) limit = std::fabs(delta);
             break;  
-        case jtMiter:  //limit defaults to twice delta's width ...
+        case jtMiter: 
             if (limit < 2) limit = 2; 
             break;       
-        default:       //otherwise limit is unused
+        default:       //unused
             limit = 1;   
     }
     m_RMin = 2.0/(limit*limit);
@@ -3275,9 +3272,8 @@ private:
 
 void AddPoint(const IntPoint& pt)
 {
-    Polygon::size_type len = m_curr_poly->size();
-    if (len == m_curr_poly->capacity())
-        m_curr_poly->reserve(len + buffLength);
+    if (m_curr_poly->size() == m_curr_poly->capacity())
+        m_curr_poly->reserve(m_curr_poly->capacity() + buffLength);
     m_curr_poly->push_back(pt);
 }
 //------------------------------------------------------------------------------
@@ -3416,32 +3412,27 @@ void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
   //will be stripped. Default ~= sqrt(2) so when adjacent 
   //vertices have both x & y coords within 1 unit, then 
   //the second vertex will be stripped. 
-  int len = in_poly.size();
-  if (len < 3) 
-    out_poly.resize(0);
-  else
-    out_poly.resize(in_poly.size());
-
+  int highI = in_poly.size() -1;
   int d = (int)(distance * distance);
-  IntPoint p = in_poly[0];
-  int j = 1;
-  for (int i = 1; i < len; i++)
+  int i = 0;
+  while (highI > i && PointsEqual(in_poly[highI], in_poly[i])) highI--;
+  while (highI > i && PointsEqual(in_poly[i], in_poly[i +1])) i++;
+  int len = highI - i + 1; 
+  if (len < 3) { out_poly.resize(0); return; }
+  out_poly.reserve(len);
+  IntPoint ip = in_poly[i];
+  out_poly.push_back(ip);
+  for (i = i + 1; i <= highI; i++)
   {
-      if ((in_poly[i].X - p.X) * (in_poly[i].X - p.X) +
-          (in_poly[i].Y - p.Y) * (in_poly[i].Y - p.Y) <= d)
-          continue;
-      out_poly[j] = in_poly[i];
-      p = in_poly[i];
-      j++;
+      long64 dx = in_poly[i].X - ip.X;
+      long64 dy = in_poly[i].Y - ip.Y;
+      if (dx * dx  + dy * dy <= d) continue;
+      ip = in_poly[i];
+      out_poly.push_back(ip);
   }
-  p = in_poly[j - 1];
-  if ((in_poly[0].X - p.X) * (in_poly[0].X - p.X) +
-      (in_poly[0].Y - p.Y) * (in_poly[0].Y - p.Y) <= d)
-      j--;
-  if (j < len)
-    out_poly.resize(j);
 }
 //------------------------------------------------------------------------------
+
 void CleanPolygons(Polygons& in_polys, Polygons& out_polys, double distance)
 {
   for (Polygons::size_type i = 0; i < in_polys.size(); ++i)

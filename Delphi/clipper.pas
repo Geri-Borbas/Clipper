@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  3 March 2013                                                    *
+* Date      :  14 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3677,12 +3677,9 @@ const
   BuffLength: Integer = 128;
 
   procedure AddPoint(const Pt: TIntPoint);
-  var
-    Len: Integer;
   begin
-    Len := length(Result[I]);
-    if OutLen = Len then
-      SetLength(Result[I], Len + BuffLength);
+    if OutLen = length(Result[I]) then
+      SetLength(Result[I], OutLen + BuffLength);
     Result[I][OutLen] := Pt;
     Inc(OutLen);
   end;
@@ -3753,7 +3750,7 @@ const
     //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
     //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
     //dot product Normals == 1 -> no angle
-    if ((Normals[K].X*Normals[J].Y - Normals[J].X*Normals[K].Y)*Delta >= 0) then
+    if (Normals[K].X*Normals[J].Y - Normals[J].X*Normals[K].Y) * Delta >= 0 then
     begin
       if ((Normals[J].X*Normals[K].X+Normals[J].Y*Normals[K].Y) < 0.985) then
       begin
@@ -3819,9 +3816,9 @@ begin
 
   case JoinType of
     jtRound:
-      if Limit <= 0 then Limit := 0.125
+      if Limit <= 0 then Limit := 0.25
       else if Limit > abs(Delta) then Limit := abs(Delta);
-    jtMiter: if Limit < 2 then Limit := 2;  //default to twice Delta's width
+    jtMiter: if Limit < 2 then Limit := 2;
     else Limit := 1;
   end;
   RMin := 2/(sqr(Limit));
@@ -3925,36 +3922,36 @@ end;
 
 function CleanPolygon(Poly: TPolygon; Distance: double = 1.415): TPolygon;
 var
-  D, I, J, Len: Integer;
-  Ip: TIntPoint;
+  D, I, J, HighI, Len: Integer;
+  DX, DY: Int64;
 begin
   //Delta = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2) so when adjacent
   //vertices have both x & y coords within 1 unit, then
   //the second vertex will be stripped.
-  Len := Length(Poly);
+  HighI := High(Poly);
+  D := Round(Distance * Distance);
+  I := 0;
+  while (HighI > I) and PointsEqual(poly[HighI], poly[I]) do dec(HighI);
+  while (HighI > I) and PointsEqual(poly[I], poly[I+1]) do inc(I);
+  Len := HighI - I + 1;
   if (Len < 3) then
   begin
     Result := nil;
     Exit;
   end;
   SetLength(Result, Len);
-  D := Round(Distance * Distance);
-  Ip := Poly[0];
-  J := 1;
-  for I := 1 to Len -1 do
+  Result[0] := poly[I];
+  J := 0;
+  for I := I +1 to HighI do
   begin
-    if ((Poly[I].X - Ip.X) * (Poly[I].X - Ip.X) +
-        (Poly[I].Y - Ip.Y) * (Poly[I].Y - Ip.Y) <= D) then
-          continue;
-    Result[J] := Poly[I];
-    Ip := Poly[I];
+    DX := Poly[I].X - Result[J].X;
+    DY := Poly[I].Y - Result[J].Y;
+    if ((DX * DX) + (DY * DY) <= D) then continue;
     inc(J);
+    Result[J] := Poly[I];
   end;
-  Ip := Poly[J - 1];
-  if ((Poly[0].X - Ip.X) * (Poly[0].X - Ip.X) +
-      (Poly[0].Y - Ip.Y) * (Poly[0].Y - Ip.Y) <= D) then dec(J);
-  if (J < Len) then SetLength(Result, J);
+  if (J < Len - 1) then SetLength(Result, J + 1);
 end;
 //------------------------------------------------------------------------------
 

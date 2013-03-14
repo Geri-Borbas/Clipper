@@ -2,7 +2,7 @@
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
 # Version   :  5.1.3                                                           #
-# Date      :  3 March 2013                                                    #
+# Date      :  14 March 2013                                                   #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -1906,11 +1906,11 @@ def _GetUnitNormal(pt1, pt2):
     dy = float(dy) * f
     return FloatPoint(dy, -dx)
 
-def _BuildArc(pt, a1, a2, r):
+def _BuildArc(pt, a1, a2, r, limit):
     arcFrac = abs(a2 - a1) / (2 * math.pi);
-    steps = int(arcFrac * math.pi / math.acos(1 - 0.125 / abs(r)))
+    steps = int(arcFrac * math.pi / math.acos(1 - limit / abs(r)))
     if steps < 2: steps = 2
-    elif steps > 222.0 * arcFrac: # ie R > 10000 * Q
+    elif steps > 222.0 * arcFrac:
         steps = int(222.0 * arcFrac)
     
     result = []
@@ -1964,9 +1964,9 @@ def _StripDupPts(poly):
         i -= 1
     return poly
 
-def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, autoFix = True): 
+def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
     
-    def DoSquare(pt, mul = 1.0):
+    def DoSquare(pt, limit):
         pt1 = Point(round(pt.x + Normals[k].x * delta), round(pt.y + Normals[k].y * delta))
         pt2 = Point(round(pt.x + Normals[j].x * delta), round(pt.y + Normals[j].y * delta))
         if (Normals[k].x*Normals[j].y-Normals[j].x*Normals[k].y) * delta >= 0:
@@ -1974,7 +1974,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
             a2 = math.atan2(-Normals[j].y, -Normals[j].x)
             a1 = abs(a2 - a1);
             if a1 > math.pi: a1 = math.pi * 2 - a1
-            dx = math.tan((math.pi - a1)/4) * abs(delta*mul)
+            dx = math.tan((math.pi - a1)/4) * abs(delta*limit)
             
             pt1 = Point(round(pt1.x -Normals[k].y * dx), round(pt1.y + Normals[k].x * dx))
             result.append(pt1)
@@ -1999,7 +1999,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
             result.append(pt)
             result.append(pt2)
 
-    def DoRound(pt):
+    def DoRound(pt, limit):
         pt1 = Point(round(pt.x + Normals[k].x * delta), \
                     round(pt.y + Normals[k].y * delta))
         pt2 = Point(round(pt.x + Normals[j].x * delta), \
@@ -2011,7 +2011,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
                 a2 = math.atan2(Normals[j].y, Normals[j].x)
                 if (delta > 0) and (a2 < a1): a2 = a2 + math.pi * 2
                 elif (delta < 0) and (a2 > a1): a2 = a2 - math.pi * 2
-                arc = _BuildArc(pt, a1, a2, delta)
+                arc = _BuildArc(pt, a1, a2, delta, limit)
                 result.extend(arc)
         else:
             result.append(pt)
@@ -2046,9 +2046,14 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
         if len(poly) < 3: poly = []
             
     
-    if miterLimit <= 1: miterLimit = 1.0
-    rmin = 2.0/(miterLimit * miterLimit)
-
+    if (jointype == JoinType.Round):  
+        if (limit <= 0): limit = 0.25
+        elif (limit > abs(delta)): limit = abs(delta)
+    elif (jointype == JoinType.Miter): 
+        if (limit < 2): limit = 2 
+    else: limit = 1   
+    rmin = 2.0/(limit * limit);
+    
     res = []
     for pts in ppts:    
         Normals = []
@@ -2063,9 +2068,9 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
             if jointype == JoinType.Miter:
                 r = 1.0 + (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y)
                 if (r >= rmin): DoMiter(pts[j]) 
-                else: DoSquare(pts[j], miterLimit)
-            elif jointype == JoinType.Square: DoSquare(pts[j])
-            else: DoRound(pts[j])
+                else: DoSquare(pts[j], limit)
+            elif jointype == JoinType.Square: DoSquare(pts[j], 1)
+            else: DoRound(pts[j], limit)
             k = j
         res.append(result)
 
@@ -2088,15 +2093,19 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, miterLimit= 2.0, au
     return res
 
 def CleanPolygon(poly, distance = 1.415):
-    cnt = len(poly)
-    if (cnt < 3): return []
     result = []
+    highI = len(poly) -1
     d = round(distance * distance)
-    ip = poly[cnt -1]
-    for i in range(cnt):
-        if ((poly[i].x - ip.x) * (poly[i].x - ip.x) + \
-            (poly[i].y - ip.y) * (poly[i].y - ip.y) <= d):
-                continue
+    i = 0
+    while (highI > i and _PointsEqual(poly[highI], poly[i])): highI -= 1
+    while (highI > i and _PointsEqual(poly[i], poly[i +1])): i += 1
+    if (highI - i < 2): return result
+    ip = poly[i]
+    result.append(ip)
+    for i in range(i+1, highI +1):
+        dx = poly[i].x - ip.x
+        dy = poly[i].y - ip.y
+        if (dx * dx + dy * dy <= d): continue
         result.append(poly[i])
         ip = poly[i]
     return result

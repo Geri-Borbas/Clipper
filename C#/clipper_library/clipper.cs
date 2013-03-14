@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.3                                                           *
-* Date      :  3 March 2013                                                    *
+* Date      :  14 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3393,15 +3393,16 @@ namespace ClipperLib
 
                 switch (jointype)
                 {
-                    case JoinType.jtRound: //limit defaults to 0.125 ...
-                        if (limit <= 0) limit = 0.125; //ie defaults to 0.125
+                    case JoinType.jtRound: 
+                        if (limit <= 0) limit = 0.25; 
                         else if (limit > Math.Abs(delta)) limit = Math.Abs(delta);
                         break;
-                    case JoinType.jtMiter: //limit defaults to 2 * delta's width ...
+                    case JoinType.jtMiter: 
                         if (limit < 2) limit = 2; 
                         break;
-                    default:               //otherwise limit is unused 
-                        limit = 1; break; 
+                    default:               
+                        limit = 1; 
+                        break; 
                 }
 
                 double RMin = 2.0 / (limit * limit);
@@ -3499,9 +3500,8 @@ namespace ClipperLib
 
             internal void AddPoint(IntPoint pt)
             {
-                int len = currentPoly.Count;
-                if (len == currentPoly.Capacity)
-                    currentPoly.Capacity = len + buffLength;
+                if (currentPoly.Count == currentPoly.Capacity)
+                    currentPoly.Capacity += buffLength;
                 currentPoly.Add(pt);
             }
             //------------------------------------------------------------------------------
@@ -3656,27 +3656,24 @@ namespace ClipperLib
             //will be stripped. Default ~= sqrt(2) so when adjacent 
             //vertices have both x & y coords within 1 unit, then 
             //the second vertex will be stripped. 
-            int len = poly.Count;
-            if (len < 3) return null;
-            Polygon result = new Polygon(poly);
+            int highI = poly.Count -1;
             int d = (int)(delta * delta);
-            IntPoint p = poly[0];
-            int j = 1;
-            for (int i = 1; i < len; i++)
+            int i = 0;
+            while (highI > i && Clipper.PointsEqual(poly[highI], poly[i])) highI--;
+            while (highI > i && Clipper.PointsEqual(poly[i], poly[i +1])) i++;
+            int len = highI - i + 1; 
+            if (len < 3) return null;
+            Polygon result = new Polygon(len);
+            IntPoint ip = poly[i];
+            result.Add(ip);
+            for (i = i + 1; i <= highI; i++)
             {
-                if ((poly[i].X - p.X) * (poly[i].X - p.X) +
-                    (poly[i].Y - p.Y) * (poly[i].Y - p.Y) <= d)
-                    continue;
-                result[j] = poly[i];
-                p = poly[i];
-                j++;
+                Int64 dx = poly[i].X - ip.X;
+                Int64 dy = poly[i].Y - ip.Y;
+                if (dx * dx  + dy * dy <= d) continue;
+                ip = poly[i];
+                result.Add(ip);
             }
-            p = poly[j - 1];
-            if ((poly[0].X - p.X) * (poly[0].X - p.X) +
-                (poly[0].Y - p.Y) * (poly[0].Y - p.Y) <= d)
-                j--;
-            if (j < len)
-                result.RemoveRange(j, len - j);
             return result;
         }
         //------------------------------------------------------------------------------
