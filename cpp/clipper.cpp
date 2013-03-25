@@ -3457,7 +3457,7 @@ void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
   if (i <= highI) out_poly[k++] = in_poly[i];
   if (k > 2 && SlopesEqual(out_poly[k -2], out_poly[k -1], out_poly[0], UseFullRange)) 
     k--;    
-  if (out_poly.size() < 3) out_poly.clear();
+  if (k < 3) out_poly.clear();
   else if (k <= highI) out_poly.resize(k);
 }
 //------------------------------------------------------------------------------
