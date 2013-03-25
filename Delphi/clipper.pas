@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.3                                                           *
-* Date      :  14 March 2013                                                   *
+* Version   :  5.1.4                                                           *
+* Date      :  24 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -81,7 +81,7 @@ type
     property Contour: TPolygon read FPolygon;
   end;
 
-  TPolyTree = class(TPolyNode)   //replaces TExPolygons
+  TPolyTree = class(TPolyNode)
   private
     FAllNodes: TArrayOfPolyNode; //container for ALL PolyNodes
     function GetTotal: Integer;
@@ -93,7 +93,7 @@ type
   end;
 
 
-  //definitions below here are used internally ...
+  //the definitions below are used internally ...
   TEdgeSide = (esLeft, esRight);
   TIntersectProtect = (ipLeft, ipRight);
   TIntersectProtects = set of TIntersectProtect;
@@ -313,8 +313,8 @@ function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
   AutoFix: Boolean = True): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
-function SimplifyPolygon(const poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
-function SimplifyPolygons(const polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
+function SimplifyPolygon(const Poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
+function SimplifyPolygons(const Polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 
 //CleanPolygon removes adjacent vertices closer than the specified distance.
 function CleanPolygon(Poly: TPolygon; Distance: double = 1.415): TPolygon;
@@ -3896,11 +3896,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SimplifyPolygon(const poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
+function SimplifyPolygon(const Poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 begin
   with TClipper.Create do
   try
-    AddPolygon(poly, ptSubject);
+    AddPolygon(Poly, ptSubject);
     Execute(ctUnion, Result, FillType, FillType);
   finally
     free;
@@ -3908,11 +3908,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SimplifyPolygons(const polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
+function SimplifyPolygons(const Polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 begin
   with TClipper.Create do
   try
-    AddPolygons(polys, ptSubject);
+    AddPolygons(Polys, ptSubject);
     Execute(ctUnion, Result, FillType, FillType);
   finally
     free;
@@ -3920,38 +3920,78 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function CleanPolygon(Poly: TPolygon; Distance: double = 1.415): TPolygon;
+function PointsAreClose(const Pt1, Pt2: TIntPoint; DistSqrd: Int64): Boolean;
 var
-  D, I, J, HighI, Len: Integer;
   DX, DY: Int64;
 begin
-  //Delta = proximity in units/pixels below which vertices
+  DX := Pt1.X - Pt2.X;
+  DY := Pt1.Y - Pt2.Y;
+  result := ((DX * DX) + (DY * DY) <= DistSqrd);
+end;
+//------------------------------------------------------------------------------
+
+function CleanPolygon(Poly: TPolygon; Distance: Double = 1.415): TPolygon;
+var
+  I, J, K, HighI: Integer;
+  D: Int64;
+  Pt: TIntPoint;
+  UseFullRange: Boolean;
+begin
+  //Distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2) so when adjacent
   //vertices have both x & y coords within 1 unit, then
   //the second vertex will be stripped.
-  HighI := High(Poly);
   D := Round(Distance * Distance);
-  I := 0;
-  while (HighI > I) and PointsEqual(poly[HighI], poly[I]) do dec(HighI);
-  while (HighI > I) and PointsEqual(poly[I], poly[I+1]) do inc(I);
-  Len := HighI - I + 1;
-  if (Len < 3) then
+  HighI := High(Poly);
+  while (HighI > 0) and PointsAreClose(Poly[HighI], Poly[0], D) do Dec(HighI);
+  if (HighI < 2) then
   begin
     Result := nil;
     Exit;
   end;
-  SetLength(Result, Len);
-  Result[0] := poly[I];
-  J := 0;
-  for I := I +1 to HighI do
+  SetLength(Result, HighI +1);
+  UseFullRange := FullRangeNeeded(Poly);
+  Pt := Poly[HighI];
+  I := 0;
+  K := 0;
+  while true do
   begin
-    DX := Poly[I].X - Result[J].X;
-    DY := Poly[I].Y - Result[J].Y;
-    if ((DX * DX) + (DY * DY) <= D) then continue;
-    inc(J);
-    Result[J] := Poly[I];
+    if (I >= HighI) then break;
+    J := I + 1;
+
+    if PointsAreClose(Pt, Poly[J], D) then
+    begin
+      I := J + 1;
+      while (I <= HighI) and PointsAreClose(Pt, Poly[I], D) do inc(I);
+      Continue;
+    end;
+
+    if PointsAreClose(Poly[I], Poly[J], D) or
+      SlopesEqual(Pt, Poly[I], Poly[J], UseFullRange) then
+    begin
+      I := J;
+      Continue;
+    end;
+
+    Pt := Poly[I];
+    inc(I);
+    Result[K] := Pt;
+    inc(K);
   end;
-  if (J < Len - 1) then SetLength(Result, J + 1);
+
+  if (I <= HighI) then
+  begin
+    Result[K] := Poly[I];
+    inc(K);
+  end;
+
+  if (K > 2) and
+    SlopesEqual(Result[K -2], Result[K -1], Result[0], UseFullRange) then
+      Dec(K);
+  if (K < 3) then
+    Result := nil
+  else if (K <= HighI) then
+    SetLength(Result, K);
 end;
 //------------------------------------------------------------------------------
 

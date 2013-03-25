@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.3                                                           *
-* Date      :  14 March 2013                                                   *
+* Version   :  5.1.4                                                           *
+* Date      :  24 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3406,30 +3406,59 @@ void SimplifyPolygons(Polygons &polys, PolyFillType fillType)
 }
 //------------------------------------------------------------------------------
 
+bool PointsAreClose(IntPoint pt1, IntPoint pt2, long64 distSqrd)
+{
+    long64 dx = pt1.X - pt2.X;
+    long64 dy = pt1.Y - pt2.Y;
+    return ((dx * dx) + (dy * dy) <= distSqrd);
+}
+//------------------------------------------------------------------------------
+
 void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
 {
-  //delta = proximity in units/pixels below which vertices
-  //will be stripped. Default ~= sqrt(2) so when adjacent 
-  //vertices have both x & y coords within 1 unit, then 
-  //the second vertex will be stripped. 
+  //distance = proximity in units/pixels below which vertices
+  //will be stripped. Default ~= sqrt(2).
   int highI = in_poly.size() -1;
-  int d = (int)(distance * distance);
-  int i = 0;
-  while (highI > i && PointsEqual(in_poly[highI], in_poly[i])) highI--;
-  while (highI > i && PointsEqual(in_poly[i], in_poly[i +1])) i++;
-  int len = highI - i + 1; 
-  if (len < 3) { out_poly.resize(0); return; }
-  out_poly.reserve(len);
-  IntPoint ip = in_poly[i];
-  out_poly.push_back(ip);
-  for (i = i + 1; i <= highI; i++)
+  long64 d = (int)(distance * distance);
+  while (highI > 0 && PointsAreClose(in_poly[highI], in_poly[0], d)) highI--;
+  if (highI < 2)
   {
-      long64 dx = in_poly[i].X - ip.X;
-      long64 dy = in_poly[i].Y - ip.Y;
-      if (dx * dx  + dy * dy <= d) continue;
-      ip = in_poly[i];
-      out_poly.push_back(ip);
+    out_poly.clear();
+    return;
   }
+  out_poly.resize(highI + 1);
+  bool UseFullRange = FullRangeNeeded(in_poly);
+  IntPoint pt = in_poly[highI];
+  int i = 0;
+  int k = 0;
+  for (;;)
+  {
+    if (i >= highI) break;
+    int j = i + 1;
+
+    if (PointsAreClose(pt, in_poly[j], d))
+    {
+        i = j + 1;
+        while (i <= highI && PointsAreClose(pt, in_poly[i], d)) i++;
+        continue;
+    }
+
+    if (PointsAreClose(in_poly[i], in_poly[j], d) ||
+        SlopesEqual(pt, in_poly[i], in_poly[j], UseFullRange)) 
+    {
+        i = j;
+        continue;
+    }
+
+    pt = in_poly[i++];
+    out_poly[k++] = pt;
+  }
+
+  if (i <= highI) out_poly[k++] = in_poly[i];
+  if (k > 2 && SlopesEqual(out_poly[k -2], out_poly[k -1], out_poly[0], UseFullRange)) 
+    k--;    
+  if (out_poly.size() < 3) out_poly.clear();
+  else if (k <= highI) out_poly.resize(k);
 }
 //------------------------------------------------------------------------------
 

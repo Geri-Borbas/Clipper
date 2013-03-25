@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.3                                                           *
-* Date      :  14 March 2013                                                   *
+* Version   :  5.1.4                                                           *
+* Date      :  24 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -555,7 +555,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        internal bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullRange)
+        internal static bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullRange)
         {
             if (UseFullRange)
               return Int128.Int128Mul(e1.deltaY, e2.deltaX) ==
@@ -565,7 +565,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
+        protected static bool SlopesEqual(IntPoint pt1, IntPoint pt2,
             IntPoint pt3, bool UseFullRange)
         {
             if (UseFullRange)
@@ -576,7 +576,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        protected bool SlopesEqual(IntPoint pt1, IntPoint pt2,
+        protected static bool SlopesEqual(IntPoint pt1, IntPoint pt2,
             IntPoint pt3, IntPoint pt4, bool UseFullRange)
         {
             if (UseFullRange)
@@ -3649,31 +3649,68 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        public static Polygon CleanPolygon(Polygon poly,
-            double delta = 1.415)
+        private static bool PointsAreClose(IntPoint pt1, IntPoint pt2, Int64 distSqrd)
         {
-            //delta = proximity in units/pixels below which vertices
-            //will be stripped. Default ~= sqrt(2) so when adjacent 
-            //vertices have both x & y coords within 1 unit, then 
-            //the second vertex will be stripped. 
+            Int64 dx = pt1.X - pt2.X;
+            Int64 dy = pt1.Y - pt2.Y;
+            return ((dx * dx) + (dy * dy) <= distSqrd);
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygon CleanPolygon(Polygon poly,
+            double distance = 1.415)
+        {
+            //distance = proximity in units/pixels below which vertices
+            //will be stripped. Default ~= sqrt(2) so when adjacent
+            //vertices have both x & y coords within 1 unit, then
+            //the second vertex will be stripped.
+
+            Int64 d = (int)(distance * distance);
             int highI = poly.Count -1;
-            int d = (int)(delta * delta);
+            while (highI > 0 && PointsAreClose(poly[highI], poly[0], d)) highI--;
+            Polygon result = new Polygon(highI + 1);
+            if (highI < 2) return result;
+            bool UseFullRange = FullRangeNeeded(poly);
+            IntPoint pt = poly[highI];
             int i = 0;
-            while (highI > i && Clipper.PointsEqual(poly[highI], poly[i])) highI--;
-            while (highI > i && Clipper.PointsEqual(poly[i], poly[i +1])) i++;
-            int len = highI - i + 1; 
-            if (len < 3) return null;
-            Polygon result = new Polygon(len);
-            IntPoint ip = poly[i];
-            result.Add(ip);
-            for (i = i + 1; i <= highI; i++)
+            for (;;)
             {
-                Int64 dx = poly[i].X - ip.X;
-                Int64 dy = poly[i].Y - ip.Y;
-                if (dx * dx  + dy * dy <= d) continue;
-                ip = poly[i];
-                result.Add(ip);
+                if (i >= highI) break;
+                int j = i + 1;
+
+                if (PointsAreClose(pt, poly[j], d))
+                {
+                    i = j + 1;
+                    while (i <= highI && PointsAreClose(pt, poly[i], d)) i++;
+                    continue;
+                }
+
+                if (PointsAreClose(poly[i], poly[j], d) ||
+                    ClipperBase.SlopesEqual(pt, poly[i], poly[j], UseFullRange)) 
+                {
+                    i = j;
+                    continue;
+                }
+
+                pt = poly[i++];
+                result.Add(pt);
             }
+
+            if (i <= highI) result.Add(poly[i]);
+            i = result.Count -1;
+            if (i > 1 && ClipperBase.SlopesEqual(result[i -1], result[i], result[0], UseFullRange)) 
+                result.RemoveAt(i);
+            if (result.Count < 3) result.Clear();
+            return result;
+        }
+        //------------------------------------------------------------------------------
+
+        public static Polygons CleanPolygons(Polygons polys,
+            double distance = 1.415)
+        {
+            Polygons result = new Polygons(polys.Count);
+            for (int i = 0; i < polys.Count; i++)
+                result.Add(CleanPolygon(polys[i], distance));
             return result;
         }
         //------------------------------------------------------------------------------
