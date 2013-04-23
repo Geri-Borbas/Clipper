@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.4                                                           *
+* Version   :  5.1.5                                                           *
 * Date      :  24 March 2013                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -1882,7 +1882,11 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: Int64);
   function E2InsertsBeforeE1(E1, E2: PEdge): Boolean;
   begin
     if E2.XCurr = E1.XCurr then
-      Result := E2.Dx > E1.Dx else
+    begin
+      if E2.YTop > E1.YTop then
+        Result := E2.XTop < TopX(E1, E2.YTop) else
+        Result := E1.XTop > TopX(E2, E1.YTop);
+    end else
       Result := E2.XCurr < E1.XCurr;
   end;
   //----------------------------------------------------------------------
@@ -2450,7 +2454,7 @@ begin
     new(Op);
     OutRec.Pts := Op;
     OutRec.BottomPt := Op;
-    
+
     Op.Pt := Pt;
     Op.Next := Op;
     Op.Prev := Op;
@@ -2783,8 +2787,8 @@ begin
     if FixupIntersectionOrder then ProcessIntersectList
     else Result := False;
   finally
-    //if there's been an error, clean up the mess ...
-    DisposeIntersectNodes;
+    DisposeIntersectNodes; //clean up if there's been an error
+    FSortedEdges := nil;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -3190,68 +3194,52 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function EdgesAdjacent(Inode: PIntersectNode): Boolean; {inline}
+begin
+  Result := (Inode.Edge1.NextInSEL = Inode.Edge2) or
+    (Inode.Edge1.PrevInSEL = Inode.Edge2);
+end;
+//------------------------------------------------------------------------------
+
 function TClipper.FixupIntersectionOrder: Boolean;
 var
-  E1, E2: PEdge;
-  Int1, Int2: PIntersectNode;
+  Inode, NextNode: PIntersectNode;
 begin
-  Result := not Assigned(fIntersectNodes.Next);
-  if Result then Exit;
   //pre-condition: intersections are sorted bottom-most (then left-most) first.
-  //Now to safely manage multiple intersections occuring at the same point, they
-  //must be processed in order such that only adjacent edges in AEL are swapped.
-  try
-    CopyAELToSEL;
-    Int1 := FIntersectNodes;
-    Int2 := FIntersectNodes.Next;
-    while Assigned(Int2) do
+  //Now it's crucial that intersections are made only between adjacent edges,
+  //so to ensure this the order of intersections may need adjusting ...
+  Result := False;
+  Inode := FIntersectNodes;
+  CopyAELToSEL;
+  while Assigned(Inode) do
+  begin
+    if not EdgesAdjacent(Inode) then
     begin
-      E1 := Int1.Edge1;
-      if (E1.PrevInSEL = Int1.Edge2) then E2 := E1.PrevInSEL
-      else if (E1.NextInSEL = Int1.Edge2) then E2 := E1.NextInSEL
-      else
-      begin
-        //The current intersection (Int1) is out of order (since it doesn't
-        //contain adjacent edges), so swap it with a subsequent intersection ...
-        while Assigned(Int2) do
-        begin
-          if (Int2.Edge1.NextInSEL = Int2.Edge2) or
-            (Int2.Edge1.PrevInSEL = Int2.Edge2) then Break
-          else Int2 := Int2.Next;
-        end;
-        if not Assigned(Int2) then Exit; //returns False
-
-        //found an intersect node (Int2) that does contain adjacent edges,
-        //so prepare to process it before Int1 ...
-        SwapIntersectNodes(Int1, Int2);
-        E1 := Int1.Edge1;
-        E2 := Int1.Edge2;
-      end;
-      SwapPositionsInSEL(E1, E2);
-      Int1 := Int1.Next;
-      Int2 := Int1.Next;
+      NextNode := Inode.Next;
+      while (assigned(NextNode) and not EdgesAdjacent(NextNode)) do
+        NextNode := NextNode.Next;
+      if not assigned(NextNode) then Exit; //error!!
+      SwapIntersectNodes(Inode, NextNode);
     end;
-
-    //finally, check the last intersection too ...
-    Result := (Int1.Edge1.PrevInSEL = Int1.Edge2) or
-      (Int1.Edge1.NextInSEL = Int1.Edge2);
-  finally
-    FSortedEdges := nil;
+    SwapPositionsInSEL(Inode.Edge1, Inode.Edge2);
+    Inode := Inode.Next;
   end;
+  Result := true;
 end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.SwapIntersectNodes(Int1, Int2: PIntersectNode);
 var
   Int: TIntersectNode;
-  Int2Next: PIntersectNode;
 begin
-  Int := Int1^;
-  Int2Next := Int2.Next;
-  Int1^ := Int2^;
-  Int2^ := Int;
-  Int1.Next := Int.Next;
-  Int2.Next := Int2Next;
+  //just swap the contents (because fIntersectNodes is a single-linked-list)
+  Int := Int1^; //gets a copy of Int1
+  Int1.Edge1 := Int2.Edge1;
+  Int1.Edge2 := Int2.Edge2;
+  Int1.Pt := Int2.Pt;
+  Int2.Edge1 := Int.Edge1;
+  Int2.Edge2 := Int.Edge2;
+  Int2.Pt := Int.Pt;
 end;
 //------------------------------------------------------------------------------
 
@@ -3920,58 +3908,93 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointsAreClose(const Pt1, Pt2: TIntPoint; DistSqrd: Int64): Boolean;
+function DistanceSqrd(const Pt1, Pt2: TIntPoint): Double;
 var
-  DX, DY: Int64;
+  dx, dy: Double;
 begin
-  DX := Pt1.X - Pt2.X;
-  DY := Pt1.Y - Pt2.Y;
-  result := ((DX * DX) + (DY * DY) <= DistSqrd);
+  dx := (Pt1.X - Pt2.X);
+  dy := (Pt1.Y - Pt2.Y);
+  result := (dx*dx + dy*dy);
+end;
+//------------------------------------------------------------------------------
+
+function ClosestPointOnLine(const Pt, LinePt1, LinePt2: TIntPoint): TDoublePoint;
+var
+  dx, dy, q: Double;
+begin
+  dx := (LinePt2.X-LinePt1.X);
+  dy := (LinePt2.Y-LinePt1.Y);
+  if (dx = 0) and (dy = 0) then
+    q := 0 else
+    q := ((Pt.X-LinePt1.X)*dx + (Pt.Y-LinePt1.Y)*dy) / (dx*dx + dy*dy);
+  Result.X := (1-q)*LinePt1.X + q*LinePt2.X;
+  Result.Y := (1-q)*LinePt1.Y + q*LinePt2.Y;
+end;
+//------------------------------------------------------------------------------
+
+function SlopesNearColinear(const Pt1, Pt2, Pt3: TIntPoint; DistSqrd: Double): Boolean;
+var
+  Cpol: TDoublePoint;
+  Dx, Dy: Double;
+begin
+  Result := false;
+  if DistanceSqrd(Pt1, Pt2) > DistanceSqrd(Pt1, Pt3) then exit;
+  Cpol := ClosestPointOnLine(Pt2, Pt1, Pt3);
+  Dx := Pt2.X - Cpol.X;
+  Dy := Pt2.Y - Cpol.Y;
+  result := (Dx*Dx + Dy*Dy) < DistSqrd;
+end;
+//------------------------------------------------------------------------------
+
+function PointsAreClose(const Pt1, Pt2: TIntPoint; DistSqrd: Double): Boolean;
+begin
+  result := DistanceSqrd(Pt1, Pt2) <= DistSqrd;
 end;
 //------------------------------------------------------------------------------
 
 function CleanPolygon(Poly: TPolygon; Distance: Double = 1.415): TPolygon;
 var
-  I, J, K, HighI: Integer;
-  D: Int64;
+  I, I2, J, K, HighI: Integer;
+  DistSqrd: double;
   Pt: TIntPoint;
-  UseFullRange: Boolean;
 begin
   //Distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2) so when adjacent
   //vertices have both x & y coords within 1 unit, then
   //the second vertex will be stripped.
-  D := Round(Distance * Distance);
+  DistSqrd := Round(Distance * Distance);
   HighI := High(Poly);
-  while (HighI > 0) and PointsAreClose(Poly[HighI], Poly[0], D) do Dec(HighI);
+  while (HighI > 0) and PointsAreClose(Poly[HighI], Poly[0], DistSqrd) do
+    Dec(HighI);
   if (HighI < 2) then
   begin
     Result := nil;
     Exit;
   end;
   SetLength(Result, HighI +1);
-  UseFullRange := FullRangeNeeded(Poly);
   Pt := Poly[HighI];
   I := 0;
   K := 0;
   while true do
   begin
-    if (I >= HighI) then break;
     J := I + 1;
+    if (J > HighI) then break;
 
-    if PointsAreClose(Pt, Poly[J], D) then
+    if PointsAreClose(Pt, Poly[J], DistSqrd) then
     begin
       I := J + 1;
-      while (I <= HighI) and PointsAreClose(Pt, Poly[I], D) do inc(I);
+      while (I <= HighI) and PointsAreClose(Pt, Poly[I], DistSqrd) do inc(I);
       Continue;
     end;
 
-    if PointsAreClose(Poly[I], Poly[J], D) or
-      SlopesEqual(Pt, Poly[I], Poly[J], UseFullRange) then
+    I2 := I;
+    while (J <= HighI) and PointsAreClose(Poly[I], Poly[J], DistSqrd) or
+      SlopesNearColinear(Pt, Poly[I], Poly[J], DistSqrd) do
     begin
-      I := J;
-      Continue;
+      inc(I); //ie ignores Poly[I]
+      inc(J);
     end;
+    if I <> I2 then continue;
 
     Pt := Poly[I];
     inc(I);
@@ -3986,7 +4009,7 @@ begin
   end;
 
   if (K > 2) and
-    SlopesEqual(Result[K -2], Result[K -1], Result[0], UseFullRange) then
+    SlopesNearCoLinear(Result[K -2], Result[K -1], Result[0], DistSqrd) then
       Dec(K);
   if (K < 3) then
     Result := nil
