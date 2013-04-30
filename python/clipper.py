@@ -1,8 +1,8 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.3                                                           #
-# Date      :  14 March 2013                                                   #
+# Version   :  5.1.4                                                           #
+# Date      :  1 May 2013                                                      #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -2034,8 +2034,8 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
         # if the outermost polygon has the wrong orientation,
         # reverse the orientation of all the polygons ...
         if Area(botPoly) < 0.0:
-            for poly in ppts:
-                poly = poly[::-1]
+            for i in range(len(ppts)):
+                ppts[i] = ppts[i][::-1]                
     else:
         # make sure that polygon's start & end pts don't match ...             
         for poly in ppts:

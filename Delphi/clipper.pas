@@ -301,7 +301,7 @@ type
   end;
 
 function Orientation(const Pts: TPolygon): Boolean; overload;
-function Area(const Pts: TPolygon): Double;
+function Area(const Pts: TPolygon): Double; overload;
 function IntPoint(const X, Y: Int64): TIntPoint;
 function ReversePolygon(const Pts: TPolygon): TPolygon;
 function ReversePolygons(const Pts: TPolygons): TPolygons;
@@ -689,7 +689,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Area(const Pts: TPolygon): Double; overload;
+function Area(const Pts: TPolygon): Double;
 var
   I, HighI: Integer;
   A: TInt128;
@@ -794,6 +794,46 @@ begin
     if PointsEqual(Pp2.Pt, Pt) then Exit;
     Pp2 := Pp2.Next;
   until Pp2 = PP;
+  Result := False;
+end;
+//------------------------------------------------------------------------------
+
+function PointOnLineSegment(const Pt, LinePt1, LinePt2: TIntPoint;
+  UseFullInt64Range: Boolean): Boolean;
+begin
+  if UseFullInt64Range then
+    Result :=
+      ((Pt.X = LinePt1.X) and (Pt.Y = LinePt1.Y)) or
+      ((Pt.X = LinePt2.X) and (Pt.Y = LinePt2.Y)) or
+      (((Pt.X > LinePt1.X) = (Pt.X < LinePt2.X)) and
+      ((Pt.Y > LinePt1.Y) = (Pt.Y < LinePt2.Y)) and
+      Int128Equal(Int128Mul((Pt.X - LinePt1.X), (LinePt2.Y - LinePt1.Y)),
+      Int128Mul((LinePt2.X - LinePt1.X), (Pt.Y - LinePt1.Y))))
+  else
+    Result :=
+      ((Pt.X = LinePt1.X) and (Pt.Y = LinePt1.Y)) or
+      ((Pt.X = LinePt2.X) and (Pt.Y = LinePt2.Y)) or
+      (((Pt.X > LinePt1.X) = (Pt.X < LinePt2.X)) and
+      ((Pt.Y > LinePt1.Y) = (Pt.Y < LinePt2.Y)) and
+      ((Pt.X - LinePt1.X) * (LinePt2.Y - LinePt1.Y) =
+        (LinePt2.X - LinePt1.X) * (Pt.Y - LinePt1.Y)));
+end;
+//------------------------------------------------------------------------------
+
+function PointOnPolygon(const Pt: TIntPoint;
+  PP: POutPt; UseFullInt64Range: Boolean): Boolean;
+var
+  Pp2: POutPt;
+begin
+  Pp2 := PP;
+  repeat
+    if PointOnLineSegment(Pt, Pp2.Pt, Pp2.Next.Pt, UseFullInt64Range) then
+    begin
+      Result := True;
+      Exit;
+    end;
+    Pp2 := Pp2.Next;
+  until (Pp2 = PP);
   Result := False;
 end;
 //------------------------------------------------------------------------------
@@ -3388,19 +3428,24 @@ end;
 function Poly2ContainsPoly1(OutPt1, OutPt2: POutPt;
   UseFullInt64Range: Boolean): Boolean;
 var
-  OutPt: POutPt;
+  Pt: POutPt;
 begin
-  OutPt := OutPt1;
-  repeat
-    if not PointIsVertex(OutPt.Pt, OutPt2) then Break;
-    OutPt := OutPt.Next;
-  until OutPt = OutPt1;
-  //sometimes points can be touching the other polygon so
-  //to be totally confident OutPt1 is inside OutPt2 repeat ...
-  repeat
-    Result := PointInPolygon(OutPt.Pt, OutPt2, UseFullInt64Range);
-    OutPt := OutPt.Next;
-  until not Result or (OutPt = OutPt1);
+  Pt := OutPt1;
+  //Because the polygons may be touching, we need to find a vertex that
+  //isn't touching the other polygon ...
+  if PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) then
+  begin
+    Pt := Pt.Next;
+    while (Pt <> OutPt1) and
+      PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) do
+        Pt := Pt.Next;
+    if (Pt = OutPt1) then
+    begin
+      Result := true;
+      Exit;
+    end;
+  end;
+  Result := PointInPolygon(Pt.Pt, OutPt2, UseFullInt64Range);
 end;
 //------------------------------------------------------------------------------
 
