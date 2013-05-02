@@ -261,6 +261,7 @@ type
     procedure AddOutPt(E: PEdge; const Pt: TIntPoint);
     procedure AddLocalMaxPoly(E1, E2: PEdge; const Pt: TIntPoint);
     procedure AddLocalMinPoly(E1, E2: PEdge; const Pt: TIntPoint);
+    function GetOutRec(Idx: integer): POutRec;
     procedure AppendPolygon(E1, E2: PEdge);
     procedure DisposePolyPts(PP: POutPt);
     procedure DisposeAllPolyPts;
@@ -2289,7 +2290,7 @@ begin
   end;
   if Assigned(Dups) then
   begin
-    //there appears to be at least 2 vertices at BottomPt so ...
+    //there appears to be at least 2 vertices at bottom-most point so ...
     while Dups <> P do
     begin
       if not FirstParamIsBottomPt(P, Dups) then PP := Dups;
@@ -2327,6 +2328,10 @@ function GetLowermostRec(OutRec1, OutRec2: POutRec): POutRec;
 var
   OutPt1, OutPt2: POutPt;
 begin
+  if not assigned(OutRec1.BottomPt) then
+    OutRec1.BottomPt := GetBottomPt(OutRec1.Pts);
+  if not assigned(OutRec2.BottomPt) then
+    OutRec2.BottomPt := GetBottomPt(OutRec2.Pts);
   OutPt1 := OutRec1.BottomPt;
   OutPt2 := OutRec2.BottomPt;
   if (OutPt1.Pt.Y > OutPt2.Pt.Y) then Result := OutRec1
@@ -2348,6 +2353,14 @@ begin
     if OutRec1 = OutRec2 then Exit;
   until not Assigned(OutRec1);
   Result := False;
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.GetOutRec(Idx: integer): POutRec;
+begin
+  Result := FPolyOutList[Idx];
+  while Result <> FPolyOutList[Result.Idx] do
+    Result := FPolyOutList[Result.Idx];
 end;
 //------------------------------------------------------------------------------
 
@@ -2420,10 +2433,9 @@ begin
     NewSide := esRight;
   end;
 
+  OutRec1.BottomPt := nil;
   if HoleStateRec = OutRec2 then
   begin
-    OutRec1.BottomPt := OutRec2.BottomPt;
-    OutRec1.BottomPt.Idx := OutRec1.Idx;
     if OutRec2.FirstLeft <> OutRec1 then
       OutRec1.FirstLeft := OutRec2.FirstLeft;
     OutRec1.IsHole := OutRec2.IsHole;
@@ -2451,20 +2463,7 @@ begin
     E := E.NextInAEL;
   end;
 
-  for I := 0 to FJoinList.count -1 do
-  begin
-    Jr := FJoinList[I];
-    if Jr.Poly1Idx = ObsoleteIdx then Jr.Poly1Idx := OKIdx;
-    if Jr.Poly2Idx = ObsoleteIdx then Jr.Poly2Idx := OKIdx;
-  end;
-  if Assigned(fHorizJoins) then
-  begin
-    H := FHorizJoins;
-    repeat
-      if H.SavedIdx = ObsoleteIdx then H.SavedIdx := OKIdx;
-      H := H.Next;
-    until H = FHorizJoins;
-  end;
+  OutRec2.Idx := OutRec1.Idx;
 end;
 //------------------------------------------------------------------------------
 
@@ -2476,6 +2475,7 @@ begin
   Result.Pts := nil;
   Result.BottomPt := nil;
   Result.PolyNode := nil;
+  Result.Idx := FPolyOutList.Add(Result);
 end;
 //------------------------------------------------------------------------------
 
@@ -2489,11 +2489,9 @@ begin
   if E.OutIdx < 0 then
   begin
     OutRec := CreateOutRec;
-    OutRec.Idx := FPolyOutList.Add(OutRec);
     E.OutIdx := OutRec.Idx;
     new(Op);
     OutRec.Pts := Op;
-    OutRec.BottomPt := Op;
 
     Op.Pt := Pt;
     Op.Next := Op;
@@ -2509,9 +2507,6 @@ begin
     new(op2);
     op2.Pt := Pt;
     op2.Idx := OutRec.Idx;
-    if (op2.Pt.Y = OutRec.BottomPt.Pt.Y) and
-      (op2.Pt.X < OutRec.BottomPt.Pt.X) then
-        OutRec.BottomPt := op2;
     op2.Next := Op;
     op2.Prev := Op.Prev;
     Op.Prev.Next := op2;
@@ -3192,7 +3187,7 @@ begin
   //FixupOutPolygon() - removes duplicate points and simplifies consecutive
   //parallel edges by removing the middle vertex.
   LastOK := nil;
-  OutRec.Pts := OutRec.BottomPt;
+  OutRec.BottomPt := nil;
   PP := OutRec.Pts;
   while True do
   begin
@@ -3200,7 +3195,6 @@ begin
     begin
       DisposePolyPts(PP);
       OutRec.Pts := nil;
-      OutRec.BottomPt := nil;
       Exit;
     end;
 
@@ -3211,8 +3205,6 @@ begin
       //OK, we need to delete a point ...
       LastOK := nil;
       Tmp := PP;
-      if PP = OutRec.BottomPt then
-        OutRec.BottomPt := nil; //flags need for updating
       PP.Prev.Next := PP.Next;
       PP.Next.Prev := PP.Prev;
       PP := PP.Prev;
@@ -3225,12 +3217,7 @@ begin
       PP := PP.Next;
     end;
   end;
-  if not Assigned(OutRec.BottomPt) then
-  begin
-    OutRec.BottomPt := GetBottomPt(PP);
-    OutRec.BottomPt.Idx := OutRec.Idx;
-    OutRec.Pts := OutRec.BottomPt;
-  end;
+  OutRec.Pts := PP;
 end;
 //------------------------------------------------------------------------------
 
@@ -3478,7 +3465,7 @@ end;
 
 procedure TClipper.JoinCommonEdges;
 var
-  I, J, OKIdx, ObsoleteIdx: Integer;
+  I, J: Integer;
   Jr, Jr2: PJoinRec;
   OutRec1, OutRec2, HoleStateRec: POutRec;
   P1, P2: POutPt;
@@ -3487,8 +3474,8 @@ begin
   begin
     Jr := FJoinList[I];
 
-    OutRec1 := FPolyOutList[Jr.Poly1Idx];
-    OutRec2 := FPolyOutList[Jr.Poly2Idx];
+    OutRec1 := GetOutRec(Jr.Poly1Idx);
+    OutRec2 := GetOutRec(Jr.Poly2Idx);
 
     if not Assigned(OutRec1.Pts) or not Assigned(OutRec2.Pts) then Continue;
 
@@ -3505,15 +3492,11 @@ begin
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      OutRec1.Pts := GetBottomPt(P1);
-      OutRec1.BottomPt := OutRec1.Pts;
-      OutRec1.BottomPt.Idx := OutRec1.Idx;
+      OutRec1.Pts := P1;
+      OutRec1.BottomPt := nil;
       OutRec2 := CreateOutRec;
-      OutRec2.Idx := FPolyOutList.Add(OutRec2);
+      OutRec2.Pts := P2;
       Jr.Poly2Idx := OutRec2.Idx;
-      OutRec2.Pts := GetBottomPt(P2);
-      OutRec2.BottomPt := OutRec2.Pts;
-      OutRec2.BottomPt.Idx := OutRec2.Idx;
 
       if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts, FUse64BitRange) then
       begin
@@ -3574,23 +3557,14 @@ begin
       FixupOutPolygon(OutRec1);
 
       //delete the obsolete pointer ...
-      OKIdx := OutRec1.Idx;
-      ObsoleteIdx := OutRec2.Idx;
       OutRec2.Pts := nil;
       OutRec2.BottomPt := nil;
+      OutRec2.Idx := OutRec1.Idx;
 
       OutRec1.IsHole := HoleStateRec.IsHole;
       if HoleStateRec = OutRec2 then
         OutRec1.FirstLeft := OutRec2.FirstLeft;
       OutRec2.FirstLeft := OutRec1;
-
-      //now fixup any subsequent joins ...
-      for J := I+1 to FJoinList.count -1 do
-      begin
-        Jr2 := FJoinList[J];
-        if (Jr2.Poly1Idx = ObsoleteIdx) then Jr2.Poly1Idx := OKIdx;
-        if (Jr2.Poly2Idx = ObsoleteIdx) then Jr2.Poly2Idx := OKIdx;
-      end;
 
       //fixup FirstLeft pointers that may need reassigning to OutRec1
       if FUsingPolyTree then FixupFirstLefts2(OutRec2, OutRec1);
