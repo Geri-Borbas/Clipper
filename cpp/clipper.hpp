@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.4                                                           *
-* Date      :  24 March 2013                                                   *
+* Version   :  5.1.5                                                           *
+* Date      :  4 May 2013                                                      *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -247,6 +247,8 @@ public:
   void Clear();
   bool ReverseSolution() {return m_ReverseOutput;};
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
+  bool ForceSimple() {return m_ForceSimple;};
+  void ForceSimple(bool value) {m_ForceSimple = value;};
 protected:
   void Reset();
   virtual bool ExecuteInternal();
@@ -264,6 +266,7 @@ private:
   PolyFillType     m_SubjFillType;
   bool             m_ReverseOutput;
   bool             m_UsingPolyTree; 
+  bool             m_ForceSimple;
   void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
   bool IsEvenOddFillType(const TEdge& edge) const;
@@ -286,10 +289,8 @@ private:
   void ProcessHorizontal(TEdge *horzEdge);
   void AddLocalMaxPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
   void AddLocalMinPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
+  OutRec* GetOutRec(int idx);
   void AppendPolygon(TEdge *e1, TEdge *e2);
-  void DoEdge1(TEdge *edge1, TEdge *edge2, const IntPoint &pt);
-  void DoEdge2(TEdge *edge1, TEdge *edge2, const IntPoint &pt);
-  void DoBothEdges(TEdge *edge1, TEdge *edge2, const IntPoint &pt);
   void IntersectEdges(TEdge *e1, TEdge *e2,
     const IntPoint &pt, const IntersectProtects protects);
   OutRec* CreateOutRec();
@@ -303,12 +304,12 @@ private:
   void ProcessEdgesAtTopOfScanbeam(const long64 topY);
   void BuildResult(Polygons& polys);
   void BuildResult2(PolyTree& polytree);
-  void SetHoleState(TEdge *e, OutRec *OutRec);
+  void SetHoleState(TEdge *e, OutRec *outrec);
   void DisposeIntersectNodes();
   bool FixupIntersectionOrder();
-  void FixupOutPolygon(OutRec &outRec);
+  void FixupOutPolygon(OutRec &outrec);
   bool IsHole(TEdge *e);
-  void FixHoleLinkage(OutRec &outRec);
+  void FixHoleLinkage(OutRec &outrec);
   void AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx = -1, int e2OutIdx = -1);
   void ClearJoins();
   void AddHorzJoin(TEdge *e, int idx);
@@ -316,6 +317,7 @@ private:
   bool JoinPoints(const JoinRec *j, OutPt *&p1, OutPt *&p2);
   void FixupJoinRecs(JoinRec *j, OutPt *pt, unsigned startIdx);
   void JoinCommonEdges();
+  void DoSimplePolygons();
   void FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec);
   void FixupFirstLefts2(OutRec* OldOutRec, OutRec* NewOutRec);
 };
