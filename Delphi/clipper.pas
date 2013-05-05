@@ -2993,6 +2993,7 @@ var
   E, ePrev, eNext: PEdge;
   Hj: PHorzRec;
   Pt, Pt2: TIntPoint;
+  IntermediateVert: Boolean;
 begin
 (*******************************************************************************
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
@@ -3030,8 +3031,9 @@ begin
         E := ePrev.NextInAEL;
     end else
     begin
+      IntermediateVert := IsIntermediate(E, TopY);
       //2. promote horizontal edges, otherwise update XCurr and YCurr ...
-      if IsIntermediate(E, TopY) and (E.NextInLML.Dx = Horizontal) then
+      if IntermediateVert and (E.NextInLML.Dx = Horizontal) then
       begin
         if (E.OutIdx >= 0) then
         begin
@@ -3054,9 +3056,18 @@ begin
         AddEdgeToSEL(E);
       end else
       begin
-        //this just simplifies horizontal processing ...
         E.XCurr := TopX(E, TopY);
         E.YCurr := TopY;
+
+        if FForceSimple and Assigned(E.PrevInAEL) and
+          (E.PrevInAEL.XCurr = E.XCurr) and
+          (E.OutIdx >= 0) and (E.PrevInAEL.OutIdx >= 0) then
+        begin
+          if IntermediateVert then
+            AddOutPt(E.PrevInAEL, IntPoint(E.XCurr, TopY))
+          else
+            AddOutPt(E, IntPoint(E.XCurr, TopY));
+        end;
       end;
       E := E.NextInAEL;
     end;

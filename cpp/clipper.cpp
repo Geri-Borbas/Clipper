@@ -1150,6 +1150,7 @@ Clipper::Clipper() : ClipperBase() //constructor
   m_ExecuteLocked = false;
   m_UseFullRange = false;
   m_ReverseOutput = false;
+  m_ForceSimple = false;
 }
 //------------------------------------------------------------------------------
 
@@ -2532,8 +2533,9 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
     }
     else
     {
+      bool intermediateVert = IsIntermediate(e, topY);
       //2. promote horizontal edges, otherwise update xcurr and ycurr ...
-      if(  IsIntermediate(e, topY) && NEAR_EQUAL(e->nextInLML->dx, HORIZONTAL) )
+      if (intermediateVert && NEAR_EQUAL(e->nextInLML->dx, HORIZONTAL) )
       {
         if (e->outIdx >= 0)
         {
@@ -2556,9 +2558,18 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
         AddEdgeToSEL(e);
       } else
       {
-        //this just simplifies horizontal processing ...
         e->xcurr = TopX( *e, topY );
         e->ycurr = topY;
+
+        if (m_ForceSimple && e->prevInAEL &&
+          e->prevInAEL->xcurr == e->xcurr && 
+          e->outIdx >= 0 && e->prevInAEL->outIdx >= 0)
+        {
+          if (intermediateVert)             
+            AddOutPt(e->prevInAEL, IntPoint(e->xcurr, topY));
+          else
+            AddOutPt(e, IntPoint(e->xcurr, topY));
+        }
       }
       e = e->nextInAEL;
     }

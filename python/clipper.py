@@ -1558,7 +1558,8 @@ class Clipper(ClipperBase):
                 if ePrev is None: e = self._ActiveEdges
                 else: e = ePrev.nextInAEL
             else:
-                if _IsIntermediate(e, topY) and e.nextInLML.dx == horizontal:
+                intermediateVert = _IsIntermediate(e, topY)
+                if intermediateVert and e.nextInLML.dx == horizontal:
                     if e.outIdx >= 0:
                         self._AddOutPt(e, Point(e.xTop, e.yTop))
                         hj = self._HorzJoins
@@ -1579,6 +1580,13 @@ class Clipper(ClipperBase):
                 else:
                     e.xCurr = _TopX(e, topY)
                     e.yCurr = topY
+                    if (self.ForceSimple and e.prevInAEL is not None and
+                      e.prevInAEL.xCurr == e.xCurr and
+                      e.outIdx >= 0 and e.prevInAEL.outIdx >= 0):
+                        if (intermediateVert):
+                            self._AddOutPt(e.prevInAEL, Point(e.xCurr, topY));
+                        else:
+                            self._AddOutPt(e, Point(e.xCurr, topY))
                 e = e.nextInAEL
 
         self._ProcessHorizontals()
@@ -1997,7 +2005,7 @@ def _StripDupPts(poly):
         i -= 1
     return poly
 
-def _OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
+def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
     
     def DoSquare(pt, limit):
         pt1 = Point(round(pt.x + Normals[k].x * delta), round(pt.y + Normals[k].y * delta))
@@ -2124,7 +2132,6 @@ def _OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoF
         for poly in res:
             poly = poly[::-1]             
     return res
-
 
 def _DistanceSqrd(pt1, pt2):
     dx = (pt1.x - pt2.x)

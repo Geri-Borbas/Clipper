@@ -2772,8 +2772,9 @@ namespace ClipperLib
             }
             else
             {
+              bool intermediateVert = IsIntermediate(e, topY);
               //2. promote horizontal edges, otherwise update xcurr and ycurr ...
-              if(  IsIntermediate(e, topY) && e.nextInLML.dx == horizontal )
+              if (intermediateVert && e.nextInLML.dx == horizontal)
               {
                 if (e.outIdx >= 0)
                 {
@@ -2797,9 +2798,17 @@ namespace ClipperLib
               } 
               else
               {
-                //this just simplifies horizontal processing ...
                 e.xcurr = TopX( e, topY );
                 e.ycurr = topY;
+                if (m_ForceSimple && e.prevInAEL != null &&
+                  e.prevInAEL.xcurr == e.xcurr &&
+                  e.outIdx >= 0 && e.prevInAEL.outIdx >= 0)
+                {
+                    if (intermediateVert)
+                        AddOutPt(e.prevInAEL, new IntPoint(e.xcurr, topY));
+                    else
+                        AddOutPt(e, new IntPoint(e.xcurr, topY));
+                }
               }
               e = e.nextInAEL;
             }
