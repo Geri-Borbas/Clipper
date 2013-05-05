@@ -1,8 +1,8 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.4                                                           #
-# Date      :  1 May 2013                                                      #
+# Version   :  5.1.5                                                           #
+# Date      :  4 May 2013                                                      #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -47,6 +47,7 @@ class Protects: (Neither, Left, Right, Both) = range(4)
 class Direction: (LeftToRight, RightToLeft) = range(2)
 
 Point = namedtuple('Point', 'x y')
+DoublePoint = namedtuple('DoublePoint', 'x y')
 
 class LocalMinima(object):
     leftBound = rightBound = nextLm = None
@@ -214,7 +215,7 @@ class Edge(object):
         self.prevInAEL, self.nextInAEL, self.prevInSEL, self.nextInSEL = None, None, None, None
         
     def __repr__(self):
-        return "(%i,%i -> %i,%i {dx:%0.2f} %i {%x})" % \
+        return "(%i,%i . %i,%i {dx:%0.2f} %i {%x})" % \
             (self.xBot, self.yBot, self.xTop, self.yTop, self.dx, self.outIdx, id(self))
 
 #===============================================================================
@@ -460,9 +461,11 @@ def _TopX(e, currentY):
     else: return e.xBot + round(e.dx * Decimal(currentY - e.yBot))
 
 def _E2InsertsBeforeE1(e1,e2):
-    if e2.xCurr == e1.xCurr:
-        return e2.dx > e1.dx
-    else:
+    if (e2.xCurr == e1.xCurr): 
+        if (e2.yTop > e1.yTop):
+            return e2.xTop < _TopX(e1, e2.yTop) 
+        return e1.xTop > _TopX(e2, e1.yTop) 
+    else: 
         return e2.xCurr < e1.xCurr
 
 def _IsMinima(e):
@@ -565,8 +568,12 @@ def _GetBottomPt(pp):
     return pp
 
 def _GetLowermostRec(outRec1, outRec2):
-    outPt1 = outRec1.bottomPt
-    outPt2 = outRec2.bottomPt
+    if (outRec1.bottomPt is None): 
+        outPt1 = _GetBottomPt(outRec1.pts)
+    else: outPt1 = outRec1.bottomPt
+    if (outRec2.bottomPt is None): 
+        outPt2 = _GetBottomPt(outRec2.pts)
+    else: outPt2 = outRec2.bottomPt
     if (outPt1.pt.y > outPt2.pt.y): return outRec1
     elif (outPt1.pt.y < outPt2.pt.y): return outRec2
     elif (outPt1.pt.x < outPt2.pt.x): return outRec1
@@ -586,33 +593,6 @@ def _SetHoleState(e, outRec, polyOutList):
                 outRec.FirstLeft = polyOutList[e2.outIdx]
         e2 = e2.prevInAEL
     outRec.isHole = isHole
-
-def _AddOutPt(e, pt, polyOutList):
-    toFront = e.side == EdgeSide.Left
-    if e.outIdx < 0:
-        outRec = OutRec(len(polyOutList))
-        e.outIdx = outRec.idx
-        polyOutList.append(outRec)
-        op = OutPt(outRec.idx, pt)
-        op.nextOp = op
-        op.prevOp = op
-        outRec.pts = op
-        outRec.bottomPt = op
-        _SetHoleState(e, outRec, polyOutList)
-    else:
-        outRec = polyOutList[e.outIdx]
-        op = outRec.pts
-        if (toFront and _PointsEqual(pt, op.pt)) or \
-            (not toFront and _PointsEqual(pt, op.prevOp.pt)): return
-        op2 = OutPt(outRec.idx, pt)
-        if (op2.pt.y == outRec.bottomPt.pt.y) and \
-            (op2.pt.x < outRec.bottomPt.pt.x):
-                outRec.bottomPt = op2
-        op2.nextOp = op
-        op2.prevOp = op.prevOp
-        op.prevOp.nextOp = op2
-        op.prevOp = op2
-        if toFront: outRec.pts = op2
 
 def _PointCount(pts):
     if pts is None: return 0
@@ -642,36 +622,17 @@ def _ReversePolyPtLinks(pp):
         pp1 = pp2
         if pp1 == pp: break
 
-def _DoEdge1(e1, e2, pt, polyOutList):
-    _AddOutPt(e1, pt, polyOutList)
-    _SwapSides(e1, e2)
-    _SwapPolyIndexes(e1, e2)
-
-def _DoEdge2(e1, e2, pt, polyOutList):
-    _AddOutPt(e2, pt, polyOutList)
-    _SwapSides(e1, e2)
-    _SwapPolyIndexes(e1, e2)
-
-def _DoBothEdges(e1, e2, pt, polyOutList):
-    _AddOutPt(e1, pt, polyOutList)
-    _AddOutPt(e2, pt, polyOutList)
-    _SwapSides(e1, e2)
-    _SwapPolyIndexes(e1, e2)
-
 def _FixupOutPolygon(outRec):
     lastOK = None
-    outRec.pts = outRec.bottomPt
+    outRec.bottomPt = None
     pp = outRec.pts
     while True:
         if pp.prevOp == pp or pp.nextOp == pp.prevOp:
             outRec.pts = None
-            outRec.bottomPt = None
             return
         if _PointsEqual(pp.pt, pp.nextOp.pt) or \
                 _SlopesEqual(pp.prevOp.pt, pp.pt, pp.nextOp.pt):
             lastOK = None
-            if pp == outRec.bottomPt:
-                outRec.bottomPt = None
             pp.prevOp.nextOp = pp.nextOp
             pp.nextOp.prevOp = pp.prevOp
             pp = pp.prevOp
@@ -679,10 +640,7 @@ def _FixupOutPolygon(outRec):
         else:
             if lastOK is None: lastOK = pp
             pp = pp.nextOp
-    if outRec.bottomPt is None:
-        outRec.bottomPt = _GetBottomPt(pp)
-        outRec.bottomPt.idx = outRec.idx
-        outRec.pts = outRec.bottomPt
+    outRec.pts = pp
 
 def _FixHoleLinkage(outRec):
     if outRec.FirstLeft is None or \
@@ -745,6 +703,22 @@ def _InsertPolyPtBetween(outPt1, outPt2, pt):
         result.prevOp = outPt2
     return result
 
+def _PointOnLineSegment(pt, linePt1, linePt2):
+    return ((pt.x == linePt1.x) and (pt.y == linePt1.y)) or \
+        ((pt.x == linePt2.x) and (pt.y == linePt2.y)) or \
+        (((pt.x > linePt1.x) == (pt.x < linePt2.x)) and \
+        ((pt.y > linePt1.y) == (pt.y < linePt2.y)) and \
+        ((pt.x - linePt1.x) * (linePt2.y - linePt1.y) == \
+        (linePt2.x - linePt1.x) * (pt.y - linePt1.y)))
+
+def _PointOnPolygon(pt, pp):
+    pp2 = pp;
+    while True:
+        if (_PointOnLineSegment(pt, pp2.pt, pp2.nextOp.pt)):
+            return True
+        pp2 = pp2.nextOp
+        if (pp2 == pp): return False
+
 def _PointInPolygon(pt, outPt): 
     result = False
     outPt2 = outPt
@@ -757,21 +731,33 @@ def _PointInPolygon(pt, outPt):
         if outPt2 == outPt: break
 
 def _Poly2ContainsPoly1(outPt1, outPt2):
-    outPt = outPt1
+    pt = outPt1
+    if (_PointOnPolygon(pt.pt, outPt2)):
+        pt = pt.nextOp
+        while (pt != outPt1 and _PointOnPolygon(pt.pt, outPt2)):
+            pt = pt.nextOp
+        if (pt == outPt1): return True
+    return _PointInPolygon(pt.pt, outPt2)    
+    
+def _EdgesAdjacent(inode):
+    return (inode.e1.nextInSEL == inode.e2) or \
+        (inode.e1.prevInSEL == inode.e2)
+
+def _UpdateOutPtIdxs(outrec):
+    op = outrec.pts
     while True:
-        if not _PointIsVertex(outPt.pt, outPt2): break
-        outPt = outPt.nextOp
-        if outPt == outPt1: break
-    while True:
-        result = _PointInPolygon(outPt.pt, outPt2)
-        outPt = outPt.nextOp
-        if not result or outPt == outPt1: break
-    return result
+        op.idx = outrec.idx
+        op = op.prevOp
+        if (op == outrec.pts): break
 
 class Clipper(ClipperBase):
 
     def __init__(self):
         ClipperBase.__init__(self)
+
+        self.ReverseOutput     = False
+        self.ForceSimple       = False
+        
         self._PolyOutList = []        
         self._ClipType         = ClipType.Intersection
         self._Scanbeam         = None
@@ -781,7 +767,6 @@ class Clipper(ClipperBase):
         self._ClipFillType     = PolyFillType.EvenOdd
         self._SubjFillType     = PolyFillType.EvenOdd
         self._ExecuteLocked    = False
-        self._ReverseOutput    = False
         self._UsingPolyTree    = False
         self._JoinList         = None
         self._HorzJoins        = None
@@ -869,7 +854,6 @@ class Clipper(ClipperBase):
             return self._SubjFillType == PolyFillType.EvenOdd
 
     def _IsContributing(self, edge):
-        result = True
         if edge.PolyType == PolyType.Subject:
             pft = self._SubjFillType
             pft2 = self._ClipFillType
@@ -877,11 +861,11 @@ class Clipper(ClipperBase):
             pft = self._ClipFillType
             pft2 = self._SubjFillType
         if pft == PolyFillType.EvenOdd or pft == PolyFillType.NonZero:
-            result = abs(edge.windCnt) == 1
+            if abs(edge.windCnt) != 1: return False
         elif pft == PolyFillType.Positive:
-            result = edge.windCnt == 1
-        else: result = edge.windCnt == -1
-        if not result: return False
+            if edge.windCnt != 1: return False
+        elif pft == PolyFillType.Negative:
+            if edge.windCnt != -1: return False
 
         if self._ClipType == ClipType.Intersection: ###########
             if pft2 == PolyFillType.EvenOdd or pft2 == PolyFillType.NonZero:
@@ -890,7 +874,7 @@ class Clipper(ClipperBase):
                 return edge.windCnt2 > 0
             else:
                 return edge.windCnt2 < 0 # Negative
-        elif self._ClipType == ClipType.Union:            ###########
+        elif self._ClipType == ClipType.Union:      ###########
             if pft2 == PolyFillType.EvenOdd or pft2 == PolyFillType.NonZero:
                 return edge.windCnt2 == 0
             elif pft2 == PolyFillType.Positive:
@@ -904,20 +888,15 @@ class Clipper(ClipperBase):
                     return edge.windCnt2 <= 0
                 else:
                     return edge.windCnt2 >= 0
-            else:
+            else:                                   
                 if pft2 == PolyFillType.EvenOdd or pft2 == PolyFillType.NonZero:
                     return edge.windCnt2 != 0
                 elif pft2 == PolyFillType.Positive:
                     return edge.windCnt2 > 0
                 else:
                     return edge.windCnt2 < 0
-        else: # self._ClipType == ClipType.XOR: ###########
-            if pft2 == PolyFillType.EvenOdd or pft2 == PolyFillType.NonZero:
-                return edge.windCnt2 != 0
-            elif pft2 == PolyFillType.Positive:
-                return edge.windCnt2 > 0
-            else:
-                return edge.windCnt2 < 0
+        else: # self._ClipType == ClipType.XOR:     ###########
+            return True 
 
     def _AddEdgeToSEL(self, edge):
         if self._SortedEdges is None:
@@ -1130,7 +1109,7 @@ class Clipper(ClipperBase):
             e = eNext
         if horzEdge.nextInLML is not None:
             if horzEdge.outIdx >= 0:
-                _AddOutPt(horzEdge, Point(horzEdge.xTop, horzEdge.yTop), self._PolyOutList)
+                self._AddOutPt(horzEdge, Point(horzEdge.xTop, horzEdge.yTop))
             self._UpdateEdgeIntoAEL(horzEdge)
         else:
             if horzEdge.outIdx >= 0:
@@ -1198,11 +1177,14 @@ class Clipper(ClipperBase):
     def _ProcessIntersections(self, botY, topY):
         self._BuildIntersectList(botY, topY)
         if self._IntersectNodes is None: return True
-        elif not self._FixupIntersections(): return False
-        self._ProcessIntersectList()
+        success = False
+        if self._IntersectNodes.nextIn is None or self._FixupIntersections(): 
+            self._ProcessIntersectList()
+            success = True
         self._IntersectNodes = None
-        return True
-
+        self._SortedEdges = None
+        return success
+            
     def _BuildIntersectList(self, botY, topY):
         if self._ActiveEdges is None: return
 
@@ -1325,15 +1307,24 @@ class Clipper(ClipperBase):
 
         if e1Contributing and e2contributing:
             if e1stops or e2stops or \
-                not (e1Wc == 0 or e1Wc == 1) or not (e2Wc == 0 or e2Wc == 1) or \
+                (e1Wc != 0 and e1Wc != 1) or (e2Wc != 0 and e2Wc != 1) or \
                 (e1.PolyType != e2.PolyType and self._ClipType != ClipType.Xor):
                     self._AddLocalMaxPoly(e1, e2, pt)
             else:
-                _DoBothEdges(e1, e2, pt, self._PolyOutList)
+                self._AddOutPt(e1, pt)
+                self._AddOutPt(e2, pt)
+                _SwapSides(e1, e2)
+                _SwapPolyIndexes(e1, e2)
         elif e1Contributing:
-            if (e2Wc == 0 or e2Wc == 1): _DoEdge1(e1, e2, pt, self._PolyOutList)
+            if (e2Wc == 0 or e2Wc == 1): 
+                self._AddOutPt(e1, pt)
+                _SwapSides(e1, e2)
+                _SwapPolyIndexes(e1, e2)
         elif e2contributing:
-            if (e1Wc == 0 or e1Wc == 1): _DoEdge2(e1, e2, pt, self._PolyOutList)
+            if (e1Wc == 0 or e1Wc == 1): 
+                self._AddOutPt(e2, pt)
+                _SwapSides(e1, e2)
+                _SwapPolyIndexes(e1, e2)
 
         elif    (e1Wc == 0 or e1Wc == 1) and (e2Wc == 0 or e2Wc == 1) and \
             not e1stops and not e2stops:
@@ -1413,7 +1404,7 @@ class Clipper(ClipperBase):
 
     def _AddLocalMinPoly(self, e1, e2, pt):
         if e2.dx == horizontal or e1.dx > e2.dx:
-            _AddOutPt(e1, pt, self._PolyOutList)
+            self._AddOutPt(e1, pt)
             e2.outIdx = e1.outIdx
             e1.side = EdgeSide.Left
             e2.side = EdgeSide.Right
@@ -1421,7 +1412,7 @@ class Clipper(ClipperBase):
             if e.prevInAEL == e2: prevE = e2.prevInAEL
             else: prevE = e1.prevInAEL
         else:
-            _AddOutPt(e2, pt, self._PolyOutList)
+            self._AddOutPt(e2, pt)
             e1.outIdx = e2.outIdx
             e1.side = EdgeSide.Right
             e2.side = EdgeSide.Left
@@ -1433,10 +1424,10 @@ class Clipper(ClipperBase):
             _TopX(prevE, pt.y) == _TopX(e, pt.y) and \
            _SlopesEqual2(e, prevE): 
                 self._AddJoin(e, prevE)
-
+        return
 
     def _AddLocalMaxPoly(self, e1, e2, pt):
-        _AddOutPt(e1, pt, self._PolyOutList)
+        self._AddOutPt(e1, pt)
         if e1.outIdx == e2.outIdx:
             e1.outIdx = -1
             e2.outIdx = -1
@@ -1445,6 +1436,33 @@ class Clipper(ClipperBase):
         else:
             self._AppendPolygon(e2, e1)
 
+    def _CreateOutRec(self):
+        outRec = OutRec(len(self._PolyOutList))
+        self._PolyOutList.append(outRec)
+        return outRec
+    
+    def _AddOutPt(self, e, pt):
+        toFront = e.side == EdgeSide.Left
+        if e.outIdx < 0:
+            outRec = self._CreateOutRec();
+            e.outIdx = outRec.idx
+            op = OutPt(outRec.idx, pt)
+            op.nextOp = op
+            op.prevOp = op
+            outRec.pts = op
+            _SetHoleState(e, outRec, self._PolyOutList)
+        else:
+            outRec = self._PolyOutList[e.outIdx]
+            op = outRec.pts
+            if (toFront and _PointsEqual(pt, op.pt)) or \
+                (not toFront and _PointsEqual(pt, op.prevOp.pt)): return
+            op2 = OutPt(outRec.idx, pt)
+            op2.nextOp = op
+            op2.prevOp = op.prevOp
+            op.prevOp.nextOp = op2
+            op.prevOp = op2
+            if toFront: outRec.pts = op2
+        
     def _AppendPolygon(self, e1, e2):
         outRec1 = self._PolyOutList[e1.outIdx]
         outRec2 = self._PolyOutList[e2.outIdx]
@@ -1491,9 +1509,8 @@ class Clipper(ClipperBase):
                 p1_lft.prevOp = p2_rt
                 p2_rt.nextOp = p1_lft
                 
+        outRec1.bottomPt = None                
         if holeStateRec == outRec2:
-            outRec1.bottomPt = outRec2.bottomPt
-            outRec1.bottomPt.idx = outRec1.idx
             if outRec2.FirstLeft != outRec1:
                 outRec1.FirstLeft = outRec2.FirstLeft
             outRec1.isHole = outRec2.isHole
@@ -1513,53 +1530,28 @@ class Clipper(ClipperBase):
                 e.side = newSide
                 break
             e = e.nextInAEL
-            
-        if self._JoinList is not None:
-            for jr in self._JoinList:
-                if jr.poly1Idx == ObsoleteIdx: jr.poly1Idx = OKIdx
-                if jr.poly2Idx == ObsoleteIdx: jr.poly2Idx = OKIdx
-        
-        if self._HorzJoins is not None:
-            hj = self._HorzJoins
-            while True:
-                if hj.savedIdx == ObsoleteIdx: 
-                    hj.savedIdx = OKIdx
-                hj = hj.nextHj
-                if hj == self._HorzJoins: 
-                    break
+        outRec2.idx = outRec1.idx    
         
     def _FixupIntersections(self):
-        if self._IntersectNodes.nextIn is None: return True
-        try:
-            self._CopyAELToSEL()
-            int1 = self._IntersectNodes
-            int2 = self._IntersectNodes.nextIn
-            e1 = e2 = None
-            while int2 is not None:
-                e1 = int1.e1
-                if e1.prevInSEL == int1.e2: e2 = e1.prevInSEL
-                elif (e1.nextInSEL == int1.e2): e2 = e1.nextInSEL
-                else:
-                    while int2 is not None:
-                        if int2.e1.nextInSEL == int2.e2 or \
-                            int2.e1.prevInSEL == int2.e2: break
-                        int2 = int2.nextIn
-                    if int2 is None:
-                        self._SortedEdges = None
-                        return False
-                    _SwapIntersectNodes(int1, int2)
-                    e1 = int1.e1
-                    e2 = int1.e2
-                self._SwapPositionsInSEL(e1, e2)
-                int1 = int1.nextIn
-                int2 = int1.nextIn
-        finally:
-            self._SortedEdges = None            
-        return int1.e1.prevInSEL == int1.e2 or int1.e1.nextInSEL == int1.e2
-            
+        self._CopyAELToSEL()
+        inode = self._IntersectNodes
+        while inode is not None:
+            if (not _EdgesAdjacent(inode)):
+                nextNode = inode.nextIn
+                while (nextNode and not _EdgesAdjacent(nextNode)):
+                    nextNode = nextNode.nextIn
+                if (nextNode is None): return False
+                _SwapIntersectNodes(inode, nextNode)
+        
+            self._SwapPositionsInSEL(inode.e1, inode.e2);
+            inode = inode.nextIn
+        return True
+                                
     def _ProcessEdgesAtTopOfScanbeam(self, topY):
         e = self._ActiveEdges
         while e is not None:
+            if topY == 136 and e.xBot == 44: 
+                print(e.xBot)
             if _IsMaxima(e, topY) and _GetMaximaPair(e).dx != horizontal:
                 ePrev = e.prevInAEL
                 self._DoMaxima(e, topY)
@@ -1568,8 +1560,7 @@ class Clipper(ClipperBase):
             else:
                 if _IsIntermediate(e, topY) and e.nextInLML.dx == horizontal:
                     if e.outIdx >= 0:
-                        _AddOutPt(e, Point(e.xTop, e.yTop), self._PolyOutList)
-                        
+                        self._AddOutPt(e, Point(e.xTop, e.yTop))
                         hj = self._HorzJoins
                         if hj is not None:
                             while True:
@@ -1596,7 +1587,7 @@ class Clipper(ClipperBase):
         while e is not None:
             if _IsIntermediate(e, topY):
                 if (e.outIdx >= 0) :
-                    _AddOutPt(e, Point(e.xTop, e.yTop), self._PolyOutList)
+                    self._AddOutPt(e, Point(e.xTop, e.yTop))
                 e = self._UpdateEdgeIntoAEL(e)
                 
                 ePrev = e.prevInAEL
@@ -1605,13 +1596,13 @@ class Clipper(ClipperBase):
                     (ePrev.yCurr == e.yBot) and (e.outIdx >= 0) and \
                     (ePrev.outIdx >= 0) and (ePrev.yCurr > ePrev.yTop) and \
                     _SlopesEqual2(e, ePrev):
-                        _AddOutPt(ePrev, Point(e.xBot, e.yBot), self._PolyOutList)
+                        self._AddOutPt(ePrev, Point(e.xBot, e.yBot))
                         self._AddJoin(e, ePrev)
                 elif eNext is not None and (eNext.xCurr == e.xBot) and \
                     (eNext.yCurr == e.yBot) and (e.outIdx >= 0) and \
                     (eNext.outIdx >= 0) and (eNext.yCurr > eNext.yTop) and \
                     _SlopesEqual2(e, eNext):
-                        _AddOutPt(eNext, Point(e.xBot, e.yBot), self._PolyOutList)
+                        self._AddOutPt(eNext, Point(e.xBot, e.yBot))
                         self._AddJoin(e, eNext)
                 
             e = e.nextInAEL
@@ -1695,11 +1686,17 @@ class Clipper(ClipperBase):
         for outRec in self._PolyOutList:
             if outRec.FirstLeft == oldOutRec: outRec.FirstLeft = newOutRec
 
+    def _GetOutRec(self, idx):
+        outrec = self._PolyOutList[idx]
+        while (outrec != self._PolyOutList[outrec.idx]):
+            outrec = self._PolyOutList[outrec.idx]
+        return outrec
+
     def _JoinCommonEdges(self):
         for i in range(len(self._JoinList)):
             jr = self._JoinList[i]
-            outRec1 = self._PolyOutList[jr.poly1Idx]
-            outRec2 = self._PolyOutList[jr.poly2Idx]
+            outRec1 = self._GetOutRec(jr.poly1Idx)
+            outRec2 = self._GetOutRec(jr.poly2Idx)
             if outRec1.pts is None or outRec2.pts is None: continue
 
             if outRec1 == outRec2: holeStateRec = outRec1
@@ -1711,15 +1708,11 @@ class Clipper(ClipperBase):
             if not result: continue
 
             if outRec1 == outRec2:
-                outRec1.pts = _GetBottomPt(p1)
-                outRec1.bottomPt = outRec1.pts
-                outRec1.bottomPt.idx = outRec1.idx
-                outRec2 = OutRec(len(self._PolyOutList))
-                self._PolyOutList.append(outRec2)
+                outRec1.pts = p1
+                outRec1.bottomPt = None
+                outRec2 = self._CreateOutRec()
+                outRec2.pts = p2
                 jr.poly2Idx = outRec2.idx
-                outRec2.pts = _GetBottomPt(p2)
-                outRec2.bottomPt = outRec2.pts
-                outRec2.bottomPt.idx = outRec2.idx
 
                 if _Poly2ContainsPoly1(outRec2.pts, outRec1.pts):
                     outRec2.isHole = not outRec1.isHole
@@ -1761,22 +1754,62 @@ class Clipper(ClipperBase):
                     _FixupOutPolygon(outRec2)
             else:
                 _FixupOutPolygon(outRec1)
-                OKIdx = outRec1.idx
-                ObsoleteIdx = outRec2.idx
                 outRec2.pts = None
                 outRec2.bottomPt = None
+                outRec2.idx = outRec1.idx
                 
                 outRec1.isHole = holeStateRec.isHole
                 if holeStateRec == outRec2:
                     outRec1.FirstLeft = outRec2.FirstLeft
                 outRec2.FirstLeft = outRec1
                 
-                for j in range(i +1, len(self._JoinList)):
-                    jr2 = self._JoinList[j]
-                    if (jr2.poly1Idx == ObsoleteIdx): jr2.poly1Idx = OKIdx
-                    if (jr2.poly2Idx == ObsoleteIdx): jr2.poly2Idx = OKIdx
                 if self._UsingPolyTree: self._FixupFirstLefts2(outRec2, outRec1)
-
+        return
+    
+    def _DoSimplePolygons(self):
+        i = 0;
+        while i < len(self._PolyOutList):
+            outrec = self._PolyOutList[i]
+            i +=1
+            op = outrec.pts
+            if (op is None): continue
+            while True:
+                op2 = op.nextOp
+                while (op2 != outrec.pts): 
+                    if (_PointsEqual(op.pt, op2.pt) and op2.nextOp != op and op2.prevOp != op): 
+                        #split the polygon into two ...
+                        op3 = op.prevOp
+                        op4 = op2.prevOp
+                        op.prevOp = op4
+                        op4.nextOp = op
+                        op2.prevOp = op3
+                        op3.nextOp = op2
+                        
+                        outrec.pts = op
+                        outrec2 = self._CreateOutRec();
+                        outrec2.pts = op2;
+                        _UpdateOutPtIdxs(outrec2)
+                        if (_Poly2ContainsPoly1(outrec2.pts, outrec.pts)):
+                            #OutRec2 is contained by OutRec1 ...
+                            outrec2.isHole = not outrec.isHole
+                            outrec2.FirstLeft = outrec
+                      
+                        elif (_Poly2ContainsPoly1(outrec.pts, outrec2.pts)):
+                            #OutRec1 is contained by OutRec2 ...
+                            outrec2.isHole = outrec.isHole
+                            outrec.isHole = not outrec2.isHole
+                            outrec2.FirstLeft = outrec.FirstLeft
+                            outrec.FirstLeft = outrec2
+                        else:
+                            #the 2 polygons are separate ...
+                            outrec2.isHole = outrec.isHole;
+                            outrec2.FirstLeft = outrec.FirstLeft;
+                        op2 = op; # ie get ready for the next iteration
+                    op2 = op2.nextOp
+                op = op.nextOp
+                if op == outrec.pts: break
+        return
+                
     def _ExecuteInternal(self):
         try: 
             try:
@@ -1800,6 +1833,8 @@ class Clipper(ClipperBase):
                         _ReversePolyPtLinks(outRec.pts)
                 
                 if self._JoinList is not None: self._JoinCommonEdges()
+                if self.ForceSimple: self._DoSimplePolygons()
+                
                 return True
             finally:
                 self._JoinList = None
@@ -1878,17 +1913,15 @@ class Clipper(ClipperBase):
                 polyNode.Contour.append(op.pt)
                 op = op.prevOp
                 if op == outRec.pts: break
-                
         # build the tree ...
         for outRec in self._PolyOutList:
             if outRec.PolyNode is None: continue
             if outRec.FirstLeft is None:
                 polyTree._AddChild(outRec.PolyNode)
             else:
-                outRec.FirstLeft.PolyNode._AddChild(outRec.PolyNode)
-                 
+                outRec.FirstLeft.PolyNode._AddChild(outRec.PolyNode)                 
         return
-    
+       
 #===============================================================================
 # OffsetPolygons (+ ancilliary functions)
 #===============================================================================
@@ -1964,7 +1997,7 @@ def _StripDupPts(poly):
         i -= 1
     return poly
 
-def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
+def _OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
     
     def DoSquare(pt, limit):
         pt1 = Point(round(pt.x + Normals[k].x * delta), round(pt.y + Normals[k].y * delta))
@@ -2092,26 +2125,77 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
             poly = poly[::-1]             
     return res
 
-def CleanPolygon(poly, distance = 1.415):
-    result = []
-    highI = len(poly) -1
-    d = round(distance * distance)
-    i = 0
-    while (highI > i and _PointsEqual(poly[highI], poly[i])): highI -= 1
-    while (highI > i and _PointsEqual(poly[i], poly[i +1])): i += 1
-    if (highI - i < 2): return result
-    ip = poly[i]
-    result.append(ip)
-    for i in range(i+1, highI +1):
-        dx = poly[i].x - ip.x
-        dy = poly[i].y - ip.y
-        if (dx * dx + dy * dy <= d): continue
-        result.append(poly[i])
-        ip = poly[i]
-    return result
 
+def _DistanceSqrd(pt1, pt2):
+    dx = (pt1.x - pt2.x)
+    dy = (pt1.y - pt2.y)
+    return (dx*dx + dy*dy)
+
+def _ClosestPointOnLine(pt, linePt1, linePt2):
+    dx = linePt2.x - linePt1.x
+    dy = linePt2.y - linePt1.y
+    if (dx == 0 and dy == 0): 
+        return DoublePoint(linePt1.x, linePt1.y)
+    q = ((pt.x-linePt1.x)*dx + (pt.Y-linePt1.Y)*dy) / (dx*dx + dy*dy)
+    return DoublePoint(
+      (1-q)*linePt1.X + q*linePt2.X,
+      (1-q)*linePt1.Y + q*linePt2.Y)
+
+def _SlopesNearColinear(pt1, pt2, pt3, distSqrd):
+    if _DistanceSqrd(pt1, pt2) > _DistanceSqrd(pt1, pt3): return False
+    cpol = _ClosestPointOnLine(pt2, pt1, pt3);
+    dx = pt2.x - cpol.x
+    dy = pt2.y - cpol.y
+    return (dx*dx + dy*dy) < distSqrd
+
+def _PointsAreClose(pt1, pt2, distSqrd):
+    dx = pt1.x - pt2.x
+    dy = pt1.y - pt2.y
+    return (dx * dx) + (dy * dy) <= distSqrd
+
+def CleanPolygon(poly, distance = 1.415):
+    distSqrd = distance * distance
+    highI = len(poly) -1
+    while (highI > 0 and _PointsEqual(poly[highI], poly[0])): highI -= 1
+    if (highI < 2): return []
+    pt = poly[highI]
+    result = []
+    i = 0
+    while True:
+        while (i < highI and _PointsAreClose(pt, poly[i+1], distSqrd)): i +=2
+        i2 = i
+        while (i < highI and _PointsAreClose(poly[i], poly[i+1], distSqrd) or \
+                _SlopesNearColinear(pt, poly[i], poly[i+1], distSqrd)): i +=1
+        if i >= highI: break
+        elif i != i2: continue
+        pt = poly[i]
+        i +=1
+        result.append(pt)        
+    if (i <= highI): result.append(poly[i])
+    j = len(result)
+    if (j > 2 and _SlopesNearColinear(result[j-2], result[j-1], result[0], distSqrd)): 
+        del result[j-1:]
+    if len(result) < 3: return []
+    else: return result
+    
 def CleanPolygons(polys, distance = 1.415):
     result = []
     for poly in polys:
         result.append(CleanPolygon(poly, distance = 1.415))
+    return result
+
+def SimplifyPolygon(poly, fillType):
+    result = []
+    c = Clipper();
+    c.ForceSimple = True    
+    c.AddPolygon(poly, PolyType.subject);
+    c.Execute(ClipType.Union, result, fillType, fillType)
+    return result
+
+def SimplifyPolygons(polys, fillType):
+    result = []
+    c = Clipper();
+    c.ForceSimple = True    
+    c.AddPolygons(polys, PolyType.subject);
+    c.Execute(ClipType.Union, result, fillType, fillType)
     return result

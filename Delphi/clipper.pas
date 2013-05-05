@@ -3611,10 +3611,10 @@ begin
           //split the polygon into two ...
           Op3 := Op.Prev;
           Op4 := Op2.Prev;
-          Op^.Prev := Op4;
-          Op4^.Next := Op;
-          Op2^.Prev := Op3;
-          Op3^.Next := Op2;
+          Op.Prev := Op4;
+          Op4.Next := Op;
+          Op2.Prev := Op3;
+          Op3.Next := Op2;
 
           OutRec1.Pts := Op;
 
@@ -4077,25 +4077,12 @@ begin
   K := 0;
   while true do
   begin
-    J := I + 1;
-    if (J > HighI) then break;
-
-    if PointsAreClose(Pt, Poly[J], DistSqrd) then
-    begin
-      I := J + 1;
-      while (I <= HighI) and PointsAreClose(Pt, Poly[I], DistSqrd) do inc(I);
-      Continue;
-    end;
-
+    while (I < HighI) and PointsAreClose(Pt, Poly[I+1], DistSqrd) do inc(I,2);
     I2 := I;
-    while (J <= HighI) and PointsAreClose(Poly[I], Poly[J], DistSqrd) or
-      SlopesNearColinear(Pt, Poly[I], Poly[J], DistSqrd) do
-    begin
-      inc(I); //ie ignores Poly[I]
-      inc(J);
-    end;
-    if I <> I2 then continue;
-
+    while (I < HighI) and PointsAreClose(Poly[I], Poly[I+1], DistSqrd) or
+      SlopesNearColinear(Pt, Poly[I], Poly[I+1], DistSqrd) do inc(I);
+    if I >= highI then Break
+    else if I <> I2 then Continue;
     Pt := Poly[I];
     inc(I);
     Result[K] := Pt;
@@ -4108,13 +4095,10 @@ begin
     inc(K);
   end;
 
-  if (K > 2) and
-    SlopesNearCoLinear(Result[K -2], Result[K -1], Result[0], DistSqrd) then
-      Dec(K);
-  if (K < 3) then
-    Result := nil
-  else if (K <= HighI) then
-    SetLength(Result, K);
+  if (K > 2) and SlopesNearCoLinear(Result[K -2],
+      Result[K -1], Result[0], DistSqrd) then Dec(K);
+  if (K < 3) then Result := nil
+  else if (K <= HighI) then SetLength(Result, K);
 end;
 //------------------------------------------------------------------------------
 

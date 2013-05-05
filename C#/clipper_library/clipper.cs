@@ -40,8 +40,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text; //for Int128.AsString() & StringBuilder
-using System.IO; //streamReader & StreamWriter
+//using System.Text; //for Int128.AsString() & StringBuilder
+//using System.IO; //streamReader & StreamWriter
 
 namespace ClipperLib
 {
@@ -1942,11 +1942,12 @@ namespace ClipperLib
         private OutRec GetLowermostRec(OutRec outRec1, OutRec outRec2)
         {
             //work out which polygon fragment has the correct hole state ...
-            OutPt bPt1, bPt2;
-            if (outRec1.bottomPt == null) bPt1 = GetBottomPt(outRec1.pts);
-            else bPt1 = outRec1.bottomPt;
-            if (outRec2.bottomPt == null) bPt2 = GetBottomPt(outRec2.pts);
-            else bPt2 = outRec2.bottomPt;
+            if (outRec1.bottomPt == null) 
+                outRec1.bottomPt = GetBottomPt(outRec1.pts);
+            if (outRec2.bottomPt == null) 
+                outRec2.bottomPt = GetBottomPt(outRec2.pts);
+            OutPt bPt1 = outRec1.bottomPt;
+            OutPt bPt2 = outRec2.bottomPt;
             if (bPt1.pt.Y > bPt2.pt.Y) return outRec1;
             else if (bPt1.pt.Y < bPt2.pt.Y) return outRec2;
             else if (bPt1.pt.X < bPt2.pt.X) return outRec1;
@@ -3765,42 +3766,28 @@ namespace ClipperLib
             //will be stripped. Default ~= sqrt(2) so when adjacent
             //vertices have both x & y coords within 1 unit, then
             //the second vertex will be stripped.
-
             double distSqrd = (distance * distance);
             int highI = poly.Count -1;
             Polygon result = new Polygon(highI + 1);
             while (highI > 0 && PointsAreClose(poly[highI], poly[0], distSqrd)) highI--;
             if (highI < 2) return result;
-
             IntPoint pt = poly[highI];
             int i = 0;
             for (;;)
             {
+                while (i < highI && PointsAreClose(pt, poly[i], distSqrd)) i+=2;
+                int i2 = i;
+                while (i < highI && PointsAreClose(poly[i], poly[i + 1], distSqrd) ||
+                    SlopesNearColinear(pt, poly[i], poly[i + 1], distSqrd)) i++;
                 if (i >= highI) break;
-                int j = i + 1;
-
-                if (PointsAreClose(pt, poly[j], distSqrd))
-                {
-                    i = j + 1;
-                    while (i <= highI && PointsAreClose(pt, poly[i], distSqrd)) i++;
-                    continue;
-                }
-
-                if (PointsAreClose(poly[i], poly[j], distSqrd) ||
-                    SlopesNearColinear(pt, poly[i], poly[j], distSqrd)) 
-                {
-                    i = j;
-                    continue;
-                }
-
+                else if (i != i2) continue;
                 pt = poly[i++];
                 result.Add(pt);
             }
-
             if (i <= highI) result.Add(poly[i]);
-            i = result.Count -1;
-            if (i > 1 && SlopesNearColinear(result[i - 1], result[i], result[0], distSqrd)) 
-                result.RemoveAt(i);
+            i = result.Count;
+            if (i > 2 && SlopesNearColinear(result[i - 2], result[i - 1], result[0], distSqrd)) 
+                result.RemoveAt(i -1);
             if (result.Count < 3) result.Clear();
             return result;
         }

@@ -1280,6 +1280,7 @@ bool Clipper::ExecuteInternal()
     }
 
     if (!m_Joins.empty()) JoinCommonEdges();
+    if (m_ForceSimple) DoSimplePolygons();
   }
 
   ClearJoins();
@@ -1898,12 +1899,12 @@ void Clipper::SetHoleState(TEdge *e, OutRec *outrec)
 OutRec* GetLowermostRec(OutRec *outRec1, OutRec *outRec2)
 {
   //work out which polygon fragment has the correct hole state ...
-  OutPt *outPt1, *outPt2;
-  if (!outRec1->bottomPt) outPt1 = GetBottomPt(outRec1->pts);
-  else outPt1 = outRec1->bottomPt;
-  if (!outRec2->bottomPt) outPt2 = GetBottomPt(outRec2->pts);
-  else outPt2 = outRec2->bottomPt;
-
+  if (!outRec1->bottomPt) 
+    outRec1->bottomPt = GetBottomPt(outRec1->pts);
+  if (!outRec2->bottomPt) 
+    outRec2->bottomPt = GetBottomPt(outRec2->pts);
+  OutPt *outPt1 = outRec1->bottomPt;
+  OutPt *outPt2 = outRec2->bottomPt;
   if (outPt1->pt.Y > outPt2->pt.Y) return outRec1;
   else if (outPt1->pt.Y < outPt2->pt.Y) return outRec2;
   else if (outPt1->pt.X < outPt2->pt.X) return outRec1;
@@ -3461,7 +3462,7 @@ void SimplifyPolygons(Polygons &polys, PolyFillType fillType)
 }
 //------------------------------------------------------------------------------
 
-inline double DistanceSqrd(const IntPoint& pt1, const IntPoint pt2)
+inline double DistanceSqrd(const IntPoint& pt1, const IntPoint& pt2)
 {
   double dx = ((double)pt1.X - pt2.X);
   double dy = ((double)pt1.Y - pt2.Y);
@@ -3473,14 +3474,12 @@ DoublePoint ClosestPointOnLine(const IntPoint& pt, const IntPoint& linePt1, cons
 {
   double dx = ((double)linePt2.X - linePt1.X);
   double dy = ((double)linePt2.Y - linePt1.Y);
-  double q;
   if (dx == 0 && dy == 0) 
     return DoublePoint((double)linePt1.X, (double)linePt1.Y);
-  q = ((pt.X-linePt1.X)*dx + (pt.Y-linePt1.Y)*dy) / (dx*dx + dy*dy);
+  double q = ((pt.X-linePt1.X)*dx + (pt.Y-linePt1.Y)*dy) / (dx*dx + dy*dy);
   return DoublePoint(
     (1-q)*linePt1.X + q*linePt2.X,
-    (1-q)*linePt1.Y + q*linePt2.Y
-    );
+    (1-q)*linePt1.Y + q*linePt2.Y);
 }
 //------------------------------------------------------------------------------
 
@@ -3509,43 +3508,25 @@ void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
   //will be stripped. Default ~= sqrt(2).
   int highI = in_poly.size() -1;
   double distSqrd = distance * distance;
-  while (highI > 0 && PointsAreClose(in_poly[highI], in_poly[0], distSqrd)) 
-    highI--;
-  if (highI < 2)
-  {
-    out_poly.clear();
-    return;
-  }
+  while (highI > 0 && PointsAreClose(in_poly[highI], in_poly[0], distSqrd)) highI--;
+  if (highI < 2) { out_poly.clear(); return; }
+  
   out_poly.resize(highI + 1);
   IntPoint pt = in_poly[highI];
-  int i = 0;
-  int k = 0;
+  int i = 0, k = 0;
   for (;;)
   {
+    while (i <= highI && PointsAreClose(pt, in_poly[i+1], distSqrd)) i+=2;
+    int i2 = i;
+    while (i <= highI && PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
+      SlopesNearColinear(pt, in_poly[i], in_poly[+1], distSqrd)) i++;
     if (i >= highI) break;
-    int j = i + 1;
-
-    if (PointsAreClose(pt, in_poly[j], distSqrd))
-    {
-        i = j + 1;
-        while (i <= highI && PointsAreClose(pt, in_poly[i], distSqrd)) i++;
-        continue;
-    }
-
-    if (PointsAreClose(in_poly[i], in_poly[j], distSqrd) ||
-      SlopesNearColinear(pt, in_poly[i], in_poly[j], distSqrd))  
-    {
-        i = j;
-        continue;
-    }
-
+    else if (i != i2) continue;
     pt = in_poly[i++];
     out_poly[k++] = pt;
   }
-
   if (i <= highI) out_poly[k++] = in_poly[i];
-  if (k > 2 && SlopesNearColinear(out_poly[k -2], out_poly[k -1], out_poly[0], distSqrd)) 
-    k--;    
+  if (k > 2 && SlopesNearColinear(out_poly[k -2], out_poly[k -1], out_poly[0], distSqrd)) k--;    
   if (k < 3) out_poly.clear();
   else if (k <= highI) out_poly.resize(k);
 }
