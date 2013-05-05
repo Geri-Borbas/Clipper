@@ -2432,22 +2432,11 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
 
 bool ProcessParam1BeforeParam2(const IntersectNode &node1, const IntersectNode &node2)
 {
-  bool result;
   if (node1.pt.Y == node2.pt.Y)
-  {
-    if (node1.edge1 == node2.edge1 || node1.edge2 == node2.edge1)
-    {
-      result = node2.pt.X > node1.pt.X;
-      return node2.edge1->dx > 0 ? !result : result;
-    }
-    else if (node1.edge1 == node2.edge2 || node1.edge2 == node2.edge2)
-    {
-      result = node2.pt.X > node1.pt.X;
-      return node2.edge2->dx > 0 ? !result : result;
-    }
-    else return node2.pt.X > node1.pt.X;
-  }
-  else return node1.pt.Y > node2.pt.Y;
+    return (node2.edge1->prevInSEL != node2.edge2) &&
+        (node2.edge1->nextInSEL != node2.edge2);
+  else 
+    return node1.pt.Y > node2.pt.Y;
 }
 //------------------------------------------------------------------------------
 

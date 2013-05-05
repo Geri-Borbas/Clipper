@@ -512,15 +512,8 @@ def _GetDx(pt1, pt2):
 
 def _ProcessParam1BeforeParam2(node1, node2):
     if node1.pt.y != node2.pt.y:
-        return node1.pt.y > node2.pt.y
-    if node1.e1 == node2.e1 or node1.e2 == node2.e1:
-        result = node2.pt.x > node1.pt.x
-        if node2.e1.dx > 0: result = not result
-        return result
-    elif node1.e1 == node2.e2 or node1.e2 == node2.e2:
-        result = node2.pt.x > node1.pt.x
-        if node2.e2.dx > 0: result = not result
-        return result
+        return (node2.e1.prevInSEL != node2.e2) and \
+            (node2.e1.nextInSEL != node2.e2)
     else:
         return node2.pt.x > node1.pt.x
 

@@ -2900,17 +2900,8 @@ procedure TClipper.AddIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
   begin
     if node1.Pt.Y = node2.Pt.Y then
     begin
-      if (node1.Edge1 = node2.Edge1) or (node1.Edge2 = node2.Edge1) then
-      begin
-        Result := node2.Pt.X > node1.Pt.X;
-        if node2.Edge1.Dx > 0 then Result := not Result;
-      end
-      else if (node1.Edge1 = node2.Edge2) or (node1.Edge2 = node2.Edge2) then
-      begin
-        Result := node2.Pt.X > node1.Pt.X;
-        if node2.Edge2.Dx > 0 then Result := not Result;
-      end else
-        Result := node2.Pt.X > node1.Pt.X;
+      Result := (node2.Edge1.PrevInSEL <> node2.Edge2) and
+        (node2.Edge1.NextInSEL <> node2.Edge2);
     end
     else Result := node1.Pt.Y > node2.Pt.Y;
   end;
