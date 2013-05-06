@@ -2895,18 +2895,6 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.AddIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
-
-  function ProcessParam1BeforeParam2(node1, node2: PIntersectNode): Boolean;
-  begin
-    if node1.Pt.Y = node2.Pt.Y then
-    begin
-      Result := (node2.Edge1.PrevInSEL <> node2.Edge2) and
-        (node2.Edge1.NextInSEL <> node2.Edge2);
-    end
-    else Result := node1.Pt.Y > node2.Pt.Y;
-  end;
-  //----------------------------------------------------------------------------
-
 var
   Node, NewNode: PIntersectNode;
 begin
@@ -2917,15 +2905,14 @@ begin
   NewNode.Next := nil;
   if not Assigned(fIntersectNodes) then
     FIntersectNodes := NewNode
-  else if ProcessParam1BeforeParam2(NewNode, FIntersectNodes) then
+  else if NewNode.Pt.Y > FIntersectNodes.Pt.Y then
   begin
     NewNode.Next := FIntersectNodes;
     FIntersectNodes := NewNode;
   end else
   begin
     Node := FIntersectNodes;
-    while Assigned(Node.Next) and
-      ProcessParam1BeforeParam2(Node.Next, NewNode) do
+    while Assigned(Node.Next) and (NewNode.Pt.Y <= Node.Next.Pt.Y) do
       Node := Node.Next;
     NewNode.Next := Node.Next;
     Node.Next := NewNode;

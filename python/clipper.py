@@ -510,13 +510,6 @@ def _GetDx(pt1, pt2):
     if (pt1.y == pt2.y): return horizontal
     else: return Decimal(pt2.x - pt1.x)/(pt2.y - pt1.y)
 
-def _ProcessParam1BeforeParam2(node1, node2):
-    if node1.pt.y != node2.pt.y:
-        return (node2.e1.prevInSEL != node2.e2) and \
-            (node2.e1.nextInSEL != node2.e2)
-    else:
-        return node2.pt.x > node1.pt.x
-
 def _Param1RightOfParam2(outRec1, outRec2):
     while outRec1 is not None:
         outRec1 = outRec1.FirstLeft
@@ -1156,13 +1149,13 @@ class Clipper(ClipperBase):
         newNode = IntersectNode(e1, e2, pt)
         if self._IntersectNodes is None:
             self._IntersectNodes = newNode
-        elif _ProcessParam1BeforeParam2(newNode, self._IntersectNodes):
+        elif newNode.pt.y > self._IntersectNodes.pt.y:
             newNode.nextIn = self._IntersectNodes
             self._IntersectNodes = newNode
         else:
             node = self._IntersectNodes
             while node.nextIn is not None and \
-                _ProcessParam1BeforeParam2(node.nextIn, newNode):
+                newNode.pt.y < node.nextIn.pt.y:
                 node = node.nextIn
             newNode.nextIn = node.nextIn
             node.nextIn = newNode

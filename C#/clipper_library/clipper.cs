@@ -2624,7 +2624,7 @@ namespace ClipperLib
           newNode.pt = pt;
           newNode.next = null;
           if (m_IntersectNodes == null) m_IntersectNodes = newNode;
-          else if (ProcessParam1BeforeParam2(newNode, m_IntersectNodes))
+          else if (newNode.pt.Y > m_IntersectNodes.pt.Y)
           {
             newNode.next = m_IntersectNodes;
             m_IntersectNodes = newNode;
@@ -2632,21 +2632,11 @@ namespace ClipperLib
           else
           {
             IntersectNode iNode = m_IntersectNodes;
-            while (iNode.next != null && ProcessParam1BeforeParam2(iNode.next, newNode))
+            while (iNode.next != null && newNode.pt.Y < iNode.next.pt.Y)
                 iNode = iNode.next;
             newNode.next = iNode.next;
             iNode.next = newNode;
           }
-        }
-        //------------------------------------------------------------------------------
-
-        private bool ProcessParam1BeforeParam2(IntersectNode node1, IntersectNode node2)
-        {
-          if (node1.pt.Y == node2.pt.Y)
-              return (node2.edge1.prevInSEL != node2.edge2) &&
-                  (node2.edge1.nextInSEL != node2.edge2);
-          else 
-              return node1.pt.Y > node2.pt.Y;
         }
         //------------------------------------------------------------------------------
 

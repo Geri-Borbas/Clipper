@@ -2430,16 +2430,6 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
 }
 //------------------------------------------------------------------------------
 
-bool ProcessParam1BeforeParam2(const IntersectNode &node1, const IntersectNode &node2)
-{
-  if (node1.pt.Y == node2.pt.Y)
-    return (node2.edge1->prevInSEL != node2.edge2) &&
-        (node2.edge1->nextInSEL != node2.edge2);
-  else 
-    return node1.pt.Y > node2.pt.Y;
-}
-//------------------------------------------------------------------------------
-
 void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
 {
   IntersectNode* newNode = new IntersectNode;
@@ -2448,7 +2438,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
   newNode->pt = pt;
   newNode->next = 0;
   if( !m_IntersectNodes ) m_IntersectNodes = newNode;
-  else if(  ProcessParam1BeforeParam2(*newNode, *m_IntersectNodes) )
+  else if(newNode->pt.Y > m_IntersectNodes->pt.Y )
   {
     newNode->next = m_IntersectNodes;
     m_IntersectNodes = newNode;
@@ -2456,7 +2446,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
   else
   {
     IntersectNode* iNode = m_IntersectNodes;
-    while( iNode->next  && ProcessParam1BeforeParam2(*iNode->next, *newNode) )
+    while(iNode->next  && newNode->pt.Y <= iNode->next->pt.Y)
         iNode = iNode->next;
     newNode->next = iNode->next;
     iNode->next = newNode;
