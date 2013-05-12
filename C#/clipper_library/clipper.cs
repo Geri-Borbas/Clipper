@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.5                                                           *
-* Date      :  4 May 2013                                                      *
+* Version   :  5.1.6                                                           *
+* Date      :  12 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -670,28 +670,39 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+        void RangeTest(IntPoint pt, ref Int64 maxrange)
+        {
+          if (pt.X > maxrange)
+          {
+            if (pt.X > hiRange)
+                throw new ClipperException("Coordinate exceeds range bounds");
+            else maxrange = hiRange;
+          }
+          if (pt.Y > maxrange)
+          {
+            if (pt.Y > hiRange)
+                throw new ClipperException("Coordinate exceeds range bounds");
+            else maxrange = hiRange;
+          }
+        }
+        //------------------------------------------------------------------------------
+
         public bool AddPolygon(Polygon pg, PolyType polyType)
         {
             int len = pg.Count;
             if (len < 3) return false;
+            Int64 maxVal;
+            if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
+            RangeTest(pg[0], ref maxVal);
+
             Polygon p = new Polygon(len);
             p.Add(new IntPoint(pg[0].X, pg[0].Y));
             int j = 0;
             for (int i = 1; i < len; ++i)
             {
-
-                Int64 maxVal;
-                if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
-                if (Math.Abs(pg[i].X) > maxVal || Math.Abs(pg[i].Y) > maxVal)
-                {
-                    if (Math.Abs(pg[i].X) > hiRange || Math.Abs(pg[i].Y) > hiRange)
-                    throw new ClipperException("Coordinate exceeds range bounds");
-                  maxVal = hiRange;
-                  m_UseFullRange = true;
-                }
-
+                RangeTest(pg[i], ref maxVal);
                 if (PointsEqual(p[j], pg[i])) continue;
-                else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
+                else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], maxVal == hiRange))
                 {
                     if (PointsEqual(p[j-1], pg[i])) j--;
                 } else j++;
@@ -700,6 +711,7 @@ namespace ClipperLib
                     p.Add(new IntPoint(pg[i].X, pg[i].Y));
             }
             if (j < 2) return false;
+            m_UseFullRange = maxVal == hiRange;
 
             len = j+1;
             while (len > 2)
@@ -1033,7 +1045,6 @@ namespace ClipperLib
           while (lm != null)
           {
             InsertScanbeam(lm.Y);
-            InsertScanbeam(lm.leftBound.ytop);
             lm = lm.next;
           }
         }
@@ -2540,7 +2551,7 @@ namespace ClipperLib
                       pt.Y = botY;
                       pt.X = TopX(e, pt.Y);
                   }
-                  AddIntersectNode(e, eNext, pt);
+                  InsertIntersectNode(e, eNext, pt);
                   SwapPositionsInSEL(e, eNext);
                   isModified = true;
               }
@@ -2616,7 +2627,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private void AddIntersectNode(TEdge e1, TEdge e2, IntPoint pt)
+        private void InsertIntersectNode(TEdge e1, TEdge e2, IntPoint pt)
         {
           IntersectNode newNode = new IntersectNode();
           newNode.edge1 = e1;
@@ -3765,8 +3776,8 @@ namespace ClipperLib
             {
                 while (i < highI && PointsAreClose(pt, poly[i], distSqrd)) i+=2;
                 int i2 = i;
-                while (i < highI && PointsAreClose(poly[i], poly[i + 1], distSqrd) ||
-                    SlopesNearColinear(pt, poly[i], poly[i + 1], distSqrd)) i++;
+                while (i < highI && (PointsAreClose(poly[i], poly[i + 1], distSqrd) ||
+                    SlopesNearColinear(pt, poly[i], poly[i + 1], distSqrd))) i++;
                 if (i >= highI) break;
                 else if (i != i2) continue;
                 pt = poly[i++];

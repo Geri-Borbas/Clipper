@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.5                                                           *
-* Date      :  4 May 2013                                                      *
+* Version   :  5.1.6                                                           *
+* Date      :  12 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -112,10 +112,10 @@ void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys, PolyFillType f
 void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(Polygons &polys, PolyFillType fillType = pftEvenOdd);
 
-void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance = 1.415);
-void CleanPolygons(Polygons& in_polys, Polygons& out_polys, double distance = 1.415);
+void CleanPolygon(const Polygon& in_poly, Polygon& out_poly, double distance = 1.415);
+void CleanPolygons(const Polygons& in_polys, Polygons& out_polys, double distance = 1.415);
 
-void PolyTreeToPolygons(PolyTree& polytree, Polygons& polygons);
+void PolyTreeToPolygons(const PolyTree& polytree, Polygons& polygons);
 
 void ReversePolygon(Polygon& p);
 void ReversePolygons(Polygons& p);
@@ -123,6 +123,8 @@ void ReversePolygons(Polygons& p);
 //used internally ...
 enum EdgeSide { esLeft = 1, esRight = 2};
 enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
+//inline IntersectProtects operator|(IntersectProtects a, IntersectProtects b)
+//{return static_cast<IntersectProtects>(static_cast<int>(a) | static_cast<int>(b));}
 
 struct TEdge {
   long64 xbot;
@@ -298,7 +300,7 @@ private:
   void DisposeAllPolyPts();
   void DisposeOutRec(PolyOutList::size_type index);
   bool ProcessIntersections(const long64 botY, const long64 topY);
-  void AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
+  void InsertIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
   void BuildIntersectList(const long64 botY, const long64 topY);
   void ProcessIntersectList();
   void ProcessEdgesAtTopOfScanbeam(const long64 topY);

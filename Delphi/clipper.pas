@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.5                                                           *
-* Date      :  4 May 2013                                                      *
+* Version   :  5.1.6                                                           *
+* Date      :  12 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -168,7 +168,6 @@ type
     Pts         : POutPt;
     PolyNode    : TPolyNode;
   end;
-  TArrayOfOutRec = array of POutRec;
 
   TOutPt = record
     Idx      : Integer;
@@ -209,8 +208,8 @@ type
   public
     constructor Create; virtual;
     destructor Destroy; override;
-    function AddPolygon(const polygon: TPolygon; PolyType: TPolyType): Boolean;
-    function AddPolygons(const polygons: TPolygons; PolyType: TPolyType): Boolean;
+    function AddPolygon(const Polygon: TPolygon; PolyType: TPolyType): Boolean;
+    function AddPolygons(const Polygons: TPolygons; PolyType: TPolyType): Boolean;
     procedure Clear; virtual;
   end;
 
@@ -244,7 +243,7 @@ type
     function IsTopHorz(const XPos: Int64): Boolean;
     procedure ProcessHorizontal(HorzEdge: PEdge);
     procedure ProcessHorizontals;
-    procedure AddIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
+    procedure InsertIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
     function ProcessIntersections(const BotY, TopY: Int64): Boolean;
     procedure BuildIntersectList(const BotY, TopY: Int64);
     procedure ProcessIntersectList;
@@ -255,7 +254,6 @@ type
     procedure DoMaxima(E: PEdge; const TopY: Int64);
     procedure UpdateEdgeIntoAEL(var E: PEdge);
     function FixupIntersectionOrder: Boolean;
-    procedure SwapIntersectNodes(Int1, Int2: PIntersectNode);
     procedure ProcessEdgesAtTopOfScanbeam(const TopY: Int64);
     function IsContributing(Edge: PEdge): Boolean;
     function CreateOutRec: POutRec;
@@ -322,8 +320,8 @@ function SimplifyPolygon(const Poly: TPolygon; FillType: TPolyFillType = pftEven
 function SimplifyPolygons(const Polys: TPolygons; FillType: TPolyFillType = pftEvenOdd): TPolygons;
 
 //CleanPolygon removes adjacent vertices closer than the specified distance.
-function CleanPolygon(Poly: TPolygon; Distance: double = 1.415): TPolygon;
-function CleanPolygons(Polys: TPolygons; Distance: double = 1.415): TPolygons;
+function CleanPolygon(const Poly: TPolygon; Distance: double = 1.415): TPolygon;
+function CleanPolygons(const Polys: TPolygons; Distance: double = 1.415): TPolygons;
 
 function PolyTreeToPolygons(PolyTree: TPolyTree): TPolygons;
 
@@ -1071,14 +1069,38 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipperBase.AddPolygon(const polygon: TPolygon;
+procedure RangeTest(const Pt: TIntPoint;
+  var MaxRange: Int64); {$IFDEF INLINING} inline; {$ENDIF}
+begin
+  if Pt.X > MaxRange then
+    if Pt.X > HiRange then
+      raise exception.Create(rsInvalidInt)
+    else MaxRange := HiRange;
+  if Pt.Y > MaxRange then
+    if Pt.Y > HiRange then
+      raise exception.Create(rsInvalidInt)
+    else MaxRange := HiRange;
+end;
+//------------------------------------------------------------------------------
+
+procedure SwapX(E: PEdge);
+begin
+  //swap horizontal edges' top and bottom x's so they follow the natural
+  //progression of the bounds - ie so their xbots will align with the
+  //adjoining lower Edge. [Helpful in the ProcessHorizontal() method.]
+  E.XCurr := E.XTop;
+  E.XTop := E.XBot;
+  E.XBot := E.XCurr;
+end;
+//------------------------------------------------------------------------------
+
+function TClipperBase.AddPolygon(const Polygon: TPolygon;
   PolyType: TPolyType): Boolean;
 
   //----------------------------------------------------------------------
 
   procedure InitEdge(E, eNext, ePrev: PEdge; const Pt: TIntPoint);
   begin
-    fillChar(E^, sizeof(TEdge), 0);
     E.Next := eNext;
     E.Prev := ePrev;
     E.XCurr := Pt.X;
@@ -1104,36 +1126,25 @@ function TClipperBase.AddPolygon(const polygon: TPolygon;
   end;
   //----------------------------------------------------------------------
 
-  procedure SwapX(E: PEdge);
-  begin
-    //swap horizontal edges' top and bottom x's so they follow the natural
-    //progression of the bounds - ie so their xbots will align with the
-    //adjoining lower Edge. [Helpful in the ProcessHorizontal() method.]
-    E.XCurr := E.XTop;
-    E.XTop := E.XBot;
-    E.XBot := E.XCurr;
-  end;
-  //----------------------------------------------------------------------
-
-  procedure InsertLocalMinima(lm: PLocalMinima);
+  procedure InsertLocalMinima(Lm: PLocalMinima);
   var
     TmpLm: PLocalMinima;
   begin
-    if not Assigned(fLmList) then
+    if not Assigned(FLmList) then
     begin
-      FLmList := lm;
+      FLmList := Lm;
     end
-    else if (lm.Y >= FLmList.Y) then
+    else if (Lm.Y >= FLmList.Y) then
     begin
-      lm.Next := FLmList;
-      FLmList := lm;
+      Lm.Next := FLmList;
+      FLmList := Lm;
     end else
     begin
       TmpLm := FLmList;
-      while Assigned(TmpLm.Next) and (lm.Y < TmpLm.Next.Y) do
+      while Assigned(TmpLm.Next) and (Lm.Y < TmpLm.Next.Y) do
           TmpLm := TmpLm.Next;
-      lm.Next := TmpLm.Next;
-      TmpLm.Next := lm;
+      Lm.Next := TmpLm.Next;
+      TmpLm.Next := Lm;
     end;
   end;
   //----------------------------------------------------------------------
@@ -1207,31 +1218,29 @@ var
 begin
   {AddPolygon}
   Result := False; //ie assume nothing added
-  len := length(polygon);
+  len := length(Polygon);
   if len < 3 then Exit;
   SetLength(Pg, len);
-  Pg[0] := polygon[0];
-  J := 0;
+
   //1. check that coordinate values are within the valid range, and
   //2. remove duplicate points and co-linear points
   if FUse64BitRange then MaxVal := HiRange else MaxVal := LoRange;
+  RangeTest(Polygon[0], MaxVal);
+  Pg[0] := Polygon[0];
+  J := 0;
   for I := 1 to len-1 do
   begin
-    if ((abs(polygon[I].X) > MaxVal) or (abs(polygon[I].Y) > MaxVal)) then
+    if PointsEqual(Pg[J], Polygon[I]) then Continue;
+    RangeTest(Polygon[I], MaxVal);
+    if (J > 0) and SlopesEqual(Pg[J-1], Pg[J], Polygon[I], MaxVal = HiRange) then
     begin
-      if ((abs(polygon[I].X) > HiRange) or (abs(polygon[I].Y) > HiRange)) then
-        raise exception.Create(rsInvalidInt);
-      MaxVal := HiRange;
-      FUse64BitRange := True;
-    end;
-    if PointsEqual(Pg[J], polygon[I]) then Continue
-    else if (J > 0) and SlopesEqual(Pg[J-1], Pg[J], polygon[I], FUse64BitRange) then
-    begin
-      if PointsEqual(Pg[J-1], polygon[I]) then Dec(J);
-    end else Inc(J);
-    Pg[J] := polygon[I];
+      if PointsEqual(Pg[J-1], Polygon[I]) then Dec(J);
+    end else
+      Inc(J);
+    Pg[J] := Polygon[I];
   end;
   if (J < 2) then Exit;
+  FUse64BitRange := MaxVal = HiRange;
 
   //now remove duplicate points and co-linear edges at the loop around of the
   //start and end coordinates ...
@@ -1260,6 +1269,7 @@ begin
   Result := True;
 
   GetMem(Edges, sizeof(TEdge)*len);
+  FillChar(Edges^, sizeof(TEdge)*len, 0);
   FEdgeList.Add(Edges);
 
   //convert vertices to a Double-linked-list of edges and initialize ...
@@ -1293,14 +1303,14 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipperBase.AddPolygons(const polygons: TPolygons;
+function TClipperBase.AddPolygons(const Polygons: TPolygons;
   PolyType: TPolyType): Boolean;
 var
   I: Integer;
 begin
   Result := False;
-  for I := 0 to high(polygons) do
-    if AddPolygon(polygons[I], PolyType) then Result := True;
+  for I := 0 to high(Polygons) do
+    if AddPolygon(Polygons[I], PolyType) then Result := True;
 end;
 //------------------------------------------------------------------------------
 
@@ -1353,10 +1363,10 @@ end;
 
 procedure TClipperBase.DisposeLocalMinimaList;
 begin
-  while Assigned(fLmList) do
+  while Assigned(FLmList) do
   begin
     FCurrLm := FLmList.Next;
-    Dispose(fLmList);
+    Dispose(FLmList);
     FLmList := FCurrLm;
   end;
   FCurrLm := nil;
@@ -1421,7 +1431,6 @@ begin
   while Assigned(Lm) do
   begin
     InsertScanbeam(Lm.Y);
-    InsertScanbeam(Lm.LeftBound.YTop);
     Lm := Lm.Next;
   end;
 end;
@@ -1928,19 +1937,20 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: Int64);
-
-  function E2InsertsBeforeE1(E1, E2: PEdge): Boolean;
+function E2InsertsBeforeE1(E1, E2: PEdge): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
+begin
+  if E2.XCurr = E1.XCurr then
   begin
-    if E2.XCurr = E1.XCurr then
-    begin
-      if E2.YTop > E1.YTop then
-        Result := E2.XTop < TopX(E1, E2.YTop) else
-        Result := E1.XTop > TopX(E2, E1.YTop);
-    end else
-      Result := E2.XCurr < E1.XCurr;
-  end;
-  //----------------------------------------------------------------------
+    if E2.YTop > E1.YTop then
+      Result := E2.XTop < TopX(E1, E2.YTop) else
+      Result := E1.XTop > TopX(E2, E1.YTop);
+  end else
+    Result := E2.XCurr < E1.XCurr;
+end;
+//----------------------------------------------------------------------
+
+
+procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: Int64);
 
   procedure InsertEdgeIntoAEL(Edge: PEdge);
   var
@@ -2480,7 +2490,7 @@ end;
 procedure TClipper.AddOutPt(E: PEdge; const Pt: TIntPoint);
 var
   OutRec: POutRec;
-  Op, op2: POutPt;
+  NewOp, Op: POutPt;
   ToFront: Boolean;
 begin
   ToFront := E.Side = esLeft;
@@ -2488,13 +2498,11 @@ begin
   begin
     OutRec := CreateOutRec;
     E.OutIdx := OutRec.Idx;
-    new(Op);
-    OutRec.Pts := Op;
-
-    Op.Pt := Pt;
-    Op.Next := Op;
-    Op.Prev := Op;
-    Op.Idx := OutRec.Idx;
+    new(NewOp);
+    OutRec.Pts := NewOp;
+    NewOp.Next := NewOp;
+    NewOp.Prev := NewOp;
+    NewOp.Idx := OutRec.Idx;
     SetHoleState(E, OutRec);
   end else
   begin
@@ -2502,15 +2510,15 @@ begin
     Op := OutRec.Pts;
     if (ToFront and PointsEqual(Pt, Op.Pt)) or
       (not ToFront and PointsEqual(Pt, Op.Prev.Pt)) then Exit;
-    new(op2);
-    op2.Pt := Pt;
-    op2.Idx := OutRec.Idx;
-    op2.Next := Op;
-    op2.Prev := Op.Prev;
-    Op.Prev.Next := op2;
-    Op.Prev := op2;
-    if ToFront then OutRec.Pts := op2;
+    new(NewOp);
+    NewOp.Idx := OutRec.Idx;
+    NewOp.Next := Op;
+    NewOp.Prev := Op.Prev;
+    Op.Prev.Next := NewOp;
+    Op.Prev := NewOp;
+    if ToFront then OutRec.Pts := NewOp;
   end;
+  NewOp.Pt := Pt;
 end;
 //------------------------------------------------------------------------------
 
@@ -2860,41 +2868,37 @@ begin
     E := E.NextInAEL;
   end;
 
-  try
-    //bubblesort ...
-    IsModified := True;
-    while IsModified and Assigned(fSortedEdges) do
+  //bubblesort ...
+  repeat
+    IsModified := False;
+    E := FSortedEdges;
+    while Assigned(E.NextInSEL) do
     begin
-      IsModified := False;
-      E := FSortedEdges;
-      while Assigned(E.NextInSEL) do
+      eNext := E.NextInSEL;
+      if (E.XCurr > eNext.XCurr) then
       begin
-        eNext := E.NextInSEL;
-        if (E.XCurr > eNext.XCurr) then
+        if not IntersectPoint(E, eNext, Pt, FUse64BitRange) and
+          (E.XCurr > eNext.XCurr +1) then
+            raise Exception.Create(rsIntersect);
+        if Pt.Y > BotY then
         begin
-          if not IntersectPoint(E, eNext, Pt, FUse64BitRange) and
-            (E.XCurr > eNext.XCurr +1) then
-              raise Exception.Create(rsIntersect);
-          if Pt.Y > BotY then
-          begin
-            Pt.Y := BotY;
-            Pt.X := TopX(E, Pt.Y);
-          end;
-          AddIntersectNode(E, eNext, Pt);
-          SwapPositionsInSEL(E, eNext);
-          IsModified := True;
-        end else
-          E := eNext;
-      end;
-      if Assigned(E.PrevInSEL) then E.PrevInSEL.NextInSEL := nil else Break;
+          Pt.Y := BotY;
+          Pt.X := TopX(E, Pt.Y);
+        end;
+        InsertIntersectNode(E, eNext, Pt);
+        SwapPositionsInSEL(E, eNext);
+        IsModified := True;
+      end else
+        E := eNext;
     end;
-  finally
-    FSortedEdges := nil;
-  end;
+    if Assigned(E.PrevInSEL) then
+      E.PrevInSEL.NextInSEL := nil
+    else Break;
+  until not IsModified;
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.AddIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
+procedure TClipper.InsertIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
 var
   Node, NewNode: PIntersectNode;
 begin
@@ -3173,8 +3177,8 @@ procedure TClipper.FixupOutPolygon(OutRec: POutRec);
 var
   PP, Tmp, LastOK: POutPt;
 begin
-  //FixupOutPolygon() - removes duplicate points and simplifies consecutive
-  //parallel edges by removing the middle vertex.
+  //FixupOutPolygon() - removes duplicate points and simplifies
+  //co-linear edges by removing the middle vertex.
   LastOK := nil;
   OutRec.BottomPt := nil;
   PP := OutRec.Pts;
@@ -3187,7 +3191,7 @@ begin
       Exit;
     end;
 
-    //test for duplicate points and for colinear edges ...
+    //test for duplicate points and for co-linear edges ...
     if PointsEqual(PP.Pt, PP.Next.Pt) or
       SlopesEqual(PP.Prev.Pt, PP.Pt, PP.Next.Pt, FUse64BitRange) then
     begin
@@ -3217,13 +3221,28 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure SwapIntersectNodes(Int1, Int2: PIntersectNode); {$IFDEF INLINING} inline; {$ENDIF}
+var
+  Int: TIntersectNode;
+begin
+  //just swap the contents (because fIntersectNodes is a single-linked-list)
+  Int := Int1^; //gets a copy of Int1
+  Int1.Edge1 := Int2.Edge1;
+  Int1.Edge2 := Int2.Edge2;
+  Int1.Pt := Int2.Pt;
+  Int2.Edge1 := Int.Edge1;
+  Int2.Edge2 := Int.Edge2;
+  Int2.Pt := Int.Pt;
+end;
+//------------------------------------------------------------------------------
+
 function TClipper.FixupIntersectionOrder: Boolean;
 var
   Inode, NextNode: PIntersectNode;
 begin
-  //pre-condition: intersections are sorted bottom-most (then left-most) first.
+  //pre-condition: intersections are sorted bottom-most first.
   //Now it's crucial that intersections are made only between adjacent edges,
-  //so to ensure this the order of intersections may need adjusting ...
+  //and to ensure this the order of intersections may need adjusting ...
   Result := True;
   Inode := FIntersectNodes;
   CopyAELToSEL;
@@ -3244,21 +3263,6 @@ begin
     SwapPositionsInSEL(Inode.Edge1, Inode.Edge2);
     Inode := Inode.Next;
   end;
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipper.SwapIntersectNodes(Int1, Int2: PIntersectNode);
-var
-  Int: TIntersectNode;
-begin
-  //just swap the contents (because fIntersectNodes is a single-linked-list)
-  Int := Int1^; //gets a copy of Int1
-  Int1.Edge1 := Int2.Edge1;
-  Int1.Edge2 := Int2.Edge2;
-  Int1.Pt := Int2.Pt;
-  Int2.Edge1 := Int.Edge1;
-  Int2.Edge2 := Int.Edge2;
-  Int2.Pt := Int.Pt;
 end;
 //------------------------------------------------------------------------------
 
@@ -4041,9 +4045,9 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function CleanPolygon(Poly: TPolygon; Distance: Double = 1.415): TPolygon;
+function CleanPolygon(const Poly: TPolygon; Distance: Double = 1.415): TPolygon;
 var
-  I, I2, J, K, HighI: Integer;
+  I, I2, K, HighI: Integer;
   DistSqrd: double;
   Pt: TIntPoint;
 begin
@@ -4068,8 +4072,8 @@ begin
   begin
     while (I < HighI) and PointsAreClose(Pt, Poly[I+1], DistSqrd) do inc(I,2);
     I2 := I;
-    while (I < HighI) and PointsAreClose(Poly[I], Poly[I+1], DistSqrd) or
-      SlopesNearColinear(Pt, Poly[I], Poly[I+1], DistSqrd) do inc(I);
+    while (I < HighI) and (PointsAreClose(Poly[I], Poly[I+1], DistSqrd) or
+      SlopesNearColinear(Pt, Poly[I], Poly[I+1], DistSqrd)) do inc(I);
     if I >= highI then Break
     else if I <> I2 then Continue;
     Pt := Poly[I];
@@ -4091,7 +4095,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function CleanPolygons(Polys: TPolygons; Distance: double = 1.415): TPolygons;
+function CleanPolygons(const Polys: TPolygons; Distance: double = 1.415): TPolygons;
 var
   I, Len: Integer;
 begin

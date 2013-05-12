@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.5                                                           *
-* Date      :  4 May 2013                                                      *
+* Version   :  5.1.6                                                           *
+* Date      :  12 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -58,6 +58,8 @@ enum Direction { dRightToLeft, dLeftToRight };
 #define TOLERANCE (1.0e-20)
 #define NEAR_ZERO(val) (((val) > -TOLERANCE) && ((val) < TOLERANCE))
 #define NEAR_EQUAL(a, b) NEAR_ZERO((a) - (b))
+
+const char coords_range_error[] = "Coordinate exceeds range bounds.";
 
 inline long64 Abs(long64 val)
 {
@@ -354,7 +356,7 @@ bool FullRangeNeeded(const Polygon &pts)
   for (Polygon::size_type i = 0; i <  pts.size(); ++i)
   {
     if (Abs(pts[i].X) > hiRange || Abs(pts[i].Y) > hiRange)
-        throw "Coordinate exceeds range bounds.";
+        throw coords_range_error;
       else if (Abs(pts[i].X) > loRange || Abs(pts[i].Y) > loRange)
         result = true;
   }
@@ -454,8 +456,7 @@ bool PointOnLineSegment(const IntPoint pt,
 }
 //------------------------------------------------------------------------------
 
-bool PointOnPolygon(const IntPoint pt,
- OutPt *pp, bool UseFullInt64Range)
+bool PointOnPolygon(const IntPoint pt, OutPt *pp, bool UseFullInt64Range)
 {
   OutPt *pp2 = pp;
   for (;;)
@@ -501,7 +502,7 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
 }
 //------------------------------------------------------------------------------
 
-bool SlopesEqual(TEdge &e1, TEdge &e2, bool UseFullInt64Range)
+bool SlopesEqual(const TEdge &e1, const TEdge &e2, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
     return Int128Mul(e1.deltaY, e2.deltaX) == Int128Mul(e1.deltaX, e2.deltaY);
@@ -667,8 +668,7 @@ void DisposeOutPts(OutPt*& pp)
 void InitEdge(TEdge *e, TEdge *eNext,
   TEdge *ePrev, const IntPoint &pt, PolyType polyType)
 {
-  std::memset( e, 0, sizeof( TEdge ));
-
+  std::memset(e, 0, sizeof(TEdge));
   e->next = eNext;
   e->prev = ePrev;
   e->xcurr = pt.X;
@@ -860,27 +860,39 @@ ClipperBase::~ClipperBase() //destructor
 }
 //------------------------------------------------------------------------------
 
-bool ClipperBase::AddPolygon( const Polygon &pg, PolyType polyType)
+void RangeTest(const IntPoint& pt, long64& maxrange)
+{
+  if (Abs(pt.X) > maxrange)
+  {
+    if (Abs(pt.X) > hiRange) 
+      throw coords_range_error;
+    else maxrange = hiRange;
+  }
+  if (Abs(pt.Y) > maxrange)
+  {
+    if (Abs(pt.Y) > hiRange)
+      throw coords_range_error;
+    else maxrange = hiRange;
+  }
+}
+//------------------------------------------------------------------------------
+
+bool ClipperBase::AddPolygon(const Polygon &pg, PolyType polyType)
 {
   int len = (int)pg.size();
   if (len < 3) return false;
+
+  long64 maxVal;
+  if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
+  RangeTest(pg[0], maxVal);
 
   Polygon p(len);
   p[0] = pg[0];
   int j = 0;
 
-  long64 maxVal;
-  if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
-
   for (int i = 0; i < len; ++i)
   {
-    if (Abs(pg[i].X) > maxVal || Abs(pg[i].Y) > maxVal)
-    {
-      if (Abs(pg[i].X) > hiRange || Abs(pg[i].Y) > hiRange)
-        throw "Coordinate exceeds range bounds";
-      maxVal = hiRange;
-      m_UseFullRange = true;
-    }
+    RangeTest(pg[i], maxVal);
 
     if (i == 0 || PointsEqual(p[j], pg[i])) continue;
     else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
@@ -1190,7 +1202,6 @@ void Clipper::Reset()
   while (lm)
   {
     InsertScanbeam(lm->Y);
-    InsertScanbeam(lm->leftBound->ytop);
     lm = lm->next;
   }
 }
@@ -2055,12 +2066,12 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
   {
     OutRec *outRec = CreateOutRec();
     e->outIdx = outRec->idx;
-    OutPt* op = new OutPt;
-    outRec->pts = op;
-    op->pt = pt;
-    op->idx = outRec->idx;
-    op->next = op;
-    op->prev = op;
+    OutPt* newOp = new OutPt;
+    outRec->pts = newOp;
+    newOp->pt = pt;
+    newOp->idx = outRec->idx;
+    newOp->next = newOp;
+    newOp->prev = newOp;
     SetHoleState(e, outRec);
   } else
   {
@@ -2069,14 +2080,14 @@ void Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
     if ((ToFront && PointsEqual(pt, op->pt)) ||
       (!ToFront && PointsEqual(pt, op->prev->pt))) return;
 
-    OutPt* op2 = new OutPt;
-    op2->pt = pt;
-    op2->idx = outRec->idx;
-    op2->next = op;
-    op2->prev = op->prev;
-    op2->prev->next = op2;
-    op->prev = op2;
-    if (ToFront) outRec->pts = op2;
+    OutPt* newOp = new OutPt;
+    newOp->pt = pt;
+    newOp->idx = outRec->idx;
+    newOp->next = op;
+    newOp->prev = op->prev;
+    newOp->prev->next = newOp;
+    op->prev = newOp;
+    if (ToFront) outRec->pts = newOp;
   }
 }
 //------------------------------------------------------------------------------
@@ -2398,8 +2409,8 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
   }
 
   //bubblesort ...
-  bool isModified = true;
-  while( isModified && m_SortedEdges )
+  bool isModified;
+  do
   {
     isModified = false;
     e = m_SortedEdges;
@@ -2416,7 +2427,7 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
             pt.Y = botY;
             pt.X = TopX(*e, pt.Y);
         }
-        AddIntersectNode( e, eNext, pt );
+        InsertIntersectNode( e, eNext, pt );
         SwapPositionsInSEL(e, eNext);
         isModified = true;
       }
@@ -2426,11 +2437,12 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
     if( e->prevInSEL ) e->prevInSEL->nextInSEL = 0;
     else break;
   }
-  m_SortedEdges = 0;
+  while ( isModified );
+  m_SortedEdges = 0; //important
 }
 //------------------------------------------------------------------------------
 
-void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
+void Clipper::InsertIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
 {
   IntersectNode* newNode = new IntersectNode;
   newNode->edge1 = e1;
@@ -2447,7 +2459,7 @@ void Clipper::AddIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt)
   {
     IntersectNode* iNode = m_IntersectNodes;
     while(iNode->next  && newNode->pt.Y <= iNode->next->pt.Y)
-        iNode = iNode->next;
+      iNode = iNode->next;
     newNode->next = iNode->next;
     iNode->next = newNode;
   }
@@ -2750,7 +2762,7 @@ bool Clipper::FixupIntersectionOrder()
 }
 //------------------------------------------------------------------------------
 
-bool E2InsertsBeforeE1(TEdge &e1, TEdge &e2)
+inline bool E2InsertsBeforeE1(TEdge &e1, TEdge &e2)
 {
   if (e2.xcurr == e1.xcurr) 
   {
@@ -3492,7 +3504,7 @@ bool PointsAreClose(IntPoint pt1, IntPoint pt2, double distSqrd)
 }
 //------------------------------------------------------------------------------
 
-void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
+void CleanPolygon(const Polygon& in_poly, Polygon& out_poly, double distance)
 {
   //distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2).
@@ -3508,8 +3520,8 @@ void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
   {
     while (i <= highI && PointsAreClose(pt, in_poly[i+1], distSqrd)) i+=2;
     int i2 = i;
-    while (i <= highI && PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
-      SlopesNearColinear(pt, in_poly[i], in_poly[+1], distSqrd)) i++;
+    while (i <= highI && (PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
+      SlopesNearColinear(pt, in_poly[i], in_poly[+1], distSqrd))) i++;
     if (i >= highI) break;
     else if (i != i2) continue;
     pt = in_poly[i++];
@@ -3522,14 +3534,14 @@ void CleanPolygon(Polygon& in_poly, Polygon& out_poly, double distance)
 }
 //------------------------------------------------------------------------------
 
-void CleanPolygons(Polygons& in_polys, Polygons& out_polys, double distance)
+void CleanPolygons(const Polygons& in_polys, Polygons& out_polys, double distance)
 {
   for (Polygons::size_type i = 0; i < in_polys.size(); ++i)
     CleanPolygon(in_polys[i], out_polys[i], distance);
 }
 //------------------------------------------------------------------------------
 
-void AddPolyNodeToPolygons(PolyNode& polynode, Polygons& polygons)
+void AddPolyNodeToPolygons(const PolyNode& polynode, Polygons& polygons)
 {
   if (!polynode.Contour.empty())
     polygons.push_back(polynode.Contour);
@@ -3538,7 +3550,7 @@ void AddPolyNodeToPolygons(PolyNode& polynode, Polygons& polygons)
 }
 //------------------------------------------------------------------------------
 
-void PolyTreeToPolygons(PolyTree& polytree, Polygons& polygons)
+void PolyTreeToPolygons(const PolyTree& polytree, Polygons& polygons)
 {
   polygons.resize(0); 
   polygons.reserve(polytree.Total());
