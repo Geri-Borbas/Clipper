@@ -101,12 +101,16 @@ private:
 };
         
 enum JoinType { jtSquare, jtRound, jtMiter };
+enum EndType { etClosed, etButt, etSquare, etRound};
 
 bool Orientation(const Polygon &poly);
 double Area(const Polygon &poly);
 
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
   double delta, JoinType jointype = jtSquare, double limit = 0, bool autoFix = true);
+
+void OffsetPolyLines(const Polygons &in_lines, Polygons &out_lines,
+  double delta, JoinType jointype = jtSquare, EndType endtype = etSquare, double limit = 0, bool autoFix = true);
 
 void SimplifyPolygon(const Polygon &in_poly, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(const Polygons &in_polys, Polygons &out_polys, PolyFillType fillType = pftEvenOdd);

@@ -401,6 +401,7 @@ namespace ClipperLib
     //see http://glprogramming.com/red/chapter11.html
     public enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
     public enum JoinType { jtSquare, jtRound, jtMiter };
+    public enum EndType { etClosed, etButt, etSquare, etRound};
 
 
     [Flags]
@@ -3402,6 +3403,10 @@ namespace ClipperLib
             {
                 this.X = x; this.Y = y;
             }
+            public DoublePoint(DoublePoint dp)
+            {
+                this.X = dp.X; this.Y = dp.Y;
+            }
         };
         //------------------------------------------------------------------------------
 
@@ -3410,14 +3415,32 @@ namespace ClipperLib
             private Polygons pts; 
             private Polygon currentPoly;
             private List<DoublePoint> normals;
-            private double delta, m_R;
+            private double delta, m_R, m_RMin;
             private int m_i, m_j, m_k;
             private const int buffLength = 128;
 
-            public PolyOffsetBuilder(Polygons pts, Polygons solution, double delta, 
-                JoinType jointype, double limit = 0, bool AutoFix = true)
+            void OffsetPoint(JoinType jointype, double limit)
             {
-                //precondtion: solution != pts
+                switch (jointype)
+                {
+                    case JoinType.jtMiter:
+                        {
+                            m_R = 1 + (normals[m_j].X * normals[m_k].X +
+                              normals[m_j].Y * normals[m_k].Y);
+                            if (m_R >= m_RMin) DoMiter(); else DoSquare();
+                            break;
+                        }
+                    case JoinType.jtSquare: DoSquare(); break;
+                    case JoinType.jtRound: DoRound(limit); break;
+                }
+                m_k = m_j;
+            }
+            //------------------------------------------------------------------------------
+
+            public PolyOffsetBuilder(Polygons pts, Polygons solution, bool isPolygon, double delta,
+                JoinType jointype, EndType endtype, double limit = 0)
+            {
+                //precondition: solution != pts
 
                 if (delta == 0)
                 {
@@ -3427,36 +3450,6 @@ namespace ClipperLib
 
                 this.pts = pts;
                 this.delta = delta;
-
-                //AutoFix - fixes polygon orientation if necessary and removes 
-                //duplicate vertices. Can be set false when you're sure that polygon
-                //orientation is correct and that there are no duplicate vertices.
-                if (AutoFix)
-                {
-                    int Len = pts.Count, botI = 0;
-                    while (botI < Len && pts[botI].Count == 0) botI++;
-                    if (botI == Len) return;
-
-                    //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
-                    //This point (on pts[botI]) must be on an outer polygon ring and if 
-                    //its orientation is false (counterclockwise) then assume all polygons 
-                    //need reversing ...
-                    IntPoint botPt = pts[botI][0];
-                    for (int i = botI; i < Len; ++i)
-                    {
-                        if (pts[i].Count == 0) continue;
-                        if (UpdateBotPt(pts[i][0], ref botPt)) botI = i;
-                        for (int j = pts[i].Count -1; j > 0; j--)
-                        {
-                            if (PointsEqual(pts[i][j], pts[i][j -1]))
-                                pts[i].RemoveAt(j);
-                            else if (UpdateBotPt(pts[i][j], ref botPt))
-                                botI = i;
-                        }
-                    }
-                    if (!Orientation(pts[botI]))
-                        ReversePolygons(pts);
-                }
 
                 switch (jointype)
                 {
@@ -3472,7 +3465,7 @@ namespace ClipperLib
                         break; 
                 }
 
-                double RMin = 2.0 / (limit * limit);
+                m_RMin = 2.0 / (limit * limit);
 
                 normals = new List<DoublePoint>();
 
@@ -3481,6 +3474,8 @@ namespace ClipperLib
                 solution.Capacity = pts.Count;
                 for (m_i = 0; m_i < pts.Count; m_i++)
                 {
+                    currentPoly = new Polygon();
+
                     int len = pts[m_i].Count;
                     if (len > 1 && pts[m_i][0].X == pts[m_i][len - 1].X &&
                         pts[m_i][0].Y == pts[m_i][len - 1].Y) len--;
@@ -3500,27 +3495,73 @@ namespace ClipperLib
                     normals.Capacity = len;
                     for (int j = 0; j < len -1; ++j)
                         normals.Add(GetUnitNormal(pts[m_i][j], pts[m_i][j+1]));
-                    normals.Add(GetUnitNormal(pts[m_i][len - 1], pts[m_i][0]));
+                    if (isPolygon)
+                        normals.Add(GetUnitNormal(pts[m_i][len - 1], pts[m_i][0]));
+                    else
+                        normals.Add(new DoublePoint(normals[len - 2]));
 
-                    currentPoly = new Polygon();
-                    m_k = len - 1;
-                    for (m_j = 0; m_j < len; ++m_j)
+                    if (isPolygon)
                     {
-                        switch (jointype)
+                        m_k = len - 1;
+                        for (m_j = 0; m_j < len; ++m_j)
+                            OffsetPoint(jointype, limit);
+                    }
+                    else
+                    {
+                        m_k = 0;
+                        for (m_j = 1; m_j < len - 1; ++m_j)
+                            OffsetPoint(jointype, limit);
+
+                        IntPoint pt1;
+                        if (endtype == EndType.etButt)
                         {
-                            case JoinType.jtMiter:
-                                m_R = 1 + (normals[m_j].X*normals[m_k].X + 
-                                    normals[m_j].Y*normals[m_k].Y);
-                                if (m_R >= RMin) DoMiter(); else DoSquare(limit);
-                                break;
-                            case JoinType.jtRound: 
-                                DoRound(limit);
-                                break;
-                            case JoinType.jtSquare:
-                                DoSquare(1);
-                                break;
+                            m_j = len - 1;
+                            pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_j].X *
+                              delta), (Int64)Round(pts[m_i][m_j].Y + normals[m_j].Y * delta));
+                            AddPoint(pt1);
+                            pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X - normals[m_j].X *
+                              delta), (Int64)Round(pts[m_i][m_j].Y - normals[m_j].Y * delta));
+                            AddPoint(pt1);
                         }
-                        m_k = m_j;
+                        else
+                        {
+                            m_j = len - 1;
+                            m_k = len - 2;
+                            normals[m_j].X = -normals[m_j].X;
+                            normals[m_j].Y = -normals[m_j].Y;
+                            if (endtype == EndType.etSquare)
+                                DoSquare();
+                            else
+                                DoRound(limit);
+                        }
+
+                        //re-build Normals ...
+                        for (m_j = 1; m_j < len; ++m_j)
+                            normals[m_j] = GetUnitNormal(pts[m_i][m_j], pts[m_i][m_j - 1]);
+                        normals[0] = normals[1];
+
+                        m_k = len - 1;
+                        for (m_j = m_k - 1; m_j > 0; --m_j)
+                            OffsetPoint(jointype, limit);
+
+                        if (endtype == EndType.etButt)
+                        {
+                            pt1 = new IntPoint((Int64)Round(pts[m_i][0].X + normals[0].X * delta),
+                              (Int64)Round(pts[m_i][0].Y + normals[0].Y * delta));
+                            AddPoint(pt1);
+                            pt1 = new IntPoint((Int64)Round(pts[m_i][0].X - normals[0].X * delta),
+                              (Int64)Round(pts[m_i][0].Y - normals[0].Y * delta));
+                            AddPoint(pt1);
+                        }
+                        else
+                        {
+                            m_k = 1;
+                            normals[0] = GetUnitNormal(pts[m_i][0], pts[m_i][1]);
+                            if (endtype == EndType.etSquare)
+                                DoSquare();
+                            else
+                                DoRound(limit);
+                        }
                     }
                     solution.Add(currentPoly);
                 }
@@ -3554,17 +3595,6 @@ namespace ClipperLib
             }
             //------------------------------------------------------------------------------
 
-            internal bool UpdateBotPt(IntPoint pt, ref IntPoint botPt)
-            {
-                if (pt.Y > botPt.Y || (pt.Y == botPt.Y && pt.X < botPt.X))
-                {
-                    botPt = pt;
-                    return true;
-                }
-                else return false;
-            }
-            //------------------------------------------------------------------------------
-
             internal void AddPoint(IntPoint pt)
             {
                 if (currentPoly.Count == currentPoly.Capacity)
@@ -3573,7 +3603,7 @@ namespace ClipperLib
             }
             //------------------------------------------------------------------------------
 
-            internal void DoSquare(double mul)
+            internal void DoSquare()
             {
                 IntPoint pt1 = new IntPoint((Int64)Round(pts[m_i][m_j].X + normals[m_k].X * delta),
                     (Int64)Round(pts[m_i][m_j].Y + normals[m_k].Y * delta));
@@ -3585,7 +3615,7 @@ namespace ClipperLib
                     double a2 = Math.Atan2(-normals[m_j].Y, -normals[m_j].X);
                     a1 = Math.Abs(a2 - a1);
                     if (a1 > Math.PI) a1 = Math.PI * 2 - a1;
-                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta * mul);
+                    double dx = Math.Tan((Math.PI - a1) / 4) * Math.Abs(delta);
                     pt1 = new IntPoint((Int64)(pt1.X - normals[m_k].Y * dx),
                         (Int64)(pt1.Y + normals[m_k].X * dx));
                     AddPoint(pt1);
@@ -3656,11 +3686,53 @@ namespace ClipperLib
         } //end PolyOffsetBuilder
         //------------------------------------------------------------------------------
 
+        internal static bool UpdateBotPt(IntPoint pt, ref IntPoint botPt)
+        {
+            if (pt.Y > botPt.Y || (pt.Y == botPt.Y && pt.X < botPt.X))
+            {
+                botPt = pt;
+                return true;
+            }
+            else return false;
+        }
+        //------------------------------------------------------------------------------
+
         public static Polygons OffsetPolygons(Polygons poly, double delta,
             JoinType jointype, double MiterLimit, bool AutoFix)
         {
-            Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, AutoFix);
+            Polygons result = new Polygons();
+
+            //AutoFix - fixes polygon orientation if necessary and removes 
+            //duplicate vertices. Can be set false when you're sure that polygon
+            //orientation is correct and that there are no duplicate vertices.
+            if (AutoFix)
+            {
+                int Len = poly.Count, botI = 0;
+                while (botI < Len && poly[botI].Count == 0) botI++;
+                if (botI == Len) return result;
+
+                //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
+                //This point (on pts[botI]) must be on an outer polygon ring and if 
+                //its orientation is false (counterclockwise) then assume all polygons 
+                //need reversing ...
+                IntPoint botPt = poly[botI][0];
+                for (int i = botI; i < Len; ++i)
+                {
+                    if (poly[i].Count == 0) continue;
+                    if (UpdateBotPt(poly[i][0], ref botPt)) botI = i;
+                    for (int j = poly[i].Count - 1; j > 0; j--)
+                    {
+                        if (PointsEqual(poly[i][j], poly[i][j - 1]))
+                            poly[i].RemoveAt(j);
+                        else if (UpdateBotPt(poly[i][j], ref botPt))
+                            botI = i;
+                    }
+                }
+                if (!Orientation(poly[botI]))
+                    ReversePolygons(poly);
+            }
+
+            new PolyOffsetBuilder(poly, result, true, delta, jointype, EndType.etClosed, MiterLimit);
             return result;
         }
         //------------------------------------------------------------------------------
@@ -3668,26 +3740,59 @@ namespace ClipperLib
         public static Polygons OffsetPolygons(Polygons poly, double delta,
             JoinType jointype, double MiterLimit)
         {
-            Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, MiterLimit, true);
-            return result;
+            return OffsetPolygons(poly, delta, jointype, MiterLimit, true);
         }
         //------------------------------------------------------------------------------
-
+       
         public static Polygons OffsetPolygons(Polygons poly, double delta, JoinType jointype)
         {
-            Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, jointype, 0, true);
-            return result;
+            return OffsetPolygons(poly, delta, jointype, 0, true);
         }
         //------------------------------------------------------------------------------
 
         public static Polygons OffsetPolygons(Polygons poly, double delta)
         {
-            Polygons result = new Polygons(poly.Count);
-            new PolyOffsetBuilder(poly, result, delta, JoinType.jtSquare, 2.0, true);
-            return result;
+            return OffsetPolygons(poly, delta, JoinType.jtSquare, 0, true);
         }
+        //------------------------------------------------------------------------------
+
+        public static Polygons OffsetPolyLines(Polygons lines,
+          double delta, JoinType jointype, EndType endtype, 
+          double limit, bool autoFix)
+        {
+            Polygons result = new Polygons();
+            if (!autoFix && endtype != EndType.etClosed)
+            {
+              new PolyOffsetBuilder(lines, result, false, delta, jointype, endtype, limit);
+              return result;
+            }
+
+            if (autoFix)
+                for (int i = 0; i < lines.Count; ++i)
+                {
+                    for (int j = lines[i].Count - 1; j > 0; j--)
+                        if (PointsEqual(lines[i][j], lines[i][j - 1]))
+                            lines[i].RemoveAt(j);
+                }
+
+            if (endtype == EndType.etClosed)
+            {
+                int sz = lines.Count;
+                lines.Capacity = sz * 2;
+                for (int i = 0; i < sz; ++i)
+                {
+                    Polygon line = new Polygon(lines[i]);
+                    line.Reverse();
+                    lines.Add(line);
+                }
+                new PolyOffsetBuilder(lines, result, true, delta, jointype, endtype, limit);
+            } 
+            else
+                new PolyOffsetBuilder(lines, result, false, delta, jointype, endtype, limit);
+
+          return result;
+        }
+        //------------------------------------------------------------------------------
 
         //------------------------------------------------------------------------------
         // SimplifyPolygon functions ...

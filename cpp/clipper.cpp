@@ -3177,14 +3177,13 @@ private:
   double m_delta, m_RMin, m_R;
   size_t m_i, m_j, m_k;
   static const int buffLength = 128;
-  JoinType m_jointype;
  
 public:
 
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
-  double delta, JoinType jointype, double limit, bool autoFix)
+  bool isPolygon, double delta, JoinType jointype, EndType endtype, double limit)
 {
-    //nb precondition - out_polys != ptsin_polys
+    //precondition - out_polys != in_polys
     if (NEAR_ZERO(delta))
     {
         out_polys = in_polys;
@@ -3193,41 +3192,6 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
     this->m_p = in_polys;
     this->m_delta = delta;
-    this->m_jointype = jointype;
-
-    //ChecksInput - fixes polygon orientation if necessary and removes 
-    //duplicate vertices. Can be set false when you're sure that polygon
-    //orientation is correct and that there are no duplicate vertices.
-    if (autoFix) 
-    {
-      size_t Len = m_p.size(), botI = 0;
-      while (botI < Len && m_p[botI].empty()) botI++;
-      if (botI == Len) return;
-      
-      //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
-      //This point (on m_p[botI]) must be on an outer polygon ring and if 
-      //its orientation is false (counterclockwise) then assume all polygons 
-      //need reversing ...
-      IntPoint botPt = m_p[botI][0];      
-      for (size_t i = botI; i < Len; ++i)
-      {
-        if (m_p[i].size() < 3) continue;
-        if (UpdateBotPt(m_p[i][0], botPt)) botI = i;
-        Polygon::iterator it = m_p[i].begin() +1;
-        while (it != m_p[i].end())
-        {
-          if (PointsEqual(*it, *(it -1)))
-            it = m_p[i].erase(it);
-          else 
-          {
-            if (UpdateBotPt(*it, botPt)) botI = i;
-            ++it;
-          }
-        }
-      }
-      if (!Orientation(m_p[botI]))
-        ReversePolygons(m_p);
-    }
 
     switch (jointype)
     {
@@ -3272,26 +3236,73 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         //build normals ...
         normals.clear();
         normals.resize(len);
-        normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
         for (m_j = 0; m_j < len -1; ++m_j)
-            normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j+1]);
+            normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
+        if (isPolygon)
+          normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
+        else
+          normals[len-1] = normals[len-2];
         
-        m_k = len -1;
-        for (m_j = 0; m_j < len; ++m_j)
+        if (isPolygon) 
         {
-          switch (jointype)
+          m_k = len -1;
+          for (m_j = 0; m_j < len; ++m_j)
+            OffsetPoint(jointype, limit);
+        }
+        else
+        {
+          m_k = 0;
+          for (m_j = 1; m_j < len -1; ++m_j)
+            OffsetPoint(jointype, limit);
+
+          IntPoint pt1;
+          if (endtype == etButt)
           {
-            case jtMiter:
-            {
-              m_R = 1 + (normals[m_j].X*normals[m_k].X + 
-                normals[m_j].Y*normals[m_k].Y);
-              if (m_R >= m_RMin) DoMiter(); else DoSquare(limit);
-              break;
-            }
-            case jtSquare: DoSquare(1.0); break;
-            case jtRound: DoRound(limit); break;
+            m_j = len - 1;
+            pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
+              m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+            AddPoint(pt1);
+            pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X - normals[m_j].X *
+              m_delta), (long64)Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
+            AddPoint(pt1);
+          } else
+          {
+            m_j = len - 1;
+            m_k = len - 2;
+            normals[m_j].X = -normals[m_j].X;
+            normals[m_j].Y = -normals[m_j].Y;
+            if (endtype == etSquare)
+              DoSquare();
+            else
+              DoRound(limit);
           }
-        m_k = m_j;
+
+          //re-build Normals ...
+          for (m_j = 1; m_j < len; ++m_j)
+              normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j -1]);
+          normals[0] = normals[1];
+
+          m_k = len -1;
+          for (m_j = m_k - 1; m_j > 0; --m_j)
+            OffsetPoint(jointype, limit);
+
+          if (endtype == etButt) 
+          {
+            pt1 = IntPoint((long64)Round(m_p[m_i][0].X + normals[0].X * m_delta), 
+              (long64)Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
+            AddPoint(pt1);
+            pt1 = IntPoint((long64)Round(m_p[m_i][0].X - normals[0].X * m_delta), 
+              (long64)Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
+            AddPoint(pt1);
+          } else
+          {
+            m_k = 1;
+            normals[0] = GetUnitNormal(m_p[m_i][0], m_p[m_i][1]);
+            if (endtype == etSquare) 
+              DoSquare(); 
+            else
+              DoRound(limit);
+          }
         }
     }
 
@@ -3326,6 +3337,24 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
 private:
 
+void OffsetPoint(JoinType jointype, double limit)
+{
+    switch (jointype)
+    {
+      case jtMiter:
+      {
+        m_R = 1 + (normals[m_j].X*normals[m_k].X + 
+          normals[m_j].Y*normals[m_k].Y);
+        if (m_R >= m_RMin) DoMiter(); else DoSquare();
+        break;
+      }
+      case jtSquare: DoSquare(); break;
+      case jtRound: DoRound(limit); break;
+    }
+    m_k = m_j;
+}
+//------------------------------------------------------------------------------
+
 void AddPoint(const IntPoint& pt)
 {
     if (m_curr_poly->size() == m_curr_poly->capacity())
@@ -3334,7 +3363,7 @@ void AddPoint(const IntPoint& pt)
 }
 //------------------------------------------------------------------------------
 
-void DoSquare(double mul)
+void DoSquare()
 {
     IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
         (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
@@ -3346,7 +3375,7 @@ void DoSquare(double mul)
       double a2 = std::atan2(-normals[m_j].Y, -normals[m_j].X);
       a1 = std::fabs(a2 - a1);
       if (a1 > pi) a1 = pi * 2 - a1;
-      double dx = std::tan((pi - a1) / 4) * std::fabs(m_delta * mul);
+      double dx = std::tan((pi - a1) / 4) * std::fabs(m_delta);
       pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx),
         (long64)(pt1.Y + normals[m_k].X * dx));
       AddPoint(pt1);
@@ -3412,6 +3441,11 @@ void DoRound(double limit)
 }
 //--------------------------------------------------------------------------
 
+}; //end PolyOffsetBuilder
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
 bool UpdateBotPt(const IntPoint &pt, IntPoint &botPt)
 {
     if (pt.Y > botPt.Y || (pt.Y == botPt.Y && pt.X < botPt.X))
@@ -3423,20 +3457,95 @@ bool UpdateBotPt(const IntPoint &pt, IntPoint &botPt)
 }
 //--------------------------------------------------------------------------
 
-}; //end PolyOffsetBuilder
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
   double delta, JoinType jointype, double limit, bool autoFix)
 {
-  if (&out_polys == &in_polys)
+  if (!autoFix && &in_polys != &out_polys)
   {
-    Polygons poly2(in_polys);
-    PolyOffsetBuilder(poly2, out_polys, delta, jointype, limit, autoFix);
+    PolyOffsetBuilder(in_polys, out_polys, true, delta, jointype, etClosed, limit);
+    return;
   }
-  else PolyOffsetBuilder(in_polys, out_polys, delta, jointype, limit, autoFix);
+
+  Polygons inPolys = Polygons(in_polys);
+  out_polys.clear();
+
+  //ChecksInput - fixes polygon orientation if necessary and removes 
+  //duplicate vertices. Can be set false when you're sure that polygon
+  //orientation is correct and that there are no duplicate vertices.
+  if (autoFix) 
+  {
+    size_t polyCount = inPolys.size(), botPoly = 0;
+    while (botPoly < polyCount && inPolys[botPoly].empty()) botPoly++;
+    if (botPoly == polyCount) return;
+      
+    //botPt: used to find the lowermost (in inverted Y-axis) & leftmost point
+    //This point (on m_p[botPoly]) must be on an outer polygon ring and if 
+    //its orientation is false (counterclockwise) then assume all polygons 
+    //need reversing ...
+    IntPoint botPt = inPolys[botPoly][0];      
+    for (size_t i = botPoly; i < polyCount; ++i)
+    {
+      if (inPolys[i].size() < 3) { inPolys[i].clear(); continue; }
+      if (UpdateBotPt(inPolys[i][0], botPt)) botPoly = i;
+      Polygon::iterator it = inPolys[i].begin() +1;
+      while (it != inPolys[i].end())
+      {
+        if (PointsEqual(*it, *(it -1)))
+          it = inPolys[i].erase(it);
+        else 
+        {
+          if (UpdateBotPt(*it, botPt)) botPoly = i;
+          ++it;
+        }
+      }
+    }
+    if (!Orientation(inPolys[botPoly]))
+      ReversePolygons(inPolys);
+  }
+  PolyOffsetBuilder(inPolys, out_polys, true, delta, jointype, etClosed, limit);
+}
+//------------------------------------------------------------------------------
+
+void OffsetPolyLines(const Polygons &in_lines, Polygons &out_lines,
+  double delta, JoinType jointype, EndType endtype, 
+  double limit, bool autoFix)
+{
+  if (!autoFix && endtype != etClosed && &in_lines != &out_lines)
+  {
+    PolyOffsetBuilder(in_lines, out_lines, false, delta, jointype, endtype, limit);
+    return;
+  }
+
+  Polygons inLines = Polygons(in_lines);
+  out_lines.clear();
+
+  if (autoFix) 
+    for (size_t i = 0; i < inLines.size(); ++i)
+    {
+      if (inLines[i].size() < 2) { inLines[i].clear(); continue; }
+      Polygon::iterator it = inLines[i].begin() +1;
+      while (it != inLines[i].end())
+      {
+        if (PointsEqual(*it, *(it -1)))
+          it = inLines[i].erase(it);
+        else
+          ++it;
+      }
+    }
+
+  if (endtype == etClosed)
+  {
+    size_t sz = inLines.size();
+    inLines.resize(sz * 2);
+    for (size_t i = 0; i < sz; ++i)
+    {
+      inLines[sz+i] = inLines[i];
+      ReversePolygon(inLines[sz+i]);
+    }
+    PolyOffsetBuilder(inLines, out_lines, true, delta, jointype, endtype, limit);
+  } 
+  else
+    PolyOffsetBuilder(inLines, out_lines, false, delta, jointype, endtype, limit);
 }
 //------------------------------------------------------------------------------
 
