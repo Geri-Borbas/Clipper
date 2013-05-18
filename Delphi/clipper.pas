@@ -3869,19 +3869,21 @@ const
 begin
   Result := nil;
 
+  RMin := 0.5;
   if JoinType = jtMiter then
   begin
-    if Limit < 2 then Limit := 2;
+    if Limit > 2 then RMin := 2/(sqr(Limit));
+    Limit := 0.25; //just in case EndType == etRound
   end else
   begin
     if Limit <= 0 then Limit := 0.25
     else if Limit > abs(Delta) then Limit := abs(Delta);
   end;
-  RMin := 2/(sqr(Limit));
 
   SetLength(Result, length(Pts));
   for I := 0 to high(Pts) do
   begin
+    //for each polygon in Pts ...
     Result[I] := nil;
     Len := length(Pts[I]);
     if IsPolygon and (Len > 1) and
@@ -3903,12 +3905,14 @@ begin
       K := Len -1;
       for J := 0 to Len-1 do
         OffsetPoint;
-    end else
+    end else //is polyline
     begin
       K := 0;
+      //offset the polyline going forward ...
       for J := 1 to Len-2 do
         OffsetPoint;
 
+      //handle the end (butt, round or square) ...
       if EndType = etButt then
       begin
         J := Len - 1;
@@ -3933,25 +3937,26 @@ begin
         Normals[J].X := -Normals[J-1].X;
         Normals[J].Y := -Normals[J-1].Y;
       end;
-      Normals[0] := Normals[1];
+      Normals[0].X := -Normals[1].X;
+      Normals[0].Y := -Normals[1].Y;
 
+      //offset the polyline going backward ...
       K := Len -1;
       for J := K -1 downto 1 do
         OffsetPoint;
 
+      //finally handle the start (butt, round or square) ...
       if EndType = etButt then
       begin
-        AddPoint(IntPoint(round(Pts[I][0].X + Normals[0].X *Delta),
-          round(Pts[I][0].Y + Normals[0].Y * Delta)));
         AddPoint(IntPoint(round(Pts[I][0].X - Normals[0].X *Delta),
           round(Pts[I][0].Y - Normals[0].Y * Delta)));
+        AddPoint(IntPoint(round(Pts[I][0].X + Normals[0].X *Delta),
+          round(Pts[I][0].Y + Normals[0].Y * Delta)));
       end else
       begin
         K := 1;
-        Normals[0] := GetUnitNormal(Pts[I][0], Pts[I][1]);
-        if EndType = etSquare then
-          DoSquare else
-          DoRound(Limit);
+        if EndType = etSquare then DoSquare
+        else DoRound(Limit);
       end;
     end;
     SetLength(Result[I], OutLen);

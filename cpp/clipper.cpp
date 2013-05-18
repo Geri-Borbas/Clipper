@@ -3174,7 +3174,7 @@ private:
   const Polygons& m_p;
   Polygon* m_curr_poly;
   std::vector<DoublePoint> normals;
-  double m_delta, m_RMin, m_R;
+  double m_delta, m_rmin, m_r;
   size_t m_i, m_j, m_k;
   static const int buffLength = 128;
  
@@ -3183,65 +3183,42 @@ public:
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
   bool isPolygon, double delta, JoinType jointype, EndType endtype, double limit): m_p(in_polys)
 {
-    //precondition - out_polys != in_polys
-    if (NEAR_ZERO(delta))
-    {
-        out_polys = in_polys;
-        return;
-    }
+    //precondition: &out_polys != &in_polys
 
-    this->m_delta = delta;
-
-    switch (jointype)
+    if (NEAR_ZERO(delta)) {out_polys = in_polys; return;}
+    m_rmin = 0.5;
+    m_delta = delta;
+    if (jointype == jtMiter)
     {
-        case jtRound:  
-            if (limit <= 0) limit = 0.25;
-            else if (limit > std::fabs(delta)) limit = std::fabs(delta);
-            break;  
-        case jtMiter: 
-            if (limit < 2) limit = 2; 
-            break;       
-        default:       //unused
-            limit = 1;   
+      if (limit > 2) m_rmin = 2.0 / (limit * limit);
+      limit = 0.25; //just in case endtype == etRound
     }
-    m_RMin = 2.0/(limit*limit);
+    else
+    {
+      if (limit <= 0) limit = 0.25;
+      else if (limit > std::fabs(delta)) limit = std::fabs(delta);
+    }
  
     double deltaSq = delta*delta;
     out_polys.clear();
     out_polys.resize(m_p.size());
     for (m_i = 0; m_i < m_p.size(); m_i++)
     {
-        m_curr_poly = &out_polys[m_i];
         size_t len = m_p[m_i].size();
         if (len > 1 && m_p[m_i][0].X == m_p[m_i][len - 1].X &&
             m_p[m_i][0].Y == m_p[m_i][len-1].Y) len--;
-
-        //when 'shrinking' polygons - to minimize artefacts
-        //strip those polygons that have an area < pi * delta^2 ...
-        double a1 = Area(m_p[m_i]);
-        if (delta < 0) { if (a1 > 0 && a1 < deltaSq *pi) len = 0; }
-        else if (a1 < 0 && -a1 < deltaSq *pi) len = 0; //holes have neg. area
-
-        if (len == 0 || (len < 3 && delta <= 0))
-          continue;
-        else if (len == 1)
-        {
-            Polygon arc;
-            arc = BuildArc(m_p[m_i][len-1], 0, 2 * pi, delta, limit);
-            out_polys[m_i] = arc;
-            continue;
-        }
 
         //build normals ...
         normals.clear();
         normals.resize(len);
         for (m_j = 0; m_j < len -1; ++m_j)
             normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
-        if (isPolygon)
+        if (isPolygon) 
           normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
         else //is polyline
           normals[len-1] = normals[len-2];
         
+        m_curr_poly = &out_polys[m_i];
         if (isPolygon) 
         {
           m_k = len -1;
@@ -3250,10 +3227,12 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         }
         else //is polyline
         {
+          //offset the polyline going forward ...
           m_k = 0;
           for (m_j = 1; m_j < len -1; ++m_j)
             OffsetPoint(jointype, limit);
 
+          //handle the end (butt, round or square) ...
           IntPoint pt1;
           if (endtype == etButt)
           {
@@ -3264,16 +3243,15 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
             pt1 = IntPoint(Round(m_p[m_i][m_j].X - normals[m_j].X * m_delta), 
               Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
             AddPoint(pt1);
-          } else
+          } 
+          else
           {
             m_j = len - 1;
             m_k = len - 2;
             normals[m_j].X = -normals[m_j].X;
             normals[m_j].Y = -normals[m_j].Y;
-            if (endtype == etSquare)
-              DoSquare();
-            else
-              DoRound(limit);
+            if (endtype == etSquare) DoSquare();
+            else DoRound(limit);
           }
 
           //re-build Normals ...
@@ -3282,33 +3260,33 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
               normals[j].X = -normals[j - 1].X;
               normals[j].Y = -normals[j - 1].Y;
           }
-          normals[0] = normals[1];
+          normals[0].X = -normals[1].X;
+          normals[0].Y = -normals[1].Y;
 
+          //offset the polyline going backward ...
           m_k = len -1;
           for (m_j = m_k - 1; m_j > 0; --m_j)
             OffsetPoint(jointype, limit);
 
+          //finally handle the start (butt, round or square) ...
           if (endtype == etButt) 
           {
-            pt1 = IntPoint(Round(m_p[m_i][0].X + normals[0].X * m_delta), 
-              Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
-            AddPoint(pt1);
             pt1 = IntPoint(Round(m_p[m_i][0].X - normals[0].X * m_delta), 
               Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
+            AddPoint(pt1);
+            pt1 = IntPoint(Round(m_p[m_i][0].X + normals[0].X * m_delta), 
+              Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
             AddPoint(pt1);
           } else
           {
             m_k = 1;
-            normals[0] = GetUnitNormal(m_p[m_i][0], m_p[m_i][1]);
-            if (endtype == etSquare) 
-              DoSquare(); 
-            else
-              DoRound(limit);
+            if (endtype == etSquare) DoSquare(); 
+            else DoRound(limit);
           }
         }
     }
 
-    //finally, clean up untidy corners using Clipper ...
+    //and clean up untidy corners using Clipper ...
     Clipper clpr;
     clpr.AddPolygons(out_polys, ptSubject);
     if (delta > 0)
@@ -3345,9 +3323,9 @@ void OffsetPoint(JoinType jointype, double limit)
     {
       case jtMiter:
       {
-        m_R = 1 + (normals[m_j].X*normals[m_k].X + 
+        m_r = 1 + (normals[m_j].X*normals[m_k].X + 
           normals[m_j].Y*normals[m_k].Y);
-        if (m_R >= m_RMin) DoMiter(); else DoSquare();
+        if (m_r >= m_rmin) DoMiter(); else DoSquare();
         break;
       }
       case jtSquare: DoSquare(); break;
@@ -3396,7 +3374,7 @@ void DoMiter()
 {
     if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
     {
-        double q = m_delta / m_R;
+        double q = m_delta / m_r;
         AddPoint(IntPoint(Round(m_p[m_i][m_j].X + (normals[m_k].X + normals[m_j].X) * q),
             Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
     }

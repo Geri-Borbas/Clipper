@@ -3414,7 +3414,7 @@ namespace ClipperLib
         {
             private Polygons m_p; 
             private Polygon currentPoly;
-            private List<DoublePoint> normals;
+            private List<DoublePoint> normals = new List<DoublePoint>();
             private double m_delta, m_r, m_rmin;
             private int m_i, m_j, m_k;
             private const int m_buffLength = 128;
@@ -3442,54 +3442,32 @@ namespace ClipperLib
             {
                 //precondition: solution != pts
 
-                if (delta == 0)
-                {
-                    solution = pts;
-                    return;
-                }
-
+                if (delta == 0) {solution = pts; return; }
                 m_p = pts;
                 m_delta = delta;
+                m_rmin = 0.5; 
 
-                switch (jointype)
+                if (jointype == JoinType.jtMiter)
                 {
-                    case JoinType.jtRound: 
-                        if (limit <= 0) limit = 0.25; 
-                        else if (limit > Math.Abs(delta)) limit = Math.Abs(delta);
-                        break;
-                    case JoinType.jtMiter: 
-                        if (limit < 2) limit = 2; 
-                        break;
-                    default:               
-                        limit = 1; 
-                        break; 
+                  if (limit > 2) m_rmin = 2.0 / (limit * limit);
+                  limit = 0.25; //just in case endtype == etRound
+                }
+                else
+                {
+                  if (limit <= 0) limit = 0.25;
+                  else if (limit > Math.Abs(delta)) limit = Math.Abs(delta);
                 }
 
-                m_rmin = 2.0 / (limit * limit);
-
-                normals = new List<DoublePoint>();
-
-                double deltaSq = delta*delta;
+                double deltaSq = delta * delta;
                 solution.Clear();
                 solution.Capacity = pts.Count;
                 for (m_i = 0; m_i < pts.Count; m_i++)
                 {
-                    currentPoly = new Polygon();
-
                     int len = pts[m_i].Count;
                     if (len > 1 && pts[m_i][0].X == pts[m_i][len - 1].X &&
                         pts[m_i][0].Y == pts[m_i][len - 1].Y) len--;
-
-                    if (len == 0 || (len < 3 && delta <= 0)) 
-                        continue;
-                    else if (len == 1)
-                    {
-                        Polygon arc;
-                        arc = BuildArc(pts[m_i][len - 1], 0, 2 * Math.PI, delta, limit);
-                        solution.Add(arc);
-                        continue;
-                    }
-
+                    if (len < 3) continue;
+                    
                     //build normals ...
                     normals.Clear();
                     normals.Capacity = len;
@@ -3500,6 +3478,7 @@ namespace ClipperLib
                     else
                         normals.Add(new DoublePoint(normals[len - 2]));
 
+                    currentPoly = new Polygon();
                     if (isPolygon)
                     {
                         m_k = len - 1;
@@ -3529,10 +3508,8 @@ namespace ClipperLib
                             m_k = len - 2;
                             normals[m_j].X = -normals[m_j].X;
                             normals[m_j].Y = -normals[m_j].Y;
-                            if (endtype == EndType.etSquare)
-                                DoSquare();
-                            else
-                                DoRound(limit);
+                            if (endtype == EndType.etSquare) DoSquare();
+                            else DoRound(limit);
                         }
 
                         //re-build Normals ...
@@ -3541,7 +3518,8 @@ namespace ClipperLib
                             normals[j].X = -normals[j - 1].X;
                             normals[j].Y = -normals[j - 1].Y;
                         }
-                        normals[0] = normals[1];
+                        normals[0].X = -normals[1].X;
+                        normals[0].Y = -normals[1].Y;
 
                         m_k = len - 1;
                         for (m_j = m_k - 1; m_j > 0; --m_j)
@@ -3549,21 +3527,18 @@ namespace ClipperLib
 
                         if (endtype == EndType.etButt)
                         {
-                            pt1 = new IntPoint((Int64)Round(pts[m_i][0].X + normals[0].X * delta),
-                              (Int64)Round(pts[m_i][0].Y + normals[0].Y * delta));
-                            AddPoint(pt1);
                             pt1 = new IntPoint((Int64)Round(pts[m_i][0].X - normals[0].X * delta),
                               (Int64)Round(pts[m_i][0].Y - normals[0].Y * delta));
+                            AddPoint(pt1);
+                            pt1 = new IntPoint((Int64)Round(pts[m_i][0].X + normals[0].X * delta),
+                              (Int64)Round(pts[m_i][0].Y + normals[0].Y * delta));
                             AddPoint(pt1);
                         }
                         else
                         {
                             m_k = 1;
-                            normals[0] = GetUnitNormal(pts[m_i][0], pts[m_i][1]);
-                            if (endtype == EndType.etSquare)
-                                DoSquare();
-                            else
-                                DoRound(limit);
+                            if (endtype == EndType.etSquare) DoSquare();
+                            else DoRound(limit);
                         }
                     }
                     solution.Add(currentPoly);
