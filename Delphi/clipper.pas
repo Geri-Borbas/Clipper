@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.6                                                           *
-* Date      :  12 May 2013                                                     *
+* Date      :  18 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3928,8 +3928,11 @@ begin
       end;
 
       //re-build Normals ...
-      for J := 1 to Len-1 do
-        Normals[J] := GetUnitNormal(Pts[I][J], Pts[I][J-1]);
+      for J := Len-1 downto 1 do
+      begin
+        Normals[J].X := -Normals[J-1].X;
+        Normals[J].Y := -Normals[J-1].Y;
+      end;
       Normals[0] := Normals[1];
 
       K := Len -1;
@@ -3985,25 +3988,26 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function UpdateBotPt(const Pt: TIntPoint; var BotPt: TIntPoint): Boolean;
+begin
+  if (pt.Y > BotPt.Y) or ((pt.Y = BotPt.Y) and (Pt.X < BotPt.X)) then
+  begin
+    BotPt := Pt;
+    Result := True;
+  end
+  else Result := False;
+end;
+//------------------------------------------------------------------------------
+
 function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
   JoinType: TJoinType = jtSquare; Limit: Double = 0;
   AutoFix: Boolean = True): TPolygons;
-
-  function UpdateBotPt(const Pt: TIntPoint; var BotPt: TIntPoint): Boolean;
-  begin
-    if (pt.Y > BotPt.Y) or ((pt.Y = BotPt.Y) and (Pt.X < BotPt.X)) then
-    begin
-      BotPt := Pt;
-      Result := True;
-    end
-    else Result := False;
-  end;
-
 var
   I, J, K, Len, BotI: Integer;
   Pts: TPolygons;
   BotPt: TIntPoint;
 begin
+  Pts := Polys;
   //AutoFix - fixes polygon orientation if necessary and removes
   //duplicate vertices. Can be set False when you're sure that polygon
   //orientation is correct and that there are no duplicate vertices.
@@ -4035,10 +4039,33 @@ begin
     end;
     if not Orientation(Pts[BotI]) then
       Pts := ReversePolygons(Pts);
-    Result := OffsetInternal(Pts, Delta, True, JoinType, etButt, Limit);
-  end
-  else
-    Result := OffsetInternal(Polys, Delta, True, JoinType, etButt, Limit);
+  end;
+  Result := OffsetInternal(Pts, Delta, True, JoinType, etButt, Limit);
+end;
+//------------------------------------------------------------------------------
+
+function DoAutoFix(const Poly: TPolygon): TPolygon;
+var
+  I, J, Len: Integer;
+begin
+  Len := Length(Poly);
+  SetLength(Result, Len);
+  if Len = 0 then Exit;
+
+  J := 0;
+  Result[0] := Poly[0];
+  for I := 1 to Len - 1 do
+    if not PointsEqual(Poly[I], Result[J]) then
+    begin
+      Inc(J);
+      Result[J] := Poly[I];
+    end;
+  if not PointsEqual(Result[0], Result[J]) then
+    Inc(J);
+  if J < 3 then
+    Result := nil
+  else if J < Len then
+    SetLength(Result, J);
 end;
 //------------------------------------------------------------------------------
 
@@ -4047,54 +4074,30 @@ function OffsetPolyLines(const Lines: TPolygons; Delta: Double;
   Limit: Double = 0; AutoFix: Boolean = True): TPolygons;
 var
   I, Len: Integer;
-  Polys: TPolygons;
-
-  function DoAutoFix(const Poly: TPolygon): TPolygon;
-  var
-    I, J: Integer;
-  begin
-    Len := Length(Poly);
-    SetLength(Result, Len);
-    if Len = 0 then Exit;
-
-    J := 0;
-    Result[0] := Poly[0];
-    for I := 1 to Len - 1 do
-      if not PointsEqual(Poly[I], Result[J]) then
-      begin
-        Inc(J);
-        Result[J] := Poly[I];
-      end;
-    if not PointsEqual(Result[0], Result[J]) then
-      Inc(J);
-    if J < 3 then
-      Result := nil
-    else if J < Len then
-      SetLength(Result, J);
-  end;
-
+  Pts: TPolygons;
 begin
-  Len := Length(Lines);
+  Pts := Lines;
+  Len := Length(Pts);
+  if AutoFix then
+  begin
+    SetLength(Pts, Len);
+    for I := 0 to Len -1 do
+      Pts[I] := DoAutoFix(Lines[I]);
+  end;
   if EndType = etClosed then
   begin
-    SetLength(Polys, Len *2);
+    SetLength(Pts, Len *2);
     for I := 0 to Len -1 do
     begin
       if AutoFix then
-        Polys[I*2] := DoAutoFix(Lines[I]) else
-        Polys[I*2] := Lines[I];
-      Polys[I*2 +1] := ReversePolygon(Polys[I*2]);
+        Pts[I*2] := DoAutoFix(Lines[I]) else
+        Pts[I*2] := Lines[I];
+      Pts[I*2 +1] := ReversePolygon(Pts[I*2]);
     end;
-    Result := OffsetInternal(Polys, Delta, True, JoinType, EndType, Limit);
+    Result := OffsetInternal(Pts, Delta, True, JoinType, EndType, Limit);
   end
-  else if AutoFix then
-  begin
-    SetLength(Polys, Len);
-    for I := 0 to Len -1 do
-      Polys[I] := DoAutoFix(Lines[I]);
-    Result := OffsetInternal(Polys, Delta, False, JoinType, EndType, Limit);
-  end else
-    Result := OffsetInternal(Lines, Delta, False, JoinType, EndType, Limit);
+  else
+    Result := OffsetInternal(Pts, Delta, False, JoinType, EndType, Limit);
 end;
 //------------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.6                                                           *
-* Date      :  12 May 2013                                                     *
+* Date      :  18 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3171,7 +3171,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 class PolyOffsetBuilder
 {
 private:
-  Polygons m_p;
+  const Polygons& m_p;
   Polygon* m_curr_poly;
   std::vector<DoublePoint> normals;
   double m_delta, m_RMin, m_R;
@@ -3181,7 +3181,7 @@ private:
 public:
 
 PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
-  bool isPolygon, double delta, JoinType jointype, EndType endtype, double limit)
+  bool isPolygon, double delta, JoinType jointype, EndType endtype, double limit): m_p(in_polys)
 {
     //precondition - out_polys != in_polys
     if (NEAR_ZERO(delta))
@@ -3190,7 +3190,6 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         return;
     }
 
-    this->m_p = in_polys;
     this->m_delta = delta;
 
     switch (jointype)
@@ -3240,7 +3239,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
             normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
         if (isPolygon)
           normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
-        else
+        else //is polyline
           normals[len-1] = normals[len-2];
         
         if (isPolygon) 
@@ -3249,7 +3248,7 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
           for (m_j = 0; m_j < len; ++m_j)
             OffsetPoint(jointype, limit);
         }
-        else
+        else //is polyline
         {
           m_k = 0;
           for (m_j = 1; m_j < len -1; ++m_j)
@@ -3259,11 +3258,11 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
           if (endtype == etButt)
           {
             m_j = len - 1;
-            pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
-              m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+            pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta), 
+              Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
             AddPoint(pt1);
-            pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X - normals[m_j].X *
-              m_delta), (long64)Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
+            pt1 = IntPoint(Round(m_p[m_i][m_j].X - normals[m_j].X * m_delta), 
+              Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
             AddPoint(pt1);
           } else
           {
@@ -3278,8 +3277,11 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
           }
 
           //re-build Normals ...
-          for (m_j = 1; m_j < len; ++m_j)
-              normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j -1]);
+          for (int j = len - 1; j > 0; --j)
+          {
+              normals[j].X = -normals[j - 1].X;
+              normals[j].Y = -normals[j - 1].Y;
+          }
           normals[0] = normals[1];
 
           m_k = len -1;
@@ -3288,11 +3290,11 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
           if (endtype == etButt) 
           {
-            pt1 = IntPoint((long64)Round(m_p[m_i][0].X + normals[0].X * m_delta), 
-              (long64)Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
+            pt1 = IntPoint(Round(m_p[m_i][0].X + normals[0].X * m_delta), 
+              Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
             AddPoint(pt1);
-            pt1 = IntPoint((long64)Round(m_p[m_i][0].X - normals[0].X * m_delta), 
-              (long64)Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
+            pt1 = IntPoint(Round(m_p[m_i][0].X - normals[0].X * m_delta), 
+              Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
             AddPoint(pt1);
           } else
           {
@@ -3365,10 +3367,10 @@ void AddPoint(const IntPoint& pt)
 
 void DoSquare()
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+    IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
+        Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+    IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+        Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
     {
       double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
@@ -3376,11 +3378,9 @@ void DoSquare()
       a1 = std::fabs(a2 - a1);
       if (a1 > pi) a1 = pi * 2 - a1;
       double dx = std::tan((pi - a1) / 4) * std::fabs(m_delta);
-      pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx),
-        (long64)(pt1.Y + normals[m_k].X * dx));
+      pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx), (long64)(pt1.Y + normals[m_k].X * dx));
       AddPoint(pt1);
-      pt2 = IntPoint((long64)(pt2.X + normals[m_j].Y * dx),
-        (long64)(pt2.Y -normals[m_j].X * dx));
+      pt2 = IntPoint((long64)(pt2.X + normals[m_j].Y * dx), (long64)(pt2.Y -normals[m_j].X * dx));
       AddPoint(pt2);
     }
     else
@@ -3397,16 +3397,15 @@ void DoMiter()
     if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
     {
         double q = m_delta / m_R;
-        AddPoint(IntPoint((long64)Round(m_p[m_i][m_j].X + 
-            (normals[m_k].X + normals[m_j].X) * q),
-            (long64)Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
+        AddPoint(IntPoint(Round(m_p[m_i][m_j].X + (normals[m_k].X + normals[m_j].X) * q),
+            Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
     }
     else
     {
-        IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X *
-          m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-        IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X *
-          m_delta), (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+        IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta), 
+          Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+        IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta), 
+          Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
         AddPoint(pt1);
         AddPoint(m_p[m_i][m_j]);
         AddPoint(pt2);
@@ -3416,10 +3415,10 @@ void DoMiter()
 
 void DoRound(double limit)
 {
-    IntPoint pt1 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    IntPoint pt2 = IntPoint((long64)Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        (long64)Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+    IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
+        Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
+    IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+        Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
     AddPoint(pt1);
     //round off reflex angles (ie > 180 deg) unless almost flat (ie < ~10deg).
     if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0)
@@ -3517,8 +3516,6 @@ void OffsetPolyLines(const Polygons &in_lines, Polygons &out_lines,
   }
 
   Polygons inLines = Polygons(in_lines);
-  out_lines.clear();
-
   if (autoFix) 
     for (size_t i = 0; i < inLines.size(); ++i)
     {
