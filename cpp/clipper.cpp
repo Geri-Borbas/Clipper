@@ -3208,6 +3208,14 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         if (len > 1 && m_p[m_i][0].X == m_p[m_i][len - 1].X &&
             m_p[m_i][0].Y == m_p[m_i][len-1].Y) len--;
 
+        if (len == 0 || (len < 3 && delta <= 0))
+          continue;
+        else if (len == 1)
+        {
+            out_polys[m_i] = BuildArc(m_p[m_i][0], 0, 2*pi, delta, limit);
+            continue;
+        }
+
         //build normals ...
         normals.clear();
         normals.resize(len);

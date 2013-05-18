@@ -3466,7 +3466,16 @@ namespace ClipperLib
                     int len = pts[m_i].Count;
                     if (len > 1 && pts[m_i][0].X == pts[m_i][len - 1].X &&
                         pts[m_i][0].Y == pts[m_i][len - 1].Y) len--;
-                    if (len < 3) continue;
+
+                    if (len == 0 || (len < 3 && delta <= 0))
+                      continue;
+                    else if (len == 1)
+                    {
+                        currentPoly = new Polygon();
+                        currentPoly = BuildArc(pts[m_i][0], 0, 2*Math.PI, delta, limit);
+                        solution.Add(currentPoly);
+                        continue;
+                    }
                     
                     //build normals ...
                     normals.Clear();

@@ -158,13 +158,12 @@ type
     Idx         : Integer;
     BottomPt    : POutPt;
     IsHole      : Boolean;
-    //The 'FirstLeft' field points to the OutRec struct containing the
-    //polygon immediately to the left of the current OutRec's polygon.
-    //When polygons are contained within other polygons, the polygon
-    //immediately to the left will either be the outer/owner polygon or a
-    //sibling contained by the same outer polygon. By storing and later parsing
-    //this FirstLeft field, it's easy to sort polygons into a tree structure
-    //that reflects the parent/child relationships of all the polygons.
+    //The 'FirstLeft' field points to the OutRec representing the polygon
+    //immediately to the left of the current OutRec's polygon. When a polygon is
+    //contained within another polygon, the polygon immediately to its left will
+    //either be its owner polygon or a sibling also contained by the same outer
+    //polygon. By storing  this field, it's easy to sort polygons into a tree
+    //structure which reflects the parent/child relationships of all polygons.
     FirstLeft   : POutRec;
     Pts         : POutPt;
     PolyNode    : TPolyNode;
@@ -1487,8 +1486,8 @@ procedure TClipper.FixHoleLinkage(OutRec: POutRec);
 var
   orfl: POutRec;
 begin
-  //skip if an outermost polygon or
-  //already already points to the correct FirstLeft ...
+  //skip if it's an outermost polygon or if FirstLeft
+  //already points to the outer/owner polygon ...
   if not Assigned(OutRec.FirstLeft) or
     ((OutRec.IsHole <> OutRec.FirstLeft.IsHole) and
       Assigned(OutRec.FirstLeft.Pts)) then Exit;
@@ -3889,7 +3888,14 @@ begin
     if IsPolygon and (Len > 1) and
       (Pts[I][0].X = Pts[I][Len - 1].X) and
       (Pts[I][0].Y = Pts[I][Len - 1].Y) then Dec(Len);
-    if (Len < 3) then Continue;
+
+    if (Len = 0) or ((Len < 3) and (Delta <= 0)) then
+      Continue
+    else if (Len = 1) then
+    begin
+      Result[I] := BuildArc(Pts[I][0], 0, 2*pi, Delta, Limit);
+      Continue;
+    end;
 
     //build Normals ...
     SetLength(Normals, Len);
