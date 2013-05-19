@@ -1,8 +1,8 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.5                                                           #
-# Date      :  4 May 2013                                                      #
+# Version   :  5.1.6                                                           #
+# Date      :  18 May 2013                                                     #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -42,6 +42,7 @@ class ClipType: (Intersection, Union, Difference, Xor) = range(4)
 class PolyType:    (Subject, Clip) = range(2)
 class PolyFillType: (EvenOdd, NonZero, Positive, Negative) = range(4)
 class JoinType: (Square, Round, Miter) = range(3)
+class EndType: (Closed, Butt, Square, Round) = range(4)
 class EdgeSide: (Left, Right) = range(2)
 class Protects: (Neither, Left, Right, Both) = range(4)
 class Direction: (LeftToRight, RightToLeft) = range(2)
@@ -344,7 +345,7 @@ class ClipperBase(object):
                 e.outIdx = -1
                 e = e.nextInLML
             lm = lm.nextLm
-    
+            
     def AddPolygon(self, polygon, polyType):
         ln = len(polygon)
         if ln < 3: return False
@@ -494,17 +495,6 @@ def _ProtectLeft(val):
 def _ProtectRight(val):
     if val: return Protects.Both
     else: return Protects.Left
-
-def _SwapIntersectNodes(int1, int2):
-    e1 = int1.e1
-    e2 = int1.e2
-    p = int1.pt
-    int1.e1 = int2.e1
-    int1.e2 = int2.e2
-    int1.pt = int2.pt
-    int2.e1 = e1
-    int2.e2 = e2
-    int2.pt = p
 
 def _GetDx(pt1, pt2):
     if (pt1.y == pt2.y): return horizontal
@@ -764,7 +754,6 @@ class Clipper(ClipperBase):
         lm = self._LocalMinList
         while lm is not None:
             self._InsertScanbeam(lm.y)
-            self._InsertScanbeam(lm.leftBound.yTop)
             lm = lm.nextLm
 
     def Clear(self):
@@ -1145,7 +1134,7 @@ class Clipper(ClipperBase):
             self._HorzJoins.prevHj.nextHj = hj
             self._HorzJoins.prevHj = hj
 
-    def _AddIntersectNode(self, e1, e2, pt):
+    def _InsertIntersectNode(self, e1, e2, pt):
         newNode = IntersectNode(e1, e2, pt)
         if self._IntersectNodes is None:
             self._IntersectNodes = newNode
@@ -1161,50 +1150,49 @@ class Clipper(ClipperBase):
             node.nextIn = newNode
 
     def _ProcessIntersections(self, botY, topY):
-        self._BuildIntersectList(botY, topY)
-        if self._IntersectNodes is None: return True
-        success = False
-        if self._IntersectNodes.nextIn is None or self._FixupIntersections(): 
+        try:
+            self._BuildIntersectList(botY, topY)
+            if self._IntersectNodes is None: return True
+            if self._IntersectNodes.nextIn is not None and \
+                not self._FixupIntersectionOrder(): return False 
             self._ProcessIntersectList()
-            success = True
-        self._IntersectNodes = None
-        self._SortedEdges = None
-        return success
+            return True
+        finally:
+            self._IntersectNodes = None
+            self._SortedEdges = None
             
     def _BuildIntersectList(self, botY, topY):
-        if self._ActiveEdges is None: return
-
         e = self._ActiveEdges
+        if e is None: return
         self._SortedEdges = e
         while e is not None:
             e.prevInSEL = e.prevInAEL
             e.nextInSEL = e.nextInAEL
             e.xCurr = _TopX(e, topY)
             e = e.nextInAEL
-        try:
-            isModified = True
-            while isModified and self._SortedEdges is not None:
-                isModified = False
-                e = self._SortedEdges
-                while e.nextInSEL is not None:
-                    eNext = e.nextInSEL
-                    if e.xCurr <= eNext.xCurr:
-                        e = eNext
-                        continue
-                    pt, intersected = _IntersectPoint(e, eNext)
-                    if not intersected and e.xCurr > eNext.xCurr +1: 
-                        raise Exception("Intersect Error")  
-                    if pt.y > botY:
-                        pt = Point(_TopX(e, botY), botY)
-                    self._AddIntersectNode(e, eNext, pt)
-                    self._SwapPositionsInSEL(e, eNext)
-                    isModified = True
-                if e.prevInSEL is not None:
-                    e.prevInSEL.nextInSEL = None
-                else:
-                    break
-        finally:
-            self._SortedEdges = None
+        while True:
+            isModified = False
+            e = self._SortedEdges
+            while e.nextInSEL is not None:
+                eNext = e.nextInSEL
+                if e.xCurr <= eNext.xCurr:
+                    e = eNext
+                    continue
+                pt, intersected = _IntersectPoint(e, eNext)
+                if not intersected and e.xCurr > eNext.xCurr +1: 
+                    raise Exception("Intersect Error")  
+                if pt.y > botY:
+                    pt = Point(_TopX(e, botY), botY)
+                self._InsertIntersectNode(e, eNext, pt)
+                self._SwapPositionsInSEL(e, eNext)
+                isModified = True
+            if e.prevInSEL is not None:
+                e.prevInSEL.nextInSEL = None
+            else:
+                break
+            if not isModified: break
+        self._SortedEdges = None
+        return
 
     def _ProcessIntersectList(self):
         while self._IntersectNodes is not None:
@@ -1518,7 +1506,7 @@ class Clipper(ClipperBase):
             e = e.nextInAEL
         outRec2.idx = outRec1.idx    
         
-    def _FixupIntersections(self):
+    def _FixupIntersectionOrder(self):
         self._CopyAELToSEL()
         inode = self._IntersectNodes
         while inode is not None:
@@ -1527,7 +1515,15 @@ class Clipper(ClipperBase):
                 while (nextNode and not _EdgesAdjacent(nextNode)):
                     nextNode = nextNode.nextIn
                 if (nextNode is None): return False
-                _SwapIntersectNodes(inode, nextNode)
+                e1 = inode.e1
+                e2 = inode.e2
+                p = inode.pt
+                inode.e1 = nextNode.e1
+                inode.e2 = nextNode.e2
+                inode.pt = nextNode.pt
+                nextNode.e1 = e1
+                nextNode.e2 = e2
+                nextNode.pt = p
         
             self._SwapPositionsInSEL(inode.e1, inode.e2);
             inode = inode.nextIn
@@ -1536,8 +1532,6 @@ class Clipper(ClipperBase):
     def _ProcessEdgesAtTopOfScanbeam(self, topY):
         e = self._ActiveEdges
         while e is not None:
-            if topY == 136 and e.xBot == 44: 
-                print(e.xBot)
             if _IsMaxima(e, topY) and _GetMaximaPair(e).dx != horizontal:
                 ePrev = e.prevInAEL
                 self._DoMaxima(e, topY)
@@ -1810,7 +1804,7 @@ class Clipper(ClipperBase):
                 self._Reset()
                 if self._Scanbeam is None: return True
                 botY = self._PopScanbeam()
-                while self._Scanbeam is not None:
+                while True:
                     self._InsertLocalMinimaIntoAEL(botY)
                     self._HorzJoins = None
                     self._ProcessHorizontals()
@@ -1818,6 +1812,7 @@ class Clipper(ClipperBase):
                     if not self._ProcessIntersections(botY, topY): return False
                     self._ProcessEdgesAtTopOfScanbeam(topY)
                     botY = topY
+                    if self._Scanbeam is None: break
                     
                 for outRec in self._PolyOutList:
                     if outRec.pts is None: continue                
@@ -1991,9 +1986,9 @@ def _StripDupPts(poly):
         i -= 1
     return poly
 
-def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True): 
+def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0): 
     
-    def DoSquare(pt, limit):
+    def _DoSquare(pt):
         pt1 = Point(round(pt.x + Normals[k].x * delta), round(pt.y + Normals[k].y * delta))
         pt2 = Point(round(pt.x + Normals[j].x * delta), round(pt.y + Normals[j].y * delta))
         if (Normals[k].x*Normals[j].y-Normals[j].x*Normals[k].y) * delta >= 0:
@@ -2001,7 +1996,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
             a2 = math.atan2(-Normals[j].y, -Normals[j].x)
             a1 = abs(a2 - a1);
             if a1 > math.pi: a1 = math.pi * 2 - a1
-            dx = math.tan((math.pi - a1)/4) * abs(delta*limit)
+            dx = math.tan((math.pi - a1)/4) * abs(delta)
             
             pt1 = Point(round(pt1.x -Normals[k].y * dx), round(pt1.y + Normals[k].x * dx))
             result.append(pt1)
@@ -2012,7 +2007,7 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
             result.append(pt)
             result.append(pt2)
 
-    def DoMiter(pt):
+    def _DoMiter(pt, r):
         if ((Normals[k].x* Normals[j].y - Normals[j].x * Normals[k].y) * delta >= 0):
             q = delta / r;
             result.append(Point(round(pt.x + (Normals[k].x + Normals[j].x) *q),
@@ -2026,13 +2021,13 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
             result.append(pt)
             result.append(pt2)
 
-    def DoRound(pt, limit):
+    def _DoRound(pt, limit):
         pt1 = Point(round(pt.x + Normals[k].x * delta), \
                     round(pt.y + Normals[k].y * delta))
         pt2 = Point(round(pt.x + Normals[j].x * delta), \
                     round(pt.y + Normals[j].y * delta))
         result.append(pt1)
-        if (Normals[k].x*Normals[j].y - Normals[j].x*Normals[k].y)*delta >= 0:
+        if (Normals[k].x * Normals[j].y - Normals[j].x * Normals[k].y) *delta >= 0:
             if (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y) < 0.985:
                 a1 = math.atan2(Normals[k].y, Normals[k].x)
                 a2 = math.atan2(Normals[j].y, Normals[j].x)
@@ -2043,63 +2038,96 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
         else:
             result.append(pt)
         result.append(pt2)
-    
-    ppts = polys[:]
+        
+    def _OffsetPoint(jointype, limit):
+        if jointype == JoinType.Miter:
+            r = 1.0 + (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y)
+            if (r >= rmin): _DoMiter(pts[j], r) 
+            else: _DoSquare(pts[j])
+        elif jointype == JoinType.Square: _DoSquare(pts[j])
+        else: _DoRound(pts[j], limit)
+        res.append(result)        
+        return j
 
-    if autoFix:
-        botPoly = None
-        botPt = None
-        for poly in ppts:
-            poly = _StripDupPts(poly)
-            if len(poly) < 3: continue
-            bot = _GetLowestPt(poly)
-            if botPt is None or (bot.y > botPt.y) or \
-                (bot.y == botPt.y and bot.x < botPt.x):
-                    botPt = bot 
-                    botPoly = poly
-        if botPt is None: return ppts
-        # if the outermost polygon has the wrong orientation,
-        # reverse the orientation of all the polygons ...
-        if Area(botPoly) < 0.0:
-            for i in range(len(ppts)):
-                ppts[i] = ppts[i][::-1]                
+    if delta == 0: return polys
+    rmin = 0.5    
+    if (jointype == JoinType.Miter):  
+        if (limit > 2): 
+            rmin = 2.0 / (limit * limit)
+        limit = 0.25; #just in case endtype == EndType.Round
     else:
-        # make sure that polygon's start & end pts don't match ...             
-        for poly in ppts:
-            i = len(poly) -1
-            while i > 0 and _PointsEqual(poly[i], poly[0]):
-                poly.pop(i)
-                i -= 1
-        if len(poly) < 3: poly = []
-            
-    
-    if (jointype == JoinType.Round):  
         if (limit <= 0): limit = 0.25
         elif (limit > abs(delta)): limit = abs(delta)
-    elif (jointype == JoinType.Miter): 
-        if (limit < 2): limit = 2 
-    else: limit = 1   
-    rmin = 2.0/(limit * limit);
-    
+            
     res = []
+    ppts = polys[:]    
     for pts in ppts:    
         Normals = []
         result = []
         cnt = len(pts)
+        
+        if (cnt == 0 or cnt < 3 and delta <= 0): continue
+        elif (cnt == 1):
+            res.append(_BuildArc(pts[0], 0, 2 * math.pi, delta, limit))
+            continue
+        
         for j in range(cnt -1):
             Normals.append(_GetUnitNormal(pts[j], pts[j+1]))
-        Normals.append(_GetUnitNormal(pts[cnt-1], pts[0]))
+        if isPolygon: 
+            Normals.append(_GetUnitNormal(pts[cnt-1], pts[0]))
+        else:
+            Normals.append(Normals[cnt-2])
     
-        k = cnt -1
-        for j in range(cnt):
-            if jointype == JoinType.Miter:
-                r = 1.0 + (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y)
-                if (r >= rmin): DoMiter(pts[j]) 
-                else: DoSquare(pts[j], limit)
-            elif jointype == JoinType.Square: DoSquare(pts[j], 1)
-            else: DoRound(pts[j], limit)
-            k = j
-        res.append(result)
+        if isPolygon:
+            k = cnt -1
+            for j in range(cnt):
+                k = _OffsetPoint(jointype, limit)
+        else: 
+            # offset the polyline going forward ...
+            k = 0;
+            for j in range(1, cnt-1):
+                k = _OffsetPoint(jointype, limit)
+            
+            # handle the end (butt, round or square) ...
+            if (endtype == EndType.Butt):
+                j = cnt - 1
+                pt1 = Point(round(float(pts[j].x) + Normals[j].x * delta), \
+                    round(float(pts[j].y) + Normals[j].y * delta))
+                result.append(pt1)
+                pt1 = Point(round(float(pts[j].x) - Normals[j].x * delta), \
+                    round(float(pts[j].y) - Normals[j].y * delta))
+                result.append(pt1)
+            else:
+                j = cnt - 1;
+                k = cnt - 2;
+                Normals[j] = DoublePoint(-Normals[j].x, -Normals[j].y)
+                if (endtype == EndType.Square): _DoSquare(pts[j])
+                else: _DoRound(pts[j], limit)
+            
+            # re-build Normals ...
+            for j in range(cnt -1, 0, -1):
+                Normals[j] = DoublePoint(-Normals[j -1].x, -Normals[j -1].y)
+            Normals[0] = DoublePoint(-Normals[1].x, -Normals[1].y)
+            
+            # offset the polyline going backward ...
+            k = cnt -1;
+            for j in range(cnt -2, 0, -1):
+                k = _OffsetPoint(jointype, limit)
+            
+            # finally handle the start (butt, round or square) ...
+            if (endtype == EndType.Butt): 
+                pt1 = Point(round(float(pts[0].x) - Normals[0].x * delta), \
+                    round(float(pts[0].y) - Normals[0].y * delta))
+                result.append(pt1)
+                pt1 = Point(round(float(pts[0].x) + Normals[0].x * delta), \
+                    round(float(pts[0].y) + Normals[0].y * delta))
+                result.append(pt1)
+            else:
+                j = 0
+                k = 1
+                if (endtype == EndType.Square): _DoSquare(pts[0]) 
+                else: _DoRound(pts[0], limit)
+            
 
     c = Clipper()
     c.AddPolygons(res, PolyType.Subject)
@@ -2118,6 +2146,50 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
         for poly in res:
             poly = poly[::-1]             
     return res
+
+def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True):
+    if not autoFix: 
+        return _OffsetInternal(polys, True, delta, jointype, EndType.Butt, limit)        
+    pts = polys[:]
+    botPoly = None
+    botPt = None
+    for poly in pts:
+        poly = _StripDupPts(poly)
+        if len(poly) < 3: continue
+        bot = _GetLowestPt(poly)
+        if botPt is None or (bot.y > botPt.y) or \
+            (bot.y == botPt.y and bot.x < botPt.x):
+                botPt = bot
+                botPoly = poly
+    if botPt is None: return []
+    # if the outermost polygon has the wrong orientation,
+    # reverse the orientation of all the polygons ...
+    if Area(botPoly) < 0.0:
+        for i in range(len(pts)):
+            pts[i] = pts[i][::-1]                
+    return _OffsetInternal(pts, True, delta, jointype, EndType.Butt, limit)
+
+def OffsetPolyLines(polys, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0, autoFix = True):
+    if autoFix:
+        polys2 = polys[:]
+        for p in polys2:
+            if p == []: continue            
+            for i in range(1, len(p)):
+                if _PointsEqual(p[i-1], p[i]): p.pop(i)
+            if endtype == EndType.Closed:
+                i = len(p)
+                if i > 1 and _PointsEqual(p[i-1], p[0]): p.pop(i-1)
+    else:
+        polys2 = polys
+
+    if endtype == EndType.Closed:
+        pts = []
+        for p in polys2:
+            pts.append(p)
+            pts.append(p[::-1])
+        return _OffsetInternal(pts, True, delta, jointype, EndType.Closed, limit) 
+    else:    
+        return _OffsetInternal(polys2, False, delta, jointype, endtype, limit) 
 
 def _DistanceSqrd(pt1, pt2):
     dx = (pt1.x - pt2.x)
@@ -2181,7 +2253,7 @@ def SimplifyPolygon(poly, fillType):
     result = []
     c = Clipper();
     c.ForceSimple = True    
-    c.AddPolygon(poly, PolyType.subject);
+    c.AddPolygon(poly, PolyType.Subject);
     c.Execute(ClipType.Union, result, fillType, fillType)
     return result
 
@@ -2189,6 +2261,6 @@ def SimplifyPolygons(polys, fillType):
     result = []
     c = Clipper();
     c.ForceSimple = True    
-    c.AddPolygons(polys, PolyType.subject);
+    c.AddPolygons(polys, PolyType.Subject);
     c.Execute(ClipType.Union, result, fillType, fillType)
     return result
