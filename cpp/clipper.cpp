@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.6                                                           *
-* Date      :  18 May 2013                                                     *
+* Date      :  23 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -459,13 +459,14 @@ bool PointOnLineSegment(const IntPoint pt,
 bool PointOnPolygon(const IntPoint pt, OutPt *pp, bool UseFullInt64Range)
 {
   OutPt *pp2 = pp;
-  for (;;)
+  while (true)
   {
     if (PointOnLineSegment(pt, pp2->pt, pp2->next->pt, UseFullInt64Range))
       return true;
     pp2 = pp2->next;
-    if (pp2 == pp) return false;
+    if (pp2 == pp) break;
   } 
+  return false;
 }
 //------------------------------------------------------------------------------
 
@@ -1271,7 +1272,7 @@ bool Clipper::ExecuteInternal()
       if (!succeeded) break;
       ProcessEdgesAtTopOfScanbeam(topY);
       botY = topY;
-    } while( m_Scanbeam );
+    } while(m_Scanbeam || m_CurrentLM);
   }
   catch(...) {
     succeeded = false;
@@ -1469,6 +1470,7 @@ bool Clipper::IsContributing(const TEdge& edge) const
         default: 
           return (edge.windCnt2 < 0);
       }
+      break;
     case ctUnion:
       switch(pft2)
       {
@@ -1480,6 +1482,7 @@ bool Clipper::IsContributing(const TEdge& edge) const
         default: 
           return (edge.windCnt2 >= 0);
       }
+      break;
     case ctDifference:
       if (edge.polyType == ptSubject)
         switch(pft2)
@@ -1503,6 +1506,7 @@ bool Clipper::IsContributing(const TEdge& edge) const
           default: 
             return (edge.windCnt2 < 0);
         }
+      break;
     default:
       return true;
   }
@@ -3168,7 +3172,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-class PolyOffsetBuilder
+class OffsetBuilder
 {
 private:
   const Polygons& m_p;
@@ -3180,7 +3184,7 @@ private:
  
 public:
 
-PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
+OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
   bool isPolygon, double delta, JoinType jointype, EndType endtype, double limit): m_p(in_polys)
 {
     //precondition: &out_polys != &in_polys
@@ -3205,35 +3209,53 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     for (m_i = 0; m_i < m_p.size(); m_i++)
     {
         size_t len = m_p[m_i].size();
-        if (len > 1 && m_p[m_i][0].X == m_p[m_i][len - 1].X &&
-            m_p[m_i][0].Y == m_p[m_i][len-1].Y) len--;
 
         if (len == 0 || (len < 3 && delta <= 0))
-          continue;
+            continue;
         else if (len == 1)
         {
             out_polys[m_i] = BuildArc(m_p[m_i][0], 0, 2*pi, delta, limit);
             continue;
         }
 
+        bool forceClose = PointsEqual(m_p[m_i][0], m_p[m_i][len -1]);
+        if (forceClose) len--;
+
         //build normals ...
         normals.clear();
         normals.resize(len);
         for (m_j = 0; m_j < len -1; ++m_j)
             normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
-        if (isPolygon) 
+        if (isPolygon || forceClose) 
           normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
-        else //is polyline
+        else //is open polyline
           normals[len-1] = normals[len-2];
         
         m_curr_poly = &out_polys[m_i];
-        if (isPolygon) 
+        m_curr_poly->reserve(len);
+
+        if (isPolygon || forceClose) 
         {
           m_k = len -1;
           for (m_j = 0; m_j < len; ++m_j)
             OffsetPoint(jointype, limit);
+
+          if (!isPolygon)
+          {
+            size_t j = out_polys.size();
+            out_polys.resize(j+1);
+            m_curr_poly = &out_polys[j];
+            m_curr_poly->reserve(len);
+            m_delta = -m_delta;
+
+            m_k = len -1;
+            for (m_j = 0; m_j < len; ++m_j)
+              OffsetPoint(jointype, limit);
+            m_delta = -m_delta;
+            ReversePolygon(*m_curr_poly);
+          }
         }
-        else //is polyline
+        else //is open polyline
         {
           //offset the polyline going forward ...
           m_k = 0;
@@ -3312,12 +3334,10 @@ PolyOffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         outer[3] = IntPoint(r.left - 10, r.top - 10);
 
         clpr.AddPolygon(outer, ptSubject);
+        clpr.ReverseSolution(true);
         if (clpr.Execute(ctUnion, out_polys, pftNegative, pftNegative))
-        {
             out_polys.erase(out_polys.begin());
-            ReversePolygons(out_polys);
-
-        } else
+        else
             out_polys.clear();
     }
 }
@@ -3447,7 +3467,7 @@ void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
 {
   if (!autoFix && &in_polys != &out_polys)
   {
-    PolyOffsetBuilder(in_polys, out_polys, true, delta, jointype, etClosed, limit);
+    OffsetBuilder(in_polys, out_polys, true, delta, jointype, etClosed, limit);
     return;
   }
 
@@ -3487,7 +3507,7 @@ void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
     if (!Orientation(inPolys[botPoly]))
       ReversePolygons(inPolys);
   }
-  PolyOffsetBuilder(inPolys, out_polys, true, delta, jointype, etClosed, limit);
+  OffsetBuilder(inPolys, out_polys, true, delta, jointype, etClosed, limit);
 }
 //------------------------------------------------------------------------------
 
@@ -3497,7 +3517,7 @@ void OffsetPolyLines(const Polygons &in_lines, Polygons &out_lines,
 {
   if (!autoFix && endtype != etClosed && &in_lines != &out_lines)
   {
-    PolyOffsetBuilder(in_lines, out_lines, false, delta, jointype, endtype, limit);
+    OffsetBuilder(in_lines, out_lines, false, delta, jointype, endtype, limit);
     return;
   }
 
@@ -3525,10 +3545,10 @@ void OffsetPolyLines(const Polygons &in_lines, Polygons &out_lines,
       inLines[sz+i] = inLines[i];
       ReversePolygon(inLines[sz+i]);
     }
-    PolyOffsetBuilder(inLines, out_lines, true, delta, jointype, endtype, limit);
+    OffsetBuilder(inLines, out_lines, true, delta, jointype, endtype, limit);
   } 
   else
-    PolyOffsetBuilder(inLines, out_lines, false, delta, jointype, endtype, limit);
+    OffsetBuilder(inLines, out_lines, false, delta, jointype, endtype, limit);
 }
 //------------------------------------------------------------------------------
 
@@ -3605,15 +3625,17 @@ void CleanPolygon(const Polygon& in_poly, Polygon& out_poly, double distance)
   while (highI > 0 && PointsAreClose(in_poly[highI], in_poly[0], distSqrd)) highI--;
   if (highI < 2) { out_poly.clear(); return; }
   
-  out_poly.resize(highI + 1);
+  if (&in_poly != &out_poly) 
+    out_poly.resize(highI + 1);
+
   IntPoint pt = in_poly[highI];
   int i = 0, k = 0;
   for (;;)
   {
-    while (i <= highI && PointsAreClose(pt, in_poly[i+1], distSqrd)) i+=2;
+    while (i < highI && PointsAreClose(pt, in_poly[i+1], distSqrd)) i+=2;
     int i2 = i;
-    while (i <= highI && (PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
-      SlopesNearColinear(pt, in_poly[i], in_poly[+1], distSqrd))) i++;
+    while (i < highI && (PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
+      SlopesNearColinear(pt, in_poly[i], in_poly[i+1], distSqrd))) i++;
     if (i >= highI) break;
     else if (i != i2) continue;
     pt = in_poly[i++];

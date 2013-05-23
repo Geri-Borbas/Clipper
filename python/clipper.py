@@ -2,7 +2,7 @@
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
 # Version   :  5.1.6                                                           #
-# Date      :  18 May 2013                                                     #
+# Date      :  23 May 2013                                                     #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -1812,7 +1812,7 @@ class Clipper(ClipperBase):
                     if not self._ProcessIntersections(botY, topY): return False
                     self._ProcessEdgesAtTopOfScanbeam(topY)
                     botY = topY
-                    if self._Scanbeam is None: break
+                    if self._Scanbeam is None and self._CurrentLocMin is None: break
                     
                 for outRec in self._PolyOutList:
                     if outRec.pts is None: continue                
@@ -2046,7 +2046,6 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
             else: _DoSquare(pts[j])
         elif jointype == JoinType.Square: _DoSquare(pts[j])
         else: _DoRound(pts[j], limit)
-        res.append(result)        
         return j
 
     if delta == 0: return polys
@@ -2071,17 +2070,32 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
             res.append(_BuildArc(pts[0], 0, 2 * math.pi, delta, limit))
             continue
         
+        forceClose = _PointsEqual(pts[0], pts[cnt - 1])
+        if (forceClose): cnt -=1
+        
         for j in range(cnt -1):
             Normals.append(_GetUnitNormal(pts[j], pts[j+1]))
-        if isPolygon: 
+        if isPolygon or forceClose: 
             Normals.append(_GetUnitNormal(pts[cnt-1], pts[0]))
         else:
             Normals.append(Normals[cnt-2])
     
-        if isPolygon:
-            k = cnt -1
+    
+        if (isPolygon or forceClose):
+            k = cnt - 1
             for j in range(cnt):
                 k = _OffsetPoint(jointype, limit)
+            res.append(result)
+                    
+            if not isPolygon:
+                result = []
+                delta = -delta
+                k = cnt - 1
+                for j in range(cnt):
+                    k = _OffsetPoint(jointype, limit)
+                delta = -delta
+                res.append(result[::-1])        
+    
         else: 
             # offset the polyline going forward ...
             k = 0;
@@ -2127,6 +2141,7 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
                 k = 1
                 if (endtype == EndType.Square): _DoSquare(pts[0]) 
                 else: _DoRound(pts[0], limit)
+            res.append(result)        
             
 
     c = Clipper()
@@ -2169,25 +2184,17 @@ def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFi
             pts[i] = pts[i][::-1]                
     return _OffsetInternal(pts, True, delta, jointype, EndType.Butt, limit)
 
-def OffsetPolyLines(polys, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0, autoFix = True):
-    if autoFix:
-        polys2 = polys[:]
-        for p in polys2:
-            if p == []: continue            
-            for i in range(1, len(p)):
-                if _PointsEqual(p[i-1], p[i]): p.pop(i)
-            if endtype == EndType.Closed:
-                i = len(p)
-                if i > 1 and _PointsEqual(p[i-1], p[0]): p.pop(i-1)
-    else:
-        polys2 = polys
+def OffsetPolyLines(polys, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0):
+    polys2 = polys[:]
+    for p in polys2:
+        if p == []: continue            
+        for i in range(1, len(p)):
+            if _PointsEqual(p[i-1], p[i]): p.pop(i)
 
     if endtype == EndType.Closed:
-        pts = []
-        for p in polys2:
-            pts.append(p)
-            pts.append(p[::-1])
-        return _OffsetInternal(pts, True, delta, jointype, EndType.Closed, limit) 
+        for i in range(len(polys2)):
+            polys2.append(polys2[i][::-1])
+        return _OffsetInternal(polys2, True, delta, jointype, EndType.Butt, limit) 
     else:    
         return _OffsetInternal(polys2, False, delta, jointype, endtype, limit) 
 
@@ -2229,13 +2236,14 @@ def CleanPolygon(poly, distance = 1.415):
     while True:
         while (i < highI and _PointsAreClose(pt, poly[i+1], distSqrd)): i +=2
         i2 = i
-        while (i < highI and _PointsAreClose(poly[i], poly[i+1], distSqrd) or \
-                _SlopesNearColinear(pt, poly[i], poly[i+1], distSqrd)): i +=1
+        while (i < highI and (_PointsAreClose(poly[i], poly[i+1], distSqrd) or \
+                _SlopesNearColinear(pt, poly[i], poly[i+1], distSqrd))): i +=1
         if i >= highI: break
         elif i != i2: continue
         pt = poly[i]
         i +=1
-        result.append(pt)        
+        result.append(pt) 
+               
     if (i <= highI): result.append(poly[i])
     j = len(result)
     if (j > 2 and _SlopesNearColinear(result[j-2], result[j-1], result[0], distSqrd)): 

@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.6                                                           *
-* Date      :  18 May 2013                                                     *
+* Date      :  23 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -546,13 +546,14 @@ namespace ClipperLib
         internal bool PointOnPolygon(IntPoint pt, OutPt pp, bool UseFullInt64Range)
         {
           OutPt pp2 = pp;
-          for (;;)
+          while (true)
           {
             if (PointOnLineSegment(pt, pp2.pt, pp2.next.pt, UseFullInt64Range))
               return true;
             pp2 = pp2.next;
-            if (pp2 == pp) return false;
-          } 
+            if (pp2 == pp) break;
+          }
+          return false;
         }
         //------------------------------------------------------------------------------
 
@@ -1174,7 +1175,7 @@ namespace ClipperLib
                     if (!succeeded) break;
                     ProcessEdgesAtTopOfScanbeam(topY);
                     botY = topY;
-                } while (m_Scanbeam != null);
+                } while (m_Scanbeam != null || m_CurrentLM != null);
             }
             catch { succeeded = false; }
 
@@ -3464,9 +3465,6 @@ namespace ClipperLib
                 for (m_i = 0; m_i < pts.Count; m_i++)
                 {
                     int len = pts[m_i].Count;
-                    if (len > 1 && pts[m_i][0].X == pts[m_i][len - 1].X &&
-                        pts[m_i][0].Y == pts[m_i][len - 1].Y) len--;
-
                     if (len == 0 || (len < 3 && delta <= 0))
                       continue;
                     else if (len == 1)
@@ -3476,23 +3474,38 @@ namespace ClipperLib
                         solution.Add(currentPoly);
                         continue;
                     }
+
+                    bool forceClose = PointsEqual(pts[m_i][0], pts[m_i][len - 1]);
+                    if (forceClose) len--;
                     
                     //build normals ...
                     normals.Clear();
                     normals.Capacity = len;
                     for (int j = 0; j < len -1; ++j)
                         normals.Add(GetUnitNormal(pts[m_i][j], pts[m_i][j+1]));
-                    if (isPolygon)
+                    if (isPolygon || forceClose)
                         normals.Add(GetUnitNormal(pts[m_i][len - 1], pts[m_i][0]));
                     else
                         normals.Add(new DoublePoint(normals[len - 2]));
 
                     currentPoly = new Polygon();
-                    if (isPolygon)
+                    if (isPolygon || forceClose)
                     {
                         m_k = len - 1;
                         for (m_j = 0; m_j < len; ++m_j)
                             OffsetPoint(jointype, limit);
+                        solution.Add(currentPoly); 
+                        if (!isPolygon)
+                        {
+                            currentPoly = new Polygon();
+                            m_delta = -m_delta;
+                            m_k = len - 1;
+                            for (m_j = 0; m_j < len; ++m_j)
+                                OffsetPoint(jointype, limit);
+                            m_delta = -m_delta;
+                            currentPoly.Reverse();
+                            solution.Add(currentPoly);
+                        }
                     }
                     else
                     {
@@ -3549,8 +3562,8 @@ namespace ClipperLib
                             if (endtype == EndType.etSquare) DoSquare();
                             else DoRound(limit);
                         }
+                        solution.Add(currentPoly);
                     }
-                    solution.Add(currentPoly);
                 }
 
                 //finally, clean up untidy corners ...
@@ -3571,13 +3584,9 @@ namespace ClipperLib
                     outer.Add(new IntPoint(r.left - 10, r.top - 10));
 
                     clpr.AddPolygon(outer, PolyType.ptSubject);
+                    clpr.ReverseSolution = true;
                     clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNegative, PolyFillType.pftNegative);
-                    if (solution.Count > 0)
-                    {
-                        solution.RemoveAt(0);
-                        for (int i = 0; i < solution.Count; i++)
-                            solution[i].Reverse();
-                    }
+                    if (solution.Count > 0) solution.RemoveAt(0);
                 }
             }
             //------------------------------------------------------------------------------
@@ -3745,37 +3754,34 @@ namespace ClipperLib
 
         public static Polygons OffsetPolyLines(Polygons lines,
           double delta, JoinType jointype, EndType endtype, 
-          double limit, bool autoFix)
+          double limit)
         {
             Polygons result = new Polygons();
-            if (!autoFix && endtype != EndType.etClosed)
-            {
-              new PolyOffsetBuilder(lines, result, false, delta, jointype, endtype, limit);
-              return result;
-            }
 
-            if (autoFix)
-                for (int i = 0; i < lines.Count; ++i)
-                {
-                    for (int j = lines[i].Count - 1; j > 0; j--)
-                        if (PointsEqual(lines[i][j], lines[i][j - 1]))
-                            lines[i].RemoveAt(j);
-                }
+            //automatically strip duplicate points because it gets complicated with
+            //open and closed lines and when to strip duplicates across begin-end ...
+            Polygons pts = new Polygons(lines);
+            for (int i = 0; i < pts.Count; ++i)
+            {
+                for (int j = pts[i].Count - 1; j > 0; j--)
+                    if (PointsEqual(pts[i][j], pts[i][j - 1]))
+                        pts[i].RemoveAt(j);
+            }
 
             if (endtype == EndType.etClosed)
             {
-                int sz = lines.Count;
-                lines.Capacity = sz * 2;
+                int sz = pts.Count;
+                pts.Capacity = sz * 2;
                 for (int i = 0; i < sz; ++i)
                 {
-                    Polygon line = new Polygon(lines[i]);
+                    Polygon line = new Polygon(pts[i]);
                     line.Reverse();
-                    lines.Add(line);
+                    pts.Add(line);
                 }
-                new PolyOffsetBuilder(lines, result, true, delta, jointype, endtype, limit);
+                new PolyOffsetBuilder(pts, result, true, delta, jointype, endtype, limit);
             } 
             else
-                new PolyOffsetBuilder(lines, result, false, delta, jointype, endtype, limit);
+                new PolyOffsetBuilder(pts, result, false, delta, jointype, endtype, limit);
 
           return result;
         }

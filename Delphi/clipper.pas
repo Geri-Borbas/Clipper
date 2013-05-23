@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  5.1.6                                                           *
-* Date      :  18 May 2013                                                     *
+* Date      :  23 May 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -317,7 +317,7 @@ function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
 
 function OffsetPolyLines(const Lines: TPolygons; Delta: Double;
   JoinType: TJoinType = jtSquare; EndType: TEndType = etSquare;
-  Limit: Double = 0; AutoFix: Boolean = True): TPolygons;
+  Limit: Double = 0): TPolygons;
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
 function SimplifyPolygon(const Poly: TPolygon; FillType: TPolyFillType = pftEvenOdd): TPolygons;
@@ -1523,7 +1523,7 @@ begin
       if not ProcessIntersections(BotY, TopY) then Exit;
       ProcessEdgesAtTopOfScanbeam(TopY);
       BotY := TopY;
-    until FScanbeam = nil;
+    until not assigned(FScanbeam) and not assigned(CurrentLm);
 
     //tidy up output polygons and fix orientations where necessary ...
     for I := 0 to FPolyOutList.Count -1 do
@@ -3428,7 +3428,7 @@ begin
         Pt := Pt.Next;
     if (Pt = OutPt1) then
     begin
-      Result := true;
+      Result := True;
       Exit;
     end;
   end;
@@ -3741,260 +3741,331 @@ begin
   if Result.left = HiRange then
     with Result do begin Left := 0; Top := 0; Right := 0; Bottom := 0; end;
 end;
+
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-function OffsetInternal(const Pts: TPolygons; Delta: Double;
-  IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType;
-  Limit: Double = 0): TPolygons;
+type
+  TOffsetBuilder = class
+  private
+    FDelta: Double;
+    FJoinType: TJoinType;
+    FLimit: Double;
+    FNorms: TArrayOfDoublePoint;
+    FSolution: TPolygons;
+    FOutPos: Integer;
+    FInP: TPolygon;
+    FOutP: TPolygon;
+
+    procedure AddPoint(const Pt: TIntPoint);
+    procedure DoSquare(J, K: Integer);
+    procedure DoMiter(J, K: Integer; R: Double);
+    procedure DoRound(J, K: Integer);
+    function OffsetPoint(J, K: Integer; RMin: Double): Integer;
+  public
+    constructor Create(const Pts: TPolygons; Delta: Double;
+      IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType;
+      Limit: Double = 0);
+    property Solution: TPolygons read FSolution;
+  end;
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+procedure TOffsetBuilder.AddPoint(const Pt: TIntPoint);
+const
+  BuffLength = 32;
+begin
+  if FOutPos = length(FOutP) then
+    SetLength(FOutP, FOutPos + BuffLength);
+  FOutP[FOutPos] := Pt;
+  Inc(FOutPos);
+end;
+//------------------------------------------------------------------------------
+
+procedure TOffsetBuilder.DoSquare(J, K: Integer);
 var
-  I, J, K, Len, OutLen: Integer;
-  Normals: TArrayOfDoublePoint;
+  A1, A2, Dx: Double;
+  Pt1, Pt2: TIntPoint;
+begin
+  Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
+  Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
+  Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
+  Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
+  if ((FNorms[K].X * FNorms[J].Y -
+    FNorms[J].X * FNorms[K].Y) * FDelta >= 0) then
+  begin
+    A1 := ArcTan2(FNorms[K].Y, FNorms[K].X);
+    A2 := ArcTan2(-FNorms[J].Y, -FNorms[J].X);
+    A1 := abs(A2 - A1);
+    if A1 > pi then A1 := pi*2 - A1;
+    Dx := tan((pi - A1)/4) * abs(FDelta);
+    Pt1 := IntPoint(round(Pt1.X -FNorms[K].Y * Dx),
+      round(Pt1.Y + FNorms[K].X * Dx));
+    AddPoint(Pt1);
+    Pt2 := IntPoint(round(Pt2.X + FNorms[J].Y * Dx),
+      round(Pt2.Y - FNorms[J].X * Dx));
+    AddPoint(Pt2);
+  end else
+  begin
+    AddPoint(Pt1);
+    AddPoint(FInP[J]);
+    AddPoint(Pt2);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TOffsetBuilder.DoMiter(J, K: Integer; R: Double);
+var
+  Q: Double;
+  Pt1, Pt2: TIntPoint;
+begin
+  if ((FNorms[K].X * FNorms[J].Y -
+    FNorms[J].X * FNorms[K].Y) * FDelta >= 0) then
+  begin
+    Q := FDelta / R;
+    AddPoint(IntPoint(round(FInP[J].X + (FNorms[K].X + FNorms[J].X)*Q),
+      round(FInP[J].Y + (FNorms[K].Y + FNorms[J].Y)*Q)));
+  end else
+  begin
+    Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
+    Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
+    Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
+    Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
+    AddPoint(Pt1);
+    AddPoint(FInP[J]);
+    AddPoint(Pt2);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TOffsetBuilder.DoRound(J, K: Integer);
+var
+  M: Integer;
+  A1, A2: Double;
+  Pt1, Pt2: TIntPoint;
+  Arc: TPolygon;
+begin
+  Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
+  Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
+  Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
+  Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
+  AddPoint(Pt1);
+  //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
+  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
+  //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
+  //dot product Normals == 1 -> no angle
+  if (FNorms[K].X * FNorms[J].Y -
+    FNorms[J].X * FNorms[K].Y) * FDelta >= 0 then
+  begin
+    if ((FNorms[J].X * FNorms[K].X
+      + FNorms[J].Y * FNorms[K].Y) < 0.985) then
+    begin
+      A1 := ArcTan2(FNorms[K].Y, FNorms[K].X);
+      A2 := ArcTan2(FNorms[J].Y, FNorms[J].X);
+      if (FDelta > 0) and (A2 < A1) then A2 := A2 + pi*2
+      else if (FDelta < 0) and (A2 > A1) then A2 := A2 - pi*2;
+      Arc := BuildArc(FInP[J], A1, A2, FDelta, FLimit);
+      for M := 0 to high(Arc) do AddPoint(Arc[M]);
+    end;
+  end else
+    AddPoint(FInP[J]);
+  AddPoint(Pt2);
+end;
+//------------------------------------------------------------------------------
+
+function TOffsetBuilder.OffsetPoint(J, K: Integer; RMin: Double): Integer;
+var
+  R: Double;
+begin
+  case FJoinType of
+    jtMiter:
+    begin
+      R := 1 + (FNorms[J].X * FNorms[K].X + FNorms[J].Y * FNorms[K].Y);
+      if (R >= RMin) then DoMiter(J, K, R)
+      else DoSquare(J, K);
+    end;
+    jtSquare: DoSquare(J, K);
+    jtRound: DoRound(J, K);
+  end;
+  Result := J;
+end;
+//------------------------------------------------------------------------------
+
+constructor TOffsetBuilder.Create(const Pts: TPolygons; Delta: Double;
+  IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType; Limit: Double = 0);
+var
+  I, J, K, Len: Integer;
   R, RMin: Double;
   Outer: TPolygon;
   Bounds: TIntRect;
-const
-  BuffLength: Integer = 128;
-
-  procedure AddPoint(const Pt: TIntPoint);
-  begin
-    if OutLen = length(Result[I]) then
-      SetLength(Result[I], OutLen + BuffLength);
-    Result[I][OutLen] := Pt;
-    Inc(OutLen);
-  end;
-
-  procedure DoSquare;
-  var
-    A1, A2, Dx: Double;
-    Pt1, Pt2: TIntPoint;
-  begin
-    Pt1.X := round(Pts[I][J].X + Normals[K].X * Delta);
-    Pt1.Y := round(Pts[I][J].Y + Normals[K].Y * Delta);
-    Pt2.X := round(Pts[I][J].X + Normals[J].X * Delta);
-    Pt2.Y := round(Pts[I][J].Y + Normals[J].Y * Delta);
-    if ((Normals[K].X*Normals[J].Y-Normals[J].X*Normals[K].Y) * Delta >= 0) then
-    begin
-      A1 := ArcTan2(Normals[K].Y, Normals[K].X);
-      A2 := ArcTan2(-Normals[J].Y, -Normals[J].X);
-      A1 := abs(A2 - A1);
-      if A1 > pi then A1 := pi*2 - A1;
-      Dx := tan((pi - A1)/4) * abs(Delta);
-
-      Pt1 := IntPoint(round(Pt1.X -Normals[K].Y * Dx),
-        round(Pt1.Y + Normals[K].X * Dx));
-      AddPoint(Pt1);
-      Pt2 := IntPoint(round(Pt2.X + Normals[J].Y * Dx),
-        round(Pt2.Y - Normals[J].X * Dx));
-      AddPoint(Pt2);
-    end else
-    begin
-      AddPoint(Pt1);
-      AddPoint(Pts[I][J]);
-      AddPoint(Pt2);
-    end;
-  end;
-
-  procedure DoMiter;
-  var
-    Q: Double;
-    Pt1, Pt2: TIntPoint;
-  begin
-    if ((Normals[K].X*Normals[J].Y-Normals[J].X*Normals[K].Y)*Delta >= 0) then
-    begin
-      Q := Delta / R;
-      AddPoint(IntPoint(round(Pts[I][J].X + (Normals[K].X + Normals[J].X) *Q),
-        round(Pts[I][J].Y + (Normals[K].Y + Normals[J].Y) *Q)));
-    end else
-    begin
-      Pt1.X := round(Pts[I][J].X + Normals[K].X * Delta);
-      Pt1.Y := round(Pts[I][J].Y + Normals[K].Y * Delta);
-      Pt2.X := round(Pts[I][J].X + Normals[J].X * Delta);
-      Pt2.Y := round(Pts[I][J].Y + Normals[J].Y * Delta);
-      AddPoint(Pt1);
-      AddPoint(Pts[I][J]);
-      AddPoint(Pt2);
-    end;
-  end;
-
-  procedure DoRound(Limit: Double);
-  var
-    M: Integer;
-    A1, A2: Double;
-    Pt1, Pt2: TIntPoint;
-    Arc: TPolygon;
-  begin
-    Pt1.X := round(Pts[I][J].X + Normals[K].X * Delta);
-    Pt1.Y := round(Pts[I][J].Y + Normals[K].Y * Delta);
-    Pt2.X := round(Pts[I][J].X + Normals[J].X * Delta);
-    Pt2.Y := round(Pts[I][J].Y + Normals[J].Y * Delta);
-    AddPoint(Pt1);
-    //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
-    //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
-    //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
-    //dot product Normals == 1 -> no angle
-    if (Normals[K].X*Normals[J].Y - Normals[J].X*Normals[K].Y) * Delta >= 0 then
-    begin
-      if ((Normals[J].X*Normals[K].X+Normals[J].Y*Normals[K].Y) < 0.985) then
-      begin
-        A1 := ArcTan2(Normals[K].Y, Normals[K].X);
-        A2 := ArcTan2(Normals[J].Y, Normals[J].X);
-        if (Delta > 0) and (A2 < A1) then A2 := A2 + pi*2
-        else if (Delta < 0) and (A2 > A1) then A2 := A2 - pi*2;
-        Arc := BuildArc(Pts[I][J], A1, A2, Delta, Limit);
-        for M := 0 to high(Arc) do
-          AddPoint(Arc[M]);
-      end;
-    end else
-      AddPoint(Pts[I][J]);
-    AddPoint(Pt2);
-  end;
-
-  procedure OffsetPoint;
-  begin
-    case JoinType of
-      jtMiter:
-      begin
-        R := 1 + (Normals[J].X * Normals[K].X + Normals[J].Y * Normals[K].Y);
-        if (R >= RMin) then
-          DoMiter else
-          DoSquare;
-      end;
-      jtSquare: DoSquare;
-      jtRound: DoRound(Limit);
-    end;
-    K := J;
-  end;
-
+  ForceClose: Boolean;
 begin
-  Result := nil;
+  FSolution := nil;
 
   RMin := 0.5;
-  if JoinType = jtMiter then
+  FJoinType := JoinType;
+  if not IsPolygon and (Delta < 0) then Delta := -Delta;
+  FDelta := Delta;
+
+  if FJoinType = jtMiter then
   begin
-    if Limit > 2 then RMin := 2/(sqr(Limit));
-    Limit := 0.25; //just in case EndType == etRound
+    if FLimit > 2 then RMin := 2/(sqr(Limit));
+    FLimit := 0.25; //just in case EndType == etRound
   end else
   begin
-    if Limit <= 0 then Limit := 0.25
-    else if Limit > abs(Delta) then Limit := abs(Delta);
+    if Limit <= 0 then FLimit := 0.25
+    else if Limit > abs(FDelta) then FLimit := abs(FDelta)
+    else FLimit := Limit;
   end;
 
-  SetLength(Result, length(Pts));
+  SetLength(FSolution, length(Pts));
   for I := 0 to high(Pts) do
   begin
     //for each polygon in Pts ...
-    Result[I] := nil;
-    Len := length(Pts[I]);
-    if IsPolygon and (Len > 1) and
-      (Pts[I][0].X = Pts[I][Len - 1].X) and
-      (Pts[I][0].Y = Pts[I][Len - 1].Y) then Dec(Len);
+    FInP := Pts[I];
+    Len := length(FInP);
 
-    if (Len = 0) or ((Len < 3) and (Delta <= 0)) then
+    if (Len = 0) or ((Len < 3) and (FDelta <= 0)) then
       Continue
     else if (Len = 1) then
     begin
-      Result[I] := BuildArc(Pts[I][0], 0, 2*pi, Delta, Limit);
+      FInP := BuildArc(FInP[0], 0, 2*pi, FDelta, Limit);
       Continue;
     end;
 
-    //build Normals ...
-    SetLength(Normals, Len);
-    for J := 0 to Len-2 do
-      Normals[J] := GetUnitNormal(Pts[I][J], Pts[I][J+1]);
-    if IsPolygon then
-      Normals[Len-1] := GetUnitNormal(Pts[I][Len-1], Pts[I][0]) else
-      Normals[Len-1] := Normals[Len-2];
+    ForceClose := PointsEqual(FInP[0], FInP[Len -1]);
+    if ForceClose then dec(Len);
 
-    OutLen := 0;
-    if IsPolygon then
+    //build Normals ...
+    SetLength(FNorms, Len);
+    for J := 0 to Len-2 do
+      FNorms[J] := GetUnitNormal(FInP[J], FInP[J+1]);
+    if IsPolygon or ForceClose then
+      FNorms[Len-1] := GetUnitNormal(FInP[Len-1], FInP[0])
+    else
+      FNorms[Len-1] := FNorms[Len-2];
+
+    FOutPos := 0;
+    FOutP := nil;
+
+    if IsPolygon or ForceClose then
     begin
       K := Len -1;
       for J := 0 to Len-1 do
-        OffsetPoint;
+        K := OffsetPoint(J, K, RMin);
+      SetLength(FOutP, FOutPos);
+      FSolution[I] := FOutP;
+
+      if not IsPolygon then
+      begin
+        FOutPos := 0;
+        FOutP := nil;
+        FDelta := -FDelta;
+
+        K := Len -1;
+        for J := 0 to Len-1 do
+          K := OffsetPoint(J, K, RMin);
+
+        FDelta := -FDelta;
+        SetLength(FOutP, FOutPos);
+        J := Length(FSolution);
+        setLength(FSolution, J +1);
+        FSolution[J] := ReversePolygon(FOutP);
+      end;
     end else //is polyline
     begin
       K := 0;
       //offset the polyline going forward ...
       for J := 1 to Len-2 do
-        OffsetPoint;
+        K := OffsetPoint(J, K, RMin);
 
       //handle the end (butt, round or square) ...
       if EndType = etButt then
       begin
         J := Len - 1;
-        AddPoint(IntPoint(round(Pts[I][J].X + Normals[J].X *Delta),
-          round(Pts[I][J].Y + Normals[J].Y * Delta)));
-        AddPoint(IntPoint(round(Pts[I][J].X - Normals[J].X *Delta),
-          round(Pts[I][J].Y - Normals[J].Y * Delta)));
+        AddPoint(IntPoint(round(FInP[J].X + FNorms[J].X *FDelta),
+          round(FInP[J].Y + FNorms[J].Y * FDelta)));
+        AddPoint(IntPoint(round(FInP[J].X - FNorms[J].X *FDelta),
+          round(FInP[J].Y - FNorms[J].Y * FDelta)));
       end else
       begin
         J := Len - 1;
         K := Len - 2;
-        Normals[J].X := -Normals[J].X;
-        Normals[J].Y := -Normals[J].Y;
-        if EndType = etSquare then
-          DoSquare else
-          DoRound(Limit);
+        FNorms[J].X := -FNorms[J].X;
+        FNorms[J].Y := -FNorms[J].Y;
+        if EndType = etSquare then DoSquare(J, K)
+        else DoRound(J, K);
       end;
 
       //re-build Normals ...
       for J := Len-1 downto 1 do
       begin
-        Normals[J].X := -Normals[J-1].X;
-        Normals[J].Y := -Normals[J-1].Y;
+        FNorms[J].X := -FNorms[J-1].X;
+        FNorms[J].Y := -FNorms[J-1].Y;
       end;
-      Normals[0].X := -Normals[1].X;
-      Normals[0].Y := -Normals[1].Y;
+      FNorms[0].X := -FNorms[1].X;
+      FNorms[0].Y := -FNorms[1].Y;
 
       //offset the polyline going backward ...
       K := Len -1;
-      for J := K -1 downto 1 do
-        OffsetPoint;
+      for J := Len -2 downto 1 do
+        K := OffsetPoint(J, K, RMin);
 
       //finally handle the start (butt, round or square) ...
       if EndType = etButt then
       begin
-        AddPoint(IntPoint(round(Pts[I][0].X - Normals[0].X *Delta),
-          round(Pts[I][0].Y - Normals[0].Y * Delta)));
-        AddPoint(IntPoint(round(Pts[I][0].X + Normals[0].X *Delta),
-          round(Pts[I][0].Y + Normals[0].Y * Delta)));
+        AddPoint(IntPoint(round(FInP[0].X - FNorms[0].X *FDelta),
+          round(FInP[0].Y - FNorms[0].Y * FDelta)));
+        AddPoint(IntPoint(round(FInP[0].X + FNorms[0].X *FDelta),
+          round(FInP[0].Y + FNorms[0].Y * FDelta)));
       end else
       begin
-        K := 1;
-        if EndType = etSquare then DoSquare
-        else DoRound(Limit);
+        if EndType = etSquare then DoSquare(0, 1)
+        else DoRound(0, 1);
       end;
+      SetLength(FOutP, FOutPos);
+      FSolution[I] := FOutP;
     end;
-    SetLength(Result[I], OutLen);
   end;
 
   //finally, clean up untidy corners ...
   with TClipper.Create do
   try
-    AddPolygons(Result, ptSubject);
+    AddPolygons(FSolution, ptSubject);
     if Delta > 0 then
     begin
-      Execute(ctUnion, Result, pftPositive, pftPositive);
+      Execute(ctUnion, FSolution, pftPositive, pftPositive);
     end else
     begin
-      Bounds := GetBounds(Result);
+      Bounds := GetBounds(FSolution);
       SetLength(Outer, 4);
       Outer[0] := IntPoint(Bounds.left-10, Bounds.bottom+10);
       Outer[1] := IntPoint(Bounds.right+10, Bounds.bottom+10);
       Outer[2] := IntPoint(Bounds.right+10, Bounds.top-10);
       Outer[3] := IntPoint(Bounds.left-10, Bounds.top-10);
       AddPolygon(Outer, ptSubject);
-      Execute(ctUnion, Result, pftNegative, pftNegative);
+      ReverseSolution := True;
+      Execute(ctUnion, FSolution, pftNegative, pftNegative);
       //delete the outer rectangle ...
-      Len := length(Result);
-      for J := 1 to Len -1 do Result[J-1] := Result[J];
-      if Len > 0 then
-        SetLength(Result, Len -1);
-      //restore polygon orientation ...
-      Result := ReversePolygons(Result);
+      Len := length(FSolution);
+      for J := 1 to Len -1 do fSolution[J-1] := fSolution[J];
+      if Len > 0 then SetLength(FSolution, Len -1);
     end;
   finally
     free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function BuildOffset(const Pts: TPolygons; Delta: Double; IsPolygon: Boolean;
+  JoinType: TJoinType; EndType: TEndType; Limit: Double = 0): TPolygons;
+begin
+  with TOffsetBuilder.Create(Pts, Delta, IsPolygon, JoinType, EndType, Limit) do
+  try
+    result := Solution;
+  finally
+    Free;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -4019,6 +4090,7 @@ var
   BotPt: TIntPoint;
 begin
   Pts := Polys;
+  Result := nil;
   //AutoFix - fixes polygon orientation if necessary and removes
   //duplicate vertices. Can be set False when you're sure that polygon
   //orientation is correct and that there are no duplicate vertices.
@@ -4051,18 +4123,17 @@ begin
     if not Orientation(Pts[BotI]) then
       Pts := ReversePolygons(Pts);
   end;
-  Result := OffsetInternal(Pts, Delta, True, JoinType, etButt, Limit);
+  Result := BuildOffset(Pts, Delta, True, JoinType, etButt, Limit);
 end;
 //------------------------------------------------------------------------------
 
-function DoAutoFix(const Poly: TPolygon): TPolygon;
+function StripDups(const Poly: TPolygon): TPolygon;
 var
   I, J, Len: Integer;
 begin
   Len := Length(Poly);
   SetLength(Result, Len);
   if Len = 0 then Exit;
-
   J := 0;
   Result[0] := Poly[0];
   for I := 1 to Len - 1 do
@@ -4071,44 +4142,35 @@ begin
       Inc(J);
       Result[J] := Poly[I];
     end;
-  if not PointsEqual(Result[0], Result[J]) then
-    Inc(J);
-  if J < 3 then
-    Result := nil
-  else if J < Len then
-    SetLength(Result, J);
+  Inc(J);
+  if J < Len then SetLength(Result, J);
 end;
 //------------------------------------------------------------------------------
 
 function OffsetPolyLines(const Lines: TPolygons; Delta: Double;
   JoinType: TJoinType = jtSquare; EndType: TEndType = etSquare;
-  Limit: Double = 0; AutoFix: Boolean = True): TPolygons;
+  Limit: Double = 0): TPolygons;
 var
   I, Len: Integer;
   Pts: TPolygons;
 begin
+  //automatically strip duplicate points because it gets complicated with
+  //open and closed lines and when to strip duplicates across begin-end ...
   Pts := Lines;
   Len := Length(Pts);
-  if AutoFix then
-  begin
-    SetLength(Pts, Len);
-    for I := 0 to Len -1 do
-      Pts[I] := DoAutoFix(Lines[I]);
-  end;
+  SetLength(Pts, Len);
+  for I := 0 to Len -1 do
+    Pts[I] := StripDups(Lines[I]);
+
   if EndType = etClosed then
   begin
     SetLength(Pts, Len *2);
     for I := 0 to Len -1 do
-    begin
-      if AutoFix then
-        Pts[I*2] := DoAutoFix(Lines[I]) else
-        Pts[I*2] := Lines[I];
-      Pts[I*2 +1] := ReversePolygon(Pts[I*2]);
-    end;
-    Result := OffsetInternal(Pts, Delta, True, JoinType, EndType, Limit);
+      Pts[Len + I] := ReversePolygon(Pts[I]);
+    Result := BuildOffset(Pts, Delta, True, JoinType, EndType, Limit);
   end
   else
-    Result := OffsetInternal(Pts, Delta, False, JoinType, EndType, Limit);
+    Result := BuildOffset(Pts, Delta, False, JoinType, EndType, Limit);
 end;
 //------------------------------------------------------------------------------
 
