@@ -3910,7 +3910,7 @@ begin
 
   if FJoinType = jtMiter then
   begin
-    if FLimit > 2 then RMin := 2/(sqr(Limit));
+    if Limit > 2 then RMin := 2/(sqr(Limit));
     FLimit := 0.25; //just in case EndType == etRound
   end else
   begin
