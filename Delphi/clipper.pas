@@ -3672,55 +3672,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-//Notes on the number of steps used to build an arc:
-//Given S = arbitrary no. steps used to construct chords approximating a CIRCLE,
-//then the angle (A) of each step = 2 * Pi / S
-//The chord between two steps (pt1) & (pt2) is perpendicular to the line
-//segment between the circle's center (pt3) to the chord's midpoint (pt4).
-//Let the length of the line segment (pt3) & (Pt4) = D, and let the distance
-//from the chord's midpoint (pt4) to the circle = Q, such that R - Q = D
-//If Q is a pre-defined constant (ie the maximum allowed deviation from circle),
-//then given that cos(angle) = adjacent/hypotenuse ...
-//  cos(A/2) = D/R
-//           = (R - Q)/R
-//           = 1 - Q/R
-//       A/2 = ArcCos(1 - Q/R)
-//         A = 2 * ArcCos(1 - Q/R)
-//2 * Pi / S = 2 * ArcCos(1 - Q/R)
-//         S = Pi / ArcCos(1 - Q/R)
-//Instead of a CIRCLE, given an ARC from angle A1 to angle A2 ...
-//   ArcFrac = Abs(A2 - A1)/(2 * Pi)
-//     Steps = ArcFrac * Pi / ArcCos(1 - Q/R)
-function BuildArc(const Pt: TIntPoint;
-  A1, A2, R: Single; Limit: Double): TPolygon;
-var
-  I: Integer;
-  Steps: Int64;
-  X, X2, Y, ArcFrac: Double;
-  S, C: Extended;
-begin
-  ArcFrac := Abs(A2 - A1) / (2 * Pi);
-  //Limit == Q in comments above ...
-  Steps := Trunc(ArcFrac * Pi / ArcCos(1 - Limit / Abs(R)));
-  if Steps < 2 then Steps := 2
-  else if Steps > 222.0 * ArcFrac then //ie R > 10000 * Limit
-    Steps := Trunc(222.0 * ArcFrac);
-
-  Math.SinCos(A1, S, C);
-  X := C; Y := S;
-  Math.SinCos((A2 - A1) / Steps, S, C);
-  SetLength(Result, Steps + 1);
-  for I := 0 to Steps do
-  begin
-    Result[I].X := Pt.X + Round(X * R);
-    Result[I].Y := Pt.Y + Round(Y * R);
-    X2 := X;
-    X := X * C - S * Y;  //cross product & dot product here ...
-    Y := X2 * S + Y * C; //avoids repeat calls to the much slower SinCos()
-  end;
-end;
-//------------------------------------------------------------------------------
-
 function GetBounds(const Pts: TPolygons): TIntRect;
 var
   I,J: Integer;
@@ -3749,8 +3700,9 @@ type
   TOffsetBuilder = class
   private
     FDelta: Double;
+    FSinA, FSin, FCos: Double;
+    FMiterConst, FRoundConst: Double;
     FJoinType: TJoinType;
-    FLimit: Double;
     FNorms: TArrayOfDoublePoint;
     FSolution: TPolygons;
     FOutPos: Integer;
@@ -3761,7 +3713,7 @@ type
     procedure DoSquare(J, K: Integer);
     procedure DoMiter(J, K: Integer; R: Double);
     procedure DoRound(J, K: Integer);
-    function OffsetPoint(J, K: Integer; RMin: Double): Integer;
+    procedure OffsetPoint(J: Integer; var K: Integer);
   public
     constructor Create(const Pts: TPolygons; Delta: Double;
       IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType;
@@ -3785,110 +3737,82 @@ end;
 
 procedure TOffsetBuilder.DoSquare(J, K: Integer);
 var
-  A1, A2, Dx: Double;
-  Pt1, Pt2: TIntPoint;
+  A, Dx: Double;
 begin
-  Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
-  Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
-  Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
-  Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
-  if ((FNorms[K].X * FNorms[J].Y -
-    FNorms[J].X * FNorms[K].Y) * FDelta >= 0) then
-  begin
-    A1 := ArcTan2(FNorms[K].Y, FNorms[K].X);
-    A2 := ArcTan2(-FNorms[J].Y, -FNorms[J].X);
-    A1 := abs(A2 - A1);
-    if A1 > pi then A1 := pi*2 - A1;
-    Dx := tan((pi - A1)/4) * abs(FDelta);
-    Pt1 := IntPoint(round(Pt1.X -FNorms[K].Y * Dx),
-      round(Pt1.Y + FNorms[K].X * Dx));
-    AddPoint(Pt1);
-    Pt2 := IntPoint(round(Pt2.X + FNorms[J].Y * Dx),
-      round(Pt2.Y - FNorms[J].X * Dx));
-    AddPoint(Pt2);
-  end else
-  begin
-    AddPoint(Pt1);
-    AddPoint(FInP[J]);
-    AddPoint(Pt2);
-  end;
+  A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
+  Dx := tan(A/4);
+  AddPoint(IntPoint(
+    round(FInP[J].X + FDelta * (FNorms[K].X - FNorms[K].Y *Dx)),
+    round(FInP[J].Y + FDelta * (FNorms[K].Y + FNorms[K].X *Dx))));
+  AddPoint(IntPoint(
+    round(FInP[J].X + FDelta * (FNorms[J].X + FNorms[J].Y *Dx)),
+    round(FInP[J].Y + FDelta * (FNorms[J].Y - FNorms[J].X *Dx))));
 end;
 //------------------------------------------------------------------------------
 
 procedure TOffsetBuilder.DoMiter(J, K: Integer; R: Double);
 var
   Q: Double;
-  Pt1, Pt2: TIntPoint;
 begin
-  if ((FNorms[K].X * FNorms[J].Y -
-    FNorms[J].X * FNorms[K].Y) * FDelta >= 0) then
-  begin
-    Q := FDelta / R;
-    AddPoint(IntPoint(round(FInP[J].X + (FNorms[K].X + FNorms[J].X)*Q),
-      round(FInP[J].Y + (FNorms[K].Y + FNorms[J].Y)*Q)));
-  end else
-  begin
-    Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
-    Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
-    Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
-    Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
-    AddPoint(Pt1);
-    AddPoint(FInP[J]);
-    AddPoint(Pt2);
-  end;
+  Q := FDelta / R;
+  AddPoint(IntPoint(round(FInP[J].X + (FNorms[K].X + FNorms[J].X)*Q),
+    round(FInP[J].Y + (FNorms[K].Y + FNorms[J].Y)*Q)));
 end;
 //------------------------------------------------------------------------------
 
 procedure TOffsetBuilder.DoRound(J, K: Integer);
 var
-  M: Integer;
-  A1, A2: Double;
-  Pt1, Pt2: TIntPoint;
-  Arc: TPolygon;
+  I, Steps: Integer;
+  A, X, X2, Y: Double;
 begin
-  Pt1.X := round(FInP[J].X + FNorms[K].X * FDelta);
-  Pt1.Y := round(FInP[J].Y + FNorms[K].Y * FDelta);
-  Pt2.X := round(FInP[J].X + FNorms[J].X * FDelta);
-  Pt2.Y := round(FInP[J].Y + FNorms[J].Y * FDelta);
-  AddPoint(Pt1);
-  //round off reflex angles (ie > 180 deg) unless almost flat (ie < 10deg).
-  //(N1.X * N2.Y - N2.X * N1.Y) == unit normal "cross product" == sin(angle)
-  //(N1.X * N2.X + N1.Y * N2.Y) == unit normal "dot product" == cos(angle)
-  //dot product Normals == 1 -> no angle
-  if (FNorms[K].X * FNorms[J].Y -
-    FNorms[J].X * FNorms[K].Y) * FDelta >= 0 then
+  A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
+  Steps := Round(FRoundConst * Abs(A));
+
+  X := FNorms[K].X;
+  Y := FNorms[K].Y;
+  for I := 1 to Steps do
   begin
-    if ((FNorms[J].X * FNorms[K].X
-      + FNorms[J].Y * FNorms[K].Y) < 0.985) then
-    begin
-      A1 := ArcTan2(FNorms[K].Y, FNorms[K].X);
-      A2 := ArcTan2(FNorms[J].Y, FNorms[J].X);
-      if (FDelta > 0) and (A2 < A1) then A2 := A2 + pi*2
-      else if (FDelta < 0) and (A2 > A1) then A2 := A2 - pi*2;
-      Arc := BuildArc(FInP[J], A1, A2, FDelta, FLimit);
-      for M := 0 to high(Arc) do AddPoint(Arc[M]);
-    end;
-  end else
-    AddPoint(FInP[J]);
-  AddPoint(Pt2);
+    AddPoint(IntPoint(
+      round(FInP[J].X + X * FDelta),
+      round(FInP[J].Y + Y * FDelta)));
+    X2 := X;
+    X := X * FCos - FSin * Y;
+    Y := X2 * FSin + Y * FCos;
+  end;
+  AddPoint(IntPoint(
+    round(FInP[J].X + FNorms[J].X * FDelta),
+    round(FInP[J].Y + FNorms[J].Y * FDelta)));
 end;
 //------------------------------------------------------------------------------
 
-function TOffsetBuilder.OffsetPoint(J, K: Integer; RMin: Double): Integer;
+procedure TOffsetBuilder.OffsetPoint(J: Integer; var K: Integer);
 var
   R: Double;
 begin
+  FSinA := (FNorms[K].X * FNorms[J].Y - FNorms[J].X * FNorms[K].Y);
+  if FSinA > 1 then FSinA := 1
+  else if FSinA < -1 then FSinA := -1;
+
+  if FSinA * FDelta < 0 then
+  begin
+    AddPoint(IntPoint(round(FInP[J].X + FNorms[K].X * FDelta),
+      round(FInP[J].Y + FNorms[K].Y * FDelta)));
+    AddPoint(FInP[J]);
+    AddPoint(IntPoint(round(FInP[J].X + FNorms[J].X * FDelta),
+      round(FInP[J].Y + FNorms[J].Y * FDelta)));
+  end
+  else
   case FJoinType of
     jtMiter:
     begin
       R := 1 + (FNorms[J].X * FNorms[K].X + FNorms[J].Y * FNorms[K].Y);
-      if (R >= RMin) then DoMiter(J, K, R)
+      if (R >= FMiterConst) then DoMiter(J, K, R)
       else DoSquare(J, K);
     end;
     jtSquare: DoSquare(J, K);
     jtRound: DoRound(J, K);
   end;
-  Result := J;
+  K := J;
 end;
 //------------------------------------------------------------------------------
 
@@ -3896,27 +3820,54 @@ constructor TOffsetBuilder.Create(const Pts: TPolygons; Delta: Double;
   IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType; Limit: Double = 0);
 var
   I, J, K, Len: Integer;
-  R, RMin: Double;
   Outer: TPolygon;
   Bounds: TIntRect;
   ForceClose: Boolean;
+  X,X2,Y: Double;
 begin
   FSolution := nil;
 
-  RMin := 0.5;
   FJoinType := JoinType;
   if not IsPolygon and (Delta < 0) then Delta := -Delta;
   FDelta := Delta;
 
   if FJoinType = jtMiter then
   begin
-    if Limit > 2 then RMin := 2/(sqr(Limit));
-    FLimit := 0.25; //just in case EndType == etRound
-  end else
+    //given that 'Limit' is a multiple of delta, and
+    //given that sin(angle) = opposite/hypotenuse ...
+    //then sin(ß/2) = delta / (Limit * delta)
+    //given trig. identity: sin(ß/2) = Sqrt((1-cos(ß))/2)
+    //and since cos(ß) can be derived simply from dot products,
+    //let's precalculate a constant to test against each angle ...
+    //Limit = Sqrt(2/(1-cos(ß)))
+    //1 - cos(ß) = 2/Sqr(Limit) = FMiterConst
+    if Limit > 2 then FMiterConst := 2/(sqr(Limit))
+    else FMiterConst := 0.5;
+    if EndType = etRound then Limit := 0.25;
+  end;
+
+  //When constructing an arc, its precision is determined by the number of
+  //vertices or steps used. If S = no. steps used to construct a circle with
+  //radius (R), then ... the angle (A) between each step is: A = 2 * Pi / S.
+  //The line passing through two steps (pt1) & (pt2) is perpendicular to the
+  //line through the circle's center (pt3) and the midpoint (pt4) of pts 1 & 2.
+  //Let the length of the line segment pt3 & pt4 = D, and let the distance
+  //from pt4 to the circle = L, such that D + L = R.
+  //If L is a pre-defined const. (the max. allowed deviation or imprecision),
+  //we can calculate the no. steps required to construct an arc with the
+  //required precision ...
+  //  cos(A/2) = D/R = (R - L)/R = 1 - L/R
+  //  A = 2 * ArcCos(1 - L/R)
+  //  2 * Pi / S = 2 * ArcCos(1 - L/R)
+  //  S = Pi / ArcCos(1 - L/R)
+  if (FJoinType = jtRound) or (EndType = etRound) then
   begin
-    if Limit <= 0 then FLimit := 0.25
-    else if Limit > abs(FDelta) then FLimit := abs(FDelta)
-    else FLimit := Limit;
+    if (Limit <= 0) then Limit := 0.25
+    else if Limit > abs(FDelta) * 0.25 then Limit := abs(FDelta) * 0.25;
+    FRoundConst := Pi / ArcCos(1 - Limit / Abs(FDelta));
+    Math.SinCos(2 * Pi / FRoundConst, FSin, FCos);
+    FRoundConst := FRoundConst / (Pi * 2);
+    if FDelta < 0 then FSin := -FSin;
   end;
 
   SetLength(FSolution, length(Pts));
@@ -3927,10 +3878,37 @@ begin
     Len := length(FInP);
 
     if (Len = 0) or ((Len < 3) and (FDelta <= 0)) then
-      Continue
-    else if (Len = 1) then
+      Continue;
+
+    //if a single vertex then build circle or a square ...
+    if (Len = 1) then
     begin
-      FInP := BuildArc(FInP[0], 0, 2*pi, FDelta, Limit);
+      if JoinType = jtRound then
+      begin
+        X := 1; Y := 0;
+        for J := 1 to Round(FRoundConst * 2 * Pi) do
+        begin
+          AddPoint(IntPoint(
+            Round(FInP[0].X + X * FDelta),
+            Round(FInP[0].Y + Y * FDelta)));
+          X2 := X;
+          X := X * FCos - FSin * Y;
+          Y := X2 * FSin + Y * FCos;
+        end
+      end else
+      begin
+        X := -1; Y := -1;
+        for J := 1 to 4 do
+        begin
+          AddPoint(IntPoint( Round(FInP[0].X + X * FDelta),
+            Round(FInP[0].Y + Y * FDelta)));
+          if X < 0 then X := 1
+          else if Y < 0 then Y := 1
+          else X := -1;
+        end;
+      end;
+      SetLength(FOutP, FOutPos);
+      FSolution[I] := FOutP;
       Continue;
     end;
 
@@ -3953,7 +3931,7 @@ begin
     begin
       K := Len -1;
       for J := 0 to Len-1 do
-        K := OffsetPoint(J, K, RMin);
+        OffsetPoint(J, K);
       SetLength(FOutP, FOutPos);
       FSolution[I] := FOutP;
 
@@ -3965,7 +3943,7 @@ begin
 
         K := Len -1;
         for J := 0 to Len-1 do
-          K := OffsetPoint(J, K, RMin);
+          OffsetPoint(J, K);
 
         FDelta := -FDelta;
         SetLength(FOutP, FOutPos);
@@ -3978,7 +3956,7 @@ begin
       K := 0;
       //offset the polyline going forward ...
       for J := 1 to Len-2 do
-        K := OffsetPoint(J, K, RMin);
+        OffsetPoint(J, K);
 
       //handle the end (butt, round or square) ...
       if EndType = etButt then
@@ -4010,7 +3988,7 @@ begin
       //offset the polyline going backward ...
       K := Len -1;
       for J := Len -2 downto 1 do
-        K := OffsetPoint(J, K, RMin);
+        OffsetPoint(J, K);
 
       //finally handle the start (butt, round or square) ...
       if EndType = etButt then
@@ -4029,7 +4007,7 @@ begin
     end;
   end;
 
-  //finally, clean up untidy corners ...
+  //now clean up untidy corners ...
   with TClipper.Create do
   try
     AddPolygons(FSolution, ptSubject);
