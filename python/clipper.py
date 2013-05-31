@@ -1,8 +1,8 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.6                                                           #
-# Date      :  23 May 2013                                                     #
+# Version   :  5.1.7                                                           #
+# Date      :  1 June 2013                                                     #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
 #                                                                              #
@@ -33,10 +33,8 @@
 
 import math
 from collections import namedtuple
-from decimal import Decimal, getcontext
 
-getcontext().prec = 8
-horizontal = Decimal('-Infinity')
+horizontal = float('-inf')
 
 class ClipType: (Intersection, Union, Difference, Xor) = range(4)
 class PolyType:    (Subject, Clip) = range(2)
@@ -48,7 +46,8 @@ class Protects: (Neither, Left, Right, Both) = range(4)
 class Direction: (LeftToRight, RightToLeft) = range(2)
 
 Point = namedtuple('Point', 'x y')
-DoublePoint = namedtuple('DoublePoint', 'x y')
+FloatPoint = namedtuple('FloatPoint', 'x y')
+Rect = namedtuple('FloatPoint', 'left top right bottom')
 
 class LocalMinima(object):
     leftBound = rightBound = nextLm = None
@@ -205,9 +204,11 @@ def PolyTreeToPolygons(polyTree):
 class Edge(object):
 
     def __init__(self):
-        self.xBot, self.yBot, self.xCurr, self.yCurr, = 0, 0, 0, 0
-        self.xTop, self.yTop = 0, 0
-        self.dx, self.deltaX , self.deltaY = Decimal(0), Decimal(0), Decimal(0)
+        self.Bot = Point(0,0)
+        self.Curr = Point(0,0)
+        self.Top = Point(0,0)
+        self.Delta = Point(0,0) 
+        self.dx = float(0.0)
         self.polyType = PolyType.Subject 
         self.side = EdgeSide.Left
         self.windDelta, self.windCnt, self.windCnt2 = 0, 0, 0 
@@ -217,7 +218,7 @@ class Edge(object):
         
     def __repr__(self):
         return "(%i,%i . %i,%i {dx:%0.2f} %i {%x})" % \
-            (self.xBot, self.yBot, self.xTop, self.yTop, self.dx, self.outIdx, id(self))
+            (self.Bot.x, self.Bot.y, self.Top.x, self.Top.y, self.dx, self.outIdx, id(self))
 
 #===============================================================================
 # ClipperBase class (+ data structs & ancilliary functions)
@@ -233,13 +234,12 @@ def _SlopesEqual(pt1, pt2, pt3, pt4 = None):
         return (pt1.y-pt2.y)*(pt3.x-pt4.x) == (pt1.x-pt2.x)*(pt3.y-pt4.y)
 
 def _SlopesEqual2(e1, e2):
-    return e1.deltaY * e2.deltaX == e1.deltaX * e2.deltaY
+    return e1.Delta.y * e2.Delta.x == e1.Delta.x * e2.Delta.y
 
 def _SetDx(e):
-    e.deltaX = Decimal(e.xTop - e.xBot)
-    e.deltaY = Decimal(e.yTop - e.yBot)
-    if e.deltaY == 0: e.dx = horizontal
-    else: e.dx = e.deltaX/e.deltaY
+    e.Delta = Point(e.Top.x - e.Bot.x, e.Top.y - e.Bot.y)
+    if e.Delta.y == 0: e.dx = horizontal
+    else: e.dx = float(e.Delta.x)/float(e.Delta.y)
 
 def _SwapSides(e1, e2):
     side    = e1.side
@@ -254,28 +254,23 @@ def _SwapPolyIndexes(e1, e2):
 def _InitEdge(e, eNext, ePrev, pt, polyType):
     e.nextE = eNext
     e.prevE = ePrev
-    e.xCurr = pt.x
-    e.yCurr = pt.y
-    if e.yCurr >= e.nextE.yCurr:
-        e.xBot = e.xCurr
-        e.yBot = e.yCurr
-        e.xTop = e.nextE.xCurr
-        e.yTop = e.nextE.yCurr
+    e.Curr = pt
+    if e.Curr.y >= e.nextE.Curr.y:
+        e.Bot = e.Curr
+        e.Top = e.nextE.Curr
         e.windDelta = 1
     else:
-        e.xTop = e.xCurr
-        e.yTop = e.yCurr
-        e.xBot = e.nextE.xCurr
-        e.yBot = e.nextE.yCurr
+        e.Top = e.Curr
+        e.Bot = e.nextE.Curr
         e.windDelta = -1
     _SetDx(e)
     e.outIdx = -1
     e.PolyType = polyType
 
 def _SwapX(e):
-    e.xCurr = e.xTop
-    e.xTop = e.xBot
-    e.xBot = e.xCurr
+    e.Curr = Point(e.Top.x, e.Curr.y)
+    e.Top = Point(e.Bot.x, e.Top.y)
+    e.Bot = Point(e.Curr.x, e.Bot.y)
     
 class ClipperBase(object):
 
@@ -302,28 +297,28 @@ class ClipperBase(object):
         e = e.nextE
         while True:
             if e.dx == horizontal:
-                if (e.nextE.yTop < e.yTop) and (e.nextE.xBot > e.prevE.xBot): break
-                if (e.xTop != e.prevE.xBot): _SwapX(e)
+                if (e.nextE.Top.y < e.Top.y) and (e.nextE.Bot.x > e.prevE.Bot.x): break
+                if (e.Top.x != e.prevE.Bot.x): _SwapX(e)
                 e.nextInLML = e.prevE
-            elif e.yBot == e.prevE.yBot: break
+            elif e.Bot.y == e.prevE.Bot.y: break
             else: e.nextInLML = e.prevE
             e = e.nextE
 
         if e.dx == horizontal:
-            if (e.xBot != e.prevE.xBot): _SwapX(e)
-            lm = LocalMinima(e.prevE.yBot, e.prevE, e)
+            if (e.Bot.x != e.prevE.Bot.x): _SwapX(e)
+            lm = LocalMinima(e.prevE.Bot.y, e.prevE, e)
         elif (e.dx < e.prevE.dx):
-            lm = LocalMinima(e.prevE.yBot, e.prevE, e)
+            lm = LocalMinima(e.prevE.Bot.y, e.prevE, e)
         else:
-            lm = LocalMinima(e.prevE.yBot, e, e.prevE)
+            lm = LocalMinima(e.prevE.Bot.y, e, e.prevE)
         lm.leftBound.side = EdgeSide.Left
         lm.rightBound.side = EdgeSide.Right
         self._InsertLocalMinima(lm)
         while True:
-            if e.nextE.yTop == e.yTop and e.nextE.dx != horizontal: break
+            if e.nextE.Top.y == e.Top.y and e.nextE.dx != horizontal: break
             e.nextInLML = e.nextE
             e = e.nextE
-            if e.dx == horizontal and e.xBot != e.prevE.xTop: _SwapX(e)
+            if e.dx == horizontal and e.Bot.x != e.prevE.Top.x: _SwapX(e)
         return e.nextE
 
     def _Reset(self):
@@ -332,15 +327,13 @@ class ClipperBase(object):
         while lm is not None:
             e = lm.leftBound
             while e is not None:
-                e.xCurr    = e.xBot
-                e.yCurr    = e.yBot
+                e.Curr    = e.Bot
                 e.side     = EdgeSide.Left
                 e.outIdx = -1
                 e = e.nextInLML
             e = lm.rightBound
             while e is not None:
-                e.xCurr    = e.xBot
-                e.yCurr    = e.yBot
+                e.Curr    = e.Bot
                 e.side     = EdgeSide.Right
                 e.outIdx = -1
                 e = e.nextInLML
@@ -378,8 +371,7 @@ class ClipperBase(object):
         edges = []
         for i in range(ln):
             edges.append(Edge())
-        edges[0].xCurr = pg[0].x
-        edges[0].yCurr = pg[0].y
+        edges[0].Curr = pg[0]
         _InitEdge(edges[ln-1], edges[0], edges[ln-2], pg[ln-1], polyType)
         for i in range(ln-2, 0, -1):
             _InitEdge(edges[i], edges[i+1], edges[i-1], pg[i], polyType)
@@ -387,9 +379,8 @@ class ClipperBase(object):
         e = edges[0]
         eHighest = e
         while True:
-            e.xCurr = e.xBot
-            e.yCurr = e.yBot
-            if e.yTop < eHighest.yTop: eHighest = e
+            e.Curr = e.Bot
+            if e.Top.y < eHighest.Top.y: eHighest = e
             e = e.nextE
             if e == edges[0]: break
         # make sure eHighest is positioned so the following loop works safely ...
@@ -422,64 +413,64 @@ class ClipperBase(object):
 #===============================================================================
 def _IntersectPoint(edge1, edge2):
     if _SlopesEqual2(edge1, edge2):
-        if (edge2.ybot > edge1.ybot): y = edge2.ybot 
-        else: y = edge1.ybot
+        if (edge2.Bot.y > edge1.Bot.y): y = edge2.Bot.y 
+        else: y = edge1.Bot.y
         return Point(0, y), False
     if edge1.dx == 0:
-        x = edge1.xBot
+        x = edge1.Bot.x
         if edge2.dx == horizontal:
-            y = edge2.yBot
+            y = edge2.Bot.y
         else:
-            b2 = edge2.yBot - Decimal(edge2.xBot)/edge2.dx
-            y = round(Decimal(x)/edge2.dx + b2)
+            b2 = edge2.Bot.y - float(edge2.Bot.x)/edge2.dx
+            y = round(float(x)/edge2.dx + b2)
     elif edge2.dx == 0:
-        x = edge2.xBot
+        x = edge2.Bot.x
         if edge1.dx == horizontal:
-            y = edge1.yBot
+            y = edge1.Bot.y
         else:
-            b1 = edge1.yBot - Decimal(edge1.xBot)/edge1.dx
-            y = round(Decimal(x)/edge1.dx + b1)
+            b1 = edge1.Bot.y - float(edge1.Bot.x)/edge1.dx
+            y = round(float(x)/edge1.dx + b1)
     else:
-        b1 = edge1.xBot - edge1.yBot * edge1.dx
-        b2 = edge2.xBot - edge2.yBot * edge2.dx
-        m    = Decimal(b2-b1)/(edge1.dx - edge2.dx)
+        b1 = float(edge1.Bot.x) - float(edge1.Bot.y) * edge1.dx
+        b2 = float(edge2.Bot.x) - float(edge2.Bot.y) * edge2.dx
+        m    = (b2-b1)/(edge1.dx - edge2.dx)
         y    = round(m)
         if math.fabs(edge1.dx) < math.fabs(edge2.dx):
             x = round(edge1.dx * m + b1)
         else:
             x = round(edge2.dx * m + b2)
-    if (y < edge1.yTop) or (y < edge2.yTop):
-        if (edge1.yTop > edge2.yTop):
-            return Point(edge1.xTop,edge1.yTop), _TopX(edge2, edge1.yTop) < edge1.xTop
+    if (y < edge1.Top.y) or (y < edge2.Top.y):
+        if (edge1.Top.y > edge2.Top.y):
+            return edge1.Top, _TopX(edge2, edge1.Top.y) < edge1.Top.x
         else:
-            return Point(edge2.xTop,edge2.yTop), _TopX(edge1, edge2.yTop) > edge2.xTop
+            return edge2.Top, _TopX(edge1, edge2.Top.y) > edge2.Top.x
     else:
         return Point(x,y), True
 
 def _TopX(e, currentY):
-    if currentY == e.yTop: return e.xTop
-    elif e.xTop == e.xBot: return e.xBot
-    else: return e.xBot + round(e.dx * Decimal(currentY - e.yBot))
+    if currentY == e.Top.y: return e.Top.x
+    elif e.Top.x == e.Bot.x: return e.Bot.x
+    else: return e.Bot.x + round(e.dx * float(currentY - e.Bot.y))
 
 def _E2InsertsBeforeE1(e1,e2):
-    if (e2.xCurr == e1.xCurr): 
-        if (e2.yTop > e1.yTop):
-            return e2.xTop < _TopX(e1, e2.yTop) 
-        return e1.xTop > _TopX(e2, e1.yTop) 
+    if (e2.Curr.x == e1.Curr.x): 
+        if (e2.Top.y > e1.Top.y):
+            return e2.Top.x < _TopX(e1, e2.Top.y) 
+        return e1.Top.x > _TopX(e2, e1.Top.y) 
     else: 
-        return e2.xCurr < e1.xCurr
+        return e2.Curr.x < e1.Curr.x
 
 def _IsMinima(e):
     return e is not None and e.prevE.nextInLML != e and e.nextE.nextInLML != e
 
 def _IsMaxima(e, y):
-    return e is not None and e.yTop == y and e.nextInLML is None
+    return e is not None and e.Top.y == y and e.nextInLML is None
 
 def _IsIntermediate(e, y):
-    return e.yTop == y and e.nextInLML is not None
+    return e.Top.y == y and e.nextInLML is not None
 
 def _GetMaximaPair(e):
-    if not _IsMaxima(e.nextE, e.yTop) or e.nextE.xTop != e.xTop:
+    if not _IsMaxima(e.nextE, e.Top.y) or e.nextE.Top.x != e.Top.x:
         return e.prevE
     else:
         return e.nextE
@@ -498,7 +489,7 @@ def _ProtectRight(val):
 
 def _GetDx(pt1, pt2):
     if (pt1.y == pt2.y): return horizontal
-    else: return Decimal(pt2.x - pt1.x)/(pt2.y - pt1.y)
+    else: return float(pt2.x - pt1.x)/float(pt2.y - pt1.y)
 
 def _Param1RightOfParam2(outRec1, outRec2):
     while outRec1 is not None:
@@ -918,7 +909,7 @@ class Clipper(ClipperBase):
             lb = self._CurrentLocMin.leftBound
             rb = self._CurrentLocMin.rightBound
             self._InsertEdgeIntoAEL(lb)
-            self._InsertScanbeam(lb.yTop)
+            self._InsertScanbeam(lb.Top.y)
             self._InsertEdgeIntoAEL(rb)
             if self._IsEvenOddFillType(lb):
                 lb.windDelta = 1
@@ -930,19 +921,16 @@ class Clipper(ClipperBase):
             rb.windCnt2 = lb.windCnt2
             if rb.dx == horizontal:
                 self._AddEdgeToSEL(rb)
-                self._InsertScanbeam(rb.nextInLML.yTop)
+                self._InsertScanbeam(rb.nextInLML.Top.y)
             else:
-                self._InsertScanbeam(rb.yTop)
+                self._InsertScanbeam(rb.Top.y)
             if self._IsContributing(lb):
-                self._AddLocalMinPoly(lb, rb, Point(lb.xCurr, self._CurrentLocMin.y))
+                self._AddLocalMinPoly(lb, rb, Point(lb.Curr.x, self._CurrentLocMin.y))
             
             if rb.outIdx >= 0 and rb.dx == horizontal and self._HorzJoins is not None:
                 hj = self._HorzJoins
                 while True:
-                    dummy1, dummy2, overlap = _GetOverlapSegment(Point(hj.edge.xBot, hj.edge.yBot),
-                                                 Point(hj.edge.xTop, hj.edge.yTop), 
-                                                 Point(rb.xBot, rb.yBot),
-                                                 Point(rb.xTop, rb.yTop))
+                    dummy1, dummy2, overlap = _GetOverlapSegment(hj.edge.Bot, hj.edge.Top, rb.Bot, rb.Top)
                     if overlap:
                         self._AddJoin(hj.edge, rb, hj.savedIdx)
                     hj = hj.nextHj
@@ -954,7 +942,7 @@ class Clipper(ClipperBase):
                     self._AddJoin(rb, rb.prevInAEL)
                 
                 e = lb.nextInAEL
-                pt = Point(lb.xCurr, lb.yCurr)
+                pt = lb.Curr
                 while e != rb:
                     self._IntersectEdges(rb, e, pt)
                     e = e.nextInAEL
@@ -1030,26 +1018,26 @@ class Clipper(ClipperBase):
     def _IsTopHorz(self, xPos):
         e = self._SortedEdges
         while e is not None:
-            if (xPos >= min(e.xCurr,e.xTop)) and (xPos <= max(e.xCurr,e.xTop)):
+            if (xPos >= min(e.Curr.x,e.Top.x)) and (xPos <= max(e.Curr.x,e.Top.x)):
                 return False
             e = e.nextInSEL
         return True
 
     def _ProcessHorizontal(self, horzEdge):
-        if horzEdge.xCurr < horzEdge.xTop:
-            horzLeft = horzEdge.xCurr
-            horzRight = horzEdge.xTop
+        if horzEdge.Curr.x < horzEdge.Top.x:
+            horzLeft = horzEdge.Curr.x
+            horzRight = horzEdge.Top.x
             direction = Direction.LeftToRight
         else:
-            horzLeft = horzEdge.xTop
-            horzRight = horzEdge.xCurr
+            horzLeft = horzEdge.Top.x
+            horzRight = horzEdge.Curr.x
             direction = Direction.RightToLeft
         eMaxPair = None
         if horzEdge.nextInLML is None:
             eMaxPair = _GetMaximaPair(horzEdge)
         e = _GetnextInAEL(horzEdge, direction)
         while e is not None:
-            if (e.xCurr == horzEdge.xTop) and eMaxPair is None:
+            if (e.Curr.x == horzEdge.Top.x) and eMaxPair is None:
                 if _SlopesEqual2(e, horzEdge.nextInLML): 
                     if horzEdge.outIdx >= 0 and e.outIdx >= 0:
                         self._AddJoin(horzEdge.nextInLML, e, horzEdge.outIdx)
@@ -1057,39 +1045,39 @@ class Clipper(ClipperBase):
                 elif e.dx < horzEdge.nextInLML.dx: break
             eNext = _GetnextInAEL(e, direction)
             if eMaxPair is not None or \
-                ((direction == Direction.LeftToRight) and (e.xCurr < horzRight)) or \
-                ((direction == Direction.RightToLeft) and (e.xCurr > horzLeft)):
+                ((direction == Direction.LeftToRight) and (e.Curr.x < horzRight)) or \
+                ((direction == Direction.RightToLeft) and (e.Curr.x > horzLeft)):
                 if e == eMaxPair:
                     if direction == Direction.LeftToRight:
-                        self._IntersectEdges(horzEdge, e, Point(e.xCurr, horzEdge.yCurr))
+                        self._IntersectEdges(horzEdge, e, Point(e.Curr.x, horzEdge.Curr.y))
                     else:
-                        self._IntersectEdges(e, horzEdge, Point(e.xCurr, horzEdge.yCurr))
+                        self._IntersectEdges(e, horzEdge, Point(e.Curr.x, horzEdge.Curr.y))
                     return
-                elif e.dx == horizontal and not _IsMinima(e) and e.xCurr <= e.xTop:
+                elif e.dx == horizontal and not _IsMinima(e) and e.Curr.x <= e.Top.x:
                     if direction == Direction.LeftToRight:
-                        self._IntersectEdges(horzEdge, e, Point(e.xCurr, horzEdge.yCurr),
-                            _ProtectRight(not self._IsTopHorz(e.xCurr)))
+                        self._IntersectEdges(horzEdge, e, Point(e.Curr.x, horzEdge.Curr.y),
+                            _ProtectRight(not self._IsTopHorz(e.Curr.x)))
                     else:
-                        self._IntersectEdges(e, horzEdge, Point(e.xCurr, horzEdge.yCurr),
-                            _ProtectLeft(not self._IsTopHorz(e.xCurr)))
+                        self._IntersectEdges(e, horzEdge, Point(e.Curr.x, horzEdge.Curr.y),
+                            _ProtectLeft(not self._IsTopHorz(e.Curr.x)))
                 elif (direction == Direction.LeftToRight):
-                    self._IntersectEdges(horzEdge, e, Point(e.xCurr, horzEdge.yCurr),
-                        _ProtectRight(not self._IsTopHorz(e.xCurr)))
+                    self._IntersectEdges(horzEdge, e, Point(e.Curr.x, horzEdge.Curr.y),
+                        _ProtectRight(not self._IsTopHorz(e.Curr.x)))
                 else:
-                    self._IntersectEdges(e, horzEdge, Point(e.xCurr, horzEdge.yCurr),
-                        _ProtectLeft(not self._IsTopHorz(e.xCurr)))
+                    self._IntersectEdges(e, horzEdge, Point(e.Curr.x, horzEdge.Curr.y),
+                        _ProtectLeft(not self._IsTopHorz(e.Curr.x)))
                 self._SwapPositionsInAEL(horzEdge, e)
-            elif ((direction == Direction.LeftToRight and e.xCurr >= horzRight) or \
-                (direction == Direction.RightToLeft and e.xCurr <= horzLeft)): break
+            elif ((direction == Direction.LeftToRight and e.Curr.x >= horzRight) or \
+                (direction == Direction.RightToLeft and e.Curr.x <= horzLeft)): break
             e = eNext
         if horzEdge.nextInLML is not None:
             if horzEdge.outIdx >= 0:
-                self._AddOutPt(horzEdge, Point(horzEdge.xTop, horzEdge.yTop))
+                self._AddOutPt(horzEdge, horzEdge.Top)
             self._UpdateEdgeIntoAEL(horzEdge)
         else:
             if horzEdge.outIdx >= 0:
                 self._IntersectEdges(horzEdge, eMaxPair, \
-                    Point(horzEdge.xTop, horzEdge.yCurr), Protects.Both)
+                    Point(horzEdge.Top.x, horzEdge.Curr.y), Protects.Both)
             if eMaxPair.outIdx >= 0: raise Exception("Clipper: Horizontal Error")
             self._DeleteFromAEL(eMaxPair)
             self._DeleteFromAEL(horzEdge)
@@ -1104,12 +1092,12 @@ class Clipper(ClipperBase):
         jr = JoinRec()
         if e1OutIdx >= 0: jr.poly1Idx = e1OutIdx
         else: jr.poly1Idx = e1.outIdx
-        jr.pt1a = Point(e1.xCurr, e1.yCurr)
-        jr.pt1b = Point(e1.xTop, e1.yTop)
+        jr.pt1a = e1.Curr
+        jr.pt1b = e1.Top
         if e2OutIdx >= 0: jr.poly2Idx = e2OutIdx 
         else: jr.poly2Idx = e2.outIdx
-        jr.pt2a = Point(e2.xCurr, e2.yCurr)
-        jr.pt2b = Point(e2.xTop, e2.yTop)
+        jr.pt2a = e2.Curr
+        jr.pt2b = e2.Top
         if self._JoinList is None: 
             self._JoinList = []
         self._JoinList.append(jr)
@@ -1168,18 +1156,18 @@ class Clipper(ClipperBase):
         while e is not None:
             e.prevInSEL = e.prevInAEL
             e.nextInSEL = e.nextInAEL
-            e.xCurr = _TopX(e, topY)
+            e.Curr = Point(_TopX(e, topY), e.Curr.y)
             e = e.nextInAEL
         while True:
             isModified = False
             e = self._SortedEdges
             while e.nextInSEL is not None:
                 eNext = e.nextInSEL
-                if e.xCurr <= eNext.xCurr:
+                if e.Curr.x <= eNext.Curr.x:
                     e = eNext
                     continue
                 pt, intersected = _IntersectPoint(e, eNext)
-                if not intersected and e.xCurr > eNext.xCurr +1: 
+                if not intersected and e.Curr.x > eNext.Curr.x +1: 
                     raise Exception("Intersect Error")  
                 if pt.y > botY:
                     pt = Point(_TopX(e, botY), botY)
@@ -1232,10 +1220,10 @@ class Clipper(ClipperBase):
     def _IntersectEdges(self, e1, e2, pt, protects = Protects.Neither):
         e1stops = protects & Protects.Left == 0 and \
                 e1.nextInLML is None and \
-                e1.xTop == pt.x and e1.yTop == pt.y
+                e1.Top.x == pt.x and e1.Top.y == pt.y
         e2stops = protects & Protects.Right == 0 and \
                 e2.nextInLML is None and \
-                e2.xTop == pt.x and e2.yTop == pt.y
+                e2.Top.x == pt.x and e2.Top.y == pt.y
         e1Contributing = e1.outIdx >= 0
         e2contributing = e2.outIdx >= 0
 
@@ -1338,7 +1326,7 @@ class Clipper(ClipperBase):
 
     def _DoMaxima(self, e, topY):
         eMaxPair = _GetMaximaPair(e)
-        x = e.xTop
+        x = e.Top.x
         eNext = e.nextInAEL
         while eNext != eMaxPair:
             if eNext is None: raise Exception("DoMaxima error")
@@ -1373,7 +1361,7 @@ class Clipper(ClipperBase):
         e.prevInAEL = aelPrev
         e.nextInAEL = aelNext
         if e.dx != horizontal:
-            self._InsertScanbeam(e.yTop)
+            self._InsertScanbeam(e.Top.y)
         return e
 
     def _AddLocalMinPoly(self, e1, e2, pt):
@@ -1541,15 +1529,12 @@ class Clipper(ClipperBase):
                 intermediateVert = _IsIntermediate(e, topY)
                 if intermediateVert and e.nextInLML.dx == horizontal:
                     if e.outIdx >= 0:
-                        self._AddOutPt(e, Point(e.xTop, e.yTop))
+                        self._AddOutPt(e, e.Top)
                         hj = self._HorzJoins
                         if hj is not None:
                             while True:
                                 _1, _2, overlap = _GetOverlapSegment(
-                                                        Point(hj.edge.xBot, hj.edge.yBot),
-                                                        Point(hj.edge.xTop, hj.edge.yTop),
-                                                        Point(e.nextInLML.XBot, e.nextInLML.yBot),
-                                                        Point(e.nextInLML.xTop, e.nextInLML.yTop))
+                                    hj.edge.Bot, hj.edge.Top, e.nextInLML.Bot, e.nextInLML.Top)
                                 if overlap: self._AddJoin(hj.edge, e.nextInLML, hj.savedIdx, e.outIdx)
                                 hj = hj.nextHj
                             if hj == self._HorzJoins: break
@@ -1558,15 +1543,14 @@ class Clipper(ClipperBase):
                     e = self._UpdateEdgeIntoAEL(e)
                     self._AddEdgeToSEL(e)
                 else:
-                    e.xCurr = _TopX(e, topY)
-                    e.yCurr = topY
+                    e.Curr = Point(_TopX(e, topY), topY)
                     if (self.ForceSimple and e.prevInAEL is not None and
-                      e.prevInAEL.xCurr == e.xCurr and
+                      e.prevInAEL.Curr.x == e.Curr.x and
                       e.outIdx >= 0 and e.prevInAEL.outIdx >= 0):
                         if (intermediateVert):
-                            self._AddOutPt(e.prevInAEL, Point(e.xCurr, topY));
+                            self._AddOutPt(e.prevInAEL, Point(e.Curr.x, topY));
                         else:
-                            self._AddOutPt(e, Point(e.xCurr, topY))
+                            self._AddOutPt(e, Point(e.Curr.x, topY))
                 e = e.nextInAEL
 
         self._ProcessHorizontals()
@@ -1575,22 +1559,22 @@ class Clipper(ClipperBase):
         while e is not None:
             if _IsIntermediate(e, topY):
                 if (e.outIdx >= 0) :
-                    self._AddOutPt(e, Point(e.xTop, e.yTop))
+                    self._AddOutPt(e, e.Top)
                 e = self._UpdateEdgeIntoAEL(e)
                 
                 ePrev = e.prevInAEL
                 eNext  = e.nextInAEL
-                if ePrev is not None and ePrev.xCurr == e.xBot and \
-                    (ePrev.yCurr == e.yBot) and (e.outIdx >= 0) and \
-                    (ePrev.outIdx >= 0) and (ePrev.yCurr > ePrev.yTop) and \
+                if ePrev is not None and ePrev.Curr.x == e.Bot.x and \
+                    (ePrev.Curr.y == e.Bot.y) and (e.outIdx >= 0) and \
+                    (ePrev.outIdx >= 0) and (ePrev.Curr.y > ePrev.Top.y) and \
                     _SlopesEqual2(e, ePrev):
-                        self._AddOutPt(ePrev, Point(e.xBot, e.yBot))
+                        self._AddOutPt(ePrev, e.Bot)
                         self._AddJoin(e, ePrev)
-                elif eNext is not None and (eNext.xCurr == e.xBot) and \
-                    (eNext.yCurr == e.yBot) and (e.outIdx >= 0) and \
-                    (eNext.outIdx >= 0) and (eNext.yCurr > eNext.yTop) and \
+                elif eNext is not None and (eNext.Curr.x == e.Bot.x) and \
+                    (eNext.Curr.y == e.Bot.y) and (e.outIdx >= 0) and \
+                    (eNext.outIdx >= 0) and (eNext.Curr.y > eNext.Top.y) and \
                     _SlopesEqual2(e, eNext):
-                        self._AddOutPt(eNext, Point(e.xBot, e.yBot))
+                        self._AddOutPt(eNext, e.Bot)
                         self._AddJoin(e, eNext)
                 
             e = e.nextInAEL
@@ -1799,7 +1783,7 @@ class Clipper(ClipperBase):
         return
                 
     def _ExecuteInternal(self):
-        try: 
+#         try: 
             try:
                 self._Reset()
                 if self._Scanbeam is None: return True
@@ -1828,8 +1812,8 @@ class Clipper(ClipperBase):
             finally:
                 self._JoinList = None
                 self._HorzJoins = None
-        except:
-            return False
+#         except:
+#             return False
 
     def Execute(
             self,
@@ -1881,7 +1865,7 @@ class Clipper(ClipperBase):
             poly = []
             op = outRec.pts
             for _ in range(cnt):
-                poly.append(Point(op.pt.x, op.pt.y))
+                poly.append(op.pt) 
                 op = op.prevOp
             polygons.append(poly)
         return
@@ -1915,38 +1899,15 @@ class Clipper(ClipperBase):
 # OffsetPolygons (+ ancilliary functions)
 #===============================================================================
 
-FloatPoint = namedtuple('FloatPoint', 'x y')
-Rect = namedtuple('FloatPoint', 'left top right bottom')
-
 def _GetUnitNormal(pt1, pt2):
     if pt2.x == pt1.x and pt2.y == pt1.y:
         return FloatPoint(0.0, 0.0)
-    dx = pt2.x - pt1.x
-    dy = pt2.y - pt1.y
+    dx = float(pt2.x - pt1.x)
+    dy = float(pt2.y - pt1.y)
     f = 1.0 / math.hypot(dx, dy)
     dx = float(dx) * f
     dy = float(dy) * f
     return FloatPoint(dy, -dx)
-
-def _BuildArc(pt, a1, a2, r, limit):
-    arcFrac = abs(a2 - a1) / (2 * math.pi);
-    steps = int(arcFrac * math.pi / math.acos(1 - limit / abs(r)))
-    if steps < 2: steps = 2
-    elif steps > 222.0 * arcFrac:
-        steps = int(222.0 * arcFrac)
-    
-    result = []
-    y = math.sin(a1)
-    x = math.cos(a1)
-    s = math.sin((a2-a1)/steps)
-    c = math.cos((a2-a1)/steps)
-    for _ in range(steps+1):
-        result.append(FloatPoint(pt.x + round(x * r), pt.y + round(y * r)))
-        x2 = x
-        x = x * c - s * y    # cross product & dot product here ...
-        y = x2 * s + y * c   # avoids repeat calls to the much slower sin() & cos()
-        
-    return result
 
 def _GetBounds(pts):
     left = None
@@ -1989,74 +1950,78 @@ def _StripDupPts(poly):
 def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0): 
     
     def _DoSquare(pt):
-        pt1 = Point(round(pt.x + Normals[k].x * delta), round(pt.y + Normals[k].y * delta))
-        pt2 = Point(round(pt.x + Normals[j].x * delta), round(pt.y + Normals[j].y * delta))
-        if (Normals[k].x*Normals[j].y-Normals[j].x*Normals[k].y) * delta >= 0:
-            a1 = math.atan2(Normals[k].y, Normals[k].x)
-            a2 = math.atan2(-Normals[j].y, -Normals[j].x)
-            a1 = abs(a2 - a1);
-            if a1 > math.pi: a1 = math.pi * 2 - a1
-            dx = math.tan((math.pi - a1)/4) * abs(delta)
-            
-            pt1 = Point(round(pt1.x -Normals[k].y * dx), round(pt1.y + Normals[k].x * dx))
-            result.append(pt1)
-            pt2 = Point(round(pt2.x + Normals[j].y * dx), round(pt2.y - Normals[j].x * dx))
-            result.append(pt2)
-        else:
-            result.append(pt1)
-            result.append(pt)
-            result.append(pt2)
+        dx = math.tan(math.atan2(sinA, 
+            Normals[k].x * Normals[j].x + Normals[k].y * Normals[j].y)/4)
+        result.append(Point(
+            round(pt.x + delta * (Normals[k].x - Normals[k].y *dx)),
+            round(pt.y + delta * (Normals[k].y + Normals[k].x *dx))))
+        result.append(Point(
+            round(pt.x + delta * (Normals[j].x + Normals[j].y *dx)),
+            round(pt.y + delta * (Normals[j].y - Normals[j].x *dx))))
+        return
 
     def _DoMiter(pt, r):
-        if ((Normals[k].x* Normals[j].y - Normals[j].x * Normals[k].y) * delta >= 0):
-            q = delta / r;
-            result.append(Point(round(pt.x + (Normals[k].x + Normals[j].x) *q),
-              round(pt.y + (Normals[k].y + Normals[j].y) *q)))
-        else:
-            pt1 = Point(round(pt.x + Normals[k].x * delta), \
-                        round(pt.y + Normals[k].y * delta))
-            pt2 = Point(round(pt.x + Normals[j].x * delta), \
-                        round(pt.y + Normals[j].y * delta))
-            result.append(pt1)
-            result.append(pt)
-            result.append(pt2)
+        q = delta / r
+        result.append(Point(
+            round(pt.x + delta * (Normals[k].x + Normals[j].x *q)),
+            round(pt.y + delta * (Normals[k].y + Normals[j].y *q))))
+        return
 
-    def _DoRound(pt, limit):
-        pt1 = Point(round(pt.x + Normals[k].x * delta), \
-                    round(pt.y + Normals[k].y * delta))
-        pt2 = Point(round(pt.x + Normals[j].x * delta), \
-                    round(pt.y + Normals[j].y * delta))
-        result.append(pt1)
-        if (Normals[k].x * Normals[j].y - Normals[j].x * Normals[k].y) *delta >= 0:
-            if (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y) < 0.985:
-                a1 = math.atan2(Normals[k].y, Normals[k].x)
-                a2 = math.atan2(Normals[j].y, Normals[j].x)
-                if (delta > 0) and (a2 < a1): a2 = a2 + math.pi * 2
-                elif (delta < 0) and (a2 > a1): a2 = a2 - math.pi * 2
-                arc = _BuildArc(pt, a1, a2, delta, limit)
-                result.extend(arc)
-        else:
-            result.append(pt)
-        result.append(pt2)
-        
-    def _OffsetPoint(jointype, limit):
-        if jointype == JoinType.Miter:
+
+    def _DoRound(pt):
+        a = math.atan2(sinA, 
+                Normals[k].x * Normals[j].x + Normals[k].y * Normals[j].y)
+        steps = round(roundVal * abs(a));
+        X,Y = Normals[k].x, Normals[k].y
+        for _ in range(steps):
+            result.append(Point(
+                round(pt.x + X * delta), round(pt.y + Y * delta)))
+            X2 = X
+            X = X * mcos - msin * Y
+            Y = X2 * msin + Y * mcos
+        result.append(Point(round(pt.x + Normals[j].x * delta), 
+            round(pt.y + Normals[j].y * delta)));
+        return
+
+    def GetSin():
+        result = (Normals[k].x * Normals[j].y - Normals[j].x * Normals[k].y)
+        if (result > 1.0): result = 1.0 
+        elif (result < -1.0): result = -1.0
+        return result
+            
+    def _OffsetPoint(jointype):
+        if (sinA * delta < 0):
+            result.append(Point(round(pts[j].x + Normals[k].x * delta),
+              round(pts[j].y + Normals[k].y * delta)))
+            result.append(pts[j])
+            result.append(Point(round(pts[j].x + Normals[j].x * delta),
+              round(pts[j].y + Normals[j].y * delta)))
+        elif jointype == JoinType.Miter:
             r = 1.0 + (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y)
-            if (r >= rmin): _DoMiter(pts[j], r) 
+            if (r >= miterVal): _DoMiter(pts[j], r) 
             else: _DoSquare(pts[j])
         elif jointype == JoinType.Square: _DoSquare(pts[j])
-        else: _DoRound(pts[j], limit)
+        else: _DoRound(pts[j])
         return j
 
     if delta == 0: return polys
-    rmin = 0.5    
-    if (jointype == JoinType.Miter):  
-        if (limit > 2): 
-            rmin = 2.0 / (limit * limit)
-        limit = 0.25; #just in case endtype == EndType.Round
-    else:
-        if (limit <= 0): limit = 0.25
-        elif (limit > abs(delta)): limit = abs(delta)
+    if not isPolygon and delta < 0: delta = -delta
+
+    if jointype == JoinType.Miter:  
+        # miterVal: see offset_triginometry.svg in the documentation folder ...
+        if limit > 2: miterVal = 2 / (limit * limit)
+        else: miterVal = 0.5
+        if endtype == EndType.Round: limit = 0.25
+        
+    if jointype == JoinType.Round or endtype == EndType.Round:
+        if limit <= 0: limit = 0.25
+        elif limit > abs(delta)*0.25: limit = abs(delta)*0.25
+        # roundVal: see offset_triginometry2.svg in the documentation folder ...
+        roundVal = math.pi / math.acos(1 - limit / abs(delta))
+        msin = math.sin(2 * math.pi / roundVal)
+        mcos = math.cos(2 * math.pi / roundVal)
+        roundVal /= math.pi * 2
+        if delta < 0: msin = -msin
             
     res = []
     ppts = polys[:]    
@@ -2066,8 +2031,24 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
         cnt = len(pts)
         
         if (cnt == 0 or cnt < 3 and delta <= 0): continue
-        elif (cnt == 1):
-            res.append(_BuildArc(pts[0], 0, 2 * math.pi, delta, limit))
+        
+        if (cnt == 1):
+            if jointype == JoinType.Round:
+                X,Y = 1.0, 0.0
+                for _ in range(round(roundVal * 2 * math.pi)):
+                    result.append(Point(round(pts[0].x + X * delta),
+                      round(pts[0].y + Y * delta)))
+                    X2 = X
+                    X = X * mcos - msin * Y
+                    Y = X2 * msin + Y * mcos
+            else:
+                X,Y = -1.0, -1.0
+                for _ in range(4):
+                    result.append(Point(round(pts[0].x + X * delta),
+                      round(pts[0].y + Y * delta)))
+                    if X < 0: X = 1
+                    elif Y < 0: Y = 1
+                    else: X = -1
             continue
         
         forceClose = _PointsEqual(pts[0], pts[cnt - 1])
@@ -2084,7 +2065,8 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
         if (isPolygon or forceClose):
             k = cnt - 1
             for j in range(cnt):
-                k = _OffsetPoint(jointype, limit)
+                sinA = GetSin()
+                k = _OffsetPoint(jointype)
             res.append(result)
                     
             if not isPolygon:
@@ -2092,7 +2074,8 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
                 delta = -delta
                 k = cnt - 1
                 for j in range(cnt):
-                    k = _OffsetPoint(jointype, limit)
+                    sinA = GetSin()
+                    k = _OffsetPoint(jointype)
                 delta = -delta
                 res.append(result[::-1])        
     
@@ -2100,7 +2083,8 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
             # offset the polyline going forward ...
             k = 0;
             for j in range(1, cnt-1):
-                k = _OffsetPoint(jointype, limit)
+                sinA = GetSin()
+                k = _OffsetPoint(jointype)
             
             # handle the end (butt, round or square) ...
             if (endtype == EndType.Butt):
@@ -2114,19 +2098,20 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
             else:
                 j = cnt - 1;
                 k = cnt - 2;
-                Normals[j] = DoublePoint(-Normals[j].x, -Normals[j].y)
+                Normals[j] = FloatPoint(-Normals[j].x, -Normals[j].y)
                 if (endtype == EndType.Square): _DoSquare(pts[j])
-                else: _DoRound(pts[j], limit)
+                else: _DoRound(pts[j])
             
             # re-build Normals ...
             for j in range(cnt -1, 0, -1):
-                Normals[j] = DoublePoint(-Normals[j -1].x, -Normals[j -1].y)
-            Normals[0] = DoublePoint(-Normals[1].x, -Normals[1].y)
+                Normals[j] = FloatPoint(-Normals[j -1].x, -Normals[j -1].y)
+            Normals[0] = FloatPoint(-Normals[1].x, -Normals[1].y)
             
             # offset the polyline going backward ...
             k = cnt -1;
             for j in range(cnt -2, 0, -1):
-                k = _OffsetPoint(jointype, limit)
+                sinA = GetSin()
+                k = _OffsetPoint(jointype)
             
             # finally handle the start (butt, round or square) ...
             if (endtype == EndType.Butt): 
@@ -2140,7 +2125,7 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
                 j = 0
                 k = 1
                 if (endtype == EndType.Square): _DoSquare(pts[0]) 
-                else: _DoRound(pts[0], limit)
+                else: _DoRound(pts[0])
             res.append(result)        
             
 
@@ -2207,9 +2192,9 @@ def _ClosestPointOnLine(pt, linePt1, linePt2):
     dx = linePt2.x - linePt1.x
     dy = linePt2.y - linePt1.y
     if (dx == 0 and dy == 0): 
-        return DoublePoint(linePt1.x, linePt1.y)
+        return FloatPoint(linePt1.x, linePt1.y)
     q = ((pt.x-linePt1.x)*dx + (pt.Y-linePt1.Y)*dy) / (dx*dx + dy*dy)
-    return DoublePoint(
+    return FloatPoint(
       (1-q)*linePt1.X + q*linePt2.X,
       (1-q)*linePt1.Y + q*linePt2.Y)
 

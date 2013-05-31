@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.6                                                           *
-* Date      :  23 May 2013                                                     *
+* Version   :  5.1.7                                                           *
+* Date      :  1 June 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -506,8 +506,8 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
 bool SlopesEqual(const TEdge &e1, const TEdge &e2, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
-    return Int128Mul(e1.deltaY, e2.deltaX) == Int128Mul(e1.deltaX, e2.deltaY);
-  else return e1.deltaY * e2.deltaX == e1.deltaX * e2.deltaY;
+    return Int128Mul(e1.delta.X, e2.delta.X) == Int128Mul(e1.delta.X, e2.delta.Y);
+  else return e1.delta.Y * e2.delta.X == e1.delta.X * e2.delta.Y;
 }
 //------------------------------------------------------------------------------
 
@@ -538,11 +538,11 @@ double GetDx(const IntPoint pt1, const IntPoint pt2)
 
 void SetDx(TEdge &e)
 {
-  e.deltaX = (e.xtop - e.xbot);
-  e.deltaY = (e.ytop - e.ybot);
+  e.delta.X = (e.top.X - e.bot.X);
+  e.delta.Y = (e.top.Y - e.bot.Y);
 
-  if (e.deltaY == 0) e.dx = HORIZONTAL;
-  else e.dx = (double)(e.deltaX) / e.deltaY;
+  if (e.delta.Y == 0) e.dx = HORIZONTAL;
+  else e.dx = (double)(e.delta.X) / e.delta.Y;
 }
 //---------------------------------------------------------------------------
 
@@ -570,8 +570,8 @@ inline long64 Round(double val)
 
 long64 TopX(TEdge &edge, const long64 currentY)
 {
-  return ( currentY == edge.ytop ) ?
-    edge.xtop : edge.xbot + Round(edge.dx *(currentY - edge.ybot));
+  return ( currentY == edge.top.Y ) ?
+    edge.top.X : edge.bot.X + Round(edge.dx *(currentY - edge.bot.Y));
 }
 //------------------------------------------------------------------------------
 
@@ -581,36 +581,36 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
   double b1, b2;
   if (SlopesEqual(edge1, edge2, UseFullInt64Range))
   {
-    if (edge2.ybot > edge1.ybot) ip.Y = edge2.ybot;
-    else ip.Y = edge1.ybot;
+    if (edge2.bot.Y > edge1.bot.Y) ip.Y = edge2.bot.Y;
+    else ip.Y = edge1.bot.Y;
     return false;
   }
   else if (NEAR_ZERO(edge1.dx))
   {
-    ip.X = edge1.xbot;
+    ip.X = edge1.bot.X;
     if (NEAR_EQUAL(edge2.dx, HORIZONTAL))
-      ip.Y = edge2.ybot;
+      ip.Y = edge2.bot.Y;
     else
     {
-      b2 = edge2.ybot - (edge2.xbot / edge2.dx);
+      b2 = edge2.bot.Y - (edge2.bot.X / edge2.dx);
       ip.Y = Round(ip.X / edge2.dx + b2);
     }
   }
   else if (NEAR_ZERO(edge2.dx))
   {
-    ip.X = edge2.xbot;
+    ip.X = edge2.bot.X;
     if (NEAR_EQUAL(edge1.dx, HORIZONTAL))
-      ip.Y = edge1.ybot;
+      ip.Y = edge1.bot.Y;
     else
     {
-      b1 = edge1.ybot - (edge1.xbot / edge1.dx);
+      b1 = edge1.bot.Y - (edge1.bot.X / edge1.dx);
       ip.Y = Round(ip.X / edge1.dx + b1);
     }
   } 
   else 
   {
-    b1 = edge1.xbot - edge1.ybot * edge1.dx;
-    b2 = edge2.xbot - edge2.ybot * edge2.dx;
+    b1 = edge1.bot.X - edge1.bot.Y * edge1.dx;
+    b2 = edge2.bot.X - edge2.bot.Y * edge2.dx;
     double q = (b2-b1) / (edge1.dx - edge2.dx);
     ip.Y = Round(q);
     if (std::fabs(edge1.dx) < std::fabs(edge2.dx))
@@ -619,19 +619,19 @@ bool IntersectPoint(TEdge &edge1, TEdge &edge2,
       ip.X = Round(edge2.dx * q + b2);
   }
 
-  if (ip.Y < edge1.ytop || ip.Y < edge2.ytop) 
+  if (ip.Y < edge1.top.Y || ip.Y < edge2.top.Y) 
   {
-    if (edge1.ytop > edge2.ytop)
+    if (edge1.top.Y > edge2.top.Y)
     {
-      ip.X = edge1.xtop;
-      ip.Y = edge1.ytop;
-      return TopX(edge2, edge1.ytop) < edge1.xtop;
+      ip.X = edge1.top.X;
+      ip.Y = edge1.top.Y;
+      return TopX(edge2, edge1.top.Y) < edge1.top.X;
     } 
     else
     {
-      ip.X = edge2.xtop;
-      ip.Y = edge2.ytop;
-      return TopX(edge1, edge2.ytop) > edge2.xtop;
+      ip.X = edge2.top.X;
+      ip.Y = edge2.top.Y;
+      return TopX(edge1, edge2.top.Y) > edge2.top.X;
     }
   } 
   else 
@@ -672,21 +672,21 @@ void InitEdge(TEdge *e, TEdge *eNext,
   std::memset(e, 0, sizeof(TEdge));
   e->next = eNext;
   e->prev = ePrev;
-  e->xcurr = pt.X;
-  e->ycurr = pt.Y;
-  if (e->ycurr >= e->next->ycurr)
+  e->curr.X = pt.X;
+  e->curr.Y = pt.Y;
+  if (e->curr.Y >= e->next->curr.Y)
   {
-    e->xbot = e->xcurr;
-    e->ybot = e->ycurr;
-    e->xtop = e->next->xcurr;
-    e->ytop = e->next->ycurr;
+    e->bot.X = e->curr.X;
+    e->bot.Y = e->curr.Y;
+    e->top.X = e->next->curr.X;
+    e->top.Y = e->next->curr.Y;
     e->windDelta = 1;
   } else
   {
-    e->xtop = e->xcurr;
-    e->ytop = e->ycurr;
-    e->xbot = e->next->xcurr;
-    e->ybot = e->next->ycurr;
+    e->top.X = e->curr.X;
+    e->top.Y = e->curr.Y;
+    e->bot.X = e->next->curr.X;
+    e->bot.Y = e->next->curr.Y;
     e->windDelta = -1;
   }
   SetDx(*e);
@@ -700,9 +700,9 @@ inline void SwapX(TEdge &e)
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-  e.xcurr = e.xtop;
-  e.xtop = e.xbot;
-  e.xbot = e.xcurr;
+  e.curr.X = e.top.X;
+  e.top.X = e.bot.X;
+  e.bot.X = e.curr.X;
 }
 //------------------------------------------------------------------------------
 
@@ -928,22 +928,22 @@ bool ClipperBase::AddPolygon(const Polygon &pg, PolyType polyType)
   m_edges.push_back(edges);
 
   //convert vertices to a double-linked-list of edges and initialize ...
-  edges[0].xcurr = p[0].X;
-  edges[0].ycurr = p[0].Y;
+  edges[0].curr.X = p[0].X;
+  edges[0].curr.Y = p[0].Y;
   InitEdge(&edges[len-1], &edges[0], &edges[len-2], p[len-1], polyType);
   for (int i = len-2; i > 0; --i)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], p[i], polyType);
   InitEdge(&edges[0], &edges[1], &edges[len-1], p[0], polyType);
 
-  //reset xcurr & ycurr and find 'eHighest' (given the Y axis coordinates
-  //increase downward so the 'highest' edge will have the smallest ytop) ...
+  //reset curr.X & curr.Y and find 'eHighest' (given the Y axis coordinates
+  //increase downward so the 'highest' edge will have the smallest top.Y) ...
   TEdge *e = &edges[0];
   TEdge *eHighest = e;
   do
   {
-    e->xcurr = e->xbot;
-    e->ycurr = e->ybot;
-    if (e->ytop < eHighest->ytop) eHighest = e;
+    e->curr.X = e->bot.X;
+    e->curr.Y = e->bot.Y;
+    if (e->top.Y < eHighest->top.Y) eHighest = e;
     e = e->next;
   }
   while ( e != &edges[0]);
@@ -997,11 +997,11 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
       //nb: proceed through horizontals when approaching from their right,
       //    but break on horizontal minima if approaching from their left.
       //    This ensures 'local minima' are always on the left of horizontals.
-      if (e->next->ytop < e->ytop && e->next->xbot > e->prev->xbot) break;
-      if (e->xtop != e->prev->xbot) SwapX(*e);
+      if (e->next->top.Y < e->top.Y && e->next->bot.X > e->prev->bot.X) break;
+      if (e->top.X != e->prev->bot.X) SwapX(*e);
       e->nextInLML = e->prev;
     }
-    else if (e->ycurr == e->prev->ycurr) break;
+    else if (e->curr.Y == e->prev->curr.Y) break;
     else e->nextInLML = e->prev;
     e = e->next;
   }
@@ -1009,11 +1009,11 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
   //e and e.prev are now at a local minima ...
   LocalMinima* newLm = new LocalMinima;
   newLm->next = 0;
-  newLm->Y = e->prev->ybot;
+  newLm->Y = e->prev->bot.Y;
 
   if ( NEAR_EQUAL(e->dx, HORIZONTAL) ) //horizontal edges never start a left bound
   {
-    if (e->xbot != e->prev->xbot) SwapX(*e);
+    if (e->bot.X != e->prev->bot.X) SwapX(*e);
     newLm->leftBound = e->prev;
     newLm->rightBound = e;
   } else if (e->dx < e->prev->dx)
@@ -1031,10 +1031,10 @@ TEdge* ClipperBase::AddBoundsToLML(TEdge *e)
 
   for (;;)
   {
-    if ( e->next->ytop == e->ytop && !NEAR_EQUAL(e->next->dx, HORIZONTAL) ) break;
+    if ( e->next->top.Y == e->top.Y && !NEAR_EQUAL(e->next->dx, HORIZONTAL) ) break;
     e->nextInLML = e->next;
     e = e->next;
-    if ( NEAR_EQUAL(e->dx, HORIZONTAL) && e->xbot != e->prev->xtop) SwapX(*e);
+    if ( NEAR_EQUAL(e->dx, HORIZONTAL) && e->bot.X != e->prev->top.X) SwapX(*e);
   }
   return e->next;
 }
@@ -1070,8 +1070,8 @@ void ClipperBase::Reset()
     TEdge* e = lm->leftBound;
     while( e )
     {
-      e->xcurr = e->xbot;
-      e->ycurr = e->ybot;
+      e->curr.X = e->bot.X;
+      e->curr.Y = e->bot.Y;
       e->side = esLeft;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -1079,8 +1079,8 @@ void ClipperBase::Reset()
     e = lm->rightBound;
     while( e )
     {
-      e->xcurr = e->xbot;
-      e->ycurr = e->ybot;
+      e->curr.X = e->bot.X;
+      e->curr.Y = e->bot.Y;
       e->side = esRight;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -1118,28 +1118,28 @@ IntRect ClipperBase::GetBounds()
     result.left = result.top = result.right = result.bottom = 0;
     return result;
   }
-  result.left = lm->leftBound->xbot;
-  result.top = lm->leftBound->ybot;
-  result.right = lm->leftBound->xbot;
-  result.bottom = lm->leftBound->ybot;
+  result.left = lm->leftBound->bot.X;
+  result.top = lm->leftBound->bot.Y;
+  result.right = lm->leftBound->bot.X;
+  result.bottom = lm->leftBound->bot.Y;
   while (lm)
   {
-    if (lm->leftBound->ybot > result.bottom)
-      result.bottom = lm->leftBound->ybot;
+    if (lm->leftBound->bot.Y > result.bottom)
+      result.bottom = lm->leftBound->bot.Y;
     TEdge* e = lm->leftBound;
     for (;;) {
       TEdge* bottomE = e;
       while (e->nextInLML)
       {
-        if (e->xbot < result.left) result.left = e->xbot;
-        if (e->xbot > result.right) result.right = e->xbot;
+        if (e->bot.X < result.left) result.left = e->bot.X;
+        if (e->bot.X > result.right) result.right = e->bot.X;
         e = e->nextInLML;
       }
-      if (e->xbot < result.left) result.left = e->xbot;
-      if (e->xbot > result.right) result.right = e->xbot;
-      if (e->xtop < result.left) result.left = e->xtop;
-      if (e->xtop > result.right) result.right = e->xtop;
-      if (e->ytop < result.top) result.top = e->ytop;
+      if (e->bot.X < result.left) result.left = e->bot.X;
+      if (e->bot.X > result.right) result.right = e->bot.X;
+      if (e->top.X < result.left) result.left = e->top.X;
+      if (e->top.X > result.right) result.right = e->top.X;
+      if (e->top.Y < result.top) result.top = e->top.Y;
 
       if (bottomE == lm->leftBound) e = lm->rightBound;
       else break;
@@ -1600,13 +1600,13 @@ void Clipper::AddJoin(TEdge *e1, TEdge *e2, int e1OutIdx, int e2OutIdx)
   if (e1OutIdx >= 0)
     jr->poly1Idx = e1OutIdx; else
     jr->poly1Idx = e1->outIdx;
-  jr->pt1a = IntPoint(e1->xcurr, e1->ycurr);
-  jr->pt1b = IntPoint(e1->xtop, e1->ytop);
+  jr->pt1a = e1->curr;
+  jr->pt1b = e1->top;
   if (e2OutIdx >= 0)
     jr->poly2Idx = e2OutIdx; else
     jr->poly2Idx = e2->outIdx;
-  jr->pt2a = IntPoint(e2->xcurr, e2->ycurr);
-  jr->pt2b = IntPoint(e2->xtop, e2->ytop);
+  jr->pt2a = e2->curr;
+  jr->pt2b = e2->top;
   m_Joins.push_back(jr);
 }
 //------------------------------------------------------------------------------
@@ -1644,7 +1644,7 @@ void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
     TEdge* rb = m_CurrentLM->rightBound;
 
     InsertEdgeIntoAEL( lb );
-    InsertScanbeam( lb->ytop );
+    InsertScanbeam( lb->top.Y );
     InsertEdgeIntoAEL( rb );
 
     if (IsEvenOddFillType(*lb))
@@ -1664,13 +1664,13 @@ void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
     {
       //nb: only rightbounds can have a horizontal bottom edge
       AddEdgeToSEL( rb );
-      InsertScanbeam( rb->nextInLML->ytop );
+      InsertScanbeam( rb->nextInLML->top.Y );
     }
     else
-      InsertScanbeam( rb->ytop );
+      InsertScanbeam( rb->top.Y );
 
     if( IsContributing(*lb) )
-      AddLocalMinPoly( lb, rb, IntPoint(lb->xcurr, m_CurrentLM->Y) );
+      AddLocalMinPoly( lb, rb, IntPoint(lb->curr.X, m_CurrentLM->Y) );
 
     //if any output polygons share an edge, they'll need joining later ...
     if (rb->outIdx >= 0 && NEAR_EQUAL(rb->dx, HORIZONTAL))
@@ -1680,10 +1680,7 @@ void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
         IntPoint pt, pt2; //returned by GetOverlapSegment() but unused here.
         HorzJoinRec* hj = m_HorizJoins[i];
         //if horizontals rb and hj.edge overlap, flag for joining later ...
-        if (GetOverlapSegment(IntPoint(hj->edge->xbot, hj->edge->ybot),
-          IntPoint(hj->edge->xtop, hj->edge->ytop),
-          IntPoint(rb->xbot, rb->ybot),
-          IntPoint(rb->xtop, rb->ytop), pt, pt2))
+        if (GetOverlapSegment(hj->edge->bot, hj->edge->top, rb->bot, rb->top, pt, pt2))
             AddJoin(hj->edge, rb, hj->savedIdx);
       }
     }
@@ -1695,7 +1692,7 @@ void Clipper::InsertLocalMinimaIntoAEL(const long64 botY)
           AddJoin(rb, rb->prevInAEL);
 
       TEdge* e = lb->nextInAEL;
-      IntPoint pt = IntPoint(lb->xcurr, lb->ycurr);
+      IntPoint pt = lb->curr;
       while( e != rb )
       {
         if(!e) throw clipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
@@ -1742,9 +1739,9 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
   //e2 in AEL except when e1 is being inserted at the intersection point ...
   bool e1stops = !(ipLeft & protects) &&  !e1->nextInLML &&
-    e1->xtop == pt.X && e1->ytop == pt.Y;
+    e1->top.X == pt.X && e1->top.Y == pt.Y;
   bool e2stops = !(ipRight & protects) &&  !e2->nextInLML &&
-    e2->xtop == pt.X && e2->ytop == pt.Y;
+    e2->top.X == pt.X && e2->top.Y == pt.Y;
   bool e1Contributing = ( e1->outIdx >= 0 );
   bool e2contributing = ( e2->outIdx >= 0 );
 
@@ -2113,8 +2110,8 @@ bool Clipper::IsTopHorz(const long64 XPos)
   TEdge* e = m_SortedEdges;
   while( e )
   {
-    if(  ( XPos >= std::min(e->xcurr, e->xtop) ) &&
-      ( XPos <= std::max(e->xcurr, e->xtop) ) ) return false;
+    if(  ( XPos >= std::min(e->curr.X, e->top.X) ) &&
+      ( XPos <= std::max(e->curr.X, e->top.X) ) ) return false;
     e = e->nextInSEL;
   }
   return true;
@@ -2129,19 +2126,19 @@ inline bool IsMinima(TEdge *e)
 
 inline bool IsMaxima(TEdge *e, const long64 Y)
 {
-  return e && e->ytop == Y && !e->nextInLML;
+  return e && e->top.Y == Y && !e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
 inline bool IsIntermediate(TEdge *e, const long64 Y)
 {
-  return e->ytop == Y && e->nextInLML;
+  return e->top.Y == Y && e->nextInLML;
 }
 //------------------------------------------------------------------------------
 
 TEdge *GetMaximaPair(TEdge *e)
 {
-  if( !IsMaxima(e->next, e->ytop) || e->next->xtop != e->xtop )
+  if( !IsMaxima(e->next, e->top.Y) || e->next->top.X != e->top.X )
     return e->prev; else
     return e->next;
 }
@@ -2247,15 +2244,15 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   Direction dir;
   long64 horzLeft, horzRight;
 
-  if( horzEdge->xcurr < horzEdge->xtop )
+  if( horzEdge->curr.X < horzEdge->top.X )
   {
-    horzLeft = horzEdge->xcurr;
-    horzRight = horzEdge->xtop;
+    horzLeft = horzEdge->curr.X;
+    horzRight = horzEdge->top.X;
     dir = dLeftToRight;
   } else
   {
-    horzLeft = horzEdge->xtop;
-    horzRight = horzEdge->xcurr;
+    horzLeft = horzEdge->top.X;
+    horzRight = horzEdge->curr.X;
     dir = dRightToLeft;
   }
 
@@ -2266,7 +2263,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   TEdge* e = GetNextInAEL( horzEdge , dir );
   while( e )
   {
-    if ( e->xcurr == horzEdge->xtop && !eMaxPair )
+    if ( e->curr.X == horzEdge->top.X && !eMaxPair )
     {
       if (SlopesEqual(*e, *horzEdge->nextInLML, m_UseFullRange))
       {
@@ -2284,61 +2281,61 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     TEdge* eNext = GetNextInAEL( e, dir );
 
     if (eMaxPair ||
-      ((dir == dLeftToRight) && (e->xcurr < horzRight)) ||
-      ((dir == dRightToLeft) && (e->xcurr > horzLeft)))
+      ((dir == dLeftToRight) && (e->curr.X < horzRight)) ||
+      ((dir == dRightToLeft) && (e->curr.X > horzLeft)))
     {
       //so far we're still in range of the horizontal edge
       if( e == eMaxPair )
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if (dir == dLeftToRight)
-          IntersectEdges(horzEdge, e, IntPoint(e->xcurr, horzEdge->ycurr), ipNone);
+          IntersectEdges(horzEdge, e, IntPoint(e->curr.X, horzEdge->curr.Y), ipNone);
         else
-          IntersectEdges(e, horzEdge, IntPoint(e->xcurr, horzEdge->ycurr), ipNone);
+          IntersectEdges(e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y), ipNone);
         if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
         return;
       }
-      else if( NEAR_EQUAL(e->dx, HORIZONTAL) &&  !IsMinima(e) && !(e->xcurr > e->xtop) )
+      else if( NEAR_EQUAL(e->dx, HORIZONTAL) &&  !IsMinima(e) && !(e->curr.X > e->top.X) )
       {
         //An overlapping horizontal edge. Overlapping horizontal edges are
         //processed as if layered with the current horizontal edge (horizEdge)
         //being infinitesimally lower that the next (e). Therfore, we
-        //intersect with e only if e.xcurr is within the bounds of horzEdge ...
+        //intersect with e only if e.curr.X is within the bounds of horzEdge ...
         if( dir == dLeftToRight )
-          IntersectEdges( horzEdge , e, IntPoint(e->xcurr, horzEdge->ycurr),
-            (IsTopHorz( e->xcurr ))? ipLeft : ipBoth );
+          IntersectEdges( horzEdge , e, IntPoint(e->curr.X, horzEdge->curr.Y),
+            (IsTopHorz( e->curr.X ))? ipLeft : ipBoth );
         else
-          IntersectEdges( e, horzEdge, IntPoint(e->xcurr, horzEdge->ycurr),
-            (IsTopHorz( e->xcurr ))? ipRight : ipBoth );
+          IntersectEdges( e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y),
+            (IsTopHorz( e->curr.X ))? ipRight : ipBoth );
       }
       else if( dir == dLeftToRight )
       {
-        IntersectEdges( horzEdge, e, IntPoint(e->xcurr, horzEdge->ycurr),
-          (IsTopHorz( e->xcurr ))? ipLeft : ipBoth );
+        IntersectEdges( horzEdge, e, IntPoint(e->curr.X, horzEdge->curr.Y),
+          (IsTopHorz( e->curr.X ))? ipLeft : ipBoth );
       }
       else
       {
-        IntersectEdges( e, horzEdge, IntPoint(e->xcurr, horzEdge->ycurr),
-          (IsTopHorz( e->xcurr ))? ipRight : ipBoth );
+        IntersectEdges( e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y),
+          (IsTopHorz( e->curr.X ))? ipRight : ipBoth );
       }
       SwapPositionsInAEL( horzEdge, e );
     }
-    else if( (dir == dLeftToRight && e->xcurr >= horzRight) ||
-     (dir == dRightToLeft && e->xcurr <= horzLeft) ) break;
+    else if( (dir == dLeftToRight && e->curr.X >= horzRight) ||
+     (dir == dRightToLeft && e->curr.X <= horzLeft) ) break;
     e = eNext;
   } //end while
 
   if( horzEdge->nextInLML )
   {
     if( horzEdge->outIdx >= 0 )
-      AddOutPt( horzEdge, IntPoint(horzEdge->xtop, horzEdge->ytop));
+      AddOutPt( horzEdge, horzEdge->top);
     UpdateEdgeIntoAEL( horzEdge );
   }
   else
   {
     if ( horzEdge->outIdx >= 0 )
       IntersectEdges( horzEdge, eMaxPair,
-      IntPoint(horzEdge->xtop, horzEdge->ycurr), ipBoth);
+      IntPoint(horzEdge->top.X, horzEdge->curr.Y), ipBoth);
     if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
@@ -2363,7 +2360,7 @@ void Clipper::UpdateEdgeIntoAEL(TEdge *&e)
   e = e->nextInLML;
   e->prevInAEL = AelPrev;
   e->nextInAEL = AelNext;
-  if( !NEAR_EQUAL(e->dx, HORIZONTAL) ) InsertScanbeam( e->ytop );
+  if( !NEAR_EQUAL(e->dx, HORIZONTAL) ) InsertScanbeam( e->top.Y );
 }
 //------------------------------------------------------------------------------
 
@@ -2408,7 +2405,7 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
   {
     e->prevInSEL = e->prevInAEL;
     e->nextInSEL = e->nextInAEL;
-    e->xcurr = TopX( *e, topY );
+    e->curr.X = TopX( *e, topY );
     e = e->nextInAEL;
   }
 
@@ -2422,9 +2419,9 @@ void Clipper::BuildIntersectList(const long64 botY, const long64 topY)
     {
       TEdge *eNext = e->nextInSEL;
       IntPoint pt;
-      if(e->xcurr > eNext->xcurr)
+      if(e->curr.X > eNext->curr.X)
       {
-        if (!IntersectPoint(*e, *eNext, pt, m_UseFullRange) && e->xcurr > eNext->xcurr +1)
+        if (!IntersectPoint(*e, *eNext, pt, m_UseFullRange) && e->curr.X > eNext->curr.X +1)
           throw clipperException("Intersection error");
         if (pt.Y > botY)
         {
@@ -2489,7 +2486,7 @@ void Clipper::ProcessIntersectList()
 void Clipper::DoMaxima(TEdge *e, long64 topY)
 {
   TEdge* eMaxPair = GetMaximaPair(e);
-  long64 X = e->xtop;
+  long64 X = e->top.X;
   TEdge* eNext = e->nextInAEL;
   while( eNext != eMaxPair )
   {
@@ -2529,21 +2526,19 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
     else
     {
       bool intermediateVert = IsIntermediate(e, topY);
-      //2. promote horizontal edges, otherwise update xcurr and ycurr ...
+      //2. promote horizontal edges, otherwise update curr.X and curr.Y ...
       if (intermediateVert && NEAR_EQUAL(e->nextInLML->dx, HORIZONTAL) )
       {
         if (e->outIdx >= 0)
         {
-          AddOutPt(e, IntPoint(e->xtop, e->ytop));
+          AddOutPt(e, e->top);
 
           for (HorzJoinList::size_type i = 0; i < m_HorizJoins.size(); ++i)
           {
             IntPoint pt, pt2;
             HorzJoinRec* hj = m_HorizJoins[i];
-            if (GetOverlapSegment(IntPoint(hj->edge->xbot, hj->edge->ybot),
-              IntPoint(hj->edge->xtop, hj->edge->ytop),
-              IntPoint(e->nextInLML->xbot, e->nextInLML->ybot),
-              IntPoint(e->nextInLML->xtop, e->nextInLML->ytop), pt, pt2))
+            if (GetOverlapSegment(hj->edge->bot, hj->edge->top,
+              e->nextInLML->bot, e->nextInLML->top, pt, pt2))
                 AddJoin(hj->edge, e->nextInLML, hj->savedIdx, e->outIdx);
           }
 
@@ -2553,17 +2548,17 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
         AddEdgeToSEL(e);
       } else
       {
-        e->xcurr = TopX( *e, topY );
-        e->ycurr = topY;
+        e->curr.X = TopX( *e, topY );
+        e->curr.Y = topY;
 
         if (m_ForceSimple && e->prevInAEL &&
-          e->prevInAEL->xcurr == e->xcurr && 
+          e->prevInAEL->curr.X == e->curr.X && 
           e->outIdx >= 0 && e->prevInAEL->outIdx >= 0)
         {
           if (intermediateVert)             
-            AddOutPt(e->prevInAEL, IntPoint(e->xcurr, topY));
+            AddOutPt(e->prevInAEL, IntPoint(e->curr.X, topY));
           else
-            AddOutPt(e, IntPoint(e->xcurr, topY));
+            AddOutPt(e, IntPoint(e->curr.X, topY));
         }
       }
       e = e->nextInAEL;
@@ -2579,26 +2574,26 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const long64 topY)
   {
     if( IsIntermediate( e, topY ) )
     {
-      if( e->outIdx >= 0 ) AddOutPt(e, IntPoint(e->xtop,e->ytop));
+      if( e->outIdx >= 0 ) AddOutPt(e, e->top);
       UpdateEdgeIntoAEL(e);
 
       //if output polygons share an edge, they'll need joining later ...
       TEdge* ePrev = e->prevInAEL;
       TEdge* eNext = e->nextInAEL;
-      if (ePrev && ePrev->xcurr == e->xbot &&
-        ePrev->ycurr == e->ybot && e->outIdx >= 0 &&
-        ePrev->outIdx >= 0 && ePrev->ycurr > ePrev->ytop &&
+      if (ePrev && ePrev->curr.X == e->bot.X &&
+        ePrev->curr.Y == e->bot.Y && e->outIdx >= 0 &&
+        ePrev->outIdx >= 0 && ePrev->curr.Y > ePrev->top.Y &&
         SlopesEqual(*e, *ePrev, m_UseFullRange))
       {
-        AddOutPt(ePrev, IntPoint(e->xbot, e->ybot));
+        AddOutPt(ePrev, e->bot);
         AddJoin(e, ePrev);
       }
-      else if (eNext && eNext->xcurr == e->xbot &&
-        eNext->ycurr == e->ybot && e->outIdx >= 0 &&
-        eNext->outIdx >= 0 && eNext->ycurr > eNext->ytop &&
+      else if (eNext && eNext->curr.X == e->bot.X &&
+        eNext->curr.Y == e->bot.Y && e->outIdx >= 0 &&
+        eNext->outIdx >= 0 && eNext->curr.Y > eNext->top.Y &&
         SlopesEqual(*e, *eNext, m_UseFullRange))
       {
-        AddOutPt(eNext, IntPoint(e->xbot, e->ybot));
+        AddOutPt(eNext, e->bot);
         AddJoin(e, eNext);
       }
     }
@@ -2768,13 +2763,13 @@ bool Clipper::FixupIntersectionOrder()
 
 inline bool E2InsertsBeforeE1(TEdge &e1, TEdge &e2)
 {
-  if (e2.xcurr == e1.xcurr) 
+  if (e2.curr.X == e1.curr.X) 
   {
-    if (e2.ytop > e1.ytop)
-      return e2.xtop < TopX(e1, e2.ytop); 
-      else return e1.xtop > TopX(e2, e1.ytop);
+    if (e2.top.Y > e1.top.Y)
+      return e2.top.X < TopX(e1, e2.top.Y); 
+      else return e1.top.X > TopX(e2, e1.top.Y);
   } 
-  else return e2.xcurr < e1.xcurr;
+  else return e2.curr.X < e1.curr.X;
 }
 //------------------------------------------------------------------------------
 
@@ -3130,32 +3125,6 @@ struct DoublePoint
 };
 //------------------------------------------------------------------------------
 
-Polygon BuildArc(const IntPoint &pt,
-  const double a1, const double a2, const double r, double limit)
-{
-  //see notes in clipper.pas regarding steps
-  double arcFrac = std::fabs(a2 - a1) / (2 * pi);
-  int steps = (int)(arcFrac * pi / std::acos(1 - limit / std::fabs(r)));
-  if (steps < 2) steps = 2;
-  else if (steps > (int)(222.0 * arcFrac)) steps = (int)(222.0 * arcFrac);
-
-  double x = std::cos(a1); 
-  double y = std::sin(a1);
-  double c = std::cos((a2 - a1) / steps);
-  double s = std::sin((a2 - a1) / steps);
-  Polygon result(steps +1);
-  for (int i = 0; i <= steps; ++i)
-  {
-      result[i].X = pt.X + Round(x * r);
-      result[i].Y = pt.Y + Round(y * r);
-      double x2 = x;
-      x = x * c - s * y;  //cross product
-      y = x2 * s + y * c; //dot product
-  }
-  return result;
-}
-//------------------------------------------------------------------------------
-
 DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 {
   if(pt2.X == pt1.X && pt2.Y == pt1.Y) 
@@ -3178,7 +3147,8 @@ private:
   const Polygons& m_p;
   Polygon* m_curr_poly;
   std::vector<DoublePoint> normals;
-  double m_delta, m_rmin, m_r;
+  double m_delta, m_sinA, m_sin, m_cos;
+  double m_miterVal, m_roundVal;
   size_t m_i, m_j, m_k;
   static const int buffLength = 128;
  
@@ -3190,130 +3160,163 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     //precondition: &out_polys != &in_polys
 
     if (NEAR_ZERO(delta)) {out_polys = in_polys; return;}
-    m_rmin = 0.5;
+    if (!isPolygon && delta < 0) delta = -delta;
     m_delta = delta;
-    if (jointype == jtMiter)
-    {
-      if (limit > 2) m_rmin = 2.0 / (limit * limit);
-      limit = 0.25; //just in case endtype == etRound
-    }
-    else
-    {
-      if (limit <= 0) limit = 0.25;
-      else if (limit > std::fabs(delta)) limit = std::fabs(delta);
-    }
- 
-    double deltaSq = delta*delta;
-    out_polys.clear();
-    out_polys.resize(m_p.size());
-    for (m_i = 0; m_i < m_p.size(); m_i++)
-    {
-        size_t len = m_p[m_i].size();
 
-        if (len == 0 || (len < 3 && delta <= 0))
-            continue;
-        else if (len == 1)
+  if (jointype == jtMiter) 
+  {
+    //m_miterVal: see offset_triginometry.svg in the documentation folder ...
+    if (limit > 2) m_miterVal = 2/(limit*limit);
+    else m_miterVal = 0.5;
+    if (endtype == etRound) limit = 0.25;
+  }
+
+  if (jointype == jtRound || endtype == etRound)
+  {
+    if (limit <= 0) limit = 0.25;
+    else if (limit > std::fabs(delta)*0.25) limit = std::fabs(delta)*0.25;
+    //m_roundVal: see offset_triginometry2.svg in the documentation folder ...
+    m_roundVal = pi / acos(1 - limit / std::fabs(delta));
+    m_sin = std::sin(2 * pi / m_roundVal);
+    m_cos = std::cos(2 * pi / m_roundVal);
+    m_roundVal /= pi * 2;
+    if (delta < 0) m_sin = -m_sin;
+  }
+
+  double deltaSq = delta*delta;
+  out_polys.clear();
+  out_polys.resize(m_p.size());
+  for (m_i = 0; m_i < m_p.size(); m_i++)
+  {
+      size_t len = m_p[m_i].size();
+
+      if (len == 0 || (len < 3 && delta <= 0)) continue;
+      
+      if (len == 1)
+      {
+        if (jointype == jtRound)
         {
-            out_polys[m_i] = BuildArc(m_p[m_i][0], 0, 2*pi, delta, limit);
-            continue;
+          double X = 1.0, Y = 0.0;
+          for (long64 j = 1; j <= Round(m_roundVal * 2 * pi); j++)
+          {
+            AddPoint(IntPoint(
+              Round(m_p[m_i][0].X + X * delta),
+              Round(m_p[m_i][0].Y + Y * delta)));
+            double X2 = X;
+            X = X * m_cos - m_sin * Y;
+            Y = X2 * m_sin + Y * m_cos;
+          }
+        } else
+        {
+          double X = -1.0, Y = -1.0;
+          for (int j = 0; j < 4; ++j)
+          {
+            AddPoint(IntPoint( Round(m_p[m_i][0].X + X * delta),
+              Round(m_p[m_i][0].Y + Y * delta)));
+            if (X < 0) X = 1;
+            else if (Y < 0) Y = 1;
+            else X = -1;
+          }
         }
+        continue;
+      }
 
-        bool forceClose = PointsEqual(m_p[m_i][0], m_p[m_i][len -1]);
-        if (forceClose) len--;
+      bool forceClose = PointsEqual(m_p[m_i][0], m_p[m_i][len -1]);
+      if (forceClose) len--;
 
-        //build normals ...
-        normals.clear();
-        normals.resize(len);
-        for (m_j = 0; m_j < len -1; ++m_j)
-            normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
-        if (isPolygon || forceClose) 
-          normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
-        else //is open polyline
-          normals[len-1] = normals[len-2];
+      //build normals ...
+      normals.clear();
+      normals.resize(len);
+      for (m_j = 0; m_j < len -1; ++m_j)
+          normals[m_j] = GetUnitNormal(m_p[m_i][m_j], m_p[m_i][m_j +1]);
+      if (isPolygon || forceClose) 
+        normals[len-1] = GetUnitNormal(m_p[m_i][len-1], m_p[m_i][0]);
+      else //is open polyline
+        normals[len-1] = normals[len-2];
         
-        m_curr_poly = &out_polys[m_i];
-        m_curr_poly->reserve(len);
+      m_curr_poly = &out_polys[m_i];
+      m_curr_poly->reserve(len);
 
-        if (isPolygon || forceClose) 
+      if (isPolygon || forceClose) 
+      {
+        m_k = len -1;
+        for (m_j = 0; m_j < len; ++m_j)
+          OffsetPoint(jointype);
+
+        if (!isPolygon)
         {
+          size_t j = out_polys.size();
+          out_polys.resize(j+1);
+          m_curr_poly = &out_polys[j];
+          m_curr_poly->reserve(len);
+          m_delta = -m_delta;
+
           m_k = len -1;
           for (m_j = 0; m_j < len; ++m_j)
-            OffsetPoint(jointype, limit);
-
-          if (!isPolygon)
-          {
-            size_t j = out_polys.size();
-            out_polys.resize(j+1);
-            m_curr_poly = &out_polys[j];
-            m_curr_poly->reserve(len);
-            m_delta = -m_delta;
-
-            m_k = len -1;
-            for (m_j = 0; m_j < len; ++m_j)
-              OffsetPoint(jointype, limit);
-            m_delta = -m_delta;
-            ReversePolygon(*m_curr_poly);
-          }
+            OffsetPoint(jointype);
+          m_delta = -m_delta;
+          ReversePolygon(*m_curr_poly);
         }
-        else //is open polyline
+      }
+      else //is open polyline
+      {
+        //offset the polyline going forward ...
+        m_k = 0;
+        for (m_j = 1; m_j < len -1; ++m_j)
+          OffsetPoint(jointype);
+
+        //handle the end (butt, round or square) ...
+        IntPoint pt1;
+        if (endtype == etButt)
         {
-          //offset the polyline going forward ...
-          m_k = 0;
-          for (m_j = 1; m_j < len -1; ++m_j)
-            OffsetPoint(jointype, limit);
-
-          //handle the end (butt, round or square) ...
-          IntPoint pt1;
-          if (endtype == etButt)
-          {
-            m_j = len - 1;
-            pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta), 
-              Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-            AddPoint(pt1);
-            pt1 = IntPoint(Round(m_p[m_i][m_j].X - normals[m_j].X * m_delta), 
-              Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
-            AddPoint(pt1);
-          } 
-          else
-          {
-            m_j = len - 1;
-            m_k = len - 2;
-            normals[m_j].X = -normals[m_j].X;
-            normals[m_j].Y = -normals[m_j].Y;
-            if (endtype == etSquare) DoSquare();
-            else DoRound(limit);
-          }
-
-          //re-build Normals ...
-          for (int j = len - 1; j > 0; --j)
-          {
-              normals[j].X = -normals[j - 1].X;
-              normals[j].Y = -normals[j - 1].Y;
-          }
-          normals[0].X = -normals[1].X;
-          normals[0].Y = -normals[1].Y;
-
-          //offset the polyline going backward ...
-          m_k = len -1;
-          for (m_j = m_k - 1; m_j > 0; --m_j)
-            OffsetPoint(jointype, limit);
-
-          //finally handle the start (butt, round or square) ...
-          if (endtype == etButt) 
-          {
-            pt1 = IntPoint(Round(m_p[m_i][0].X - normals[0].X * m_delta), 
-              Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
-            AddPoint(pt1);
-            pt1 = IntPoint(Round(m_p[m_i][0].X + normals[0].X * m_delta), 
-              Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
-            AddPoint(pt1);
-          } else
-          {
-            m_k = 1;
-            if (endtype == etSquare) DoSquare(); 
-            else DoRound(limit);
-          }
+          m_j = len - 1;
+          pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta), 
+            Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
+          AddPoint(pt1);
+          pt1 = IntPoint(Round(m_p[m_i][m_j].X - normals[m_j].X * m_delta), 
+            Round(m_p[m_i][m_j].Y - normals[m_j].Y * m_delta));
+          AddPoint(pt1);
+        } 
+        else
+        {
+          m_j = len - 1;
+          m_k = len - 2;
+          normals[m_j].X = -normals[m_j].X;
+          normals[m_j].Y = -normals[m_j].Y;
+          if (endtype == etSquare) DoSquare();
+          else DoRound();
         }
+
+        //re-build Normals ...
+        for (int j = len - 1; j > 0; --j)
+        {
+            normals[j].X = -normals[j - 1].X;
+            normals[j].Y = -normals[j - 1].Y;
+        }
+        normals[0].X = -normals[1].X;
+        normals[0].Y = -normals[1].Y;
+
+        //offset the polyline going backward ...
+        m_k = len -1;
+        for (m_j = m_k - 1; m_j > 0; --m_j)
+          OffsetPoint(jointype);
+
+        //finally handle the start (butt, round or square) ...
+        if (endtype == etButt) 
+        {
+          pt1 = IntPoint(Round(m_p[m_i][0].X - normals[0].X * m_delta), 
+            Round(m_p[m_i][0].Y - normals[0].Y * m_delta));
+          AddPoint(pt1);
+          pt1 = IntPoint(Round(m_p[m_i][0].X + normals[0].X * m_delta), 
+            Round(m_p[m_i][0].Y + normals[0].Y * m_delta));
+          AddPoint(pt1);
+        } else
+        {
+          m_k = 1;
+          if (endtype == etSquare) DoSquare(); 
+          else DoRound();
+        }
+      }
     }
 
     //and clean up untidy corners using Clipper ...
@@ -3345,21 +3348,33 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
 private:
 
-void OffsetPoint(JoinType jointype, double limit)
+void OffsetPoint(JoinType jointype)
 {
+  m_sinA = (normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y);
+  if (m_sinA > 1.0) m_sinA = 1.0; else if (m_sinA < -1.0) m_sinA = -1.0;
+
+  if (m_sinA * m_delta < 0)
+  {
+    AddPoint(IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
+      Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta)));
+    AddPoint(m_p[m_i][m_j]);
+    AddPoint(IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+      Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta)));
+  }
+  else
     switch (jointype)
-    {
-      case jtMiter:
       {
-        m_r = 1 + (normals[m_j].X*normals[m_k].X + 
-          normals[m_j].Y*normals[m_k].Y);
-        if (m_r >= m_rmin) DoMiter(); else DoSquare();
-        break;
+        case jtMiter:
+        {
+          double r = 1 + (normals[m_j].X*normals[m_k].X + 
+            normals[m_j].Y*normals[m_k].Y);
+          if (r >= m_miterVal) DoMiter(r); else DoSquare();
+          break;
+        }
+        case jtSquare: DoSquare(); break;
+        case jtRound: DoRound(); break;
       }
-      case jtSquare: DoSquare(); break;
-      case jtRound: DoRound(limit); break;
-    }
-    m_k = m_j;
+      m_k = m_j;
 }
 //------------------------------------------------------------------------------
 
@@ -3373,76 +3388,44 @@ void AddPoint(const IntPoint& pt)
 
 void DoSquare()
 {
-    IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
-        Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
-    {
-      double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
-      double a2 = std::atan2(-normals[m_j].Y, -normals[m_j].X);
-      a1 = std::fabs(a2 - a1);
-      if (a1 > pi) a1 = pi * 2 - a1;
-      double dx = std::tan((pi - a1) / 4) * std::fabs(m_delta);
-      pt1 = IntPoint((long64)(pt1.X -normals[m_k].Y * dx), (long64)(pt1.Y + normals[m_k].X * dx));
-      AddPoint(pt1);
-      pt2 = IntPoint((long64)(pt2.X + normals[m_j].Y * dx), (long64)(pt2.Y -normals[m_j].X * dx));
-      AddPoint(pt2);
-    }
-    else
-    {
-      AddPoint(pt1);
-      AddPoint(m_p[m_i][m_j]);
-      AddPoint(pt2);
-    }
+  double dx = std::tan(std::atan2(m_sinA, 
+    normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y)/4);
+  AddPoint(IntPoint(
+    Round(m_p[m_i][m_j].X + m_delta * (normals[m_k].X - normals[m_k].Y *dx)),
+    Round(m_p[m_i][m_j].Y + m_delta * (normals[m_k].Y + normals[m_k].X *dx))));
+  AddPoint(IntPoint(
+    Round(m_p[m_i][m_j].X + m_delta * (normals[m_j].X + normals[m_j].Y *dx)),
+    Round(m_p[m_i][m_j].Y + m_delta * (normals[m_j].Y - normals[m_j].X *dx))));
 }
 //------------------------------------------------------------------------------
 
-void DoMiter()
+void DoMiter(double r)
 {
-    if ((normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y) * m_delta >= 0)
-    {
-        double q = m_delta / m_r;
-        AddPoint(IntPoint(Round(m_p[m_i][m_j].X + (normals[m_k].X + normals[m_j].X) * q),
-            Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
-    }
-    else
-    {
-        IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta), 
-          Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-        IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta), 
-          Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-        AddPoint(pt1);
-        AddPoint(m_p[m_i][m_j]);
-        AddPoint(pt2);
-    }
+    double q = m_delta / r;
+    AddPoint(IntPoint(Round(m_p[m_i][m_j].X + (normals[m_k].X + normals[m_j].X) * q),
+        Round(m_p[m_i][m_j].Y + (normals[m_k].Y + normals[m_j].Y) * q)));
 }
 //------------------------------------------------------------------------------
 
-void DoRound(double limit)
+void DoRound()
 {
-    IntPoint pt1 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_k].X * m_delta),
-        Round(m_p[m_i][m_j].Y + normals[m_k].Y * m_delta));
-    IntPoint pt2 = IntPoint(Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
-        Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta));
-    AddPoint(pt1);
-    //round off reflex angles (ie > 180 deg) unless almost flat (ie < ~10deg).
-    if ((normals[m_k].X*normals[m_j].Y - normals[m_j].X*normals[m_k].Y) * m_delta >= 0)
-    {
-      if (normals[m_j].X * normals[m_k].X + normals[m_j].Y * normals[m_k].Y < 0.985)
-      {
-        double a1 = std::atan2(normals[m_k].Y, normals[m_k].X);
-        double a2 = std::atan2(normals[m_j].Y, normals[m_j].X);
-        if (m_delta > 0 && a2 < a1) a2 += pi *2;
-        else if (m_delta < 0 && a2 > a1) a2 -= pi *2;
-        Polygon arc = BuildArc(m_p[m_i][m_j], a1, a2, m_delta, limit);
-        for (Polygon::size_type m = 0; m < arc.size(); m++)
-          AddPoint(arc[m]);
-      }
-    }
-    else
-      AddPoint(m_p[m_i][m_j]);
-    AddPoint(pt2);
+  double a = std::atan2(m_sinA, 
+    normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y);
+  int steps = (int)Round(m_roundVal * std::fabs(a));
+
+  double X = normals[m_k].X, Y = normals[m_k].Y, X2;
+  for (int i = 0; i < steps; ++i)
+  {
+    AddPoint(IntPoint(
+      Round(m_p[m_i][m_j].X + X * m_delta),
+      Round(m_p[m_i][m_j].Y + Y * m_delta)));
+    X2 = X;
+    X = X * m_cos - m_sin * Y;
+    Y = X2 * m_sin + Y * m_cos;
+  }
+  AddPoint(IntPoint(
+    Round(m_p[m_i][m_j].X + normals[m_j].X * m_delta),
+    Round(m_p[m_i][m_j].Y + normals[m_j].Y * m_delta)));
 }
 //--------------------------------------------------------------------------
 

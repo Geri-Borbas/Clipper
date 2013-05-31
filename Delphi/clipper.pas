@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.6                                                           *
-* Date      :  23 May 2013                                                     *
+* Version   :  5.1.7                                                           *
+* Date      :  1 June 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -102,15 +102,11 @@ type
 
   PEdge = ^TEdge;
   TEdge = record
-    XBot : Int64;         //bottom
-    YBot : Int64;
-    XCurr: Int64;         //current (ie relative to bottom of current scanbeam)
-    YCurr: Int64;
-    XTop : Int64;         //top
-    YTop : Int64;
+    Bot : TIntPoint;      //bottom
+    Curr : TIntPoint;     //current (ie relative to bottom of current scanbeam)
+    Top : TIntPoint;      //top
+    Delta: TIntPoint;
     Dx   : Double;        //the inverse of slope
-    DeltaX: Int64;
-    DeltaY: Int64;
     PolyType : TPolyType;
     Side     : TEdgeSide;
     WindDelta: Integer;   //1 or -1 depending on winding direction
@@ -887,10 +883,10 @@ function SlopesEqual(E1, E2: PEdge;
   UseFullInt64Range: Boolean): Boolean; overload;
 begin
   if UseFullInt64Range then
-    Result := Int128Equal(Int128Mul(E1.DeltaY, E2.DeltaX),
-      Int128Mul(E1.DeltaX, E2.DeltaY))
+    Result := Int128Equal(Int128Mul(E1.Delta.Y, E2.Delta.X),
+      Int128Mul(E1.Delta.X, E2.Delta.Y))
   else
-    Result := E1.DeltaY * E2.DeltaX = E1.DeltaX * E2.DeltaY;
+    Result := E1.Delta.Y * E2.Delta.X = E1.Delta.X * E2.Delta.Y;
 end;
 //---------------------------------------------------------------------------
 
@@ -928,10 +924,10 @@ end;
 
 procedure SetDx(E: PEdge); {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  E.DeltaX := (E.XTop - E.XBot);
-  E.DeltaY := (E.YTop - E.YBot);
-  if E.DeltaY = 0 then E.Dx := Horizontal
-  else E.Dx := E.DeltaX/E.DeltaY;
+  E.Delta.X := (E.Top.X - E.Bot.X);
+  E.Delta.Y := (E.Top.Y - E.Bot.Y);
+  if E.Delta.Y = 0 then E.Dx := Horizontal
+  else E.Dx := E.Delta.X/E.Delta.Y;
 end;
 //---------------------------------------------------------------------------
 
@@ -957,9 +953,9 @@ end;
 
 function TopX(Edge: PEdge; const currentY: Int64): Int64;
 begin
-  if currentY = Edge.YTop then Result := Edge.XTop
-  else if Edge.XTop = Edge.XBot then Result := Edge.XBot
-  else Result := Edge.XBot + round(Edge.Dx*(currentY - Edge.YBot));
+  if currentY = Edge.Top.Y then Result := Edge.Top.X
+  else if Edge.Top.X = Edge.Bot.X then Result := Edge.Bot.X
+  else Result := Edge.Bot.X + round(Edge.Dx*(currentY - Edge.Bot.Y));
 end;
 //------------------------------------------------------------------------------
 
@@ -971,38 +967,38 @@ begin
   if SlopesEqual(Edge1, Edge2, UseFullInt64Range) then
   begin
     //parallel edges, but nevertheless prepare to force the intersection
-    //since Edge2.XCurr < Edge1.XCurr ...
-    if Edge2.YBot > Edge1.YBot then
-      ip.Y := Edge2.YBot else
-      ip.Y := Edge1.YBot;
+    //since Edge2.Curr.X < Edge1.Curr.X ...
+    if Edge2.Bot.Y > Edge1.Bot.Y then
+      ip.Y := Edge2.Bot.Y else
+      ip.Y := Edge1.Bot.Y;
     Result := False;
     Exit;
   end;
   if Edge1.Dx = 0 then
   begin
-    ip.X := Edge1.XBot;
+    ip.X := Edge1.Bot.X;
     if Edge2.Dx = Horizontal then
-      ip.Y := Edge2.YBot
+      ip.Y := Edge2.Bot.Y
     else
     begin
-      with Edge2^ do B2 := YBot - (XBot/Dx);
+      with Edge2^ do B2 := Bot.Y - (Bot.X/Dx);
       ip.Y := round(ip.X/Edge2.Dx + B2);
     end;
   end
   else if Edge2.Dx = 0 then
   begin
-    ip.X := Edge2.XBot;
+    ip.X := Edge2.Bot.X;
     if Edge1.Dx = Horizontal then
-      ip.Y := Edge1.YBot
+      ip.Y := Edge1.Bot.Y
     else
     begin
-      with Edge1^ do B1 := YBot - (XBot/Dx);
+      with Edge1^ do B1 := Bot.Y - (Bot.X/Dx);
       ip.Y := round(ip.X/Edge1.Dx + B1);
     end;
   end else
   begin
-    with Edge1^ do B1 := XBot - YBot * Dx;
-    with Edge2^ do B2 := XBot - YBot * Dx;
+    with Edge1^ do B1 := Bot.X - Bot.Y * Dx;
+    with Edge2^ do B2 := Bot.X - Bot.Y * Dx;
     M := (B2-B1)/(Edge1.Dx - Edge2.Dx);
     ip.Y := round(M);
     if Abs(Edge1.Dx) < Abs(Edge2.Dx) then
@@ -1011,27 +1007,25 @@ begin
       ip.X := round(Edge2.Dx * M + B2);
   end;
 
-  //The precondition - E.XCurr > eNext.XCurr - indicates that the two edges do
+  //The precondition - E.Curr.X > eNext.Curr.X - indicates that the two edges do
   //intersect below TopY (and hence below the tops of either Edge). However,
   //when edges are almost parallel, rounding errors may cause False positives -
   //indicating intersections when there really aren't any. Also, floating point
   //imprecision can incorrectly place an intersect point beyond/above an Edge.
   //Therfore, further validation of the IP is warranted ...
-  if (ip.Y < Edge1.YTop) or (ip.Y < Edge2.YTop) then
+  if (ip.Y < Edge1.Top.Y) or (ip.Y < Edge2.Top.Y) then
   begin
     //Find the lower top of the two edges and compare X's at this Y.
     //If Edge1's X is greater than Edge2's X then it's fair to assume an
     //intersection really has occurred...
-    if (Edge1.YTop > Edge2.YTop) then
+    if (Edge1.Top.Y > Edge2.Top.Y) then
     begin
-      Result := TopX(Edge2, Edge1.YTop) < Edge1.XTop;
-      ip.X := Edge1.XTop;
-      ip.Y := Edge1.YTop;
+      Result := TopX(Edge2, Edge1.Top.Y) < Edge1.Top.X;
+      ip := Edge1.Top;
     end else
     begin
-      Result := TopX(Edge1, Edge2.YTop) > Edge2.XTop;
-      ip.X := Edge2.XTop;
-      ip.Y := Edge2.YTop;
+      Result := TopX(Edge1, Edge2.Top.Y) > Edge2.Top.X;
+      ip := Edge2.Top;
     end;
   end else
     Result := True;
@@ -1092,9 +1086,9 @@ begin
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower Edge. [Helpful in the ProcessHorizontal() method.]
-  E.XCurr := E.XTop;
-  E.XTop := E.XBot;
-  E.XBot := E.XCurr;
+  E.Curr.X := E.Top.X;
+  E.Top.X := E.Bot.X;
+  E.Bot.X := E.Curr.X;
 end;
 //------------------------------------------------------------------------------
 
@@ -1107,21 +1101,16 @@ function TClipperBase.AddPolygon(const Polygon: TPolygon;
   begin
     E.Next := eNext;
     E.Prev := ePrev;
-    E.XCurr := Pt.X;
-    E.YCurr := Pt.Y;
-    if E.YCurr >= E.Next.YCurr then
+    E.Curr := Pt;
+    if E.Curr.Y >= E.Next.Curr.Y then
     begin
-      E.XBot := E.XCurr;
-      E.YBot := E.YCurr;
-      E.XTop := E.Next.XCurr;
-      E.YTop := E.Next.YCurr;
+      E.Bot := E.Curr;
+      E.Top := E.Next.Curr;
       E.WindDelta := 1;
     end else
     begin
-      E.XTop := E.XCurr;
-      E.YTop := E.YCurr;
-      E.XBot := E.Next.XCurr;
-      E.YBot := E.Next.YCurr;
+      E.Top := E.Curr;
+      E.Bot := E.Next.Curr;
       E.WindDelta := -1;
     end;
     SetDx(E);
@@ -1169,23 +1158,23 @@ function TClipperBase.AddPolygon(const Polygon: TPolygon;
         //nb: proceed through horizontals when approaching from their right,
         //    but break on horizontal minima if approaching from their left.
         //    This ensures 'local minima' are always on the left of horizontals.
-        if (E.Next.YTop < E.YTop) and (E.Next.XBot > E.Prev.XBot) then Break;
-        if (E.XTop <> E.Prev.XBot) then SwapX(E);
+        if (E.Next.Top.Y < E.Top.Y) and (E.Next.Bot.X > E.Prev.Bot.X) then Break;
+        if (E.Top.X <> E.Prev.Bot.X) then SwapX(E);
         //E.WindDelta := 0; safe option to consider when redesigning
         E.NextInLML := E.Prev;
       end
-      else if (E.YBot = E.Prev.YBot) then Break
+      else if (E.Bot.Y = E.Prev.Bot.Y) then Break
       else E.NextInLML := E.Prev;
       E := E.Next;
     end;
 
     //E and E.Prev are now at a local minima ...
     new(NewLm);
-    NewLm.Y := E.Prev.YBot;
+    NewLm.Y := E.Prev.Bot.Y;
     NewLm.Next := nil;
     if E.Dx = Horizontal then //Horizontal edges never start a left bound
     begin
-      if (E.XBot <> E.Prev.XBot) then SwapX(E);
+      if (E.Bot.X <> E.Prev.Bot.X) then SwapX(E);
       NewLm.LeftBound := E.Prev;
       NewLm.RightBound := E;
     end else if (E.Dx < E.Prev.Dx) then
@@ -1204,10 +1193,10 @@ function TClipperBase.AddPolygon(const Polygon: TPolygon;
     //now process the ascending bound ....
     while True do
     begin
-      if (E.Next.YTop = E.YTop) and not (E.Next.Dx = Horizontal) then Break;
+      if (E.Next.Top.Y = E.Top.Y) and not (E.Next.Dx = Horizontal) then Break;
       E.NextInLML := E.Next;
       E := E.Next;
-      if (E.Dx = Horizontal) and (E.XBot <> E.Prev.XTop) then SwapX(E);
+      if (E.Dx = Horizontal) and (E.Bot.X <> E.Prev.Top.X) then SwapX(E);
     end;
     Result := E.Next;
   end;
@@ -1277,21 +1266,20 @@ begin
   FEdgeList.Add(Edges);
 
   //convert vertices to a Double-linked-list of edges and initialize ...
-  Edges[0].XCurr := Pg[0].X;
-  Edges[0].YCurr := Pg[0].Y;
+  Edges[0].Curr.X := Pg[0].X;
+  Edges[0].Curr.Y := Pg[0].Y;
   InitEdge(@Edges[len-1], @Edges[0], @Edges[len-2], Pg[len-1]);
   for I := len-2 downto 1 do
     InitEdge(@Edges[I], @Edges[I+1], @Edges[I-1], Pg[I]);
   InitEdge(@Edges[0], @Edges[1], @Edges[len-1], Pg[0]);
-  //reset XCurr & YCurr and find the 'highest' Edge. (nb: since I'm much more
+  //reset Curr.X & Curr.Y and find the 'highest' Edge. (nb: since I'm much more
   //familiar with positive downwards Y axes, 'highest' here will be the Edge
-  //with the *smallest* YTop.)
+  //with the *smallest* Top.Y.)
   E := @Edges[0];
   EHighest := E;
   repeat
-    E.XCurr := E.XBot;
-    E.YCurr := E.YBot;
-    if E.YTop < EHighest.YTop then EHighest := E;
+    E.Curr := E.Bot;
+    if E.Top.Y < EHighest.Top.Y then EHighest := E;
     E := E.Next;
   until E = @Edges[0];
 
@@ -1345,8 +1333,7 @@ begin
     E := Lm.LeftBound;
     while Assigned(E) do
     begin
-      E.XCurr := E.XBot;
-      E.YCurr := E.YBot;
+      E.Curr := E.Bot;
       E.Side := esLeft;
       E.OutIdx := -1;
       E := E.NextInLML;
@@ -1354,8 +1341,7 @@ begin
     E := Lm.RightBound;
     while Assigned(E) do
     begin
-      E.XCurr := E.XBot;
-      E.YCurr := E.YBot;
+      E.Curr := E.Bot;
       E.Side := esRight;
       E.OutIdx := -1;
       E := E.NextInLML;
@@ -1845,16 +1831,16 @@ begin
     Jr.Poly1Idx := E1.OutIdx;
   with E1^ do
   begin
-    Jr.Pt1a := IntPoint(XCurr, YCurr);
-    Jr.Pt1b := IntPoint(XTop, YTop);
+    Jr.Pt1a := Curr;
+    Jr.Pt1b := Top;
   end;
   if E2OutIdx >= 0 then
     Jr.Poly2Idx := E2OutIdx else
     Jr.Poly2Idx := E2.OutIdx;
   with E2^ do
   begin
-    Jr.Pt2a := IntPoint(XCurr, YCurr);
-    Jr.Pt2b := IntPoint(XTop, YTop);
+    Jr.Pt2a := Curr;
+    Jr.Pt2b := Top;
   end;
   FJoinList.add(Jr);
 end;
@@ -1943,13 +1929,13 @@ end;
 
 function E2InsertsBeforeE1(E1, E2: PEdge): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  if E2.XCurr = E1.XCurr then
+  if E2.Curr.X = E1.Curr.X then
   begin
-    if E2.YTop > E1.YTop then
-      Result := E2.XTop < TopX(E1, E2.YTop) else
-      Result := E1.XTop > TopX(E2, E1.YTop);
+    if E2.Top.Y > E1.Top.Y then
+      Result := E2.Top.X < TopX(E1, E2.Top.Y) else
+      Result := E1.Top.X > TopX(E2, E1.Top.Y);
   end else
-    Result := E2.XCurr < E1.XCurr;
+    Result := E2.Curr.X < E1.Curr.X;
 end;
 //----------------------------------------------------------------------
 
@@ -1996,7 +1982,7 @@ begin
     Rb := CurrentLm.RightBound;
 
     InsertEdgeIntoAEL(Lb);
-    InsertScanbeam(Lb.YTop);
+    InsertScanbeam(Lb.Top.Y);
     InsertEdgeIntoAEL(Rb);
 
     //set Edge winding states ...
@@ -2015,12 +2001,12 @@ begin
     if Rb.Dx = Horizontal then
     begin
       AddEdgeToSEL(Rb);
-      InsertScanbeam(Rb.NextInLML.YTop);
+      InsertScanbeam(Rb.NextInLML.Top.Y);
     end else
-      InsertScanbeam(Rb.YTop);
+      InsertScanbeam(Rb.Top.Y);
 
     if IsContributing(Lb) then
-      AddLocalMinPoly(Lb, Rb, IntPoint(Lb.XCurr, CurrentLm.Y));
+      AddLocalMinPoly(Lb, Rb, IntPoint(Lb.Curr.X, CurrentLm.Y));
 
     //if output polygons share an Edge with rb, they'll need joining later ...
     if (Rb.OutIdx >= 0) and (Rb.Dx = Horizontal) and Assigned(fHorizJoins) then
@@ -2028,10 +2014,9 @@ begin
       Hj := FHorizJoins;
       repeat
         //if horizontals rb & hj.Edge overlap, flag for joining later ...
-        if GetOverlapSegment(IntPoint(Hj.Edge.XBot, Hj.Edge.YBot),
-          IntPoint(Hj.Edge.XTop, Hj.Edge.YTop), IntPoint(Rb.XBot, Rb.YBot),
-          IntPoint(Rb.XTop, Rb.YTop), Pt, Pt2) then
-            AddJoin(Hj.Edge, Rb, Hj.SavedIdx);
+        if GetOverlapSegment(Hj.Edge.Bot, Hj.Edge.Top,
+            Rb.Bot, Rb.Top, Pt, Pt2) then
+              AddJoin(Hj.Edge, Rb, Hj.SavedIdx);
         Hj := Hj.Next;
       until Hj = FHorizJoins;
     end;
@@ -2043,7 +2028,7 @@ begin
           AddJoin(Rb, Rb.PrevInAEL);
 
       E := Lb.NextInAEL;
-      Pt := IntPoint(Lb.XCurr,Lb.YCurr);
+      Pt := Lb.Curr;
       while E <> Rb do
       begin
         if not Assigned(E) then raise exception.Create(rsMissingRightbound);
@@ -2104,9 +2089,9 @@ begin
   //E2 in AEL except when E1 is being inserted at the intersection point ...
 
   E1stops := not (ipLeft in protects) and not Assigned(E1.NextInLML) and
-    (E1.XTop = Pt.x) and (E1.YTop = Pt.Y);
+    (E1.Top.X = Pt.x) and (E1.Top.Y = Pt.Y);
   E2stops := not (ipRight in protects) and not Assigned(E2.NextInLML) and
-    (E2.XTop = Pt.x) and (E2.YTop = Pt.Y);
+    (E2.Top.X = Pt.x) and (E2.Top.Y = Pt.Y);
   E1Contributing := (E1.OutIdx >= 0);
   E2contributing := (E2.OutIdx >= 0);
 
@@ -2547,7 +2532,8 @@ begin
   E := FSortedEdges;
   while Assigned(E) do
   begin
-    if (XPos >= min(E.XCurr,E.XTop)) and (XPos <= max(E.XCurr,E.XTop)) then Exit;
+    if (XPos >= min(E.Curr.X,E.Top.X)) and
+      (XPos <= max(E.Curr.X,E.Top.X)) then Exit;
     E := E.NextInSEL;
   end;
   Result := True;
@@ -2562,20 +2548,20 @@ end;
 
 function IsMaxima(E: PEdge; const Y: Int64): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  Result := Assigned(E) and (E.YTop = Y) and not Assigned(E.NextInLML);
+  Result := Assigned(E) and (E.Top.Y = Y) and not Assigned(E.NextInLML);
 end;
 //------------------------------------------------------------------------------
 
 function IsIntermediate(E: PEdge; const Y: Int64): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  Result := (E.YTop = Y) and Assigned(E.NextInLML);
+  Result := (E.Top.Y = Y) and Assigned(E.NextInLML);
 end;
 //------------------------------------------------------------------------------
 
 function GetMaximaPair(E: PEdge): PEdge;
 begin
   Result := E.Next;
-  if not IsMaxima(Result, E.YTop) or (Result.XTop <> E.XTop) then
+  if not IsMaxima(Result, E.Top.Y) or (Result.Top.X <> E.Top.X) then
     Result := E.Prev;
 end;
 //------------------------------------------------------------------------------
@@ -2703,15 +2689,15 @@ begin
 *        /                 \      /          \   /                             *
 *******************************************************************************)
 
-  if HorzEdge.XCurr < HorzEdge.XTop then
+  if HorzEdge.Curr.X < HorzEdge.Top.X then
   begin
-    HorzLeft := HorzEdge.XCurr;
-    HorzRight := HorzEdge.XTop;
+    HorzLeft := HorzEdge.Curr.X;
+    HorzRight := HorzEdge.Top.X;
     Direction := dLeftToRight;
   end else
   begin
-    HorzLeft := HorzEdge.XTop;
-    HorzRight := HorzEdge.XCurr;
+    HorzLeft := HorzEdge.Top.X;
+    HorzRight := HorzEdge.Curr.X;
     Direction := dRightToLeft;
   end;
 
@@ -2722,7 +2708,7 @@ begin
   E := GetNextInAEL(HorzEdge, Direction);
   while Assigned(E) do
   begin
-    if (E.XCurr = HorzEdge.XTop) and not Assigned(eMaxPair) then
+    if (E.Curr.X = HorzEdge.Top.X) and not Assigned(eMaxPair) then
     begin
       if SlopesEqual(E, HorzEdge.NextInLML, FUse64BitRange) then
       begin
@@ -2739,43 +2725,42 @@ begin
 
     eNext := GetNextInAEL(E, Direction);
     if Assigned(eMaxPair) or
-       ((Direction = dLeftToRight) and (E.XCurr < HorzRight)) or
-      ((Direction = dRightToLeft) and (E.XCurr > HorzLeft)) then
+       ((Direction = dLeftToRight) and (E.Curr.X < HorzRight)) or
+      ((Direction = dRightToLeft) and (E.Curr.X > HorzLeft)) then
     begin
       //so far we're still in range of the horizontal Edge
       if (E = eMaxPair) then
       begin
         //HorzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
-          IntersectEdges(HorzEdge, E, IntPoint(E.XCurr, HorzEdge.YCurr)) else
-          IntersectEdges(E, HorzEdge, IntPoint(E.XCurr, HorzEdge.YCurr));
-
+          IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y)) else
+          IntersectEdges(E, HorzEdge, IntPoint(E.Curr.X, HorzEdge.Curr.Y));
         if (eMaxPair.OutIdx >= 0) then raise exception.Create(rsHorizontal);
         Exit;
       end
-      else if (E.Dx = Horizontal) and not IsMinima(E) and not (E.XCurr > E.XTop) then
+      else if (E.Dx = Horizontal) and not IsMinima(E) and not (E.Curr.X > E.Top.X) then
       begin
         //An overlapping horizontal Edge. Overlapping horizontal edges are
         //processed as if layered with the current horizontal Edge (horizEdge)
         //being infinitesimally lower that the Next (E). Therfore, we
-        //intersect with E only if E.XCurr is within the bounds of HorzEdge ...
+        //intersect with E only if E.Curr.X is within the bounds of HorzEdge ...
         if Direction = dLeftToRight then
-          IntersectEdges(HorzEdge, E, IntPoint(E.XCurr, HorzEdge.YCurr),
-            ProtectRight[not IsTopHorz(E.XCurr)])
+          IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
+            ProtectRight[not IsTopHorz(E.Curr.X)])
         else
-          IntersectEdges(E, HorzEdge, IntPoint(E.XCurr, HorzEdge.YCurr),
-            ProtectLeft[not IsTopHorz(E.XCurr)]);
+          IntersectEdges(E, HorzEdge,  IntPoint(E.Curr.X, HorzEdge.Curr.Y),
+            ProtectLeft[not IsTopHorz(E.Curr.X)]);
       end
       else if (Direction = dLeftToRight) then
-        IntersectEdges(HorzEdge, E, IntPoint(E.XCurr, HorzEdge.YCurr),
-          ProtectRight[not IsTopHorz(E.XCurr)])
+        IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
+          ProtectRight[not IsTopHorz(E.Curr.X)])
       else
-        IntersectEdges(E, HorzEdge, IntPoint(E.XCurr, HorzEdge.YCurr),
-          ProtectLeft[not IsTopHorz(E.XCurr)]);
+        IntersectEdges(E, HorzEdge, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
+          ProtectLeft[not IsTopHorz(E.Curr.X)]);
       SwapPositionsInAEL(HorzEdge, E);
     end
-    else if ((Direction = dLeftToRight) and (E.XCurr >= HorzRight)) or
-      ((Direction = dRightToLeft) and (E.XCurr <= HorzLeft)) then
+    else if ((Direction = dLeftToRight) and (E.Curr.X >= HorzRight)) or
+      ((Direction = dRightToLeft) and (E.Curr.X <= HorzLeft)) then
         Break;
     E := eNext;
   end;
@@ -2783,13 +2768,13 @@ begin
   if Assigned(HorzEdge.NextInLML) then
   begin
     if (HorzEdge.OutIdx >= 0) then
-      AddOutPt(HorzEdge, IntPoint(HorzEdge.XTop, HorzEdge.YTop));
+      AddOutPt(HorzEdge, HorzEdge.Top);
     UpdateEdgeIntoAEL(HorzEdge);
   end else
   begin
     if HorzEdge.OutIdx >= 0 then
       IntersectEdges(HorzEdge, eMaxPair,
-        IntPoint(HorzEdge.XTop, HorzEdge.YCurr), [ipLeft,ipRight]);
+        IntPoint(HorzEdge.Top.X, HorzEdge.Curr.Y), [ipLeft,ipRight]);
 
     if eMaxPair.OutIdx >= 0 then raise exception.Create(rsHorizontal);
     DeleteFromAEL(eMaxPair);
@@ -2819,7 +2804,7 @@ begin
   E.PrevInAEL := AelPrev;
   E.NextInAEL := AelNext;
   if E.Dx <> Horizontal then
-    InsertScanbeam(E.YTop);
+    InsertScanbeam(E.Top.Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -2868,7 +2853,7 @@ begin
   begin
     E.PrevInSEL := E.PrevInAEL;
     E.NextInSEL := E.NextInAEL;
-    E.XCurr := TopX(E, TopY);
+    E.Curr.X := TopX(E, TopY);
     E := E.NextInAEL;
   end;
 
@@ -2879,10 +2864,10 @@ begin
     while Assigned(E.NextInSEL) do
     begin
       eNext := E.NextInSEL;
-      if (E.XCurr > eNext.XCurr) then
+      if (E.Curr.X > eNext.Curr.X) then
       begin
         if not IntersectPoint(E, eNext, Pt, FUse64BitRange) and
-          (E.XCurr > eNext.XCurr +1) then
+          (E.Curr.X > eNext.Curr.X +1) then
             raise Exception.Create(rsIntersect);
         if Pt.Y > BotY then
         begin
@@ -2952,7 +2937,7 @@ var
   X: Int64;
 begin
   EMaxPair := GetMaximaPair(E);
-  X := E.XTop;
+  X := E.Top.X;
   ENext := E.NextInAEL;
   while ENext <> EMaxPair do
   begin
@@ -3018,20 +3003,18 @@ begin
     end else
     begin
       IntermediateVert := IsIntermediate(E, TopY);
-      //2. promote horizontal edges, otherwise update XCurr and YCurr ...
+      //2. promote horizontal edges, otherwise update Curr.X and Curr.Y ...
       if IntermediateVert and (E.NextInLML.Dx = Horizontal) then
       begin
         if (E.OutIdx >= 0) then
         begin
-          AddOutPt(E, IntPoint(E.XTop, E.YTop));
+          AddOutPt(E, E.Top);
 
           Hj := FHorizJoins;
           if Assigned(Hj) then
           repeat
-            if GetOverlapSegment(IntPoint(Hj.Edge.XBot, Hj.Edge.YBot),
-              IntPoint(Hj.Edge.XTop, Hj.Edge.YTop),
-              IntPoint(E.NextInLML.XBot, E.NextInLML.YBot),
-              IntPoint(E.NextInLML.XTop, E.NextInLML.YTop), Pt, Pt2) then
+            if GetOverlapSegment(Hj.Edge.Bot, Hj.Edge.Top,
+              E.NextInLML.Bot, E.NextInLML.Top, Pt, Pt2) then
                 AddJoin(Hj.Edge, E.NextInLML, Hj.SavedIdx, E.OutIdx);
             Hj := Hj.Next;
           until Hj = FHorizJoins;
@@ -3042,17 +3025,17 @@ begin
         AddEdgeToSEL(E);
       end else
       begin
-        E.XCurr := TopX(E, TopY);
-        E.YCurr := TopY;
+        E.Curr.X := TopX(E, TopY);
+        E.Curr.Y := TopY;
 
         if FForceSimple and Assigned(E.PrevInAEL) and
-          (E.PrevInAEL.XCurr = E.XCurr) and
+          (E.PrevInAEL.Curr.X = E.Curr.X) and
           (E.OutIdx >= 0) and (E.PrevInAEL.OutIdx >= 0) then
         begin
           if IntermediateVert then
-            AddOutPt(E.PrevInAEL, IntPoint(E.XCurr, TopY))
+            AddOutPt(E.PrevInAEL, IntPoint(E.Curr.X, TopY))
           else
-            AddOutPt(E, IntPoint(E.XCurr, TopY));
+            AddOutPt(E, IntPoint(E.Curr.X, TopY));
         end;
       end;
       E := E.NextInAEL;
@@ -3068,26 +3051,26 @@ begin
   begin
     if IsIntermediate(E, TopY) then
     begin
-      if (E.OutIdx >= 0) then AddOutPt(E, IntPoint(E.XTop, E.YTop));
+      if (E.OutIdx >= 0) then AddOutPt(E, E.Top);
       UpdateEdgeIntoAEL(E);
 
       //if output polygons share an Edge, they'll need joining later ...
       ePrev := E.PrevInAEL;
       eNext  := E.NextInAEL;
-      if Assigned(ePrev) and (ePrev.XCurr = E.XBot) and
-        (ePrev.YCurr = E.YBot) and (E.OutIdx >= 0) and
-        (ePrev.OutIdx >= 0) and (ePrev.YCurr > ePrev.YTop) and
+      if Assigned(ePrev) and (ePrev.Curr.X = E.Bot.X) and
+        (ePrev.Curr.Y = E.Bot.Y) and (E.OutIdx >= 0) and
+        (ePrev.OutIdx >= 0) and (ePrev.Curr.Y > ePrev.Top.Y) and
         SlopesEqual(E, ePrev, FUse64BitRange) then
       begin
-        AddOutPt(ePrev, IntPoint(E.XBot, E.YBot));
+        AddOutPt(ePrev, E.Bot);
         AddJoin(E, ePrev);
       end
-      else if Assigned(eNext) and (eNext.XCurr = E.XBot) and
-        (eNext.YCurr = E.YBot) and (E.OutIdx >= 0) and
-          (eNext.OutIdx >= 0) and (eNext.YCurr > eNext.YTop) and
+      else if Assigned(eNext) and (eNext.Curr.X = E.Bot.X) and
+        (eNext.Curr.Y = E.Bot.Y) and (E.OutIdx >= 0) and
+          (eNext.OutIdx >= 0) and (eNext.Curr.Y > eNext.Top.Y) and
         SlopesEqual(E, eNext, FUse64BitRange) then
       begin
-        AddOutPt(eNext, IntPoint(E.XBot, E.YBot));
+        AddOutPt(eNext, E.Bot);
         AddJoin(E, eNext);
       end;
     end;
@@ -3701,8 +3684,7 @@ type
   private
     FDelta: Double;
     FSinA, FSin, FCos: Double;
-    FMiterConst, FRoundConst: Double;
-    FJoinType: TJoinType;
+    FMiterVal, FRoundVal: Double;
     FNorms: TArrayOfDoublePoint;
     FSolution: TPolygons;
     FOutPos: Integer;
@@ -3713,7 +3695,8 @@ type
     procedure DoSquare(J, K: Integer);
     procedure DoMiter(J, K: Integer; R: Double);
     procedure DoRound(J, K: Integer);
-    procedure OffsetPoint(J: Integer; var K: Integer);
+    procedure OffsetPoint(J: Integer;
+      var K: Integer; JoinType: TJoinType);
   public
     constructor Create(const Pts: TPolygons; Delta: Double;
       IsPolygon: Boolean; JoinType: TJoinType; EndType: TEndType;
@@ -3766,7 +3749,7 @@ var
   A, X, X2, Y: Double;
 begin
   A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
-  Steps := Round(FRoundConst * Abs(A));
+  Steps := Round(FRoundVal * Abs(A));
 
   X := FNorms[K].X;
   Y := FNorms[K].Y;
@@ -3785,7 +3768,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TOffsetBuilder.OffsetPoint(J: Integer; var K: Integer);
+procedure TOffsetBuilder.OffsetPoint(J: Integer;
+  var K: Integer; JoinType: TJoinType);
 var
   R: Double;
 begin
@@ -3802,16 +3786,16 @@ begin
       round(FInP[J].Y + FNorms[J].Y * FDelta)));
   end
   else
-  case FJoinType of
-    jtMiter:
-    begin
-      R := 1 + (FNorms[J].X * FNorms[K].X + FNorms[J].Y * FNorms[K].Y);
-      if (R >= FMiterConst) then DoMiter(J, K, R)
-      else DoSquare(J, K);
+    case JoinType of
+      jtMiter:
+      begin
+        R := 1 + (FNorms[J].X * FNorms[K].X + FNorms[J].Y * FNorms[K].Y);
+        if (R >= FMiterVal) then DoMiter(J, K, R)
+        else DoSquare(J, K);
+      end;
+      jtSquare: DoSquare(J, K);
+      jtRound: DoRound(J, K);
     end;
-    jtSquare: DoSquare(J, K);
-    jtRound: DoRound(J, K);
-  end;
   K := J;
 end;
 //------------------------------------------------------------------------------
@@ -3827,46 +3811,25 @@ var
 begin
   FSolution := nil;
 
-  FJoinType := JoinType;
   if not IsPolygon and (Delta < 0) then Delta := -Delta;
   FDelta := Delta;
 
-  if FJoinType = jtMiter then
+  if JoinType = jtMiter then
   begin
-    //given that 'Limit' is a multiple of delta, and
-    //given that sin(angle) = opposite/hypotenuse ...
-    //then sin(ß/2) = delta / (Limit * delta)
-    //given trig. identity: sin(ß/2) = Sqrt((1-cos(ß))/2)
-    //and since cos(ß) can be derived simply from dot products,
-    //let's precalculate a constant to test against each angle ...
-    //Limit = Sqrt(2/(1-cos(ß)))
-    //1 - cos(ß) = 2/Sqr(Limit) = FMiterConst
-    if Limit > 2 then FMiterConst := 2/(sqr(Limit))
-    else FMiterConst := 0.5;
+    //FMiterConst: see offset_triginometry.svg in the documentation folder ...
+    if Limit > 2 then FMiterVal := 2/(sqr(Limit))
+    else FMiterVal := 0.5;
     if EndType = etRound then Limit := 0.25;
   end;
 
-  //When constructing an arc, its precision is determined by the number of
-  //vertices or steps used. If S = no. steps used to construct a circle with
-  //radius (R), then ... the angle (A) between each step is: A = 2 * Pi / S.
-  //The line passing through two steps (pt1) & (pt2) is perpendicular to the
-  //line through the circle's center (pt3) and the midpoint (pt4) of pts 1 & 2.
-  //Let the length of the line segment pt3 & pt4 = D, and let the distance
-  //from pt4 to the circle = L, such that D + L = R.
-  //If L is a pre-defined const. (the max. allowed deviation or imprecision),
-  //we can calculate the no. steps required to construct an arc with the
-  //required precision ...
-  //  cos(A/2) = D/R = (R - L)/R = 1 - L/R
-  //  A = 2 * ArcCos(1 - L/R)
-  //  2 * Pi / S = 2 * ArcCos(1 - L/R)
-  //  S = Pi / ArcCos(1 - L/R)
-  if (FJoinType = jtRound) or (EndType = etRound) then
+  if (JoinType = jtRound) or (EndType = etRound) then
   begin
     if (Limit <= 0) then Limit := 0.25
     else if Limit > abs(FDelta) * 0.25 then Limit := abs(FDelta) * 0.25;
-    FRoundConst := Pi / ArcCos(1 - Limit / Abs(FDelta));
-    Math.SinCos(2 * Pi / FRoundConst, FSin, FCos);
-    FRoundConst := FRoundConst / (Pi * 2);
+    //FRoundConst: see offset_triginometry2.svg in the documentation folder ...
+    FRoundVal := Pi / ArcCos(1 - Limit / Abs(FDelta));
+    Math.SinCos(2 * Pi / FRoundVal, FSin, FCos);
+    FRoundVal := FRoundVal / (Pi * 2);
     if FDelta < 0 then FSin := -FSin;
   end;
 
@@ -3886,7 +3849,7 @@ begin
       if JoinType = jtRound then
       begin
         X := 1; Y := 0;
-        for J := 1 to Round(FRoundConst * 2 * Pi) do
+        for J := 1 to Round(FRoundVal * 2 * Pi) do
         begin
           AddPoint(IntPoint(
             Round(FInP[0].X + X * FDelta),
@@ -3906,7 +3869,7 @@ begin
           else if Y < 0 then Y := 1
           else X := -1;
         end;
-      end;
+      end;
       SetLength(FOutP, FOutPos);
       FSolution[I] := FOutP;
       Continue;
@@ -3931,7 +3894,7 @@ begin
     begin
       K := Len -1;
       for J := 0 to Len-1 do
-        OffsetPoint(J, K);
+        OffsetPoint(J, K, JoinType);
       SetLength(FOutP, FOutPos);
       FSolution[I] := FOutP;
 
@@ -3943,7 +3906,7 @@ begin
 
         K := Len -1;
         for J := 0 to Len-1 do
-          OffsetPoint(J, K);
+          OffsetPoint(J, K, JoinType);
 
         FDelta := -FDelta;
         SetLength(FOutP, FOutPos);
@@ -3956,7 +3919,7 @@ begin
       K := 0;
       //offset the polyline going forward ...
       for J := 1 to Len-2 do
-        OffsetPoint(J, K);
+        OffsetPoint(J, K, JoinType);
 
       //handle the end (butt, round or square) ...
       if EndType = etButt then
@@ -3988,7 +3951,7 @@ begin
       //offset the polyline going backward ...
       K := Len -1;
       for J := Len -2 downto 1 do
-        OffsetPoint(J, K);
+        OffsetPoint(J, K, JoinType);
 
       //finally handle the start (butt, round or square) ...
       if EndType = etButt then

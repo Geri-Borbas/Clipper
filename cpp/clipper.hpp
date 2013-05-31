@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.6                                                           *
-* Date      :  23 May 2013                                                     *
+* Version   :  5.1.7                                                           *
+* Date      :  1 June 2013                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -131,15 +131,11 @@ enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
 //{return static_cast<IntersectProtects>(static_cast<int>(a) | static_cast<int>(b));}
 
 struct TEdge {
-  long64 xbot;
-  long64 ybot;
-  long64 xcurr;
-  long64 ycurr;
-  long64 xtop;
-  long64 ytop;
+  IntPoint bot;
+  IntPoint curr;
+  IntPoint top;
+  IntPoint delta;
   double dx;
-  long64 deltaX;
-  long64 deltaY;
   PolyType polyType;
   EdgeSide side;
   int windDelta; //1 or -1 depending on winding direction
