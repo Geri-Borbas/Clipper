@@ -1950,6 +1950,7 @@ def _StripDupPts(poly):
 def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype = EndType.Square, limit = 0.0): 
     
     def _DoSquare(pt):
+        # see offset_triginometry.svg in the documentation folder ...
         dx = math.tan(math.atan2(sinA, 
             Normals[k].x * Normals[j].x + Normals[k].y * Normals[j].y)/4)
         result.append(Point(
@@ -1963,15 +1964,15 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
     def _DoMiter(pt, r):
         q = delta / r
         result.append(Point(
-            round(pt.x + delta * (Normals[k].x + Normals[j].x *q)),
-            round(pt.y + delta * (Normals[k].y + Normals[j].y *q))))
+            round(pt.x + (Normals[k].x + Normals[j].x) * q),
+            round(pt.y + (Normals[k].y + Normals[j].y) * q)))
         return
 
 
     def _DoRound(pt):
         a = math.atan2(sinA, 
                 Normals[k].x * Normals[j].x + Normals[k].y * Normals[j].y)
-        steps = round(roundVal * abs(a));
+        steps = round(step360 * abs(a));
         X,Y = Normals[k].x, Normals[k].y
         for _ in range(steps):
             result.append(Point(
@@ -1998,7 +1999,7 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
               round(pts[j].y + Normals[j].y * delta)))
         elif jointype == JoinType.Miter:
             r = 1.0 + (Normals[j].x * Normals[k].x + Normals[j].y * Normals[k].y)
-            if (r >= miterVal): _DoMiter(pts[j], r) 
+            if (r >= miterLim): _DoMiter(pts[j], r) 
             else: _DoSquare(pts[j])
         elif jointype == JoinType.Square: _DoSquare(pts[j])
         else: _DoRound(pts[j])
@@ -2008,19 +2009,19 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
     if not isPolygon and delta < 0: delta = -delta
 
     if jointype == JoinType.Miter:  
-        # miterVal: see offset_triginometry.svg in the documentation folder ...
-        if limit > 2: miterVal = 2 / (limit * limit)
-        else: miterVal = 0.5
+        # miterLim: see offset_triginometry3.svg in the documentation folder ...
+        if limit > 2: miterLim = 2 / (limit * limit)
+        else: miterLim = 0.5
         if endtype == EndType.Round: limit = 0.25
         
     if jointype == JoinType.Round or endtype == EndType.Round:
         if limit <= 0: limit = 0.25
         elif limit > abs(delta)*0.25: limit = abs(delta)*0.25
-        # roundVal: see offset_triginometry2.svg in the documentation folder ...
-        roundVal = math.pi / math.acos(1 - limit / abs(delta))
-        msin = math.sin(2 * math.pi / roundVal)
-        mcos = math.cos(2 * math.pi / roundVal)
-        roundVal /= math.pi * 2
+        # step360: see offset_triginometry2.svg in the documentation folder ...
+        step360 = math.pi / math.acos(1 - limit / abs(delta))
+        msin = math.sin(2 * math.pi / step360)
+        mcos = math.cos(2 * math.pi / step360)
+        step360 /= math.pi * 2
         if delta < 0: msin = -msin
             
     res = []
@@ -2035,7 +2036,7 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
         if (cnt == 1):
             if jointype == JoinType.Round:
                 X,Y = 1.0, 0.0
-                for _ in range(round(roundVal * 2 * math.pi)):
+                for _ in range(round(step360 * 2 * math.pi)):
                     result.append(Point(round(pts[0].x + X * delta),
                       round(pts[0].y + Y * delta)))
                     X2 = X

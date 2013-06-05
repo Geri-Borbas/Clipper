@@ -672,21 +672,16 @@ void InitEdge(TEdge *e, TEdge *eNext,
   std::memset(e, 0, sizeof(TEdge));
   e->next = eNext;
   e->prev = ePrev;
-  e->curr.X = pt.X;
-  e->curr.Y = pt.Y;
+  e->curr = pt;
   if (e->curr.Y >= e->next->curr.Y)
   {
-    e->bot.X = e->curr.X;
-    e->bot.Y = e->curr.Y;
-    e->top.X = e->next->curr.X;
-    e->top.Y = e->next->curr.Y;
+    e->bot = e->curr;
+    e->top = e->next->curr;
     e->windDelta = 1;
   } else
   {
-    e->top.X = e->curr.X;
-    e->top.Y = e->curr.Y;
-    e->bot.X = e->next->curr.X;
-    e->bot.Y = e->next->curr.Y;
+    e->top = e->curr;
+    e->bot = e->next->curr;
     e->windDelta = -1;
   }
   SetDx(*e);
@@ -928,8 +923,7 @@ bool ClipperBase::AddPolygon(const Polygon &pg, PolyType polyType)
   m_edges.push_back(edges);
 
   //convert vertices to a double-linked-list of edges and initialize ...
-  edges[0].curr.X = p[0].X;
-  edges[0].curr.Y = p[0].Y;
+  edges[0].curr = p[0];
   InitEdge(&edges[len-1], &edges[0], &edges[len-2], p[len-1], polyType);
   for (int i = len-2; i > 0; --i)
     InitEdge(&edges[i], &edges[i+1], &edges[i-1], p[i], polyType);
@@ -941,8 +935,7 @@ bool ClipperBase::AddPolygon(const Polygon &pg, PolyType polyType)
   TEdge *eHighest = e;
   do
   {
-    e->curr.X = e->bot.X;
-    e->curr.Y = e->bot.Y;
+    e->curr = e->bot;
     if (e->top.Y < eHighest->top.Y) eHighest = e;
     e = e->next;
   }
@@ -1070,8 +1063,7 @@ void ClipperBase::Reset()
     TEdge* e = lm->leftBound;
     while( e )
     {
-      e->curr.X = e->bot.X;
-      e->curr.Y = e->bot.Y;
+      e->curr = e->bot;
       e->side = esLeft;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -1079,8 +1071,7 @@ void ClipperBase::Reset()
     e = lm->rightBound;
     while( e )
     {
-      e->curr.X = e->bot.X;
-      e->curr.Y = e->bot.Y;
+      e->curr = e->bot;
       e->side = esRight;
       e->outIdx = -1;
       e = e->nextInLML;
@@ -3148,7 +3139,7 @@ private:
   Polygon* m_curr_poly;
   std::vector<DoublePoint> normals;
   double m_delta, m_sinA, m_sin, m_cos;
-  double m_miterVal, m_roundVal;
+  double m_miterLim, m_Steps360;
   size_t m_i, m_j, m_k;
   static const int buffLength = 128;
  
@@ -3165,9 +3156,9 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
 
   if (jointype == jtMiter) 
   {
-    //m_miterVal: see offset_triginometry.svg in the documentation folder ...
-    if (limit > 2) m_miterVal = 2/(limit*limit);
-    else m_miterVal = 0.5;
+    //m_miterLim: see offset_triginometry.svg in the documentation folder ...
+    if (limit > 2) m_miterLim = 2/(limit*limit);
+    else m_miterLim = 0.5;
     if (endtype == etRound) limit = 0.25;
   }
 
@@ -3175,11 +3166,11 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
   {
     if (limit <= 0) limit = 0.25;
     else if (limit > std::fabs(delta)*0.25) limit = std::fabs(delta)*0.25;
-    //m_roundVal: see offset_triginometry2.svg in the documentation folder ...
-    m_roundVal = pi / acos(1 - limit / std::fabs(delta));
-    m_sin = std::sin(2 * pi / m_roundVal);
-    m_cos = std::cos(2 * pi / m_roundVal);
-    m_roundVal /= pi * 2;
+    //m_Steps360: see offset_triginometry2.svg in the documentation folder ...
+    m_Steps360 = pi / acos(1 - limit / std::fabs(delta));
+    m_sin = std::sin(2 * pi / m_Steps360);
+    m_cos = std::cos(2 * pi / m_Steps360);
+    m_Steps360 /= pi * 2;
     if (delta < 0) m_sin = -m_sin;
   }
 
@@ -3197,7 +3188,7 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
         if (jointype == jtRound)
         {
           double X = 1.0, Y = 0.0;
-          for (long64 j = 1; j <= Round(m_roundVal * 2 * pi); j++)
+          for (long64 j = 1; j <= Round(m_Steps360 * 2 * pi); j++)
           {
             AddPoint(IntPoint(
               Round(m_p[m_i][0].X + X * delta),
@@ -3368,7 +3359,7 @@ void OffsetPoint(JoinType jointype)
         {
           double r = 1 + (normals[m_j].X*normals[m_k].X + 
             normals[m_j].Y*normals[m_k].Y);
-          if (r >= m_miterVal) DoMiter(r); else DoSquare();
+          if (r >= m_miterLim) DoMiter(r); else DoSquare();
           break;
         }
         case jtSquare: DoSquare(); break;
@@ -3411,7 +3402,7 @@ void DoRound()
 {
   double a = std::atan2(m_sinA, 
     normals[m_k].X * normals[m_j].X + normals[m_k].Y * normals[m_j].Y);
-  int steps = (int)Round(m_roundVal * std::fabs(a));
+  int steps = (int)Round(m_Steps360 * std::fabs(a));
 
   double X = normals[m_k].X, Y = normals[m_k].Y, X2;
   for (int i = 0; i < steps; ++i)

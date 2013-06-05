@@ -1266,8 +1266,7 @@ begin
   FEdgeList.Add(Edges);
 
   //convert vertices to a Double-linked-list of edges and initialize ...
-  Edges[0].Curr.X := Pg[0].X;
-  Edges[0].Curr.Y := Pg[0].Y;
+  Edges[0].Curr := Pg[0];
   InitEdge(@Edges[len-1], @Edges[0], @Edges[len-2], Pg[len-1]);
   for I := len-2 downto 1 do
     InitEdge(@Edges[I], @Edges[I+1], @Edges[I-1], Pg[I]);
@@ -3097,8 +3096,7 @@ begin
       Op := OutRec.Pts;
       for K := 0 to Cnt -1 do
       begin
-        Result[J][K].X := Op.Pt.X;
-        Result[J][K].Y := Op.Pt.Y;
+        Result[J][K] := Op.Pt;
         Op := Op.Prev;
       end;
       Inc(J);
@@ -3135,8 +3133,7 @@ begin
       Op := OutRec.Pts;
       for J := 0 to Cnt -1 do
       begin
-        PolyNode.FPolygon[J].X := Op.Pt.X;
-        PolyNode.FPolygon[J].Y := Op.Pt.Y;
+        PolyNode.FPolygon[J] := Op.Pt;
         Op := Op.Prev;
       end;
     end;
@@ -3684,7 +3681,7 @@ type
   private
     FDelta: Double;
     FSinA, FSin, FCos: Double;
-    FMiterVal, FRoundVal: Double;
+    FMiterLim, FSteps360: Double;
     FNorms: TArrayOfDoublePoint;
     FSolution: TPolygons;
     FOutPos: Integer;
@@ -3722,6 +3719,7 @@ procedure TOffsetBuilder.DoSquare(J, K: Integer);
 var
   A, Dx: Double;
 begin
+  //see offset_triginometry.svg in the documentation folder ...
   A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
   Dx := tan(A/4);
   AddPoint(IntPoint(
@@ -3749,7 +3747,7 @@ var
   A, X, X2, Y: Double;
 begin
   A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
-  Steps := Round(FRoundVal * Abs(A));
+  Steps := Round(FSteps360 * Abs(A));
 
   X := FNorms[K].X;
   Y := FNorms[K].Y;
@@ -3790,7 +3788,7 @@ begin
       jtMiter:
       begin
         R := 1 + (FNorms[J].X * FNorms[K].X + FNorms[J].Y * FNorms[K].Y);
-        if (R >= FMiterVal) then DoMiter(J, K, R)
+        if (R >= FMiterLim) then DoMiter(J, K, R)
         else DoSquare(J, K);
       end;
       jtSquare: DoSquare(J, K);
@@ -3816,9 +3814,9 @@ begin
 
   if JoinType = jtMiter then
   begin
-    //FMiterConst: see offset_triginometry.svg in the documentation folder ...
-    if Limit > 2 then FMiterVal := 2/(sqr(Limit))
-    else FMiterVal := 0.5;
+    //FMiterConst: see offset_triginometry3.svg in the documentation folder ...
+    if Limit > 2 then FMiterLim := 2/(sqr(Limit))
+    else FMiterLim := 0.5;
     if EndType = etRound then Limit := 0.25;
   end;
 
@@ -3827,9 +3825,9 @@ begin
     if (Limit <= 0) then Limit := 0.25
     else if Limit > abs(FDelta) * 0.25 then Limit := abs(FDelta) * 0.25;
     //FRoundConst: see offset_triginometry2.svg in the documentation folder ...
-    FRoundVal := Pi / ArcCos(1 - Limit / Abs(FDelta));
-    Math.SinCos(2 * Pi / FRoundVal, FSin, FCos);
-    FRoundVal := FRoundVal / (Pi * 2);
+    FSteps360 := Pi / ArcCos(1 - Limit / Abs(FDelta));
+    Math.SinCos(2 * Pi / FSteps360, FSin, FCos);
+    FSteps360 := FSteps360 / (Pi * 2);
     if FDelta < 0 then FSin := -FSin;
   end;
 
@@ -3849,7 +3847,7 @@ begin
       if JoinType = jtRound then
       begin
         X := 1; Y := 0;
-        for J := 1 to Round(FRoundVal * 2 * Pi) do
+        for J := 1 to Round(FSteps360 * 2 * Pi) do
         begin
           AddPoint(IntPoint(
             Round(FInP[0].X + X * FDelta),
