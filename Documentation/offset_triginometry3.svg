@@ -24,9 +24,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.99"
-     inkscape:cx="371"
-     inkscape:cy="818.2"
+     inkscape:zoom="0.92"
+     inkscape:cx="469.6"
+     inkscape:cy="755.8"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -47,7 +47,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -56,8 +56,14 @@
      inkscape:groupmode="layer"
      id="layer1">
     <path
+       style="color:#000000;fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:4,4;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       d="m 204.8,228.8 85.8,-55.7"
+       id="path3907"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc" />
+    <path
        style="color:#000000;fill:none;stroke:#000000;stroke-width:1.8;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="M 20.4,345.3 203.7,30.8 394,339.3"
+       d="M 20.4,345.3 203.7,30.8 357.6,282.8"
        id="path2985"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="ccc" />
@@ -67,39 +73,18 @@
        id="path2985-1"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="ccc" />
-    <path
-       style="color:#000000;fill:#00ff00;fill-opacity:1;stroke:#000000;stroke-width:2.1383;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="m 302.8,195.6 -9.2,24.2 -5.6,-8.3 -46.8,31.5 5.4,8.3 -26,-0.8 9.4,-24.3 5.5,8.3 47,-31.3 -5.6,-8.3 z"
-       id="path3777-9"
-       inkscape:connector-curvature="0"
-       sodipodi:nodetypes="ccccccccccc"
-       inkscape:transform-center-x="-96.45"
-       inkscape:transform-center-y="-137.3" />
     <text
        xml:space="preserve"
        style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
-       x="198.39999"
-       y="284.29999"
+       x="224.09737"
+       y="235.68962"
        id="text3861"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan3863"
-         x="198.39999"
-         y="284.29999">ß</tspan></text>
-    <path
-       style="color:#000000;fill:none;stroke:#000000;stroke-width:1.8;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="m 176,274.5 c 4,13.7 15.2,23.5 28.3,23.5 13.5,0 24.9,-10.4 28.7,-24.6"
-       id="path3865"
-       inkscape:connector-curvature="0"
-       sodipodi:nodetypes="csc"
-       inkscape:transform-center-x="57.59"
-       inkscape:transform-center-y="-3.165" />
-    <path
-       style="color:#000000;fill:none;stroke:#000000;stroke-width:1.8;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:7.2, 7.2;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="m 204.8,228.8 85.8,-55.7"
-       id="path3907"
-       inkscape:connector-curvature="0"
-       sodipodi:nodetypes="cc" />
+         x="224.09737"
+         y="235.68962"
+         style="font-weight:bold;-inkscape-font-specification:Tahoma Bold">ß</tspan></text>
     <path
        sodipodi:nodetypes="cccccccc"
        inkscape:connector-curvature="0"
@@ -111,26 +96,26 @@
     <text
        xml:space="preserve"
        style="font-size:10px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
-       x="266.20001"
-       y="248"
+       x="282.20001"
+       y="282"
        id="text3952"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan3954"
-         x="266.20001"
-         y="248"
+         x="282.20001"
+         y="282"
          style="font-size:14px">delta</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:10px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
        x="298.20001"
-       y="178.5"
+       y="172.5"
        id="text3977"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan3979"
          x="298.20001"
-         y="178.5"
+         y="172.5"
          style="font-size:14px">c</tspan></text>
     <text
        xml:space="preserve"
@@ -149,118 +134,140 @@
     <text
        xml:space="preserve"
        style="font-size:14px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
-       x="412"
-       y="38.650002"
+       x="394"
+       y="30.650002"
        id="text4077"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
-         x="412"
-         y="38.650002"
+         x="394"
+         y="30.650002"
          id="tspan4087">When mitering, the max. distance (b) can be </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="56.150002"
+         x="394"
+         y="48.150002"
          id="tspan3063">from (a) is set by 'limit' where limit is a </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="73.650002"
+         x="394"
+         y="65.650002"
          id="tspan3065">multiple of delta. Therefore, for any given angle</tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="91.150002"
+         x="394"
+         y="83.150002"
          id="tspan3067">we need to know if length(ab) &gt; limit * delta.</tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="108.65"
+         x="394"
+         y="100.65"
          id="tspan4083" /><tspan
          sodipodi:role="line"
-         x="412"
-         y="126.15"
-         id="tspan3091">To find the smallest angle for a given limit,</tspan><tspan
+         x="394"
+         y="118.15"
+         id="tspan3890">Find the smallest angle Ø (or largest ß since Ø = pi - ß) </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="143.64999"
-         id="tspan3183">where that angle is expressed as its sin or cos</tspan><tspan
+         x="394"
+         y="135.64999"
+         id="tspan3904">for a given limit, expressing ß as sin(ß) and / or cos(ß) </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="161.14999"
-         id="tspan3185">value (since these can easily be derived from</tspan><tspan
+         x="394"
+         y="153.14999"
+         id="tspan3908">since these can easily be derived from cross and dot </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="178.64999"
-         id="tspan3187">dot or cross products) ...</tspan><tspan
+         x="394"
+         y="170.64999"
+         id="tspan3916">products respectively).</tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="196.14999"
-         id="tspan3077">angle(abc) = ß/2</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="213.64999"
-         id="tspan3083">length(ab) = limit * delta</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="231.14999"
-         id="tspan3087">length(ac) = delta</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="248.64999"
-         id="tspan3089">sin(ß/2) = delta / (limit * delta)</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="266.14999"
-         id="tspan3157">Given that sin(ß/2) = sqrt((1-cos(ß))/2) **</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="283.64999"
-         id="tspan3151">1 / (limit) = sqrt((1-cos(ß))/2)</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="301.14999"
-         id="tspan3161">limit = sqrt(2 / (1-cos(ß)))</tspan><tspan
-         sodipodi:role="line"
-         x="412"
-         y="309.09836"
-         id="tspan3181"
+         x="394"
+         y="178.59834"
+         id="tspan3884"
          style="font-size:4px"> </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="323.64999"
-         style="font-weight:bold"
-         id="tspan3173">1-cos(ß) = 2 / sqr(limit) </tspan><tspan
+         x="394"
+         y="193.14999"
+         id="tspan3888">angle(abc) = Ø/2 </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="331.59836"
+         x="394"
+         y="210.64999"
+         id="tspan3083">length(ab) = limit * delta</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="228.14999"
+         id="tspan3087">length(ac) = delta</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="245.64999"
+         id="tspan3089">sin(Ø/2) = delta / (limit * delta) = 1 / limit</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="263.14999"
+         id="tspan3157">Given that sin(Ø/2) = sqrt((1-cos(Ø))/2) **</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="280.64999"
+         id="tspan3151">1 / limit = sqrt((1-cos(Ø))/2)</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="298.14999"
+         id="tspan3161">limit = sqrt(2 / (1-cos(Ø)))</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="315.64999"
+         id="tspan3815"
+         style="font-weight:bold">1-cos(Ø) = 2 / sqr(limit) </tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="333.14999"
+         id="tspan3864">Since ß = pi - Ø ...</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="350.64999"
+         id="tspan3868">1-cos(pi - ß) = 2 / sqr(limit) </tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="368.14999"
+         id="tspan3853">Given cos(pi-ß) = -cos(ß) **</tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="376.09836"
+         style="font-size:4px"
+         id="tspan3811"> </tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="390.64999"
+         style="font-weight:bold"
+         id="tspan3823">1+cos(ß) = 2 / sqr(limit) </tspan><tspan
+         sodipodi:role="line"
+         x="394"
+         y="398.59836"
          id="tspan3171"
          style="font-size:4px;font-weight:bold"> </tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="342.32935"
+         x="394"
+         y="409.32935"
          id="tspan3163"
          style="font-size:10px">** see http://en.wikipedia.org/wiki/List_of_trigonometric_identities</tspan><tspan
          sodipodi:role="line"
-         x="412"
-         y="354.82935"
+         x="394"
+         y="421.82935"
          id="tspan3153" /><tspan
          sodipodi:role="line"
-         x="412"
-         y="367.32935"
+         x="394"
+         y="434.32935"
          id="tspan3145" /><tspan
          sodipodi:role="line"
-         x="412"
-         y="379.82935"
+         x="394"
+         y="446.82935"
          id="tspan4124"
          style="font-weight:bold" /><tspan
          sodipodi:role="line"
-         x="412"
-         y="392.32935"
+         x="394"
+         y="459.32935"
          id="tspan4116" /><tspan
          sodipodi:role="line"
-         x="412"
-         y="404.82935"
+         x="394"
+         y="471.82935"
          id="tspan4095" /></text>
     <path
-       style="color:#000000;fill:none;stroke:#000000;stroke-width:1.8;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:3.6, 3.6;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="M 282,158.4 264.9,168.7 273,182"
+       style="color:#000000;fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:2, 2;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       d="m 284.7,163.3 -10.6,5.9 5.4,10.1"
        id="path4091"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="ccc" />
@@ -276,5 +283,52 @@
          x="188.19743"
          y="229.29668"
          style="font-size:14px">a</tspan></text>
+    <g
+       id="g3841">
+      <path
+         sodipodi:nodetypes="cc"
+         inkscape:connector-curvature="0"
+         id="path3026"
+         d="M 175.6,276.8 233.7,175.7"
+         style="color:#000000;fill:none;stroke:#000000;stroke-width:1.8;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:7.2, 7.2;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate" />
+      <path
+         sodipodi:nodetypes="cc"
+         inkscape:connector-curvature="0"
+         id="path3809"
+         d="m 227.7,188.7 c 27.7,17.9 31.6,57.6 -0.5,76.7"
+         style="color:#000000;fill:none;stroke:#000000;stroke-width:1.81;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:7.24,7.24;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate" />
+    </g>
+    <path
+       style="color:#000000;fill:#00ff00;fill-opacity:1;stroke:#000000;stroke-width:2.1383;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       d="m 324.8,231.6 -9.2,24.2 -5.6,-8.3 -46.8,31.5 5.4,8.3 -26,-0.8 9.4,-24.3 5.5,8.3 47,-31.3 -5.6,-8.3 z"
+       id="path3777-9"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="ccccccccccc"
+       inkscape:transform-center-x="-96.45"
+       inkscape:transform-center-y="-137.3" />
+    <text
+       xml:space="preserve"
+       style="font-size:14px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
+       x="195.66949"
+       y="267.03519"
+       id="text3845"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         id="tspan3847"
+         x="195.66949"
+         y="267.03519"
+         style="font-size:20px;font-weight:bold;-inkscape-font-specification:Tahoma Bold">Ø</tspan></text>
+    <text
+       sodipodi:linespacing="125%"
+       id="text3849"
+       y="267.03519"
+       x="195.66949"
+       style="font-size:14px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
+       xml:space="preserve"><tspan
+         style="font-size:20px;font-weight:bold;-inkscape-font-specification:Tahoma Bold"
+         y="267.03519"
+         x="195.66949"
+         id="tspan3851"
+         sodipodi:role="line">Ø</tspan></text>
   </g>
 </svg>
