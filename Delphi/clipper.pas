@@ -2737,19 +2737,6 @@ begin
         if (eMaxPair.OutIdx >= 0) then raise exception.Create(rsHorizontal);
         Exit;
       end
-      else if (E.Dx = Horizontal) and not IsMinima(E) and not (E.Curr.X > E.Top.X) then
-      begin
-        //An overlapping horizontal Edge. Overlapping horizontal edges are
-        //processed as if layered with the current horizontal Edge (horizEdge)
-        //being infinitesimally lower that the Next (E). Therfore, we
-        //intersect with E only if E.Curr.X is within the bounds of HorzEdge ...
-        if Direction = dLeftToRight then
-          IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
-            ProtectRight[not IsTopHorz(E.Curr.X)])
-        else
-          IntersectEdges(E, HorzEdge,  IntPoint(E.Curr.X, HorzEdge.Curr.Y),
-            ProtectLeft[not IsTopHorz(E.Curr.X)]);
-      end
       else if (Direction = dLeftToRight) then
         IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
           ProtectRight[not IsTopHorz(E.Curr.X)])

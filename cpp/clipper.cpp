@@ -61,6 +61,83 @@ enum Direction { dRightToLeft, dLeftToRight };
 
 const char coords_range_error[] = "Coordinate exceeds range bounds.";
 
+enum EdgeSide { esLeft = 1, esRight = 2};
+enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
+//inline IntersectProtects operator|(IntersectProtects a, IntersectProtects b)
+//{return static_cast<IntersectProtects>(static_cast<int>(a) | static_cast<int>(b));}
+
+struct TEdge {
+  IntPoint bot;
+  IntPoint curr;
+  IntPoint top;
+  IntPoint delta;
+  double dx;
+  PolyType polyType;
+  EdgeSide side;
+  int windDelta; //1 or -1 depending on winding direction
+  int windCnt;
+  int windCnt2; //winding count of the opposite polytype
+  int outIdx;
+  TEdge *next;
+  TEdge *prev;
+  TEdge *nextInLML;
+  TEdge *nextInAEL;
+  TEdge *prevInAEL;
+  TEdge *nextInSEL;
+  TEdge *prevInSEL;
+};
+
+struct IntersectNode {
+  TEdge          *edge1;
+  TEdge          *edge2;
+  IntPoint        pt;
+  IntersectNode  *next;
+};
+
+struct LocalMinima {
+  long64        Y;
+  TEdge        *leftBound;
+  TEdge        *rightBound;
+  LocalMinima  *next;
+};
+
+struct Scanbeam {
+  long64    Y;
+  Scanbeam *next;
+};
+
+struct OutPt; //forward declaration
+
+struct OutRec {
+  int     idx;
+  bool    isHole;
+  OutRec *FirstLeft;  //see comments in clipper.pas
+  PolyNode *polyNode;
+  OutPt  *pts;
+  OutPt  *bottomPt;
+};
+
+struct OutPt {
+  int     idx;
+  IntPoint pt;
+  OutPt   *next;
+  OutPt   *prev;
+};
+
+struct JoinRec {
+  IntPoint  pt1a;
+  IntPoint  pt1b;
+  int       poly1Idx;
+  IntPoint  pt2a;
+  IntPoint  pt2b;
+  int       poly2Idx;
+};
+
+struct HorzJoinRec {
+  TEdge    *edge;
+  int       savedIdx;
+};
+
 inline long64 Abs(long64 val)
 {
   return val < 0 ? -val : val;
@@ -175,11 +252,11 @@ class Int128
 
     Int128(const long64& _hi, const ulong64& _lo): lo(_lo), hi(_hi){}
     
-    long64 operator = (const long64 &val)
+    Int128& operator = (const long64 &val)
     {
       lo = (ulong64)val;
       if (val < 0) hi = -1; else hi = 0;
-      return val;
+      return *this;
     }
 
     bool operator == (const Int128 &val) const
@@ -506,7 +583,7 @@ bool PointInPolygon(const IntPoint &pt, OutPt *pp, bool UseFullInt64Range)
 bool SlopesEqual(const TEdge &e1, const TEdge &e2, bool UseFullInt64Range)
 {
   if (UseFullInt64Range)
-    return Int128Mul(e1.delta.X, e2.delta.X) == Int128Mul(e1.delta.X, e2.delta.Y);
+    return Int128Mul(e1.delta.Y, e2.delta.X) == Int128Mul(e1.delta.X, e2.delta.Y);
   else return e1.delta.Y * e2.delta.X == e1.delta.X * e2.delta.Y;
 }
 //------------------------------------------------------------------------------
@@ -846,7 +923,7 @@ ClipperBase::ClipperBase() //constructor
 {
   m_MinimaList = 0;
   m_CurrentLM = 0;
-  m_UseFullRange = true;
+  m_UseFullRange = false;
 }
 //------------------------------------------------------------------------------
 
@@ -891,13 +968,14 @@ bool ClipperBase::AddPolygon(const Polygon &pg, PolyType polyType)
     RangeTest(pg[i], maxVal);
 
     if (i == 0 || PointsEqual(p[j], pg[i])) continue;
-    else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], m_UseFullRange))
+    else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], maxVal == hiRange))
     {
       if (PointsEqual(p[j-1], pg[i])) j--;
     } else j++;
     p[j] = pg[i];
   }
   if (j < 2) return false;
+  m_UseFullRange = (maxVal == hiRange);
 
   len = j+1;
   while (len > 2)
@@ -2286,19 +2364,6 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
         if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
         return;
       }
-      else if( NEAR_EQUAL(e->dx, HORIZONTAL) &&  !IsMinima(e) && !(e->curr.X > e->top.X) )
-      {
-        //An overlapping horizontal edge. Overlapping horizontal edges are
-        //processed as if layered with the current horizontal edge (horizEdge)
-        //being infinitesimally lower that the next (e). Therfore, we
-        //intersect with e only if e.curr.X is within the bounds of horzEdge ...
-        if( dir == dLeftToRight )
-          IntersectEdges( horzEdge , e, IntPoint(e->curr.X, horzEdge->curr.Y),
-            (IsTopHorz( e->curr.X ))? ipLeft : ipBoth );
-        else
-          IntersectEdges( e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y),
-            (IsTopHorz( e->curr.X ))? ipRight : ipBoth );
-      }
       else if( dir == dLeftToRight )
       {
         IntersectEdges( horzEdge, e, IntPoint(e->curr.X, horzEdge->curr.Y),
@@ -3174,7 +3239,6 @@ OffsetBuilder(const Polygons& in_polys, Polygons& out_polys,
     if (delta < 0) m_sin = -m_sin;
   }
 
-  double deltaSq = delta*delta;
   out_polys.clear();
   out_polys.resize(m_p.size());
   for (m_i = 0; m_i < m_p.size(); m_i++)

@@ -54,19 +54,22 @@ typedef signed long long long64;
 typedef unsigned long long ulong64;
 
 struct IntPoint {
-public:
   long64 X;
   long64 Y;
   IntPoint(long64 x = 0, long64 y = 0): X(x), Y(y) {};
-  friend std::ostream& operator <<(std::ostream &s, IntPoint &p);
+  //friend std::ostream& operator <<(std::ostream &s, const IntPoint &p);
 };
 
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
 
 
-std::ostream& operator <<(std::ostream &s, Polygon &p);
-std::ostream& operator <<(std::ostream &s, Polygons &p);
+std::ostream& operator <<(std::ostream &s, const Polygon &p);
+std::ostream& operator <<(std::ostream &s, const Polygons &p);
+
+inline Polygon& operator <<(Polygon& poly, const IntPoint& p) {poly.push_back(p); return poly;}
+inline Polygons& operator <<(Polygons& polys, const Polygon& p) {polys.push_back(p); return polys;}
+
 
 class PolyNode;
 typedef std::vector< PolyNode* > PolyNodes;
@@ -124,90 +127,26 @@ void PolyTreeToPolygons(const PolyTree& polytree, Polygons& polygons);
 void ReversePolygon(Polygon& p);
 void ReversePolygons(Polygons& p);
 
-//used internally ...
-enum EdgeSide { esLeft = 1, esRight = 2};
-enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
-//inline IntersectProtects operator|(IntersectProtects a, IntersectProtects b)
-//{return static_cast<IntersectProtects>(static_cast<int>(a) | static_cast<int>(b));}
-
-struct TEdge {
-  IntPoint bot;
-  IntPoint curr;
-  IntPoint top;
-  IntPoint delta;
-  double dx;
-  PolyType polyType;
-  EdgeSide side;
-  int windDelta; //1 or -1 depending on winding direction
-  int windCnt;
-  int windCnt2; //winding count of the opposite polytype
-  int outIdx;
-  TEdge *next;
-  TEdge *prev;
-  TEdge *nextInLML;
-  TEdge *nextInAEL;
-  TEdge *prevInAEL;
-  TEdge *nextInSEL;
-  TEdge *prevInSEL;
-};
-
-struct IntersectNode {
-  TEdge          *edge1;
-  TEdge          *edge2;
-  IntPoint        pt;
-  IntersectNode  *next;
-};
-
-struct LocalMinima {
-  long64        Y;
-  TEdge        *leftBound;
-  TEdge        *rightBound;
-  LocalMinima  *next;
-};
-
-struct Scanbeam {
-  long64    Y;
-  Scanbeam *next;
-};
-
-struct OutPt; //forward declaration
-
-struct OutRec {
-  int     idx;
-  bool    isHole;
-  OutRec *FirstLeft;  //see comments in clipper.pas
-  PolyNode *polyNode;
-  OutPt  *pts;
-  OutPt  *bottomPt;
-};
-
-struct OutPt {
-  int     idx;
-  IntPoint pt;
-  OutPt   *next;
-  OutPt   *prev;
-};
-
-struct JoinRec {
-  IntPoint  pt1a;
-  IntPoint  pt1b;
-  int       poly1Idx;
-  IntPoint  pt2a;
-  IntPoint  pt2b;
-  int       poly2Idx;
-};
-
-struct HorzJoinRec {
-  TEdge    *edge;
-  int       savedIdx;
-};
-
 struct IntRect { long64 left; long64 top; long64 right; long64 bottom; };
+
+//forward declarations (for stuff used internally) ...
+enum EdgeSide;
+enum IntersectProtects;
+struct TEdge;
+struct IntersectNode;
+struct LocalMinima;
+struct Scanbeam;
+struct OutPt;
+struct OutRec;
+struct JoinRec;
+struct HorzJoinRec;
 
 typedef std::vector < OutRec* > PolyOutList;
 typedef std::vector < TEdge* > EdgeList;
 typedef std::vector < JoinRec* > JoinList;
 typedef std::vector < HorzJoinRec* > HorzJoinList;
+
+//------------------------------------------------------------------------------
 
 //ClipperBase is the ancestor to the Clipper class. It should not be
 //instantiated directly. This class simply abstracts the conversion of sets of
@@ -232,6 +171,7 @@ protected:
   bool              m_UseFullRange;
   EdgeList          m_edges;
 };
+//------------------------------------------------------------------------------
 
 class Clipper : public virtual ClipperBase
 {
@@ -323,8 +263,6 @@ private:
   void FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec);
   void FixupFirstLefts2(OutRec* OldOutRec, OutRec* NewOutRec);
 };
-
-//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
 class clipperException : public std::exception

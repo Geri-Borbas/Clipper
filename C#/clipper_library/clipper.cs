@@ -2392,15 +2392,6 @@ namespace ClipperLib
                         if (eMaxPair.outIdx >= 0) throw new ClipperException("ProcessHorizontal error");
                         return;
                     }
-                    else if (e.dx == horizontal && !IsMinima(e) && !(e.curr.X > e.top.X))
-                    {
-                        if (Direction == Direction.dLeftToRight)
-                            IntersectEdges(horzEdge, e, e.curr,
-                              (IsTopHorz(horzEdge, e.curr.X)) ? Protects.ipLeft : Protects.ipBoth);
-                        else
-                            IntersectEdges(e, horzEdge, new IntPoint(e.curr.X, horzEdge.curr.Y),
-                              (IsTopHorz(horzEdge, e.curr.X)) ? Protects.ipRight : Protects.ipBoth);
-                    }
                     else if (Direction == Direction.dLeftToRight)
                     {
                         IntersectEdges(horzEdge, e, e.curr,

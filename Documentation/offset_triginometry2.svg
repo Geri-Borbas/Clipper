@@ -24,9 +24,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.9797"
-     inkscape:cx="311.8"
-     inkscape:cy="762.5"
+     inkscape:zoom="0.64"
+     inkscape:cx="2.6e+002"
+     inkscape:cy="6e+002"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -34,10 +34,15 @@
      inkscape:window-height="753"
      inkscape:window-x="-4"
      inkscape:window-y="-4"
-     inkscape:window-maximized="1">
+     inkscape:window-maximized="1"
+     borderlayer="false">
     <inkscape:grid
        type="xygrid"
-       id="grid3779" />
+       id="grid3779"
+       empspacing="5"
+       visible="true"
+       enabled="true"
+       snapvisiblegridlinesonly="true" />
   </sodipodi:namedview>
   <metadata
      id="metadata7">
@@ -47,7 +52,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -182,72 +187,64 @@
          sodipodi:role="line"
          x="454.80371"
          y="91.773972"
-         id="tspan4244">Calculate the number of steps (S) needed to </tspan><tspan
+         id="tspan4232">Calculate the number of steps (S) needed to </tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="109.27397"
-         id="tspan4248">construct an ellipse with radius (R) where the</tspan><tspan
+         id="tspan3369">construct an ellipse with radius (R) where the</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="126.77397"
-         id="tspan4254">maximum imprecision or tolerance is a </tspan><tspan
+         id="tspan3371">maximum imprecision or tolerance is a </tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="144.27397"
-         id="tspan4312">predefined constant L.</tspan><tspan
+         id="tspan3373">predefined constant L.</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="161.77397"
-         id="tspan4236" /><tspan
+         id="tspan3375" /><tspan
          sodipodi:role="line"
          x="454.80371"
          y="179.27397"
-         id="tspan4314">length(cd) = R and ß = 2*pi / S</tspan><tspan
+         id="tspan3377">length(cd) = R and ß = 2*pi / S</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="196.77397"
-         id="tspan4263">length(md) = L and length(cm) + L = R</tspan><tspan
+         id="tspan3379">length(md) = L and length(cm) + L = R</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="214.27397"
-         id="tspan4267">cos(ß/2) = length(cm)/R = (R-L)/R</tspan><tspan
+         id="tspan3381">cos(ß/2) = length(cm)/R = (R-L)/R</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="231.77397"
-         id="tspan4269">ß = 2 * arccos(1 - L/R) = 2*pi / S</tspan><tspan
+         id="tspan3383">ß = 2 * arccos(1 - L/R) = 2*pi / S</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="249.27397"
-         id="tspan4271"
+         id="tspan3385"
          style="font-weight:bold">S = pi / arccos(1 - L/R)</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="266.77399"
-         id="tspan4310" /><tspan
+         id="tspan3387" /><tspan
          sodipodi:role="line"
          x="454.80371"
          y="284.27396"
-         id="tspan4298">eg: Given an ellipse with radius = 100px </tspan><tspan
+         id="tspan3389">eg: Given an ellipse with radius = 100px </tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="301.77396"
-         id="tspan4300">and allowing a max. imprecision of 1/4px</tspan><tspan
+         id="tspan3391">and allowing a max. imprecision of 1/4px</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="319.27396"
-         id="tspan4306">the number of steps (vertices) required is ...</tspan><tspan
+         id="tspan3393">the number of steps (vertices) required is ...</tspan><tspan
          sodipodi:role="line"
          x="454.80371"
          y="336.77396"
-         id="tspan4308">S = pi / arccos(1 - 0.25/100) = 44</tspan><tspan
-         sodipodi:role="line"
-         x="454.80371"
-         y="354.27396"
-         id="tspan4240" /><tspan
-         sodipodi:role="line"
-         x="454.80371"
-         y="371.77396"
-         id="tspan4232" /></text>
+         id="tspan3399">S = pi / arccos(1 - 0.25/100) = 44</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:14px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:125%;letter-spacing:0px;word-spacing:0px;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Tahoma;-inkscape-font-specification:Tahoma"
