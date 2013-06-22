@@ -1,7 +1,7 @@
 #===============================================================================
 #                                                                              #
 # Author    :  Angus Johnson                                                   #
-# Version   :  5.1.7                                                           #
+# Version   :  5.1.6(b)                                                        #
 # Date      :  1 June 2013                                                     #
 # Website   :  http://www.angusj.com                                           #
 # Copyright :  Angus Johnson 2010-2013                                         #
@@ -722,7 +722,7 @@ class Clipper(ClipperBase):
     def __init__(self):
         ClipperBase.__init__(self)
 
-        self.ReverseOutput     = False
+        self.ReverseSolution     = False
         self.ForceSimple       = False
         
         self._PolyOutList = []        
@@ -1697,7 +1697,7 @@ class Clipper(ClipperBase):
                     _FixupOutPolygon(outRec1)
                     _FixupOutPolygon(outRec2)
                     
-                    if outRec2.isHole == self._Area(outRec2) > 0.0:
+                    if (outRec2.isHole ^ self.ReverseSolution) == self._Area(outRec2) > 0.0:
                         _ReversePolyPtLinks(outRec2.pts)
                         
                 elif _Poly2ContainsPoly1(outRec1.pts, outRec2.pts):
@@ -1713,7 +1713,7 @@ class Clipper(ClipperBase):
                     _FixupOutPolygon(outRec1)
                     _FixupOutPolygon(outRec2)
                     
-                    if outRec1.isHole == self._Area(outRec1) > 0.0:
+                    if (outRec1.isHole ^ self.ReverseSolution) == self._Area(outRec1) > 0.0:
                         _ReversePolyPtLinks(outRec1.pts)
                 else:                  
                     outRec2.isHole = outRec1.isHole
@@ -1802,7 +1802,7 @@ class Clipper(ClipperBase):
                     if outRec.pts is None: continue                
                     _FixupOutPolygon(outRec)
                     if outRec.pts is None: continue
-                    if outRec.isHole == (self._Area(outRec.pts) > 0.0):
+                    if ((outRec.isHole ^ self.ReverseSolution) == (self._Area(outRec.pts) > 0.0)):
                         _ReversePolyPtLinks(outRec.pts)
                 
                 if self._JoinList is not None: self._JoinCommonEdges()
@@ -2142,10 +2142,9 @@ def _OffsetInternal(polys, isPolygon, delta, jointype = JoinType.Square, endtype
         outer.append(Point(bounds.right+10, bounds.top-10))
         outer.append(Point(bounds.left-10, bounds.top-10))
         c.AddPolygon(outer, PolyType.Subject)
+        c.ReverseSolution = True
         c.Execute(ClipType.Union, res, PolyFillType.Negative, PolyFillType.Negative)
         if len(res) > 0: res.pop(0)
-        for poly in res:
-            poly = poly[::-1]             
     return res
 
 def OffsetPolygons(polys, delta, jointype = JoinType.Square, limit = 0.0, autoFix = True):
