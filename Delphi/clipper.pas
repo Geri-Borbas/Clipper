@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.7                                                           *
-* Date      :  1 June 2013                                                     *
+* Version   :  6.0.0                                                           *
+* Date      :  25 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -36,6 +36,12 @@ unit clipper;
 //UseInt32: improves performance but limits coordinate values to +/- 46340 range
 {.$DEFINE UseInt32}
 
+{$IFNDEF UseInt32}
+  //UseXYZ: adds a Z member to IntPoint (with only a minor cost to perfomance)
+  //nb: UseXYZ can only be used with 64bit integers.
+  {.$DEFINE UseXYZ}
+{$ENDIF}
+
 interface
 
 uses
@@ -49,8 +55,20 @@ type
 {$ENDIF}
 
   PIntPoint = ^TIntPoint;
+{$IFDEF UseXYZ}
+  TIntPoint = record X, Y, Z: cInt; end;
+{$ELSE}
   TIntPoint = record X, Y: cInt; end;
+{$ENDIF}
+
   TIntRect = record Left, Top, Right, Bottom: cInt; end;
+
+  TDoublePoint = record X, Y: Double; end;
+  TArrayOfDoublePoint = array of TDoublePoint;
+
+{$IFDEF UseXYZ}
+  TZFillCallback = procedure (const Z1, Z2: Int64; var Pt: TIntPoint);
+{$ENDIF}
 
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
   TPolyType = (ptSubject, ptClip);
@@ -122,7 +140,6 @@ type
     WindCnt  : Integer;
     WindCnt2 : Integer;      //winding count of the opposite PolyType
     OutIdx   : Integer;
-    //OpenFlags: Cardinal;
     Next     : PEdge;
     Prev     : PEdge;
     NextInLML: PEdge;
@@ -235,6 +252,9 @@ type
     FReverseOutput  : Boolean;
     FForceSimple    : Boolean;
     FUsingPolyTree: Boolean;
+{$IFDEF UseXYZ}
+    FZFillCallback  : TZFillCallback;
+{$ENDIF}
     procedure DisposeScanbeamList;
     procedure InsertScanbeam(const Y: cInt);
     function PopScanbeam: cInt;
@@ -307,11 +327,20 @@ type
     property ReverseSolution: Boolean read FReverseOutput write FReverseOutput;
     property ForceSimple: Boolean
       read FForceSimple write FForceSimple;
+{$IFDEF UseXYZ}
+    property ZFillFunction: TZFillCallback read FZFillCallback write FZFillCallback;
+{$ENDIF}
   end;
 
 function Orientation(const Pts: TPolygon): Boolean; overload;
 function Area(const Pts: TPolygon): Double; overload;
+
+{$IFDEF UseXYZ}
+function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint;
+{$ELSE}
 function IntPoint(const X, Y: cInt): TIntPoint;
+{$ENDIF}
+
 function ReversePolygon(const Pts: TPolygon): TPolygon;
 function ReversePolygons(const Pts: TPolygons): TPolygons;
 
@@ -336,10 +365,6 @@ function CleanPolygons(const Polys: TPolygons; Distance: double = 1.415): TPolyg
 function PolyTreeToPolygons(PolyTree: TPolyTree): TPolygons;
 
 implementation
-
-type
-  TDoublePoint = record X, Y: Double; end;
-  TArrayOfDoublePoint = array of TDoublePoint;
 
 const
   Horizontal: Double = -3.4e+38;
@@ -694,12 +719,21 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+{$IFDEF UseXYZ}
+function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint;
+begin
+  Result.X := X;
+  Result.Y := Y;
+  Result.Z := Z;
+end;
+{$ELSE}
 function IntPoint(const X, Y: cInt): TIntPoint;
 begin
   Result.X := X;
   Result.Y := Y;
 end;
 //------------------------------------------------------------------------------
+{$ENDIF}
 
 function Area(const Pts: TPolygon): Double;
 var
@@ -954,11 +988,39 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+{$IFDEF UseXYZ}
+function GetZ(const Pt: TIntPoint; E: PEdge): Int64; {$IFDEF INLINING} inline; {$ENDIF}
+begin
+  if PointsEqual(Pt, E.Bot) then Result := E.Bot.Z
+  else if PointsEqual(Pt, E.Top) then Result := E.Top.Z
+  else if E.WindDelta > 0 then Result := E.Bot.Z
+  else Result := E.Top.Z;
+end;
+//------------------------------------------------------------------------------
+
+Procedure SetZ(var Pt: TIntPoint; E, eNext: PEdge; ZFillFunc: TZFillCallback);
+var
+  Z1, Z2: Int64;
+begin
+  Pt.Z := 0;
+  if assigned(ZFillFunc) then
+  begin
+    Z1 := GetZ(Pt, E);
+    Z2 := GetZ(Pt, eNext);
+    ZFillFunc(Z1, Z2, Pt);
+  end;
+end;
+//------------------------------------------------------------------------------
+{$ENDIF}
+
 function IntersectPoint(Edge1, Edge2: PEdge;
   out ip: TIntPoint; UseFullInt64Range: Boolean): Boolean; overload;
 var
   B1,B2,M: Double;
 begin
+{$IFDEF UseXYZ}
+  ip.Z := 0;
+{$ENDIF}
   if SlopesEqual(Edge1, Edge2, UseFullInt64Range) then
   begin
     //parallel edges, but nevertheless prepare to force the intersection
@@ -1077,13 +1139,20 @@ end;
 //------------------------------------------------------------------------------
 
 procedure SwapX(E: PEdge);
+var
+  tmp: cInt;
 begin
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower Edge. [Helpful in the ProcessHorizontal() method.]
-  E.Curr.X := E.Top.X;
+  tmp := E.Top.X;
   E.Top.X := E.Bot.X;
-  E.Bot.X := E.Curr.X;
+  E.Bot.X := tmp;
+{$IFDEF UseXYZ}
+  tmp := E.Top.Z;
+  E.Top.Z := E.Bot.Z;
+  E.Bot.Z := tmp;
+{$ENDIF}
 end;
 //------------------------------------------------------------------------------
 
@@ -1279,7 +1348,6 @@ begin
   E := @Edges[0];
   EHighest := E;
   repeat
-    //if PolyType = ptSubject then E.OpenFlags := 1;
     E.Curr := E.Bot;
     if E.Top.Y < EHighest.Top.Y then EHighest := E;
     E := E.Next;
@@ -2004,7 +2072,7 @@ begin
       InsertScanbeam(Rb.Top.Y);
 
     if IsContributing(Lb) then
-      AddLocalMinPoly(Lb, Rb, IntPoint(Lb.Curr.X, CurrentLm.Y));
+      AddLocalMinPoly(Lb, Rb, Lb.Bot);
 
     //if output polygons share an Edge with rb, they'll need joining later ...
     if (Rb.OutIdx >= 0) and (Rb.Dx = Horizontal) and Assigned(fHorizJoins) then
@@ -2027,6 +2095,9 @@ begin
 
       E := Lb.NextInAEL;
       Pt := Lb.Curr;
+{$IFDEF UseXYZ}
+      SetZ(Pt, Rb, E, FZFillCallback);
+{$ENDIF}
       while E <> Rb do
       begin
         if not Assigned(E) then raise exception.Create(rsMissingRightbound);
@@ -2097,15 +2168,6 @@ begin
   //assumes that E1 will be to the right of E2 ABOVE the intersection
   if E1.PolyType = E2.PolyType then
   begin
-//    if Odd(E1.OpenFlags) or Odd(E2.OpenFlags) then
-//    begin
-//      if (E1.OutIdx = E2.OutIdx) and (E1Contributing or E2Contributing) then
-//      begin
-//        AddOutPt(E1, Pt);
-//        E1.OutIdx := -1;
-//        E2.OutIdx := -1;
-//      end;
-//    end else
     if IsEvenOddFillType(E1) then
     begin
       E1Wc := E1.WindCnt;
@@ -2122,22 +2184,10 @@ begin
     end;
   end else
   begin
-//    if Odd(E2.OpenFlags) then
-//    begin
-//      AddOutPt(E2, Pt);
-//      if E2Contributing then E2.OutIdx := -1;
-//      Exit;
-//    end else
     if not IsEvenOddFillType(E2) then Inc(E1.WindCnt2, E2.WindDelta)
     else if E1.WindCnt2 = 0 then E1.WindCnt2 := 1
     else E1.WindCnt2 := 0;
 
-//    if Odd(E1.OpenFlags) then
-//    begin
-//      AddOutPt(E1, Pt);
-//      if E1Contributing then E1.OutIdx := -1;
-//      Exit;
-//    end else
     if not IsEvenOddFillType(E1) then Dec(E2.WindCnt2, E1.WindDelta)
     else if E2.WindCnt2 = 0 then E2.WindCnt2 := 1
     else E2.WindCnt2 := 0;
@@ -2686,6 +2736,7 @@ var
   E, eNext, eMaxPair: PEdge;
   HorzLeft, HorzRight: cInt;
   Direction: TDirection;
+  Pt: TIntPoint;
 const
   ProtectLeft: array[Boolean] of TIntersectProtects = ([ipRight], [ipLeft,ipRight]);
   ProtectRight: array[Boolean] of TIntersectProtects = ([ipLeft], [ipLeft,ipRight]);
@@ -2753,17 +2804,26 @@ begin
       begin
         //HorzEdge is evidently a maxima horizontal and we've arrived at its end.
         if Direction = dLeftToRight then
-          IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y)) else
-          IntersectEdges(E, HorzEdge, IntPoint(E.Curr.X, HorzEdge.Curr.Y));
+          IntersectEdges(HorzEdge, E, E.Top) else
+          IntersectEdges(E, HorzEdge, E.Top);
         if (eMaxPair.OutIdx >= 0) then raise exception.Create(rsHorizontal);
         Exit;
       end
       else if (Direction = dLeftToRight) then
-        IntersectEdges(HorzEdge, E, IntPoint(E.Curr.X, HorzEdge.Curr.Y),
-          ProtectRight[not IsTopHorz(E.Curr.X)])
-      else
-        IntersectEdges(E, HorzEdge,  IntPoint(E.Curr.X, HorzEdge.Curr.Y),
-          ProtectLeft[not IsTopHorz(E.Curr.X)]);
+      begin
+        Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
+{$IFDEF UseXYZ}
+        SetZ(Pt, HorzEdge, E, FZFillCallback);
+{$ENDIF}
+        IntersectEdges(HorzEdge, E, Pt, ProtectRight[not IsTopHorz(E.Curr.X)])
+      end else
+      begin
+        Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
+{$IFDEF UseXYZ}
+        SetZ(Pt, E, HorzEdge, FZFillCallback);
+{$ENDIF}
+        IntersectEdges(E, HorzEdge, Pt, ProtectLeft[not IsTopHorz(E.Curr.X)]);
+      end;
       SwapPositionsInAEL(HorzEdge, E);
     end
     else if ((Direction = dLeftToRight) and (E.Curr.X >= HorzRight)) or
@@ -2780,9 +2840,7 @@ begin
   end else
   begin
     if HorzEdge.OutIdx >= 0 then
-      IntersectEdges(HorzEdge, eMaxPair,
-        IntPoint(HorzEdge.Top.X, HorzEdge.Curr.Y), [ipLeft,ipRight]);
-
+      IntersectEdges(HorzEdge, eMaxPair,  HorzEdge.Top, [ipLeft,ipRight]);
     if eMaxPair.OutIdx >= 0 then raise exception.Create(rsHorizontal);
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(HorzEdge);
@@ -2881,6 +2939,9 @@ begin
           Pt.Y := BotY;
           Pt.X := TopX(E, Pt.Y);
         end;
+{$IFDEF UseXYZ}
+        SetZ(Pt, E, eNext, FZFillCallback);
+{$ENDIF}
         InsertIntersectNode(E, eNext, Pt);
         SwapPositionsInSEL(E, eNext);
         IsModified := True;
@@ -2941,13 +3002,18 @@ end;
 procedure TClipper.DoMaxima(E: PEdge; const TopY: cInt);
 var
   ENext, EMaxPair: PEdge;
+  Pt: TIntPoint;
 begin
   EMaxPair := GetMaximaPair(E);
   ENext := E.NextInAEL;
   while ENext <> EMaxPair do
   begin
     if not Assigned(ENext) then raise exception.Create(rsDoMaxima);
-    IntersectEdges(E, ENext, E.Top, [ipLeft, ipRight]);
+    Pt := E.Top;
+{$IFDEF UseXYZ}
+    SetZ(Pt, E, ENext, FZFillCallback);
+{$ENDIF}
+    IntersectEdges(E, ENext, Pt, [ipLeft, ipRight]);
     SwapPositionsInAEL(E, ENext);
     ENext := E.NextInAEL;
   end;
@@ -3037,10 +3103,20 @@ begin
           (E.PrevInAEL.Curr.X = E.Curr.X) and
           (E.OutIdx >= 0) and (E.PrevInAEL.OutIdx >= 0) then
         begin
+          Pt := IntPoint(E.Curr.X, TopY);
           if IntermediateVert then
-            AddOutPt(E.PrevInAEL, IntPoint(E.Curr.X, TopY))
-          else
-            AddOutPt(E, IntPoint(E.Curr.X, TopY));
+          begin
+{$IFDEF UseXYZ}
+            GetZ(Pt, E.PrevInAEL);
+{$ENDIF}
+            AddOutPt(E.PrevInAEL, Pt);
+          end else
+          begin
+{$IFDEF UseXYZ}
+            GetZ(Pt, E);
+{$ENDIF}
+            AddOutPt(E, Pt);
+          end;
         end;
       end;
       E := E.NextInAEL;
