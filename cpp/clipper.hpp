@@ -34,6 +34,9 @@
 #ifndef clipper_hpp
 #define clipper_hpp
 
+//use_int32: improves performance but limits coordinate values to +/- 46340 range
+//#define use_int32
+
 #include <vector>
 #include <stdexcept>
 #include <cstring>
@@ -50,14 +53,19 @@ enum PolyType { ptSubject, ptClip };
 //see http://glprogramming.com/red/chapter11.html
 enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
 
-typedef signed long long long64;
-typedef unsigned long long ulong64;
+#ifdef use_int32
+typedef int cInt;
+typedef unsigned int cUInt;
+#else
+typedef signed long long long64; //backward compatibility only
+typedef signed long long cInt;
+typedef unsigned long long cUInt;
+#endif
 
 struct IntPoint {
-  long64 X;
-  long64 Y;
-  IntPoint(long64 x = 0, long64 y = 0): X(x), Y(y) {};
-  //friend std::ostream& operator <<(std::ostream &s, const IntPoint &p);
+  cInt X;
+  cInt Y;
+  IntPoint(cInt x = 0, cInt y = 0): X(x), Y(y) {};
 };
 
 typedef std::vector< IntPoint > Polygon;
@@ -127,11 +135,15 @@ void PolyTreeToPolygons(const PolyTree& polytree, Polygons& polygons);
 void ReversePolygon(Polygon& p);
 void ReversePolygons(Polygons& p);
 
-struct IntRect { long64 left; long64 top; long64 right; long64 bottom; };
+struct IntRect { cInt left; cInt top; cInt right; cInt bottom; };
+
+//enums that are used internally ...
+enum EdgeSide { esLeft = 1, esRight = 2};
+enum IntersectProtects { ipNone = 0, ipLeft = 1, ipRight = 2, ipBoth = 3 };
+//inline IntersectProtects operator|(IntersectProtects a, IntersectProtects b)
+//{return static_cast<IntersectProtects>(static_cast<int>(a) | static_cast<int>(b));}
 
 //forward declarations (for stuff used internally) ...
-enum EdgeSide;
-enum IntersectProtects;
 struct TEdge;
 struct IntersectNode;
 struct LocalMinima;
@@ -213,9 +225,9 @@ private:
   void SetWindingCount(TEdge& edge);
   bool IsEvenOddFillType(const TEdge& edge) const;
   bool IsEvenOddAltFillType(const TEdge& edge) const;
-  void InsertScanbeam(const long64 Y);
-  long64 PopScanbeam();
-  void InsertLocalMinimaIntoAEL(const long64 botY);
+  void InsertScanbeam(const cInt Y);
+  cInt PopScanbeam();
+  void InsertLocalMinimaIntoAEL(const cInt botY);
   void InsertEdgeIntoAEL(TEdge *edge);
   void AddEdgeToSEL(TEdge *edge);
   void CopyAELToSEL();
@@ -224,9 +236,9 @@ private:
   void UpdateEdgeIntoAEL(TEdge *&e);
   void SwapPositionsInSEL(TEdge *edge1, TEdge *edge2);
   bool IsContributing(const TEdge& edge) const;
-  bool IsTopHorz(const long64 XPos);
+  bool IsTopHorz(const cInt XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
-  void DoMaxima(TEdge *e, long64 topY);
+  void DoMaxima(TEdge *e, cInt topY);
   void ProcessHorizontals();
   void ProcessHorizontal(TEdge *horzEdge);
   void AddLocalMaxPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
@@ -239,11 +251,11 @@ private:
   void AddOutPt(TEdge *e, const IntPoint &pt);
   void DisposeAllPolyPts();
   void DisposeOutRec(PolyOutList::size_type index);
-  bool ProcessIntersections(const long64 botY, const long64 topY);
+  bool ProcessIntersections(const cInt botY, const cInt topY);
   void InsertIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
-  void BuildIntersectList(const long64 botY, const long64 topY);
+  void BuildIntersectList(const cInt botY, const cInt topY);
   void ProcessIntersectList();
-  void ProcessEdgesAtTopOfScanbeam(const long64 topY);
+  void ProcessEdgesAtTopOfScanbeam(const cInt topY);
   void BuildResult(Polygons& polys);
   void BuildResult2(PolyTree& polytree);
   void SetHoleState(TEdge *e, OutRec *outrec);
