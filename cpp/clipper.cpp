@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.7                                                           *
-* Date      :  1 June 2013                                                     *
+* Version   :  6.0.0                                                           *
+* Date      :  25 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -58,7 +58,7 @@ namespace ClipperLib {
   typedef unsigned long long ulong64;
 #endif
 
-  static double const pi = 3.141592653589793238;
+static double const pi = 3.141592653589793238;
 enum Direction { dRightToLeft, dLeftToRight };
 
 #define HORIZONTAL (-1.0E+40)
@@ -651,6 +651,9 @@ cInt TopX(TEdge &edge, const cInt currentY)
 bool IntersectPoint(TEdge &edge1, TEdge &edge2,
   IntPoint &ip, bool UseFullInt64Range)
 {
+#ifdef use_xyz  
+  ip.Z = 0;
+#endif
   double b1, b2;
   if (SlopesEqual(edge1, edge2, UseFullInt64Range))
   {
@@ -766,9 +769,14 @@ inline void SwapX(TEdge &e)
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-  e.curr.X = e.top.X;
+  cInt tmp = e.top.X;
   e.top.X = e.bot.X;
-  e.bot.X = e.curr.X;
+  e.bot.X = tmp;
+#ifdef use_xyz  
+  tmp = e.top.Z;
+  e.top.Z = e.bot.Z;
+  e.bot.Z = tmp;
+#endif
 }
 //------------------------------------------------------------------------------
 
@@ -1240,6 +1248,9 @@ Clipper::Clipper() : ClipperBase() //constructor
   m_UseFullRange = false;
   m_ReverseOutput = false;
   m_ForceSimple = false;
+#ifdef use_xyz  
+  m_ZFill = 0;
+#endif
 }
 //------------------------------------------------------------------------------
 
@@ -1249,6 +1260,14 @@ Clipper::~Clipper() //destructor
   DisposeScanbeamList();
 }
 //------------------------------------------------------------------------------
+
+#ifdef use_xyz  
+void Clipper::ZFillFunction(ZFillFunc zFillFunc)
+{  
+  m_ZFill = zFillFunc;
+}
+//------------------------------------------------------------------------------
+#endif
 
 void Clipper::Clear()
 {
@@ -1762,6 +1781,9 @@ void Clipper::InsertLocalMinimaIntoAEL(const cInt botY)
       IntPoint pt = lb->curr;
       while( e != rb )
       {
+#ifdef use_xyz
+        SetZ(pt, *rb, *e);
+#endif
         if(!e) throw clipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
         //nb: For calculating winding counts etc, IntersectEdges() assumes
         //that param1 will be to the right of param2 ABOVE the intersection ...
@@ -1799,6 +1821,31 @@ void Clipper::DeleteFromSEL(TEdge *e)
   e->prevInSEL = 0;
 }
 //------------------------------------------------------------------------------
+
+#ifdef use_xyz
+inline void GetZ(IntPoint& pt, TEdge& e)
+{
+  if (PointsEqual(pt, e.bot)) pt.Z = e.bot.Z;
+  else if (PointsEqual(pt, e.top)) pt.Z = e.top.Z;
+  else if (e.windDelta > 0) pt.Z = e.bot.Z;
+  else pt.Z = e.top.Z;
+}
+//------------------------------------------------------------------------------
+
+void Clipper::SetZ(IntPoint& pt, TEdge& e, TEdge& eNext)
+{
+  pt.Z = 0;
+  if (m_ZFill) 
+  {
+    IntPoint pt1 = pt;
+    GetZ(pt1, e);
+    IntPoint pt2 = pt;
+    GetZ(pt2, eNext);
+    (*m_ZFill)(pt1.Z, pt2.Z, pt);
+  }
+}
+//------------------------------------------------------------------------------
+#endif
 
 void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
      const IntPoint &pt, const IntersectProtects protects)
@@ -2356,21 +2403,27 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
       {
         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
         if (dir == dLeftToRight)
-          IntersectEdges(horzEdge, e, IntPoint(e->curr.X, horzEdge->curr.Y), ipNone);
+          IntersectEdges(horzEdge, e, e->top, ipNone);
         else
-          IntersectEdges(e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y), ipNone);
+          IntersectEdges(e, horzEdge, e->top, ipNone);
         if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
         return;
       }
       else if( dir == dLeftToRight )
       {
-        IntersectEdges( horzEdge, e, IntPoint(e->curr.X, horzEdge->curr.Y),
-          (IsTopHorz( e->curr.X ))? ipLeft : ipBoth );
+        IntPoint pt = IntPoint(e->curr.X, horzEdge->curr.Y);
+#ifdef use_xyz
+        SetZ(pt, *e, *horzEdge);
+#endif
+        IntersectEdges( horzEdge, e, pt, (IsTopHorz( e->curr.X ))? ipLeft : ipBoth );
       }
       else
       {
-        IntersectEdges( e, horzEdge, IntPoint(e->curr.X, horzEdge->curr.Y),
-          (IsTopHorz( e->curr.X ))? ipRight : ipBoth );
+        IntPoint pt = IntPoint(e->curr.X, horzEdge->curr.Y);
+#ifdef use_xyz
+        SetZ(pt, *e, *horzEdge);
+#endif
+        IntersectEdges( e, horzEdge, pt, (IsTopHorz( e->curr.X ))? ipRight : ipBoth );
       }
       SwapPositionsInAEL( horzEdge, e );
     }
@@ -2388,8 +2441,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   else
   {
     if ( horzEdge->outIdx >= 0 )
-      IntersectEdges( horzEdge, eMaxPair,
-      IntPoint(horzEdge->top.X, horzEdge->curr.Y), ipBoth);
+      IntersectEdges( horzEdge, eMaxPair, horzEdge->top, ipBoth);
     if (eMaxPair->outIdx >= 0) throw clipperException("ProcessHorizontal error");
     DeleteFromAEL(eMaxPair);
     DeleteFromAEL(horzEdge);
@@ -2482,6 +2534,9 @@ void Clipper::BuildIntersectList(const cInt botY, const cInt topY)
             pt.Y = botY;
             pt.X = TopX(*e, pt.Y);
         }
+#ifdef use_xyz
+        SetZ(pt, *e, *eNext);
+#endif
         InsertIntersectNode( e, eNext, pt );
         SwapPositionsInSEL(e, eNext);
         isModified = true;
@@ -2544,7 +2599,11 @@ void Clipper::DoMaxima(TEdge *e, cInt topY)
   while( eNext != eMaxPair )
   {
     if (!eNext) throw clipperException("DoMaxima error");
-    IntersectEdges( e, eNext, e->top, ipBoth );
+    IntPoint pt = e->top;
+#ifdef use_xyz
+    SetZ(pt, *e, *eNext);
+#endif
+    IntersectEdges( e, eNext, pt, ipBoth );
     SwapPositionsInAEL(e, eNext);
     eNext = e->nextInAEL;
   }
@@ -2609,9 +2668,20 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
           e->outIdx >= 0 && e->prevInAEL->outIdx >= 0)
         {
           if (intermediateVert)             
-            AddOutPt(e->prevInAEL, IntPoint(e->curr.X, topY));
+          {
+            IntPoint pt = e->curr;
+#ifdef use_xyz
+            GetZ(pt, *e->prevInAEL);
+#endif
+            AddOutPt(e->prevInAEL, pt);
+          }
           else
-            AddOutPt(e, IntPoint(e->curr.X, topY));
+          {
+#ifdef use_xyz
+            GetZ(e->curr, *e);
+#endif
+            AddOutPt(e, e->curr);
+          }
         }
       }
       e = e->nextInAEL;

@@ -989,25 +989,27 @@ end;
 //------------------------------------------------------------------------------
 
 {$IFDEF UseXYZ}
-function GetZ(const Pt: TIntPoint; E: PEdge): Int64; {$IFDEF INLINING} inline; {$ENDIF}
+procedure GetZ(var Pt: TIntPoint; E: PEdge); {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  if PointsEqual(Pt, E.Bot) then Result := E.Bot.Z
-  else if PointsEqual(Pt, E.Top) then Result := E.Top.Z
-  else if E.WindDelta > 0 then Result := E.Bot.Z
-  else Result := E.Top.Z;
+  if PointsEqual(Pt, E.Bot) then Pt.Z := E.Bot.Z
+  else if PointsEqual(Pt, E.Top) then Pt.Z := E.Top.Z
+  else if E.WindDelta > 0 then Pt.Z := E.Bot.Z
+  else Pt.Z := E.Top.Z;
 end;
 //------------------------------------------------------------------------------
 
 Procedure SetZ(var Pt: TIntPoint; E, eNext: PEdge; ZFillFunc: TZFillCallback);
 var
-  Z1, Z2: Int64;
+  Pt1, Pt2: TIntPoint;
 begin
   Pt.Z := 0;
   if assigned(ZFillFunc) then
   begin
-    Z1 := GetZ(Pt, E);
-    Z2 := GetZ(Pt, eNext);
-    ZFillFunc(Z1, Z2, Pt);
+    Pt1 := Pt;
+    GetZ(Pt1, E);
+    Pt2 := Pt;
+    GetZ(Pt2, eNext);
+    ZFillFunc(Pt1.Z, Pt2.Z, Pt);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2095,11 +2097,11 @@ begin
 
       E := Lb.NextInAEL;
       Pt := Lb.Curr;
-{$IFDEF UseXYZ}
-      SetZ(Pt, Rb, E, FZFillCallback);
-{$ENDIF}
       while E <> Rb do
       begin
+{$IFDEF UseXYZ}
+        SetZ(Pt, Rb, E, FZFillCallback);
+{$ENDIF}
         if not Assigned(E) then raise exception.Create(rsMissingRightbound);
         //nb: For calculating winding counts etc, IntersectEdges() assumes
         //that param1 will be to the right of param2 ABOVE the intersection ...
@@ -3762,7 +3764,7 @@ type
   TOffsetBuilder = class
   private
     FDelta: Double;
-    FSinA, FSin, FCos: Double;
+    FSinA, FSin, FCos: Extended;
     FMiterLim, FSteps360: Double;
     FNorms: TArrayOfDoublePoint;
     FSolution: TPolygons;

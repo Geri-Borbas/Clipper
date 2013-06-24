@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.7                                                           *
-* Date      :  1 June 2013                                                     *
+* Version   :  6.0.0                                                           *
+* Date      :  25 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -37,6 +37,12 @@
 //use_int32: improves performance but limits coordinate values to +/- 46340 range
 //#define use_int32
 
+#ifndef use_int32
+//use_xyz: adds a Z member to IntPoint (with only a minor cost to perfomance)
+//nb: 'use_xyz' can only be used with 64bit integers.
+//#define use_xyz
+#endif
+
 #include <vector>
 #include <stdexcept>
 #include <cstring>
@@ -65,12 +71,16 @@ typedef unsigned long long cUInt;
 struct IntPoint {
   cInt X;
   cInt Y;
+#ifdef use_xyz
+  cInt Z;
+  IntPoint(cInt x = 0, cInt y = 0, cInt z = 0): X(x), Y(y), Z(z) {};
+#else
   IntPoint(cInt x = 0, cInt y = 0): X(x), Y(y) {};
+#endif
 };
 
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
-
 
 std::ostream& operator <<(std::ostream &s, const Polygon &p);
 std::ostream& operator <<(std::ostream &s, const Polygons &p);
@@ -78,6 +88,9 @@ std::ostream& operator <<(std::ostream &s, const Polygons &p);
 inline Polygon& operator <<(Polygon& poly, const IntPoint& p) {poly.push_back(p); return poly;}
 inline Polygons& operator <<(Polygons& polys, const Polygon& p) {polys.push_back(p); return polys;}
 
+#ifdef use_xyz
+typedef void (*ZFillFunc)(long64 z1, long64 z2, IntPoint& pt);
+#endif
 
 class PolyNode;
 typedef std::vector< PolyNode* > PolyNodes;
@@ -203,6 +216,10 @@ public:
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
   bool ForceSimple() {return m_ForceSimple;};
   void ForceSimple(bool value) {m_ForceSimple = value;};
+  //set the callback function for z value filling on intersections (otherwise Z is 0)
+#ifdef use_xyz
+  void ZFillFunction(ZFillFunc zFillFunc);
+#endif
 protected:
   void Reset();
   virtual bool ExecuteInternal();
@@ -221,6 +238,9 @@ private:
   bool             m_ReverseOutput;
   bool             m_UsingPolyTree; 
   bool             m_ForceSimple;
+#ifdef use_xyz
+  ZFillFunc        m_ZFill; //custom callback 
+#endif
   void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
   bool IsEvenOddFillType(const TEdge& edge) const;
@@ -274,6 +294,9 @@ private:
   void DoSimplePolygons();
   void FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec);
   void FixupFirstLefts2(OutRec* OldOutRec, OutRec* NewOutRec);
+#ifdef use_xyz
+  void SetZ(IntPoint& pt, TEdge& e, TEdge& eNext);
+#endif
 };
 //------------------------------------------------------------------------------
 
