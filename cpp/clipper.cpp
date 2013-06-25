@@ -140,6 +140,9 @@ struct HorzJoinRec {
   int       savedIdx;
 };
 
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
 inline cInt Abs(cInt val)
 {
   return val < 0 ? -val : val;
@@ -400,7 +403,9 @@ class Int128
       else
         return (double)(lo + hi * shift64);
     }
+
 };
+//------------------------------------------------------------------------------
 
 Int128 Int128Mul (long64 lhs, long64 rhs)
 {
@@ -426,7 +431,7 @@ Int128 Int128Mul (long64 lhs, long64 rhs)
   if (tmp.lo < b) tmp.hi++;
   if (negate) tmp = -tmp;
   return tmp;
-}
+};
 #endif
 
 //------------------------------------------------------------------------------
@@ -1756,7 +1761,7 @@ void Clipper::InsertLocalMinimaIntoAEL(const cInt botY)
       InsertScanbeam( rb->top.Y );
 
     if( IsContributing(*lb) )
-      AddLocalMinPoly( lb, rb, IntPoint(lb->curr.X, m_CurrentLM->Y) );
+      AddLocalMinPoly( lb, rb, lb->bot );
 
     //if any output polygons share an edge, they'll need joining later ...
     if (rb->outIdx >= 0 && rb->dx == HORIZONTAL)
