@@ -3,7 +3,7 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0                                                           *
+* Version   :  6.0.0 (alpha)                                                   *
 * Date      :  25 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
@@ -36,11 +36,8 @@ unit clipper;
 //UseInt32: improves performance but limits coordinate values to +/- 46340 range
 {.$DEFINE UseInt32}
 
-{$IFNDEF UseInt32}
-  //UseXYZ: adds a Z member to IntPoint (with only a minor cost to perfomance)
-  //nb: UseXYZ can only be used with 64bit integers.
-  {.$DEFINE UseXYZ}
-{$ENDIF}
+//UseXYZ: adds a Z member to IntPoint (with a minor cost to perfomance)
+{.$DEFINE UseXYZ}
 
 interface
 

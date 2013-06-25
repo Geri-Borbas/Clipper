@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  5.1.7                                                           *
-* Date      :  1 June 2013                                                     *
+* Version   :  6.0.0 (alpha)                                                   *
+* Date      :  25 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -39,7 +39,10 @@
 *******************************************************************************/
 
 //UseInt32: improves performance but limits coordinate values to +/- 46340 
-#define use_int32
+//#define use_int32
+
+//use_xyz: adds a Z member to IntPoint (with a minor cost to perfomance)
+//#define use_xyz
 
 using System;
 using System.Collections.Generic;
@@ -376,16 +379,26 @@ namespace ClipperLib
     {
         public cInt X;
         public cInt Y;
-        
+#if use_xyz
+        public cInt Z;
+        public IntPoint(cInt x, cInt y, cInt z = 0)
+        {
+          this.X = x; this.Y = y; this.Z = z;
+        }
+        public IntPoint(IntPoint pt)
+        {
+          this.X = pt.X; this.Y = pt.Y; this.Z = pt.Z;
+        }
+#else
         public IntPoint(cInt X, cInt Y)
         {
             this.X = X; this.Y = Y;
         }
-        
         public IntPoint(IntPoint pt)
         {
             this.X = pt.X; this.Y = pt.Y;
         }
+#endif
     }
 
     public struct IntRect
@@ -913,9 +926,14 @@ namespace ClipperLib
           //swap horizontal edges' top and bottom x's so they follow the natural
           //progression of the bounds - ie so their xbots will align with the
           //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-          e.curr.X = e.top.X;
+          cInt tmp = e.top.X;
           e.top.X = e.bot.X;
-          e.bot.X = e.curr.X;
+          e.bot.X = tmp;
+#if use_xyz
+          tmp = e.top.Z;
+          e.top.Z = e.bot.Z;
+          e.bot.Z = tmp;
+#endif
         }
         //------------------------------------------------------------------------------
 
@@ -1004,7 +1022,10 @@ namespace ClipperLib
         private bool m_ReverseOutput;
         private bool m_ForceSimple;
         private bool m_UsingPolyTree;
-
+#if use_xyz
+        public delegate void ZFillFunc(Int64 Z1, Int64 Z2, ref IntPoint pt);
+        public ZFillFunc ZFillFunction { get; set; }
+#endif
         public Clipper()
         {
             m_Scanbeam = null;
@@ -1018,15 +1039,10 @@ namespace ClipperLib
             m_HorizJoins = new List<HorzJoinRec>();
             m_ReverseOutput = false;
             m_ForceSimple = false;
+#if use_xyz
+            ZFillFunction = null;
+#endif
         }
-        //------------------------------------------------------------------------------
-
-        //destructor - commented out since I gather this impedes the GC 
-        //~Clipper() //destructor
-        //{
-        //    Clear();
-        //    DisposeScanbeamList();
-        //}
         //------------------------------------------------------------------------------
 
         public override void Clear()
@@ -1276,6 +1292,31 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
+#if use_xyz
+        void GetZ(ref IntPoint pt, TEdge e)
+        {
+          if (PointsEqual(pt, e.bot)) pt.Z = e.bot.Z;
+          else if (PointsEqual(pt, e.top)) pt.Z = e.top.Z;
+          else if (e.windDelta > 0) pt.Z = e.bot.Z;
+          else pt.Z = e.top.Z;
+        }
+        //------------------------------------------------------------------------------
+
+        internal void SetZ(ref IntPoint pt, TEdge e1, TEdge e2)
+        {
+          pt.Z = 0;
+          if (ZFillFunction != null)
+          {
+            IntPoint pt1 = new IntPoint(pt);
+            IntPoint pt2 = new IntPoint(pt);
+            GetZ(ref pt1, e1);
+            GetZ(ref pt2, e2);
+            ZFillFunction(pt1.Z, pt2.Z, ref pt);
+          }
+        }
+        //------------------------------------------------------------------------------
+#endif
+
         private void InsertLocalMinimaIntoAEL(cInt botY)
         {
           while(  m_CurrentLM != null  && ( m_CurrentLM.Y == botY ) )
@@ -1319,18 +1360,22 @@ namespace ClipperLib
 
             if( lb.nextInAEL != rb )
             {
-                if (rb.outIdx >= 0 && rb.prevInAEL.outIdx >= 0 && 
-                    SlopesEqual(rb.prevInAEL, rb, m_UseFullRange))
+              if (rb.outIdx >= 0 && rb.prevInAEL.outIdx >= 0 && 
+                SlopesEqual(rb.prevInAEL, rb, m_UseFullRange))
                     AddJoin(rb, rb.prevInAEL, -1, -1);
 
+              IntPoint pt = new IntPoint(lb.bot);
               TEdge e = lb.nextInAEL;
-              while( e != rb )
+              while (e != rb)
               {
                 if(e == null) 
                     throw new ClipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
                 //nb: For calculating winding counts etc, IntersectEdges() assumes
                 //that param1 will be to the right of param2 ABOVE the intersection ...
-                IntersectEdges(rb, e, lb.curr, Protects.ipNone); //order important here
+#if use_xyz
+                SetZ(ref pt, rb, e);
+#endif
+                IntersectEdges(rb, e, pt, Protects.ipNone); //order important here
                 e = e.nextInAEL;
               }
             }
@@ -1790,7 +1835,7 @@ namespace ClipperLib
 
         internal void SwapPoints(ref IntPoint pt1, ref IntPoint pt2)
         {
-            IntPoint tmp = pt1;
+            IntPoint tmp = new IntPoint(pt1);
             pt1 = pt2;
             pt2 = tmp;
         }
@@ -2401,20 +2446,27 @@ namespace ClipperLib
                     {
                         //horzEdge is evidently a maxima horizontal and we've arrived at its end.
                         if (Direction == Direction.dLeftToRight)
-                            IntersectEdges(horzEdge, e, new IntPoint(e.curr.X, horzEdge.curr.Y), 0);
+                            IntersectEdges(horzEdge, e, e.top, 0);
                         else
-                            IntersectEdges(e, horzEdge, e.curr, 0);
+                            IntersectEdges(e, horzEdge, e.top, 0);
                         if (eMaxPair.outIdx >= 0) throw new ClipperException("ProcessHorizontal error");
                         return;
                     }
                     else if (Direction == Direction.dLeftToRight)
                     {
-                        IntersectEdges(horzEdge, e, e.curr,
-                          (IsTopHorz(horzEdge, e.curr.X)) ? Protects.ipLeft : Protects.ipBoth);
+                      IntPoint pt = new IntPoint(e.curr);
+#if use_xyz
+                      SetZ(ref pt, e, horzEdge);
+#endif
+                      IntersectEdges(horzEdge, e, pt, (IsTopHorz(horzEdge, e.curr.X)) ? Protects.ipLeft : Protects.ipBoth);
                     }
                     else
                     {
-                        IntersectEdges(e, horzEdge, e.curr,
+                      IntPoint pt = new IntPoint(e.curr);
+#if use_xyz
+                      SetZ(ref pt, e, horzEdge);
+#endif
+                      IntersectEdges(e, horzEdge, pt,
                           (IsTopHorz(horzEdge, e.curr.X)) ? Protects.ipRight : Protects.ipBoth);
                     }
                     SwapPositionsInAEL(horzEdge, e);
@@ -2433,8 +2485,7 @@ namespace ClipperLib
             else
             {
                 if (horzEdge.outIdx >= 0)
-                    IntersectEdges(horzEdge, eMaxPair, 
-                        new IntPoint(horzEdge.top.X, horzEdge.curr.Y), Protects.ipBoth);
+                    IntersectEdges(horzEdge, eMaxPair, horzEdge.top, Protects.ipBoth);
                 DeleteFromAEL(eMaxPair);
                 DeleteFromAEL(horzEdge);
             }
@@ -2531,16 +2582,19 @@ namespace ClipperLib
             while( e.nextInSEL != null )
             {
               TEdge eNext = e.nextInSEL;
-              IntPoint pt = new IntPoint();
+              IntPoint pt;
               if (e.curr.X > eNext.curr.X)
               {
-                  if (!IntersectPoint(e, eNext, ref pt) && e.curr.X > eNext.curr.X +1)
+                  if (!IntersectPoint(e, eNext, out pt) && e.curr.X > eNext.curr.X +1)
                       throw new ClipperException("Intersection error");
                   if (pt.Y > botY)
                   {
                       pt.Y = botY;
                       pt.X = TopX(e, pt.Y);
                   }
+#if use_xyz
+                  SetZ(ref pt, e, eNext);
+#endif
                   InsertIntersectNode(e, eNext, pt);
                   SwapPositionsInSEL(e, eNext);
                   isModified = true;
@@ -2645,7 +2699,7 @@ namespace ClipperLib
         {
             TEdge e1 = int1.edge1;
             TEdge e2 = int1.edge2;
-            IntPoint p = int1.pt;
+            IntPoint p = new IntPoint(int1.pt);
             int1.edge1 = int2.edge1;
             int1.edge2 = int2.edge2;
             int1.pt = int2.pt;
@@ -2655,8 +2709,9 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private bool IntersectPoint(TEdge edge1, TEdge edge2, ref IntPoint ip)
+        private bool IntersectPoint(TEdge edge1, TEdge edge2, out IntPoint ip)
         {
+          ip = new IntPoint();
           double b1, b2;
           if (SlopesEqual(edge1, edge2, m_UseFullRange))
           {
@@ -2780,10 +2835,22 @@ namespace ClipperLib
                   e.prevInAEL.curr.X == e.curr.X &&
                   e.outIdx >= 0 && e.prevInAEL.outIdx >= 0)
                 {
-                    if (intermediateVert)
-                        AddOutPt(e.prevInAEL, e.curr);
-                    else
-                        AddOutPt(e, e.curr);
+                  if (intermediateVert)
+                  {
+                    IntPoint pt = new IntPoint(e.curr);
+#if use_xyz
+                    GetZ(ref pt, e.prevInAEL);
+#endif
+                    AddOutPt(e.prevInAEL, pt);
+                  }
+                  else
+                  {
+                    IntPoint pt = new IntPoint(e.curr);
+#if use_xyz
+                    GetZ(ref pt, e);
+#endif
+                    AddOutPt(e, pt);
+                  }
                 }
               }
               e = e.nextInAEL;
@@ -2834,7 +2901,11 @@ namespace ClipperLib
           while( eNext != eMaxPair )
           {
             if (eNext == null) throw new ClipperException("DoMaxima error");
-            IntersectEdges( e, eNext, e.top, Protects.ipBoth );
+            IntPoint pt = new IntPoint(e.top);
+#if use_xyz
+            SetZ(ref pt, e, eNext);
+#endif
+            IntersectEdges(e, eNext, pt, Protects.ipBoth);
             SwapPositionsInAEL(e, eNext);
             eNext = e.nextInAEL;
           }
