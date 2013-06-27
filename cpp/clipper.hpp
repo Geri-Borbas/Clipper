@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0 (alpha)                                                   *
-* Date      :  25 June 2013                                                    *
+* Version   :  6.0.1 (alpha)                                                   *
+* Date      :  28 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -77,7 +77,23 @@ struct IntPoint {
 #else
   IntPoint(cInt x = 0, cInt y = 0): X(x), Y(y) {};
 #endif
+
+  friend bool operator== (const IntPoint& a, const IntPoint& b);
+  friend bool operator!= (const IntPoint& a, const IntPoint& b);
 };
+//------------------------------------------------------------------------------
+
+inline bool operator ==(const IntPoint& a, const IntPoint& b) 
+{
+  return a.X == b.X && a.Y == b.Y; 
+}
+//------------------------------------------------------------------------------
+
+inline bool operator !=(const IntPoint& a, const IntPoint& b) 
+{
+  return a.X != b.X  || a.Y != b.Y; 
+}
+//------------------------------------------------------------------------------
 
 typedef std::vector< IntPoint > Polygon;
 typedef std::vector< Polygon > Polygons;
@@ -248,7 +264,7 @@ private:
   void InsertScanbeam(const cInt Y);
   cInt PopScanbeam();
   void InsertLocalMinimaIntoAEL(const cInt botY);
-  void InsertEdgeIntoAEL(TEdge *edge);
+  void InsertEdgeIntoAEL(TEdge *edge, TEdge* startEdge);
   void AddEdgeToSEL(TEdge *edge);
   void CopyAELToSEL();
   void DeleteFromSEL(TEdge *e);

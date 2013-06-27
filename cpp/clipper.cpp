@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0 (alpha)                                                   *
-* Date      :  25 June 2013                                                    *
+* Version   :  6.0.1 (alpha)                                                   *
+* Date      :  28 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1743,9 +1743,9 @@ void Clipper::InsertLocalMinimaIntoAEL(const cInt botY)
     TEdge* lb = m_CurrentLM->leftBound;
     TEdge* rb = m_CurrentLM->rightBound;
 
-    InsertEdgeIntoAEL( lb );
-    InsertScanbeam( lb->top.Y );
-    InsertEdgeIntoAEL( rb );
+    InsertEdgeIntoAEL(lb, m_ActiveEdges);
+    InsertScanbeam(lb->top.Y);
+    InsertEdgeIntoAEL(rb, lb);
 
     SetWindingCount( *lb );
     rb->windCnt = lb->windCnt;
@@ -2901,22 +2901,31 @@ inline bool E2InsertsBeforeE1(TEdge &e1, TEdge &e2)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::InsertEdgeIntoAEL(TEdge *edge)
+void Clipper::InsertEdgeIntoAEL(TEdge *edge, TEdge* startEdge)
 {
-  edge->prevInAEL = 0;
-  edge->nextInAEL = 0;
-  if( !m_ActiveEdges )
+  if(!startEdge)
   {
+    edge->prevInAEL = 0;
+    edge->nextInAEL = 0;
     m_ActiveEdges = edge;
   }
-  else if( E2InsertsBeforeE1(*m_ActiveEdges, *edge) )
+  else if( E2InsertsBeforeE1(*startEdge, *edge) )
   {
-    edge->nextInAEL = m_ActiveEdges;
-    m_ActiveEdges->prevInAEL = edge;
-    m_ActiveEdges = edge;
+    edge->nextInAEL = startEdge;
+    if (startEdge->prevInAEL)
+    {
+      edge->prevInAEL = startEdge->prevInAEL;
+      startEdge->prevInAEL->nextInAEL = edge;
+    }
+    else 
+    {
+      m_ActiveEdges = edge;
+      edge->prevInAEL = 0;
+    }
+    startEdge->prevInAEL = edge;
   } else
   {
-    TEdge* e = m_ActiveEdges;
+    TEdge* e = startEdge;
     while( e->nextInAEL  && !E2InsertsBeforeE1(*e->nextInAEL , *edge) )
       e = e->nextInAEL;
     edge->nextInAEL = e->nextInAEL;

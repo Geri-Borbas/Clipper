@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0 (alpha)                                                   *
-* Date      :  25 June 2013                                                    *
+* Version   :  6.0.1 (alpha)                                                   *
+* Date      :  28 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1324,9 +1324,9 @@ namespace ClipperLib
             TEdge lb = m_CurrentLM.leftBound;
             TEdge rb = m_CurrentLM.rightBound;
 
-            InsertEdgeIntoAEL( lb );
-            InsertScanbeam( lb.top.Y );
-            InsertEdgeIntoAEL( rb );
+            InsertEdgeIntoAEL(lb, m_ActiveEdges);
+            InsertScanbeam(lb.top.Y);
+            InsertEdgeIntoAEL(rb, lb);
 
             SetWindingCount(lb);
             rb.windCnt = lb.windCnt;
@@ -1368,8 +1368,6 @@ namespace ClipperLib
               TEdge e = lb.nextInAEL;
               while (e != rb)
               {
-                if(e == null) 
-                    throw new ClipperException("InsertLocalMinimaIntoAEL: missing rightbound!");
                 //nb: For calculating winding counts etc, IntersectEdges() assumes
                 //that param1 will be to the right of param2 ABOVE the intersection ...
 #if use_xyz
@@ -1384,22 +1382,31 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private void InsertEdgeIntoAEL(TEdge edge)
+        private void InsertEdgeIntoAEL(TEdge edge, TEdge startEdge)
         {
-          edge.prevInAEL = null;
-          edge.nextInAEL = null;
-          if (m_ActiveEdges == null)
+          if (startEdge == null)
           {
+            edge.prevInAEL = null;
+            edge.nextInAEL = null;
             m_ActiveEdges = edge;
           }
-          else if( E2InsertsBeforeE1(m_ActiveEdges, edge) )
+          else if (E2InsertsBeforeE1(startEdge, edge))
           {
-            edge.nextInAEL = m_ActiveEdges;
-            m_ActiveEdges.prevInAEL = edge;
-            m_ActiveEdges = edge;
+            edge.nextInAEL = startEdge;
+            if (startEdge.prevInAEL != null)
+            {
+              edge.prevInAEL = startEdge.prevInAEL;
+              startEdge.prevInAEL.nextInAEL = edge;
+            }
+            else 
+            {
+              m_ActiveEdges = edge;
+              edge.prevInAEL = null;
+            }
+            startEdge.prevInAEL = edge;
           } else
           {
-            TEdge e = m_ActiveEdges;
+            TEdge e = startEdge;
             while (e.nextInAEL != null && !E2InsertsBeforeE1(e.nextInAEL, edge))
               e = e.nextInAEL;
             edge.nextInAEL = e.nextInAEL;

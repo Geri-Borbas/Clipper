@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0 (alpha)                                                   *
-* Date      :  25 June 2013                                                    *
+* Version   :  6.0.1 (alpha)                                                   *
+* Date      :  28 June 2013                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -379,7 +379,6 @@ const
 {$ENDIF}
 
 resourcestring
-  rsMissingRightbound = 'InsertLocalMinimaIntoAEL: missing RightBound';
   rsDoMaxima = 'DoMaxima error';
   rsUpdateEdgeIntoAEL = 'UpdateEdgeIntoAEL error';
   rsHorizontal = 'ProcessHorizontal error';
@@ -2015,23 +2014,32 @@ end;
 
 procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: cInt);
 
-  procedure InsertEdgeIntoAEL(Edge: PEdge);
+  procedure InsertEdgeIntoAEL(Edge, StartEdge: PEdge);
   var
     E: PEdge;
   begin
-    Edge.PrevInAEL := nil;
-    Edge.NextInAEL := nil;
-    if not Assigned(fActiveEdges) then
+    if not Assigned(StartEdge) then
     begin
+      Edge.PrevInAEL := nil;
+      Edge.NextInAEL := nil;
       FActiveEdges := Edge;
-    end else if E2InsertsBeforeE1(fActiveEdges, Edge) then
+    end
+    else if E2InsertsBeforeE1(StartEdge, Edge) then
     begin
-      Edge.NextInAEL := FActiveEdges;
-      FActiveEdges.PrevInAEL := Edge;
-      FActiveEdges := Edge;
+      Edge.NextInAEL := StartEdge;
+      if Assigned(StartEdge.PrevInAEL) then
+      begin
+        Edge.PrevInAEL := StartEdge.PrevInAEL;
+        StartEdge.PrevInAEL.NextInAEL := Edge;
+      end else
+      begin
+        FActiveEdges := Edge;
+        Edge.PrevInAEL := nil;
+      end;
+      StartEdge.PrevInAEL := Edge;
     end else
     begin
-      E := FActiveEdges;
+      E := StartEdge;
       while Assigned(E.NextInAEL) and
         not E2InsertsBeforeE1(E.NextInAEL, Edge) do
           E := E.NextInAEL;
@@ -2054,9 +2062,9 @@ begin
     Lb := CurrentLm.LeftBound;
     Rb := CurrentLm.RightBound;
 
-    InsertEdgeIntoAEL(Lb);
+    InsertEdgeIntoAEL(Lb, FActiveEdges);
     InsertScanbeam(Lb.Top.Y);
-    InsertEdgeIntoAEL(Rb);
+    InsertEdgeIntoAEL(Rb, Lb);
 
     //set Edge winding states ...
     SetWindingCount(Lb);
@@ -2099,7 +2107,6 @@ begin
 {$IFDEF UseXYZ}
         SetZ(Pt, Rb, E, FZFillCallback);
 {$ENDIF}
-        if not Assigned(E) then raise exception.Create(rsMissingRightbound);
         //nb: For calculating winding counts etc, IntersectEdges() assumes
         //that param1 will be to the right of param2 ABOVE the intersection ...
         IntersectEdges(Rb, E, Pt);
