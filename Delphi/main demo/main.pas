@@ -18,7 +18,7 @@ uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls, Math,
   GR32, GR32_Image, GR32_Polygons, //http://sourceforge.net/projects/graphics32/
-  GR32_PolygonsEx, GR32_VPR,       //http://sourceforge.net/projects/vpr/
+  GR32_VPR,       //http://sourceforge.net/projects/vpr/
   GR32_Misc, clipper;
 
 type
@@ -35,7 +35,7 @@ type
   end;
 
   TPolyInfo = record
-    polygons: TPolygons;
+    paths: TPaths;
     si: TStyleInfo;
   end;
   TPolyInfos = array of TPolyInfo;
@@ -63,7 +63,7 @@ type
     style: TStyleInfo;
     constructor Create;
     procedure Clear;
-    procedure AddPolygons(const poly: TPolygons);
+    procedure AddPaths(const poly: TPaths);
     procedure AddText(const text: string; X,Y: integer);
     function SaveToFile(filename: string;
       scale: double = 1.0; margin: integer = 10): boolean;
@@ -171,7 +171,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TSvgBuilder.AddPolygons(const poly: TPolygons);
+procedure TSvgBuilder.AddPaths(const poly: TPaths);
 var
   i, len: integer;
 begin
@@ -179,9 +179,9 @@ begin
   if i = 0 then Exit;
   len := length(polyList);
   setlength(polyList, len+1);
-  setlength(polyList[len].polygons, i);
+  setlength(polyList[len].paths, i);
   for i := 0 to i-1 do
-    polyList[len].polygons[i] := Copy(poly[i], 0, MaxInt);
+    polyList[len].paths[i] := Copy(poly[i], 0, MaxInt);
   polyList[len].si.pft := style.pft;
   polyList[len].si.brushClr := style.brushClr;
   polyList[len].si.penClr := style.penClr;
@@ -235,21 +235,21 @@ begin
   //calculate the bounding rect (skipping empty polygons) ...
   while i < len do
   begin
-    len2 := length(polyList[i].polygons);
+    len2 := length(polyList[i].paths);
     j := 0;
-    while (j < len2) and (length(polyList[i].polygons[j]) < 3) do inc(j);
+    while (j < len2) and (length(polyList[i].paths[j]) < 3) do inc(j);
     if j < len2 then Break;
     inc(i);
   end;
   if i = len then Exit;
-  rec.left := polyList[i].polygons[j][0].X;
+  rec.left := polyList[i].paths[j][0].X;
   rec.right := rec.left;
-  rec.top := polyList[i].polygons[j][0].Y;
+  rec.top := polyList[i].paths[j][0].Y;
   rec.bottom := rec.top;
   for i := i to len -1 do
-    for j := 0 to length(polyList[i].polygons) -1 do
-      for k := 0 to length(polyList[i].polygons[j]) -1 do
-        with polyList[i].polygons[j][k] do
+    for j := 0 to length(polyList[i].paths) -1 do
+      for k := 0 to length(polyList[i].paths[j]) -1 do
+        with polyList[i].paths[j][k] do
       begin
         if X < rec.left then rec.left := X
         else if X > rec.right then rec.right := X;
@@ -277,17 +277,17 @@ begin
       svg_xml_start[1]]));
 
     for i := 0 to len -1 do
-      if assigned(polyList[i].polygons) then
+      if assigned(polyList[i].paths) then
       begin
         ss.WriteString(poly_start);
-        for j := 0 to high(polyList[i].polygons) do
+        for j := 0 to high(polyList[i].paths) do
         begin
-          if (length(polyList[i].polygons[j]) < 3) then continue;
-          with polyList[i].polygons[j][0] do
+          if (length(polyList[i].paths[j]) < 3) then continue;
+          with polyList[i].paths[j][0] do
             ss.WriteString( format(' M %1.2f %1.2f',
             [X * scale + offsetX, Y * scale + offsetY]));
-          for k := 1 to high(polyList[i].polygons[j]) do
-            with polyList[i].polygons[j][k] do
+          for k := 1 to high(polyList[i].paths[j]) do
+            with polyList[i].paths[j][k] do
               ss.WriteString( format(' L %1.2f %1.2f',
                 [X * scale + offsetX, Y * scale + offsetY]));
           ss.WriteString(' z');
@@ -310,11 +310,11 @@ begin
         if polyList[i].si.showCoords then
         begin
           ss.WriteString('<g font-family="Verdana" font-size="11" fill="black">'#10#10);
-          for j := 0 to high(polyList[i].polygons) do
+          for j := 0 to high(polyList[i].paths) do
           begin
-            if (length(polyList[i].polygons[j]) < 3) then continue;
-            for k := 0 to high(polyList[i].polygons[j]) do
-              with polyList[i].polygons[j][k] do
+            if (length(polyList[i].paths[j]) < 3) then continue;
+            for k := 0 to high(polyList[i].paths[j]) do
+              with polyList[i].paths[j][k] do
                 ss.WriteString(format('<text x="%1.0n" y="%1.0n">%1.0n,%1.0n</text>'#10,
                   [X * scale + offsetX,  Y * scale + offsetY, X, Y]));
             ss.WriteString(#10);
@@ -360,10 +360,10 @@ var
   scale: integer = 1; //scale bitmap to 10 decimal places
   subj: TArrayOfArrayOfFloatPoint = nil;
   clip: TArrayOfArrayOfFloatPoint = nil;
-  subjI: TPolygons = nil;
-  clipI: TPolygons = nil;
+  subjI: TPaths = nil;
+  clipI: TPaths = nil;
   solution: TArrayOfArrayOfFloatPoint = nil;
-  solutionI: TPolygons = nil;
+  solutionI: TPaths = nil;
   subjOpacity: cardinal = $FF000000;
   clipOpacity: cardinal = $FF000000;
 
@@ -373,7 +373,7 @@ var
 //------------------------------------------------------------------------------
 
 function AAFloatPoint2AAPoint(const a: TArrayOfArrayOfFloatPoint;
-  decimals: integer = 0): TPolygons;
+  decimals: integer = 0): TPaths;
 var
   i,j,decScale: integer;
 begin
@@ -391,7 +391,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function AAPoint2AAFloatPoint(const a: TPolygons;
+function AAPoint2AAFloatPoint(const a: TPaths;
   decimals: integer = 0): TArrayOfArrayOfFloatPoint;
 var
   i,j,decScale: integer;
@@ -461,7 +461,7 @@ procedure TMainForm.RepaintBitmapI;
 var
   pfm: TPolyFillMode;
   sol: TArrayOfArrayOfFloatPoint;
-  solI: TPolygons;
+  solI: TPaths;
   scaling: single;
 begin
   ImgView321.Bitmap.Clear(clWhite32);
@@ -609,8 +609,8 @@ begin
   if not rbNone.Checked then
     with TClipper.Create do
     try
-      AddPolygons(subjI, ptSubject);
-      AddPolygons(clipI, ptClip);
+      AddPaths(subjI, ptSubject, true);
+      AddPaths(clipI, ptClip, true);
       Execute(GetOpTypeI, solutionI, pftNonZero, pftNonZero);
     finally
       free;
@@ -653,8 +653,8 @@ begin
   if not rbNone.Checked then
     with TClipper.Create do
     try
-      AddPolygons(subjI, ptSubject);
-      AddPolygons(clipI, ptClip);
+      AddPaths(subjI, ptSubject, true);
+      AddPaths(clipI, ptClip, true);
       Execute(GetOpTypeI, solutionI, fillType, fillType);
     finally
       free;
@@ -701,8 +701,8 @@ begin
   if not rbNone.Checked then
     with TClipper.Create do
     try
-      AddPolygons(subjI, ptSubject);
-      AddPolygons(clipI, ptClip);
+      AddPaths(subjI, ptSubject, true);
+      AddPaths(clipI, ptClip, true);
       Execute(GetOpTypeI, solutionI, fillType, fillType);
     finally
       free;
@@ -741,7 +741,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function MakeArrayOfIntPoint(const pts: array of integer): TPolygon;
+function MakeArrayOfIntPoint(const pts: array of integer): TPath;
 var
   i, len: integer;
 begin
@@ -769,15 +769,15 @@ begin
 
     style.brushClr := $0F0000FF;
     style.penClr := $800099FF;
-    AddPolygons(subjI);
+    AddPaths(subjI);
 
     style.brushClr := $0FFFFF00;
     style.penClr := $80FF9900;
-    AddPolygons(clipI);
+    AddPaths(clipI);
 
     style.brushClr := $2000FF00;
     style.penClr := $FF006600;
-    AddPolygons(solutionI);
+    AddPaths(solutionI);
 
     SaveToFile(SaveDialog1.FileName, invScale);
   finally

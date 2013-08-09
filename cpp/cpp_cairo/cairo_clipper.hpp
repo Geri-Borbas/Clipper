@@ -33,11 +33,11 @@ namespace ClipperLib {
 //accomplished by setting the scaling factor (10^x) in the following functions.
 //When scaling, remember that on most platforms, integer is only a 32bit value.
     void cairo_to_clipper(cairo_t* cr,
-                          ClipperLib::Polygons &pg,
+                          ClipperLib::Paths &pg,
                           int scaling_factor = 0,
                           Transform transform = tNone);
 
-    void clipper_to_cairo(const ClipperLib::Polygons &pg,
+    void clipper_to_cairo(const ClipperLib::Paths &pg,
                           cairo_t* cr,
                           int scaling_factor = 0,
                           Transform transform = tNone);

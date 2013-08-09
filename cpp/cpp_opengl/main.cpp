@@ -8,7 +8,7 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#include "../clipper.hpp"
+#include "clipper.hpp"
 
 using namespace std;
 using namespace ClipperLib;
@@ -25,7 +25,7 @@ PolyFillType pft = pftEvenOdd;
 JoinType jt = jtRound;
 bool show_clipping = true;
 Polygons sub, clp, sol;
-int VertCount = 5;
+int VertCount = 35;
 int scale = 10;
 double delta = 0.0;
 
@@ -274,39 +274,41 @@ void DrawGraphics()
 
   wstringstream ss;
   if (!show_clipping)
-    ss << L"Clipper Demo - NO CLIPPING"; 
+    ss << L"  NO CLIPPING"; 
   else
 	  switch (ct)
 	  {
 		  case ctUnion: 
-        ss << L"Clipper Demo - UNION"; 
+        ss << L"  UNION"; 
         break;
 		  case ctDifference: 
-        ss << L"Clipper Demo - DIFFERENCE"; 
+        ss << L"  DIFFERENCE"; 
         break;
 		  case ctXor: 
-        ss << L"Clipper Demo - XOR"; 
+        ss << L"  XOR"; 
         break;
 		  default: 
-        ss << L"Clipper Demo - INTERSECTION"; 
+        ss << L"  INTERSECTION"; 
 	  }
 
 	switch(pft)
   {
     case pftEvenOdd: 
-      ss << L"  (EvenOdd filled polygons with "; 
+      ss << L"  with EVENODD filling and "; 
       break;
     case pftNonZero: 
-      ss << L"  (NonZero filled polygons with "; 
+      ss << L"  with NONZERO filling and "; 
       break;
     case pftPositive: 
-      ss << L"  (Positive filled polygons with "; 
+      ss << L"  with POSITIVE filling and "; 
       break;
     default: 
-      ss << L"  (Negative filled polygons with "; 
+      ss << L"  with NEGATIVE filling and "; 
   }
-  ss << VertCount << " vertices each.)";
-	SetWindowText(hWnd, ss.str().c_str());
+  ss << VertCount << " vertices.";
+  wstring s = ss.str();
+	SendMessage(hStatus, SB_SETTEXT, (WPARAM)1, (LPARAM)const_cast<LPWSTR>(s.c_str()));
+
 
 	HCURSOR hArrowCursor = LoadCursor(NULL, IDC_ARROW);
 	SetCursor(hArrowCursor);
@@ -422,12 +424,6 @@ void UpdatePolygons(bool updateSolutionOnly)
     sub.resize(1);
     clp.resize(1);
 
-    //int ints[] = {0,0,0, -100,100, -100,100, 0};
-    //int ints2[] = {0, 100, 100, -200,0, -200,100, 100};
-    //MakePolygonFromInts(ints, 8, sub[0]);
-    //TranslatePolygon(sub[0], 100,220);
-    //MakePolygonFromInts(ints2, 8, clp[0]);
-    //TranslatePolygon(sub[1], 100,220);
     MakeRandomPoly(sub[0], r.right, r.bottom - statusHeight, VertCount);
     MakeRandomPoly(clp[0], r.right, r.bottom - statusHeight, VertCount);
 
@@ -513,13 +509,13 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
 			  L"SPACE, ENTER or click to refresh.\n" 
 			  L"F1 - to see this help dialog again.\n"
 			  L"Esc - to quit.\n",
-			  L"Clipper Demo - Help", 0);
+			  L"  Help", 0);
       return 0;
 
     case WM_COMMAND:
       switch(LOWORD(wParam))
       {
-          case 1: PostQuitMessage(0); break; //escape
+          case VK_ESCAPE: PostQuitMessage(0); break; //for accelerator IDs see menu.res
           case 98: SendMessage(hWnd, WM_HELP, 0, 0); break;
           case 99: MessageBox(hWnd, L"After closing this dialog,\ntype the required number of vertices (3-50) then <Enter> ...", L"Clipper Demo", 0);
           case 101: show_clipping = true; ct = ctIntersection; UpdatePolygons(true); break;
@@ -560,7 +556,7 @@ int WINAPI WinMain (HINSTANCE hInstance,
   HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 
-    const LPCWSTR appname = TEXT("Clipper Demo");
+    const LPCWSTR appname = TEXT("Clipper OpenGL Demo");
 
     WNDCLASS wndclass;
     MSG      msg;
@@ -612,7 +608,13 @@ int WINAPI WinMain (HINSTANCE hInstance,
 	InitCommonControls();
 	hStatus = CreateWindowEx(0, L"msctls_statusbar32", NULL, WS_CHILD | WS_VISIBLE,
 		0, 0, 0, 0, hWnd, (HMENU)0, hInstance, NULL);
-	SetWindowText(hStatus, L" Copyright © Angus Johnson 2011");
+
+  //set two panels in statusbar ...
+  int statusWidths [] = {120, -1};
+  SendMessage(hStatus, SB_SETPARTS, 
+    (WPARAM)(sizeof(statusWidths)/sizeof(int)), (LPARAM)statusWidths);
+
+  SetWindowText(hStatus, L"  Press F1 for help");
 
   // Initialize OpenGL
   InitGraphics();

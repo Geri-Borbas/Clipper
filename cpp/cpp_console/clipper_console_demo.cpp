@@ -1,4 +1,6 @@
-//---------------------------------------------------------------------------
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
 
 #include <cmath>
 #include <ctime>
@@ -31,7 +33,7 @@ static float GetAlphaAsFrac(unsigned clr)
 }
 //------------------------------------------------------------------------------
 
-//a simple class that builds an SVG file with any number of polygons
+//a simple class that builds an SVG file with any number of paths
 class SVGBuilder
 {
 
@@ -57,12 +59,12 @@ class SVGBuilder
   class PolyInfo
   {
     public:
-      Polygons polygons;
+      Paths paths;
     StyleInfo si;
 
-      PolyInfo(Polygons polygons, StyleInfo style)
+      PolyInfo(Paths paths, StyleInfo style)
       {
-          this->polygons = polygons;
+          this->paths = paths;
           this->si = style;
       }
   };
@@ -77,7 +79,7 @@ private:
 public:
   StyleInfo style;
 
-  void AddPolygons(Polygons& poly)
+  void AddPaths(Paths& poly)
   {
     if (poly.size() == 0) return;
     polyInfos.push_back(PolyInfo(poly, style));
@@ -87,27 +89,27 @@ public:
   {
     //calculate the bounding rect ...
     PolyInfoList::size_type i = 0;
-    Polygons::size_type j;
+    Paths::size_type j;
     while (i < polyInfos.size())
     {
       j = 0;
-      while (j < polyInfos[i].polygons.size() &&
-        polyInfos[i].polygons[j].size() == 0) j++;
-      if (j < polyInfos[i].polygons.size()) break;
+      while (j < polyInfos[i].paths.size() &&
+        polyInfos[i].paths[j].size() == 0) j++;
+      if (j < polyInfos[i].paths.size()) break;
       i++;
     }
     if (i == polyInfos.size()) return false;
 
     IntRect rec;
-    rec.left = polyInfos[i].polygons[j][0].X;
+    rec.left = polyInfos[i].paths[j][0].X;
     rec.right = rec.left;
-    rec.top = polyInfos[i].polygons[j][0].Y;
+    rec.top = polyInfos[i].paths[j][0].Y;
     rec.bottom = rec.top;
     for ( ; i < polyInfos.size(); ++i)
-      for (Polygons::size_type j = 0; j < polyInfos[i].polygons.size(); ++j)
-        for (Polygon::size_type k = 0; k < polyInfos[i].polygons[j].size(); ++k)
+      for (Paths::size_type j = 0; j < polyInfos[i].paths.size(); ++j)
+        for (Path::size_type k = 0; k < polyInfos[i].paths[j].size(); ++k)
         {
-          IntPoint ip = polyInfos[i].polygons[j][k];
+          IntPoint ip = polyInfos[i].paths[j][k];
           if (ip.X < rec.left) rec.left = ip.X;
           else if (ip.X > rec.right) rec.right = ip.X;
           if (ip.Y < rec.top) rec.top = ip.Y;
@@ -139,14 +141,14 @@ public:
     for (PolyInfoList::size_type i = 0; i < polyInfos.size(); ++i)
   {
       file << " <path d=\"";
-    for (Polygons::size_type j = 0; j < polyInfos[i].polygons.size(); ++j)
+    for (Paths::size_type j = 0; j < polyInfos[i].paths.size(); ++j)
       {
-        if (polyInfos[i].polygons[j].size() < 3) continue;
-        file << " M " << ((double)polyInfos[i].polygons[j][0].X * scale + offsetX) <<
-          " " << ((double)polyInfos[i].polygons[j][0].Y * scale + offsetY);
-        for (Polygon::size_type k = 1; k < polyInfos[i].polygons[j].size(); ++k)
+        if (polyInfos[i].paths[j].size() < 3) continue;
+        file << " M " << ((double)polyInfos[i].paths[j][0].X * scale + offsetX) <<
+          " " << ((double)polyInfos[i].paths[j][0].Y * scale + offsetY);
+        for (Path::size_type k = 1; k < polyInfos[i].paths[j].size(); ++k)
         {
-          IntPoint ip = polyInfos[i].polygons[j][k];
+          IntPoint ip = polyInfos[i].paths[j][k];
           double x = (double)ip.X * scale;
           double y = (double)ip.Y * scale;
           file << " L " << (x + offsetX) << " " << (y + offsetY);
@@ -164,12 +166,12 @@ public:
         if (polyInfos[i].si.showCoords)
         {
       file << "<g font-family=\"Verdana\" font-size=\"11\" fill=\"black\">\n\n";
-      for (Polygons::size_type j = 0; j < polyInfos[i].polygons.size(); ++j)
+      for (Paths::size_type j = 0; j < polyInfos[i].paths.size(); ++j)
       {
-        if (polyInfos[i].polygons[j].size() < 3) continue;
-        for (Polygon::size_type k = 0; k < polyInfos[i].polygons[j].size(); ++k)
+        if (polyInfos[i].paths[j].size() < 3) continue;
+        for (Path::size_type k = 0; k < polyInfos[i].paths[j].size(); ++k)
         {
-          IntPoint ip = polyInfos[i].polygons[j][k];
+          IntPoint ip = polyInfos[i].paths[j][k];
           file << "<text x=\"" << (int)(ip.X * scale + offsetX) <<
           "\" y=\"" << (int)(ip.Y * scale + offsetY) << "\">" <<
           ip.X << "," << ip.Y << "</text>\n";
@@ -215,7 +217,7 @@ inline long64 Round(double val)
 }
 //------------------------------------------------------------------------------
 
-bool LoadFromFile(Polygons &ppg, char * filename, double scale= 1,
+bool LoadFromFile(Paths &ppg, char * filename, double scale= 1,
   int xOffset = 0, int yOffset = 0)
 {
   ppg.clear();
@@ -244,7 +246,7 @@ bool LoadFromFile(Polygons &ppg, char * filename, double scale= 1,
 }
 //------------------------------------------------------------------------------
 
-void SaveToConsole(const string name, const Polygons &pp, double scale = 1.0)
+void SaveToConsole(const string name, const Paths &pp, double scale = 1.0)
 {
   cout << '\n' << name << ":\n"
     << pp.size() << '\n';
@@ -258,7 +260,7 @@ void SaveToConsole(const string name, const Polygons &pp, double scale = 1.0)
 }
 //---------------------------------------------------------------------------
 
-void SaveToFile(char *filename, Polygons &pp, double scale = 1)
+void SaveToFile(char *filename, Paths &pp, double scale = 1)
 {
   FILE *f = fopen(filename, "w");
   if (!f) return;
@@ -281,7 +283,7 @@ void SaveToFile(char *filename, Polygons &pp, double scale = 1)
 }
 //---------------------------------------------------------------------------
 
-void MakeRandomPoly(int edgeCount, int width, int height, Polygons & poly)
+void MakeRandomPoly(int edgeCount, int width, int height, Paths & poly)
 {
   poly.resize(1);
   poly[0].resize(edgeCount);
@@ -292,9 +294,33 @@ void MakeRandomPoly(int edgeCount, int width, int height, Polygons & poly)
 }
 //------------------------------------------------------------------------------
 
-#pragma argsused
-int _tmain(int argc, _TCHAR* argv[])
+int main(int argc, char* argv[])
 {
+  ////quick test with random paths ...
+  //Paths ss, cc, sss;
+  //PolyFillType pft = pftNonZero;//pftEvenOdd;//
+  //srand((int)time(0));
+  //MakeRandomPoly(100, 400, 400, ss);
+  //MakeRandomPoly(100, 400, 400, cc);
+  //Clipper cpr;
+  //cpr.AddPaths(ss, ptSubject, true);
+  //cpr.AddPaths(cc, ptClip, true);
+  //cpr.Execute(ctIntersection, sss, pft, pft);
+  ////sss = Clipper.OffsetPolygons(sss, -5.0 * scale, JoinType.jtMiter, 4);
+  //SVGBuilder svg1;
+  //svg1.style.pft = pft;
+  //svg1.style.brushClr = 0x2000009c;
+  //svg1.style.penClr = 0xFFd3d3da;
+  //svg1.AddPaths(ss);
+  //svg1.style.brushClr = 0x209c0000;
+  //svg1.style.penClr = 0xFFFFa07a;
+  //svg1.AddPaths(cc);
+  //svg1.style.brushClr = 0xAA80ff9c;
+  //svg1.style.penClr = 0xFF003300;
+  //svg1.AddPaths(sss);
+  //svg1.SaveToFile("solution.svg", 1.0);
+  //return 0;
+
   if (argc > 1 &&
     (strcmp(argv[1], "-b") == 0 || strcmp(argv[1], "--benchmark") == 0))
   {
@@ -306,17 +332,17 @@ int _tmain(int argc, _TCHAR* argv[])
     if (argc > 2) loop_cnt = strtol(argv[2], &dummy, 10);
     if (loop_cnt == 0) loop_cnt = 100;
     cout << "\nPerforming " << loop_cnt << " random intersection operations ... ";
-    srand(time(0));
+    srand((int)time(0));
     int error_cnt = 0;
-    Polygons subject, clip, solution;
+    Paths subject, clip, solution;
     Clipper clpr;
     time_t time_start = clock();
     for (int i = 0; i < loop_cnt; i++) {
       MakeRandomPoly(100, 400, 400, subject);
       MakeRandomPoly(100, 400, 400, clip);
       clpr.Clear();
-      clpr.AddPolygons(subject, ptSubject);
-      clpr.AddPolygons(clip, ptClip);
+      clpr.AddPaths(subject, ptSubject, true);
+      clpr.AddPaths(clip, ptClip, true);
       if (!clpr.Execute(ctIntersection, solution, pftEvenOdd, pftEvenOdd))
         error_cnt++;
     }
@@ -333,14 +359,14 @@ int _tmain(int argc, _TCHAR* argv[])
     svg.style.pft = pftEvenOdd;
     svg.style.brushClr = 0x1200009C;
     svg.style.penClr = 0xCCD3D3DA;
-    svg.AddPolygons(subject);
+    svg.AddPaths(subject);
     svg.style.brushClr = 0x129C0000;
     svg.style.penClr = 0xCCFFA07A;
-    svg.AddPolygons(clip);
+    svg.AddPaths(clip);
     svg.style.brushClr = 0x6080ff9C;
     svg.style.penClr = 0xFF003300;
     svg.style.pft = pftNonZero;
-    svg.AddPolygons(solution);
+    svg.AddPaths(solution);
     svg.SaveToFile("solution.svg");
     return 0;
   }
@@ -377,7 +403,7 @@ int _tmain(int argc, _TCHAR* argv[])
   if (argc > 7) svg_scale = strtod(argv[7], &dummy);
   svg_scale /= scale;
 
-  Polygons subject, clip;
+  Paths subject, clip;
 
   if (!LoadFromFile(subject, argv[1], scale))
   {
@@ -397,29 +423,29 @@ int _tmain(int argc, _TCHAR* argv[])
 
   if (argc > 3)
   {
-    if (stricmp(argv[3], "XOR") == 0) clipType = ctXor;
-    else if (stricmp(argv[3], "UNION") == 0) clipType = ctUnion;
-    else if (stricmp(argv[3], "DIFFERENCE") == 0) clipType = ctDifference;
+    if (_stricmp(argv[3], "XOR") == 0) clipType = ctXor;
+    else if (_stricmp(argv[3], "UNION") == 0) clipType = ctUnion;
+    else if (_stricmp(argv[3], "DIFFERENCE") == 0) clipType = ctDifference;
     else clipType = ctIntersection;
   }
 
   PolyFillType subj_pft = pftNonZero, clip_pft = pftNonZero;
   if (argc > 5)
   {
-    if (stricmp(argv[4], "EVENODD") == 0) subj_pft = pftEvenOdd;
-    if (stricmp(argv[5], "EVENODD") == 0) clip_pft = pftEvenOdd;
+    if (_stricmp(argv[4], "EVENODD") == 0) subj_pft = pftEvenOdd;
+    if (_stricmp(argv[5], "EVENODD") == 0) clip_pft = pftEvenOdd;
   }
 
   Clipper c;
-  c.AddPolygons(subject, ptSubject);
-  c.AddPolygons(clip, ptClip);
-  Polygons solution;
+  c.AddPaths(subject, ptSubject, true);
+  c.AddPaths(clip, ptClip, true);
+  Paths solution;
 
   bool succeeded = c.Execute(clipType, solution, subj_pft, clip_pft);
   string s = "Subjects (";
   s += (subj_pft == pftEvenOdd ? "EVENODD)" : "NONZERO)");
 
-  //ie don't change the polygons back to the original size if we've
+  //ie don't change the paths back to the original size if we've
   //just down-sized them to a manageable (all-in-one-screen) size ...
   //if (scale < 1) scale = 1;
 
@@ -432,7 +458,7 @@ int _tmain(int argc, _TCHAR* argv[])
     //SaveToConsole(s, solution, scale);
     SaveToFile("solution.txt", solution, scale);
 
-    //OffsetPolygons(solution, solution, -5.0 *scale, jtRound, 4);
+    //OffsetPaths(solution, solution, -5.0 *scale, jtRound, etClosed);
 
     //let's see the result too ...
     SVGBuilder svg;
@@ -440,15 +466,15 @@ int _tmain(int argc, _TCHAR* argv[])
     svg.style.brushClr = 0x1200009C;
     svg.style.penClr = 0xCCD3D3DA;
     svg.style.pft = subj_pft;
-    svg.AddPolygons(subject);
+    svg.AddPaths(subject);
     svg.style.brushClr = 0x129C0000;
     svg.style.penClr = 0xCCFFA07A;
     svg.style.pft = clip_pft;
-    svg.AddPolygons(clip);
+    svg.AddPaths(clip);
     svg.style.brushClr = 0x6080ff9C;
     svg.style.penClr = 0xFF003300;
     svg.style.pft = pftNonZero;
-    svg.AddPolygons(solution);
+    svg.AddPaths(solution);
     svg.SaveToFile("solution.svg", svg_scale);
   } else
       cout << (sClipType[clipType] + " failed!\n\n");

@@ -10,8 +10,8 @@ using ClipperLib;
 
 namespace ClipperTest1
 {
-    using Polygon = List<IntPoint>;
-    using Polygons = List<List<IntPoint>>;
+    using Path = List<IntPoint>;
+    using Paths = List<List<IntPoint>>;
 
     class Program
     {
@@ -53,7 +53,7 @@ namespace ClipperTest1
 
             public class PolyInfo
             {
-                public Polygons polygons;
+                public Paths polygons;
                 public StyleInfo si;
             }
 
@@ -74,7 +74,7 @@ namespace ClipperTest1
                 style = new StyleInfo();
             }
 
-            public void AddPolygons(Polygons poly)
+            public void AddPaths(Paths poly)
             {
                 if (poly.Count == 0) return;
                 PolyInfo pi = new PolyInfo();
@@ -107,7 +107,7 @@ namespace ClipperTest1
 
                 for ( ; i < PolyInfoList.Count; i++ )
                 {
-                    foreach (Polygon pg in PolyInfoList[i].polygons)
+                    foreach (Path pg in PolyInfoList[i].polygons)
                         foreach (IntPoint pt in pg)
                         {
                             if (pt.X < rec.left) rec.left = pt.X;
@@ -135,7 +135,7 @@ namespace ClipperTest1
                 foreach (PolyInfo pi in PolyInfoList)
                 {
                     writer.Write(" <path d=\"");
-                    foreach (Polygon p in pi.polygons)
+                    foreach (Path p in pi.polygons)
                     {
                         if (p.Count < 3) continue;
                         writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
@@ -161,7 +161,7 @@ namespace ClipperTest1
                     if (pi.si.showCoords)
                     {
                         writer.Write("<g font-family=\"Verdana\" font-size=\"11\" fill=\"black\">\n\n");
-                        foreach (Polygon p in pi.polygons)
+                        foreach (Path p in pi.polygons)
                         {
                             foreach (IntPoint pt in p)
                             {
@@ -185,7 +185,7 @@ namespace ClipperTest1
 
         ////////////////////////////////////////////////
 
-        static bool LoadFromFile(string filename, Polygons ppg, int dec_places, int xOffset = 0, int yOffset = 0)
+        static bool LoadFromFile(string filename, Paths ppg, int dec_places, int xOffset = 0, int yOffset = 0)
         {
             double scaling;
             scaling = Math.Pow(10, dec_places);
@@ -203,7 +203,7 @@ namespace ClipperTest1
             {
                 if ((line = sr.ReadLine()) == null) return false;
                 if (!Int32.TryParse(line, out vertCnt) || vertCnt < 0) return false;
-                Polygon pg = new Polygon(vertCnt);
+                Path pg = new Path(vertCnt);
                 ppg.Add(pg);
                 if (scaling > 0.999 & scaling < 1.001)
                     for (int j = 0; j < vertCnt; j++)
@@ -240,13 +240,13 @@ namespace ClipperTest1
         }
 
         ////////////////////////////////////////////////
-        static void SaveToFile(string filename, Polygons ppg, int dec_places)
+        static void SaveToFile(string filename, Paths ppg, int dec_places)
         {
             double scaling = Math.Pow(10, dec_places);
             StreamWriter writer = new StreamWriter(filename);
             if (writer == null) return;
             writer.Write("{0}\r\n", ppg.Count);
-            foreach (Polygon pg in ppg)
+            foreach (Path pg in ppg)
             {
                 writer.Write("{0}\r\n", pg.Count);
                 foreach (IntPoint ip in pg)
@@ -273,10 +273,10 @@ namespace ClipperTest1
 
         ////////////////////////////////////////////////
 
-        static Polygon IntsToPolygon(int[] ints)
+        static Path IntsToPolygon(int[] ints)
         {
             int len1 = ints.Length /2;
-            Polygon result = new Polygon(len1);
+            Path result = new Path(len1);
             for (int i = 0; i < len1; i++)
               result.Add(new IntPoint(ints[i * 2], ints[i * 2 +1]));
             return result;
@@ -284,9 +284,9 @@ namespace ClipperTest1
 
         ////////////////////////////////////////////////
 
-        static Polygon MakeRandomPolygon(Random r,  int maxWidth, int maxHeight, int edgeCount, Int64 scale = 1)
+        static Path MakeRandomPolygon(Random r,  int maxWidth, int maxHeight, int edgeCount, Int64 scale = 1)
         {
-            Polygon result = new Polygon(edgeCount);
+            Path result = new Path(edgeCount);
             for (int i = 0; i < edgeCount; i++)
             {
                 result.Add(new IntPoint(r.Next(maxWidth)*scale, r.Next(maxHeight)*scale));
@@ -297,34 +297,34 @@ namespace ClipperTest1
         
         static void Main(string[] args)
         {
-            ////quick test with random polygons ...
-            //Polygons ss = new Polygons(1), cc = new Polygons(1), sss = new Polygons();
-            //Random r = new Random((int)DateTime.Now.Ticks);
-            //int scale = 1000000000; //tests 128bit math
-            //ss.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
-            //cc.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
-            //Clipper cpr = new Clipper();
-            //cpr.AddPolygons(ss, PolyType.ptSubject);
-            //cpr.AddPolygons(cc, PolyType.ptClip);
-            //cpr.Execute(ClipType.ctUnion, sss, PolyFillType.pftNonZero, PolyFillType.pftNonZero);
-            //sss = Clipper.OffsetPolygons(sss, -5.0*scale, JoinType.jtMiter, 4);
-            //SVGBuilder svg1 = new SVGBuilder();
-            //svg1.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);
-            //svg1.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
-            //svg1.AddPolygons(ss);
-            //svg1.style.brushClr = Color.FromArgb(0x20, 0x9c, 0, 0);
-            //svg1.style.penClr = Color.FromArgb(0xff, 0xa0, 0x7a);
-            //svg1.AddPolygons(cc);
-            //svg1.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
-            //svg1.style.penClr = Color.FromArgb(0, 0x33, 0);
-            //svg1.AddPolygons(sss);
-            //svg1.SaveToFile("solution.svg", 1.0/scale);
-            //return;
+          ////quick test with random polygons ...
+          //Paths ss = new Paths(1), cc = new Paths(1), sss = new Paths();
+          //Random r = new Random((int)DateTime.Now.Ticks);
+          //int scale = 1000000000; //tests 128bit math
+          //ss.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
+          //cc.Add(MakeRandomPolygon(r, 400, 350, 9, scale));
+          //Clipper cpr = new Clipper();
+          //cpr.AddPaths(ss, PolyType.ptSubject, true);
+          //cpr.AddPaths(cc, PolyType.ptClip, true);
+          //cpr.Execute(ClipType.ctUnion, sss, PolyFillType.pftNonZero, PolyFillType.pftNonZero);
+          //sss = Clipper.OffsetPolygons(sss, -5.0 * scale, JoinType.jtMiter, 4);
+          //SVGBuilder svg1 = new SVGBuilder();
+          //svg1.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);
+          //svg1.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
+          //svg1.AddPaths(ss);
+          //svg1.style.brushClr = Color.FromArgb(0x20, 0x9c, 0, 0);
+          //svg1.style.penClr = Color.FromArgb(0xff, 0xa0, 0x7a);
+          //svg1.AddPaths(cc);
+          //svg1.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
+          //svg1.style.penClr = Color.FromArgb(0, 0x33, 0);
+          //svg1.AddPaths(sss);
+          //svg1.SaveToFile("solution.svg", 1.0 / scale);
+          //return;
 
-            if (args.Length < 5)
+          if (args.Length < 5)
             {
                 string appname = System.Environment.GetCommandLineArgs()[0];
-                appname = Path.GetFileName(appname);
+                appname = System.IO.Path.GetFileName(appname);
                 Console.WriteLine("");
                 Console.WriteLine("Usage:");
                 Console.WriteLine("  {0} CLIPTYPE s_file c_file INPUT_DEC_PLACES SVG_SCALE [S_FILL, C_FILL]", appname);
@@ -401,8 +401,8 @@ namespace ClipperTest1
                 }
             }
 
-            Polygons subjs = new Polygons();
-            Polygons clips = new Polygons();
+            Paths subjs = new Paths();
+            Paths clips = new Paths();
             if (!LoadFromFile(subjFilename, subjs, decimal_places))
             {
                 Console.WriteLine("Error processing subject polygons file - {0} ", subjFilename);
@@ -418,11 +418,11 @@ namespace ClipperTest1
 
             Console.WriteLine("wait ...");
             Clipper cp = new Clipper();
-            cp.AddPolygons(subjs, PolyType.ptSubject);
-            cp.AddPolygons(clips, PolyType.ptClip);
+            cp.AddPaths(subjs, PolyType.ptSubject, true);
+            cp.AddPaths(clips, PolyType.ptClip, true);
 
-            Polygons solution = new Polygons();
-            //Polygons solution = new Polygons();
+            Paths solution = new Paths();
+            //Paths solution = new Paths();
             if (cp.Execute(ct, solution, pftSubj, pftClip))
             {
                 SaveToFile("solution.txt", solution, decimal_places);
@@ -432,13 +432,13 @@ namespace ClipperTest1
                 SVGBuilder svg = new SVGBuilder();
                 svg.style.brushClr = Color.FromArgb(0x20, 0, 0, 0x9c);
                 svg.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
-                svg.AddPolygons(subjs);
+                svg.AddPaths(subjs);
                 svg.style.brushClr = Color.FromArgb(0x20, 0x9c, 0, 0);
                 svg.style.penClr = Color.FromArgb(0xff, 0xa0, 0x7a);
-                svg.AddPolygons(clips);
+                svg.AddPaths(clips);
                 svg.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
                 svg.style.penClr = Color.FromArgb(0, 0x33, 0);
-                svg.AddPolygons(solution);
+                svg.AddPaths(solution);
                 svg.SaveToFile("solution.svg", svg_scale);
 
                 Console.WriteLine("finished!");

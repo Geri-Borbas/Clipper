@@ -695,100 +695,83 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        void RangeTest(IntPoint pt, ref cInt maxrange)
+        void RangeTest(IntPoint pt, ref bool useFullRange)
         {
-          if (pt.X > maxrange)
+          if (useFullRange)
           {
-            if (pt.X > hiRange)
+            if (pt.X > hiRange || pt.Y > hiRange)
                 throw new ClipperException("Coordinate exceeds range bounds");
-            else maxrange = hiRange;
           }
-          if (pt.Y > maxrange)
+          if (pt.X > loRange || pt.Y > loRange)
           {
-            if (pt.Y > hiRange)
-                throw new ClipperException("Coordinate exceeds range bounds");
-            else maxrange = hiRange;
+            useFullRange = true;
+            RangeTest(pt, ref useFullRange);
           }
         }
         //------------------------------------------------------------------------------
 
         public bool AddPolygon(Polygon pg, PolyType polyType)
         {
-            int len = pg.Count;
-            if (len < 3) return false;
-            cInt maxVal;
-            if (m_UseFullRange) maxVal = hiRange; else maxVal = loRange;
-            RangeTest(pg[0], ref maxVal);
-
-            Polygon p = new Polygon(len);
-            p.Add(new IntPoint(pg[0]));
-            int j = 0;
-            for (int i = 1; i < len; ++i)
-            {
-                RangeTest(pg[i], ref maxVal);
-                if (PointsEqual(p[j], pg[i])) continue;
-                else if (j > 0 && SlopesEqual(p[j-1], p[j], pg[i], maxVal == hiRange))
-                {
-                    if (PointsEqual(p[j-1], pg[i])) j--;
-                } else j++;
-                if (j < p.Count)
-                    p[j] = pg[i]; else
-                    p.Add(new IntPoint(pg[i]));
-            }
-            if (j < 2) return false;
-            m_UseFullRange = maxVal == hiRange;
-
-            len = j+1;
-            while (len > 2)
-            {
-                //nb: test for point equality before testing slopes ...
-                if (PointsEqual(p[j], p[0])) j--;
-                else if (PointsEqual(p[0], p[1]) || SlopesEqual(p[j], p[0], p[1], m_UseFullRange))
-                    p[0] = p[j--];
-                else if (SlopesEqual(p[j - 1], p[j], p[0], m_UseFullRange)) j--;
-                else if (SlopesEqual(p[0], p[1], p[2], m_UseFullRange))
-                {
-                    for (int i = 2; i <= j; ++i) p[i - 1] = p[i];
-                    j--;
-                }
-                else break;
-                len--;
-            }
-            if (len < 3) return false;
+            int highI = pg.Count -1;
+            if (highI < 2) return false;
 
             //create a new edge array ...
-            List<TEdge> edges = new List<TEdge>(len);
-            for (int i = 0; i < len; i++) edges.Add(new TEdge());
+            List<TEdge> edges = new List<TEdge>(highI+1);
+            for (int i = 0; i <= highI; i++) edges.Add(new TEdge());
             m_edges.Add(edges);
+          
+            //1. Basic initialization of Edges ...
+            edges[1].curr = pg[1];
+            InitEdge(edges[0], edges[1], edges[highI], pg[0]);
+            InitEdge(edges[highI], edges[0], edges[highI-1], pg[highI]);
+            for (int i = highI - 1; i >= 1; --i)
+              InitEdge(edges[i], edges[i+1], edges[i-1], pg[i]);
 
-            //convert vertices to a double-linked-list of edges and initialize ...
-            edges[0].curr = p[0];
-            InitEdge(edges[len-1], edges[0], edges[len-2], p[len-1], polyType);
-            for (int i = len-2; i > 0; --i)
-            InitEdge(edges[i], edges[i+1], edges[i-1], p[i], polyType);
-            InitEdge(edges[0], edges[1], edges[len-1], p[0], polyType);
+            //2. Remove duplicates vertices and co-linear edges ...
+            TEdge eStart = edges[0], e = edges[0];
+            for (;;)
+            {
+              if (e != e.next && PointsEqual(e.curr, e.next.curr))
+              {
+                if (e == eStart) eStart = e.prev;
+                e = RemoveEdge(e);
+                continue;
+              }
+              if (e.prev != e.next &&
+                SlopesEqual(e.prev.curr, e.curr, e.next.curr, m_UseFullRange))
+              {
+                if (e == eStart) eStart = e.prev;
+                e = RemoveEdge(e);
+                continue;
+              }
+              RangeTest(e.curr, ref m_UseFullRange);
+              e = e.next;
+              if (e == eStart) break;
+            }
+            if (e.prev == e.next) return false;
 
-            //reset curr.X & curr.Y and find 'eHighest' (given the Y axis coordinates
-            //increase downward so the 'highest' edge will have the smallest top.Y) ...
-            TEdge e = edges[0];
-            TEdge eHighest = e;
+            //3. Do final Init and also find the 'highest' Edge. (nb: since I'm much
+            //more familiar with positive downwards Y axes, 'highest' here will be
+            //the Edge with the *smallest* Top.Y.)
+            TEdge eHighest = eStart;
+            e = eStart;
             do
             {
-            e.curr = e.bot;
-            if (e.top.Y < eHighest.top.Y) eHighest = e;
-            e = e.next;
+              InitEdge2(e, polyType);
+              if (e.top.Y < eHighest.top.Y) eHighest = e;
+              e = e.next;
             }
-            while ( e != edges[0]);
+            while (e != eStart);
 
             //make sure eHighest is positioned so we're just starting to head down
-            //one edge of the polygon (so the following loop works safely) ...
-            if (eHighest.dx == horizontal  ||
+            //one edge of the polygon ...
+            if (eHighest.dx == horizontal ||
               PointsEqual(eHighest.top, eHighest.next.top) ||
               PointsEqual(eHighest.top, eHighest.next.bot)) //next is high horizontal
               eHighest = eHighest.next;
             if (eHighest.dx == horizontal) eHighest = eHighest.next;
 
-            //finally insert each local minima ...
+            //4. build local minima list ...
             e = eHighest;
             do {
             e = AddBoundsToLML(e);
@@ -799,11 +782,17 @@ namespace ClipperLib
         //------------------------------------------------------------------------------
 
         private void InitEdge(TEdge e, TEdge eNext,
-          TEdge ePrev, IntPoint pt, PolyType polyType)
+          TEdge ePrev, IntPoint pt)
         {
           e.next = eNext;
           e.prev = ePrev;
           e.curr = pt;
+          e.outIdx = -1;
+        }
+        //------------------------------------------------------------------------------
+
+        private void InitEdge2(TEdge e, PolyType polyType)
+        {
           if (e.curr.Y >= e.next.curr.Y)
           {
             e.bot = e.curr;
@@ -815,7 +804,17 @@ namespace ClipperLib
           }
           SetDx(e);
           e.polyType = polyType;
-          e.outIdx = -1;
+        }
+        //------------------------------------------------------------------------------
+
+        TEdge RemoveEdge(TEdge e)
+        {
+          //removes e from double_linked_list (but without removing from memory)
+          e.prev.next = e.next;
+          e.next.prev = e.prev;
+          TEdge ePrev = e.prev;
+          e.prev = null; //flag as removed (see ClipperBase.Clear)
+          return ePrev;
         }
         //------------------------------------------------------------------------------
 
@@ -843,10 +842,10 @@ namespace ClipperLib
               //    but break on horizontal minima if approaching from their left.
               //    This ensures 'local minima' are always on the left of horizontals.
               if (e.next.top.Y < e.top.Y && e.next.bot.X > e.prev.bot.X) break;
-              if (e.top.X != e.prev.bot.X) SwapX(e);
+              if (e.top.X != e.prev.bot.X) ReverseHorizontal(e);
               e.nextInLML = e.prev;
             }
-            else if (e.curr.Y == e.prev.curr.Y) break;
+            else if (e.bot.Y == e.prev.bot.Y) break;
             else e.nextInLML = e.prev;
             e = e.next;
           }
@@ -858,7 +857,7 @@ namespace ClipperLib
 
           if ( e.dx == horizontal ) //horizontal edges never start a left bound
           {
-            if (e.bot.X != e.prev.bot.X) SwapX(e);
+            if (e.bot.X != e.prev.bot.X) ReverseHorizontal(e);
             newLm.leftBound = e.prev;
             newLm.rightBound = e;
           } else if (e.dx < e.prev.dx)
@@ -887,7 +886,7 @@ namespace ClipperLib
             if ( e.next.top.Y == e.top.Y && e.next.dx != horizontal ) break;
             e.nextInLML = e.next;
             e = e.next;
-            if ( e.dx == horizontal && e.bot.X != e.prev.top.X) SwapX(e);
+            if (e.dx == horizontal && e.bot.X != e.prev.top.X) ReverseHorizontal(e);
           }
           return e.next;
         }
@@ -921,7 +920,7 @@ namespace ClipperLib
         }
         //------------------------------------------------------------------------------
 
-        private void SwapX(TEdge e)
+        private void ReverseHorizontal(TEdge e)
         {
           //swap horizontal edges' top and bottom x's so they follow the natural
           //progression of the bounds - ie so their xbots will align with the
@@ -945,23 +944,19 @@ namespace ClipperLib
             LocalMinima lm = m_MinimaList;
             while (lm != null)
             {
-                TEdge e = lm.leftBound;
-                while (e != null)
-                {
-                    e.curr = e.bot;
-                    e.side = EdgeSide.esLeft;
-                    e.outIdx = -1;
-                    e = e.nextInLML;
-                }
-                e = lm.rightBound;
-                while (e != null)
-                {
-                    e.curr = e.bot;
-                    e.side = EdgeSide.esRight;
-                    e.outIdx = -1;
-                    e = e.nextInLML;
-                }
-                lm = lm.next;
+              TEdge e = lm.leftBound;
+              e.curr = e.bot;
+              e.side = EdgeSide.esLeft;
+              e.outIdx = -1;
+              e = e.nextInLML;
+
+              e = lm.rightBound;
+              e.curr = e.bot;
+              e.side = EdgeSide.esRight;
+              e.outIdx = -1;
+              e = e.nextInLML;
+
+              lm = lm.next;
             }
             return;
         }
@@ -2382,6 +2377,7 @@ namespace ClipperLib
             e.nextInLML.windCnt = e.windCnt;
             e.nextInLML.windCnt2 = e.windCnt2;
             e = e.nextInLML;
+            e.curr = e.bot;
             e.prevInAEL = AelPrev;
             e.nextInAEL = AelNext;
             if (e.dx != horizontal) InsertScanbeam(e.top.Y);

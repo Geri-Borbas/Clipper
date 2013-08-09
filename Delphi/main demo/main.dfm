@@ -1,9 +1,9 @@
 object MainForm: TMainForm
   Left = 235
   Top = 110
-  Width = 731
-  Height = 547
   Caption = 'Clipper Delphi Demo'
+  ClientHeight = 520
+  ClientWidth = 723
   Color = clBtnFace
   Font.Charset = ARABIC_CHARSET
   Font.Color = clWindowText
@@ -275,6 +275,7 @@ object MainForm: TMainForm
     ScaleMode = smScale
     ScrollBars.ShowHandleGrip = True
     ScrollBars.Style = rbsDefault
+    ScrollBars.Size = 16
     OverSize = 0
     TabOrder = 2
     OnDblClick = bNextClick

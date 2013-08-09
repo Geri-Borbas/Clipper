@@ -23,10 +23,10 @@ uses
 //be scaled up and down when being passed to and from Clipper. This is easily
 //accomplished by setting the scaling factor (10^x) in the following functions.
 //When scaling, remember that on most platforms, integer is only a 32bit value.
-function PointArrayToCairo(const polys: TPolygons;
+function PointArrayToCairo(const polys: TPaths;
   cairo: Pcairo_t; scaling_factor: integer = 2): boolean;
 function CairoToPointArray(cairo: Pcairo_t;
-  out polys: TPolygons; scaling_factor: integer = 2): boolean;
+  out polys: TPaths; scaling_factor: integer = 2): boolean;
 
 implementation
 
@@ -35,7 +35,7 @@ type
   TCairoPathDataArray =
     array [0.. MAXINT div sizeof(cairo_path_data_t) -1] of cairo_path_data_t;
 
-function PointArrayToCairo(const polys: TPolygons;
+function PointArrayToCairo(const polys: TPaths;
   cairo: Pcairo_t; scaling_factor: integer = 2): boolean;
 var
   i,j: integer;
@@ -57,7 +57,7 @@ end;
 //------------------------------------------------------------------------------
 
 function CairoToPointArray(cairo: Pcairo_t;
-  out polys: TPolygons; scaling_factor: integer = 2): boolean;
+  out polys: TPaths; scaling_factor: integer = 2): boolean;
 const
   buffLen1: integer = 32;
   buffLen2: integer = 128;

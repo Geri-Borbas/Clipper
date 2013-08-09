@@ -12,15 +12,17 @@
 #include "cairo_clipper.hpp"
 //---------------------------------------------------------------------------
 
-LPCTSTR ClsName = "CairoApp";
-LPCTSTR WndName = "A Simple Cairo Clipper Demo";
-int offsetVal = 0;
+int offsetVal;
 
 LRESULT CALLBACK WndProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-int CALLBACK WinMain(HINSTANCE hInstance,
+int APIENTRY main(HINSTANCE hInstance,
   HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
 {
+  WCHAR* ClsName = L"CairoApp";
+  WCHAR* WndName = L"A Simple Cairo Clipper Demo";
+  offsetVal = 0;
+
   MSG        Msg;
   HWND       hWnd;
   WNDCLASSEX WndClsEx;
@@ -87,7 +89,7 @@ void OnPaint(HWND hWnd, HDC dc)
   cairo_arc(cr, 170,110,70,0,2*3.1415926);
   cairo_close_path(cr);
   cairo::cairo_to_clipper(cr, pg, scaling);
-  clpr.AddPolygons(pg, ptSubject);
+  clpr.AddPaths(pg, ptSubject, true);
   cairo_set_source_rgba(cr, 0, 0, 1, 0.25);
   cairo_fill_preserve (cr);
   cairo_set_source_rgba(cr, 0, 0, 0, 0.5);
@@ -104,7 +106,7 @@ void OnPaint(HWND hWnd, HDC dc)
   cairo_arc(cr, 190,50,20,0,2*3.1415926);
   cairo_close_path(cr);
   cairo::cairo_to_clipper(cr, pg, scaling);
-  clpr.AddPolygons(pg, ptClip);
+  clpr.AddPaths(pg, ptClip, true);
   cairo_set_source_rgba(cr, 1, 0, 0, 0.25);
   cairo_fill_preserve (cr);
   cairo_set_source_rgba(cr, 0, 0, 0, 0.5);
@@ -112,7 +114,7 @@ void OnPaint(HWND hWnd, HDC dc)
 
   clpr.Execute(ctIntersection, pg, pftNonZero, pftNonZero);
   //now do something fancy with the returned polygons ...
-  OffsetPolygons(pg, pg, offsetVal * std::pow((double)10,scaling), jtMiter);
+  OffsetPaths(pg, pg, offsetVal * std::pow((double)10,scaling), jtMiter, etClosed);
 
   //finally copy the clipped path back to the cairo context and draw it ...
   cairo::clipper_to_cairo(pg, cr, scaling);

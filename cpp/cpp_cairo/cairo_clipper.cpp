@@ -23,12 +23,12 @@ namespace ClipperLib {
 
     namespace {
 
-      inline long64 Round(double val)
+      inline cInt Round(double val)
       {
-        if ((val < 0)) return (long64)(val - 0.5); else return (long64)(val + 0.5);
+        if ((val < 0)) return (cInt)(val - 0.5); else return (cInt)(val + 0.5);
       }
 
-      void transform_point(cairo_t* pen, Transform transform, long64* x, long64* y)
+      void transform_point(cairo_t* pen, Transform transform, cInt* x, cInt* y)
       {
         double _x = (double)*x, _y = (double)*y;
         switch (transform)
@@ -47,7 +47,7 @@ namespace ClipperLib {
     }
 
     void cairo_to_clipper(cairo_t* cr,
-                          Polygons &pg,
+                          Paths &pg,
                           int scaling_factor,
                           Transform transform)
     {
@@ -105,7 +105,7 @@ namespace ClipperLib {
     }
     //--------------------------------------------------------------------------
 
-    void clipper_to_cairo(const Polygons &pg,
+    void clipper_to_cairo(const Paths &pg,
                           cairo_t* cr,
                           int scaling_factor,
                           Transform transform)
@@ -120,7 +120,7 @@ namespace ClipperLib {
           continue;
         cairo_new_sub_path(cr);
         for (size_t j = 0; j < sz; ++j) {
-          long64 x = pg[i][j].X, y = pg[i][j].Y;
+          cInt x = pg[i][j].X, y = pg[i][j].Y;
           if (transform != tNone)
             transform_point(cr, transform, &x, &y);
           cairo_line_to(cr, (double)x / scaling, (double)y / scaling);

@@ -48,7 +48,7 @@ begin
   cairo_arc(cr, 165,110,70,0,2*3.1415926);
   cairo_close_path(cr); //important because we can only clip polygons
   CairoToPointArray(cr, ppa, scaling);
-  clipper.AddPolygons(ppa, ptSubject);
+  clipper.AddPaths(ppa, ptSubject, true);
   cairo_set_line_width(cr, 2.0);
   cairo_set_source_rgba(cr, 0, 0, 1, 0.25);
   cairo_fill_preserve(cr);
@@ -67,7 +67,7 @@ begin
   cairo_arc(cr, 185,50,20,0,2*3.1415926);
   cairo_close_path(cr);
   CairoToPointArray(cr, ppa, scaling);
-  clipper.AddPolygons(ppa, ptClip);
+  clipper.AddPaths(ppa, ptClip, true);
   cairo_set_source_rgba(cr, 1, 0, 0, 0.25);
   cairo_fill_preserve(cr);
   cairo_set_source_rgba(cr, 0, 0, 0, 0.5);

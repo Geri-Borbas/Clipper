@@ -19,7 +19,7 @@ interface
 uses
   Windows, Types,
   Classes, SysUtils, Math, GR32, GR32_LowLevel, GR32_Blend, GR32_Transforms,
-  Graphics, GR32_Math, GR32_Polygons, GR32_PolygonsEx, GR32_VPR;
+  Graphics, GR32_Math, GR32_Polygons, GR32_VPR;
 
 type
   TArrayOfArrayOfArrayOfFixedPoint = array of TArrayOfArrayOfFixedPoint;
