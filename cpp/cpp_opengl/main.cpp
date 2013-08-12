@@ -2,7 +2,7 @@
 #include <commctrl.h>
 #include <gl/gl.h>
 #include <gl/glu.h>
-//#include <gl/glut.h>
+#include <gl/glut.h>
 #include <ctime>
 #include <cmath>
 #include <sstream>
@@ -129,7 +129,6 @@ void InitGraphics()
 	glDisable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glTranslatef (0.375, 0.375, 0);
 }
 //------------------------------------------------------------------------------
 
@@ -156,15 +155,18 @@ void ResizeGraphics(int width, int height)
 }
 //------------------------------------------------------------------------------
 
-void DrawPolygon(Polygons &pgs, poly_color_type pct)
+void SetGlColor(unsigned color)
 {
-	switch (pct)
-	{
-		case pctSubject: glColor4f(0.0f, 0.0f, 1.0f, 0.062f); break;
-		case pctClip: glColor4f(1.0f, 1.0f, 0.0f, 0.062f); break;
-		default: glColor4f(0.0f, 1.0f, 0.0f, 0.25f);
-	}
+  byte a = color >> 24;
+  byte r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+  glColor4f(float(r)/255, float(g)/255, float(b)/255, float(a)/255);
+}
+//------------------------------------------------------------------------------
 
+void DrawPolygon(Polygons &pgs, unsigned brushColor, unsigned strokeColor)
+{
+  bool IsSolution = (strokeColor == 0xFF000000); 
+  SetGlColor(brushColor); 
 	GLUtesselator* tess = gluNewTess();
   gluTessCallback(tess, GLU_TESS_BEGIN, (void (CALLBACK*)())&BeginCallback);    
   gluTessCallback(tess, GLU_TESS_VERTEX, (void (CALLBACK*)())&VertexCallback);    
@@ -173,25 +175,21 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
   gluTessCallback(tess, GLU_TESS_ERROR, (void (CALLBACK*)())&ErrorCallback);
   gluTessNormal(tess, 0.0, 0.0, 1.0);
 	
-	switch (pft)
-  {
-    case pftEvenOdd: 
-      gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_ODD); 
-      break;
-    case pftNonZero: 
-      gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NONZERO); 
-      break;
-    case pftPositive: 
-      gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_POSITIVE); 
-      break;
-    default: //case pftNegative
-      if (pct == pctSolution)
-        gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NONZERO);
-      else
-        gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NEGATIVE);
-  }
+  GLdouble windingRule;
+  if (IsSolution) 
+    windingRule = GLU_TESS_WINDING_ODD;
+  else 
+    switch (pft)
+    {
+      case pftEvenOdd: windingRule = GLU_TESS_WINDING_ODD; break;
+      case pftNonZero: windingRule = GLU_TESS_WINDING_NONZERO; break;
+      case pftPositive: windingRule = GLU_TESS_WINDING_POSITIVE; break;
+      default: windingRule = GLU_TESS_WINDING_NEGATIVE; break;
+    }
+  gluTessProperty(tess, GLU_TESS_WINDING_RULE, windingRule); 
 
-	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_FALSE); //GL_FALSE
+  //brush fill polygons ...
+	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_FALSE);
 	gluTessBeginPolygon(tess, NULL); 
 	for (Polygons::size_type i = 0; i < pgs.size(); ++i)
 	{
@@ -207,19 +205,9 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 	gluTessEndPolygon(tess);
   ClearVectors();
 
-	switch (pct)
-	{
-		case pctSubject: 
-      glColor4f(0.0f, 0.6f, 1.0f, 0.5f); 
-      break;
-		case pctClip: 
-      glColor4f(1.0f, 0.6f, 0.0f, 0.5f); 
-      break;
-		default: 
-      glColor4f(0.0f, 0.4f, 0.0f, 1.0f);
-	}
-	if (pct == pctSolution) glLineWidth(1.0f); else glLineWidth(0.8f);
-
+  //now 'stroke' polygons ...
+  SetGlColor(strokeColor); 
+  glLineWidth(1.0f);
   gluTessProperty(tess, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_ODD); 
 	gluTessProperty(tess, GLU_TESS_BOUNDARY_ONLY, GL_TRUE);
 	for (Polygons::size_type i = 0; i < pgs.size(); ++i)
@@ -233,14 +221,6 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 			gluTessVertex(tess, vert, vert); 
 		}
 
-    switch (pct)
-	  {
-		  case pctSubject: 
-        glColor4f(0.0f, 0.0f, 0.8f, 0.5f); 
-        break;
-		  case pctClip: 
-        glColor4f(0.6f, 0.0f, 0.0f, 0.5f); 
-	  }
 		gluTessEndContour(tess);
 	  gluTessEndPolygon(tess);
 	}
@@ -251,6 +231,24 @@ void DrawPolygon(Polygons &pgs, poly_color_type pct)
 }
 //------------------------------------------------------------------------------
 
+enum TextSize {tsSmall, tsMedium, tsLarge};
+
+void DrawText(int x,int y, char* text, TextSize size = tsMedium)
+{
+  glColor4f(0.0f, 0.0f, 0.0f, 1.0f); 
+  glRasterPos2f(x, y);
+  void* font;
+  switch (size)
+  {
+    case tsSmall: font = GLUT_BITMAP_HELVETICA_10; break;
+    case tsLarge: font = GLUT_BITMAP_HELVETICA_18; break;
+    default: font = GLUT_BITMAP_HELVETICA_12; 
+  }
+  for (char *c = text; *c != '\0'; c++)
+    glutBitmapCharacter(font, *c);
+}
+//------------------------------------------------------------------------------
+
 void DrawGraphics()
 {
 	//this can take a few moments ...
@@ -258,19 +256,20 @@ void DrawGraphics()
 	SetCursor(hWaitCursor);
 	SetClassLong(hWnd, GCL_HCURSOR, (DWORD)hWaitCursor);
 
-	//fill background with a light off-gray color ...
+	//fill background color ...
 	glClearColor(1,1,1,1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-  //glRasterPos2f(110, 340);
-  //glColor4f(0.0f, 1.0f, 0.0f, 1.0f); 
-  //char * text = "Positive Fills";
-  //for (int i = 0; i < strlen(text); ++i)
-  //  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, text[i]);
-	
-  DrawPolygon(sub, pctSubject);
-	DrawPolygon(clp, pctClip);
-  if (show_clipping) DrawPolygon(sol, pctSolution);
+  DrawPolygon(sub, 0x100066FF, 0x990066FF);
+	DrawPolygon(clp, 0x10FF6600, 0x99FF6600);
+  if (show_clipping) DrawPolygon(sol, 0x6000FF00, 0xFF000000);
+
+  //RECT r;
+  //GetWindowRect(hStatus, &r);
+  //int statusHeight = r.bottom - r.top;
+  //GetClientRect(hWnd, &r);
+  //r.bottom -= statusHeight;
+  //DrawText(4, 16, "This is a demo.");
 
   wstringstream ss;
   if (!show_clipping)
@@ -308,7 +307,6 @@ void DrawGraphics()
   ss << VertCount << " vertices.";
   wstring s = ss.str();
 	SendMessage(hStatus, SB_SETTEXT, (WPARAM)1, (LPARAM)const_cast<LPWSTR>(s.c_str()));
-
 
 	HCURSOR hArrowCursor = LoadCursor(NULL, IDC_ARROW);
 	SetCursor(hArrowCursor);
@@ -396,19 +394,10 @@ void TranslatePolygon(ClipperLib::Polygon &p, int dx, int dy)
 }
 //---------------------------------------------------------------------------
 
-//void MakePolygonFromIntArray(const int ints[][2], int size, ClipperLib::Polygon &p)
-//{
-//  p.clear();
-//  p.reserve(size / 2);
-//  for (int i = 0; i < size; ++i)
-//    p.push_back(IntPoint(ints[i][0], ints[i][1]));
-//}
-//---------------------------------------------------------------------------
-
 void UpdatePolygons(bool updateSolutionOnly)
 {
 	if (VertCount < 0) VertCount = -VertCount;
-  if (VertCount > 50) VertCount = 50;
+  if (VertCount > 99) VertCount = 99;
   if (VertCount < 3) VertCount = 3;
 
   Clipper c;
@@ -420,12 +409,13 @@ void UpdatePolygons(bool updateSolutionOnly)
     GetWindowRect(hStatus, &r);
     int statusHeight = r.bottom - r.top;
     GetClientRect(hWnd, &r);
+    r.bottom -= statusHeight;
 
     sub.resize(1);
     clp.resize(1);
 
-    MakeRandomPoly(sub[0], r.right, r.bottom - statusHeight, VertCount);
-    MakeRandomPoly(clp[0], r.right, r.bottom - statusHeight, VertCount);
+    MakeRandomPoly(sub[0], r.right, r.bottom, VertCount);
+    MakeRandomPoly(clp[0], r.right, r.bottom, VertCount);
 
     //SaveToFile("subj.txt", sub);
     //SaveToFile("clip.txt", clp);
@@ -496,7 +486,7 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
 			  L"P - for Positive fills.\n" 
 			  L"N - for Negative fills.\n" 
 			  L"------------------------------\n" 
-			  L"nn<ENTER> - number of vertices (3..50).\n" 
+			  L"nn<ENTER> - number of vertices (3..99).\n" 
 			  L"------------------------------\n" 
 			  L"UP arrow - Expand Solution.\n" 
 			  L"DN arrow - Contract Solution.\n" 
@@ -513,39 +503,54 @@ LONG WINAPI MainWndProc (HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM  lParam)
       return 0;
 
     case WM_COMMAND:
-      switch(LOWORD(wParam))
       {
-          case VK_ESCAPE: PostQuitMessage(0); break; //for accelerator IDs see menu.res
-          case 98: SendMessage(hWnd, WM_HELP, 0, 0); break;
-          case 99: MessageBox(hWnd, L"After closing this dialog,\ntype the required number of vertices (3-50) then <Enter> ...", L"Clipper Demo", 0);
-          case 101: show_clipping = true; ct = ctIntersection; UpdatePolygons(true); break;
-          case 102: show_clipping = true; ct = ctUnion; UpdatePolygons(true); break;
-          case 103: show_clipping = true; ct = ctDifference; UpdatePolygons(true); break;
-          case 104: show_clipping = true; ct = ctXor; UpdatePolygons(true); break;
-			    case 105: pft = pftEvenOdd; UpdatePolygons(true); break;
-			    case 106: pft = pftNonZero; UpdatePolygons(true); break;
-          case 107: pft = pftPositive; UpdatePolygons(true); break;
-          case 108: pft = pftNegative; UpdatePolygons(true); break;
-			    case 109: show_clipping = !show_clipping; UpdatePolygons(true); break;
-          case 110: case 111: case 112: case 113: case 114:
-          case 115: case 116: case 117: case 118: case 119: 
-            DoNumericKeyPress(LOWORD(wParam) - 110); 
-            break;
-          case 120: UpdatePolygons(false); break; //space, return
-          case 131: if (delta < 20*scale) {delta += scale; UpdatePolygons(true);} break;
-          case 132: if (delta > -20*scale) {delta -= scale; UpdatePolygons(true);} break;
-          case 133: if (delta != 0.0) {delta = 0.0; UpdatePolygons(true);} break;
-          case 141: {jt = jtMiter; if (delta != 0.0) UpdatePolygons(true);} break;
-          case 142: {jt = jtSquare; if (delta != 0.0) UpdatePolygons(true);} break;
-          case 143: {jt = jtRound; if (delta != 0.0) UpdatePolygons(true);} break;
-          default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
+        switch(LOWORD(wParam))
+        {
+            case VK_ESCAPE: PostQuitMessage(0); break; //for accelerator IDs see menu.res
+            case 98: SendMessage(hWnd, WM_HELP, 0, 0); break;
+            case 99: MessageBox(hWnd, 
+                       L"After closing this dialog,\ntype the required number of vertices (3-99) then <Enter> ...", 
+                       L"Clipper Demo", 0);
+            case 101: show_clipping = true; ct = ctIntersection; UpdatePolygons(true); break;
+            case 102: show_clipping = true; ct = ctUnion; UpdatePolygons(true); break;
+            case 103: show_clipping = true; ct = ctDifference; UpdatePolygons(true); break;
+            case 104: show_clipping = true; ct = ctXor; UpdatePolygons(true); break;
+			      case 105: pft = pftEvenOdd; UpdatePolygons(true); break;
+			      case 106: pft = pftNonZero; UpdatePolygons(true); break;
+            case 107: pft = pftPositive; UpdatePolygons(true); break;
+            case 108: pft = pftNegative; UpdatePolygons(true); break;
+			      case 109: show_clipping = !show_clipping; UpdatePolygons(true); break;
+            case 110: case 111: case 112: case 113: case 114:
+            case 115: case 116: case 117: case 118: case 119: 
+              DoNumericKeyPress(LOWORD(wParam) - 110); 
+              break;
+            case 120: UpdatePolygons(false); break; //space, return
+            case 131: if (delta < 20*scale) {delta += scale; UpdatePolygons(true);} break;
+            case 132: if (delta > -20*scale) {delta -= scale; UpdatePolygons(true);} break;
+            case 133: if (delta != 0.0) {delta = 0.0; UpdatePolygons(true);} break;
+            case 141: {jt = jtMiter; if (delta != 0.0) UpdatePolygons(true);} break;
+            case 142: {jt = jtSquare; if (delta != 0.0) UpdatePolygons(true);} break;
+            case 143: {jt = jtRound; if (delta != 0.0) UpdatePolygons(true);} break;
+            default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
+        }
+        return 0; 
       }
-      return 0; 
+    case WM_LBUTTONDOWN:
+      {
+		    return 0;
+      }
 
     case WM_LBUTTONUP:
-		  UpdatePolygons(false);
-		  return 0;
-
+      {
+        //int xPos = short(lParam & 0xFFFF); 
+        //int yPos = short(lParam >> 16);
+        //wstringstream ss;
+        //ss << "  " << xPos << ", " << yPos;
+        //wstring s = ss.str();
+        //SendMessage(hStatus, SB_SETTEXT, (WPARAM)0, (LPARAM)const_cast<LPWSTR>(s.c_str()));
+        UpdatePolygons(false);
+		    return 0;
+      }
     // Default event handler
     default: return DefWindowProc (hWnd, uMsg, wParam, lParam); 
   }  

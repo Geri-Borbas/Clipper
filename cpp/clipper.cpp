@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  9 August 2013                                                   *
+* Date      :  11 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -965,7 +965,7 @@ void SwapPoints(IntPoint &pt1, IntPoint &pt2)
 bool GetOverlapSegment(IntPoint pt1a, IntPoint pt1b, IntPoint pt2a,
   IntPoint pt2b, IntPoint &pt1, IntPoint &pt2)
 {
-  //precondition: segments are colinear.
+  //precondition: segments are Collinear.
   if (Abs(pt1a.X - pt1b.X) > Abs(pt1a.Y - pt1b.Y))
   {
     if (pt1a.X > pt1b.X) SwapPoints(pt1a, pt1b);
@@ -1187,7 +1187,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   TEdge *eStart = &edges[0];
   if (!ClosedOrSemiClosed) eStart->Prev->OutIdx = Skip;
 
-  //2. Remove duplicate vertices, and co-linear edges (when closed) ...
+  //2. Remove duplicate vertices, and collinear edges (when closed) ...
   TEdge *E = eStart, *eLoopStop = eStart;
   for (;;)
   {
@@ -1206,11 +1206,11 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
       E->Next->OutIdx != Skip)) &&
       SlopesEqual(E->Prev->Curr, E->Curr, E->Next->Curr, m_UseFullRange)) 
     {
-      //All co-linear edges are allowed for open paths but in closed paths
-      //inner vertices of adjacent co-linear edges are removed. However if the
-      //PreserveColinear property has been enabled, only overlapping co-linear
+      //All collinear edges are allowed for open paths but in closed paths
+      //inner vertices of adjacent collinear edges are removed. However if the
+      //PreserveCollinear property has been enabled, only overlapping collinear
       //edges (ie spikes) are removed from closed paths.
-      if (Closed && (!m_PreserveColinear ||
+      if (Closed && (!m_PreserveCollinear ||
         !Pt2IsBetweenPt1AndPt3(E->Prev->Curr, E->Curr, E->Next->Curr))) 
       {
         if (E == eStart) eStart = E->Next;
@@ -1626,7 +1626,7 @@ Clipper::Clipper(int initOptions) : ClipperBase() //constructor
   m_UseFullRange = false;
   m_ReverseOutput = ((initOptions & ioReverseSolution) != 0);
   m_StrictSimple = ((initOptions & ioStrictlySimple) != 0);
-  m_PreserveColinear = ((initOptions & ioPreserveColinear) != 0);
+  m_PreserveCollinear = ((initOptions & ioPreserveCollinear) != 0);
   m_HasOpenPaths = false;
 #ifdef use_xyz  
   m_ZFill = 0;
@@ -3336,10 +3336,10 @@ void Clipper::FixupOutPolygon(OutRec &outrec)
       outrec.Pts = 0;
       return;
     }
-    //test for duplicate points and co-linear edges ...
+    //test for duplicate points and collinear edges ...
     if ((pp->Pt == pp->Next->Pt) || (pp->Pt == pp->Prev->Pt) || 
       (SlopesEqual(pp->Prev->Pt, pp->Pt, pp->Next->Pt, m_UseFullRange) &&
-      (!m_PreserveColinear || 
+      (!m_PreserveCollinear || 
       !Pt2IsBetweenPt1AndPt3(pp->Prev->Pt, pp->Pt, pp->Next->Pt))))
     {
       lastOK = 0;
@@ -3675,10 +3675,10 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
 
   //There are 3 kinds of joins for output polygons ...
   //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are a vertices anywhere
-  //along (horizontal) co-linear edges (& Join.OffPt is on the same horizontal).
+  //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
   //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
   //location at the Bottom of the overlapping segment (& Join.OffPt is above).
-  //3. StrictSimple joins where edges touch but are not co-linear and where
+  //3. StrictSimple joins where edges touch but are not collinear and where
   //Join.OutPt1, Join.OutPt2 & Join.OffPt all share the same point.
   bool isHorizontal = (j->OutPt1->Pt.Y == j->OffPt.Y);
 
@@ -4416,7 +4416,7 @@ DoublePoint ClosestPointOnLine(const IntPoint& Pt, const IntPoint& linePt1, cons
 }
 //------------------------------------------------------------------------------
 
-bool SlopesNearColinear(const IntPoint& pt1, 
+bool SlopesNearCollinear(const IntPoint& pt1, 
     const IntPoint& pt2, const IntPoint& pt3, double distSqrd)
 {
   if (DistanceSqrd(pt1, pt2) > DistanceSqrd(pt1, pt3)) return false;
@@ -4454,14 +4454,14 @@ void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
     while (i < highI && PointsAreClose(Pt, in_poly[i+1], distSqrd)) i+=2;
     int i2 = i;
     while (i < highI && (PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
-      SlopesNearColinear(Pt, in_poly[i], in_poly[i+1], distSqrd))) i++;
+      SlopesNearCollinear(Pt, in_poly[i], in_poly[i+1], distSqrd))) i++;
     if (i >= highI) break;
     else if (i != i2) continue;
     Pt = in_poly[i++];
     out_poly[k++] = Pt;
   }
   if (i <= highI) out_poly[k++] = in_poly[i];
-  if (k > 2 && SlopesNearColinear(out_poly[k -2], out_poly[k -1], out_poly[0], distSqrd)) k--;    
+  if (k > 2 && SlopesNearCollinear(out_poly[k -2], out_poly[k -1], out_poly[0], distSqrd)) k--;    
   if (k < 3) out_poly.clear();
   else if (k <= highI) out_poly.resize(k);
 }

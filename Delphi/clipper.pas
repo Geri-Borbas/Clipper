@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  9 August 2013                                                   *
+* Date      :  11 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -76,7 +76,7 @@ type
   TZFillCallback = procedure (const Z1, Z2: cInt; var Pt: TIntPoint);
 {$ENDIF}
 
-  TInitOption = (ioReverseSolution, ioStrictlySimple, ioPreserveColinear);
+  TInitOption = (ioReverseSolution, ioStrictlySimple, ioPreserveCollinear);
   TInitOptions = set of TInitOption;
 
   TClipType = (ctIntersection, ctUnion, ctDifference, ctXor);
@@ -230,7 +230,7 @@ type
     procedure DisposeLocalMinimaList;
     procedure DisposePolyPts(PP: POutPt);
   protected
-    FPreserveColinear : Boolean;
+    FPreserveCollinear : Boolean;
     procedure Reset; virtual;
     procedure PopLocalMinima;
     property CurrentLm: PLocalMinima read FCurrLm;
@@ -248,9 +248,10 @@ type
     function AddPolygons(const Paths: TPaths; PolyType: TPolyType): Boolean;
 {$ENDIF}
 
-    //PreserveColinear: Prevents removal of 'inner' vertices when three or
-    //more vertices are co-linear in solution polygons.
-    property PreserveColinear: Boolean read FPreserveColinear write FPreserveColinear;
+    //PreserveCollinear: Prevents removal of 'inner' vertices when three or
+    //more vertices are collinear in solution polygons.
+    property PreserveCollinear: Boolean
+      read FPreserveCollinear write FPreserveCollinear;
   end;
 
   TClipper = class(TClipperBase)
@@ -1111,7 +1112,7 @@ end;
 
 function Pt2IsBetweenPt1AndPt3(const Pt1, Pt2, Pt3: TIntPoint): Boolean;
 begin
-  //nb: assumes co-linearity.
+  //nb: assumes collinearity.
   if PointsEqual(Pt1, Pt3) or PointsEqual(Pt1, Pt2) or PointsEqual(Pt3, Pt2) then
     Result := False
   else if (Pt1.X <> Pt3.X) then
@@ -1641,7 +1642,7 @@ begin
   EStart := @Edges[0];
   if not ClosedOrSemiClosed then EStart.Prev.OutIdx := Skip;
 
-  //2. Remove duplicate vertices, and co-linear edges (when closed) ...
+  //2. Remove duplicate vertices, and collinear edges (when closed) ...
   E := EStart;
   ELoopStop := EStart;
   while (E <> E.Next) do //ie in case loop reduces to a single vertex
@@ -1661,11 +1662,11 @@ begin
       (E.Next.OutIdx <> Skip))) and
       SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, FUse64BitRange) then
     begin
-      //All co-linear edges are allowed for open paths but in closed paths
-      //inner vertices of adjacent co-linear edges are removed. However if the
-      //PreserveColinear property has been enabled, only overlapping co-linear
+      //All collinear edges are allowed for open paths but in closed paths
+      //inner vertices of adjacent collinear edges are removed. However if the
+      //PreserveCollinear property has been enabled, only overlapping collinear
       //edges (ie spikes) are removed from closed paths.
-      if Closed and (not FPreserveColinear or
+      if Closed and (not FPreserveCollinear or
         not Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr)) then
       begin
         if E = EStart then EStart := E.Next;
@@ -1853,8 +1854,8 @@ begin
     FReverseOutput := true;
   if ioStrictlySimple in InitOptions then
     FStrictSimple := true;
-  if ioPreserveColinear in InitOptions then
-    FPreserveColinear := true;
+  if ioPreserveCollinear in InitOptions then
+    FPreserveCollinear := true;
 end;
 //------------------------------------------------------------------------------
 
@@ -3548,7 +3549,7 @@ begin
   end;
 
   ENext := E.NextInAEL;
-  //rarely, with overlapping co-linear edges (in open paths) ENext can be nil
+  //rarely, with overlapping collinear edges (in open paths) ENext can be nil
   while Assigned(ENext) and (ENext <> EMaxPair) do
   begin
     Pt := E.Top;
@@ -3814,7 +3815,7 @@ procedure TClipper.FixupOutPolygon(OutRec: POutRec);
 var
   PP, Tmp, LastOK: POutPt;
 begin
-  //remove duplicate points and co-linear edges
+  //remove duplicate points and collinear edges
   LastOK := nil;
   OutRec.BottomPt := nil; //flag as stale
   PP := OutRec.Pts;
@@ -3827,10 +3828,10 @@ begin
       Exit;
     end;
 
-    //test for duplicate points and co-linear edges ...
+    //test for duplicate points and collinear edges ...
     if PointsEqual(PP.Pt, PP.Next.Pt) or PointsEqual(PP.Pt, PP.Prev.Pt) or
       (SlopesEqual(PP.Prev.Pt, PP.Pt, PP.Next.Pt, FUse64BitRange) and
-      (not FPreserveColinear or
+      (not FPreserveCollinear or
       not Pt2IsBetweenPt1AndPt3(PP.Prev.Pt, PP.Pt, PP.Next.Pt))) then
     begin
       //OK, we need to delete a point ...
@@ -4031,10 +4032,10 @@ begin
 
   //There are 3 kinds of joins for output polygons ...
   //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are a vertices anywhere
-  //along (horizontal) co-linear edges (& Join.OffPt is on the same horizontal).
+  //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
   //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
   //location at the bottom of the overlapping segment (& Join.OffPt is above).
-  //3. StrictSimple joins where edges touch but are not co-linear and where
+  //3. StrictSimple joins where edges touch but are not collinear and where
   //Join.OutPt1, Join.OutPt2 & Join.OffPt all share the same point.
   IsHorizontal := (Jr.OutPt1.Pt.Y = Jr.OffPt.Y);
 
@@ -4851,7 +4852,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SlopesNearColinear(const Pt1, Pt2, Pt3: TIntPoint; DistSqrd: Double): Boolean;
+function SlopesNearCollinear(const Pt1, Pt2, Pt3: TIntPoint; DistSqrd: Double): Boolean;
 var
   Cpol: TDoublePoint;
   Dx, Dy: Double;
@@ -4900,7 +4901,7 @@ begin
     while (I < HighI) and PointsAreClose(Pt, Poly[I+1], DistSqrd) do inc(I,2);
     I2 := I;
     while (I < HighI) and (PointsAreClose(Poly[I], Poly[I+1], DistSqrd) or
-      SlopesNearColinear(Pt, Poly[I], Poly[I+1], DistSqrd)) do inc(I);
+      SlopesNearCollinear(Pt, Poly[I], Poly[I+1], DistSqrd)) do inc(I);
     if I >= highI then Break
     else if I <> I2 then Continue;
     Pt := Poly[I];
@@ -4915,7 +4916,7 @@ begin
     inc(K);
   end;
 
-  if (K > 2) and SlopesNearCoLinear(Result[K -2],
+  if (K > 2) and SlopesNearCollinear(Result[K -2],
       Result[K -1], Result[0], DistSqrd) then Dec(K);
   if (K < 3) then Result := nil
   else if (K <= HighI) then SetLength(Result, K);
