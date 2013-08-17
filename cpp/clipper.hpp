@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  11 August 2013                                                  *
+* Date      :  18 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -170,7 +170,7 @@ private:
     friend class Clipper; //to access AllNodes
 };
 
-enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
+enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveColinear = 4};
 enum JoinType {jtSquare, jtRound, jtMiter};
 enum EndType {etClosed, etButt, etSquare, etRound};
 
@@ -240,8 +240,8 @@ public:
 
   virtual void Clear();
   IntRect GetBounds();
-  bool PreserveCollinear() {return m_PreserveCollinear;};
-  void PreserveCollinear(bool value) {m_PreserveCollinear = value;};
+  bool PreserveColinear() {return m_PreserveColinear;};
+  void PreserveColinear(bool value) {m_PreserveColinear = value;};
 protected:
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e, bool IsClosed);
@@ -255,7 +255,7 @@ protected:
   LocalMinima      *m_MinimaList;
   bool              m_UseFullRange;
   EdgeList          m_edges;
-  bool             m_PreserveCollinear;
+  bool             m_PreserveColinear;
   bool             m_HasOpenPaths;
 };
 //------------------------------------------------------------------------------
