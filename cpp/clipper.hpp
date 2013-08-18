@@ -50,6 +50,7 @@
 #define use_deprecated  
 
 #include <vector>
+#include <set>
 #include <stdexcept>
 #include <cstring>
 #include <cstdlib>
@@ -115,6 +116,7 @@ struct DoublePoint
   double X;
   double Y;
   DoublePoint(double x = 0, double y = 0) : X(x), Y(y) {}
+  DoublePoint(IntPoint ip) : X((double)ip.X), Y((double)ip.Y) {}
 };
 //------------------------------------------------------------------------------
 
@@ -170,7 +172,7 @@ private:
     friend class Clipper; //to access AllNodes
 };
 
-enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveColinear = 4};
+enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
 enum JoinType {jtSquare, jtRound, jtMiter};
 enum EndType {etClosed, etButt, etSquare, etRound};
 
@@ -240,8 +242,8 @@ public:
 
   virtual void Clear();
   IntRect GetBounds();
-  bool PreserveColinear() {return m_PreserveColinear;};
-  void PreserveColinear(bool value) {m_PreserveColinear = value;};
+  bool PreserveCollinear() {return m_PreserveCollinear;};
+  void PreserveCollinear(bool value) {m_PreserveCollinear = value;};
 protected:
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e, bool IsClosed);
@@ -255,7 +257,7 @@ protected:
   LocalMinima      *m_MinimaList;
   bool              m_UseFullRange;
   EdgeList          m_edges;
-  bool             m_PreserveColinear;
+  bool             m_PreserveCollinear;
   bool             m_HasOpenPaths;
 };
 //------------------------------------------------------------------------------
@@ -290,7 +292,7 @@ private:
   JoinList          m_Joins;
   JoinList          m_GhostJoins;
   ClipType          m_ClipType;
-  Scanbeam         *m_Scanbeam;
+  std::set<cInt, std::greater<cInt>> m_Scanbeam;
   TEdge           *m_ActiveEdges;
   TEdge           *m_SortedEdges;
   IntersectNode   *m_IntersectNodes;
@@ -303,7 +305,6 @@ private:
 #ifdef use_xyz
   TZFillCallback   m_ZFill; //custom callback 
 #endif
-  void DisposeScanbeamList();
   void SetWindingCount(TEdge& edge);
   bool IsEvenOddFillType(const TEdge& edge) const;
   bool IsEvenOddAltFillType(const TEdge& edge) const;
