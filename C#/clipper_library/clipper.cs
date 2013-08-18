@@ -2023,7 +2023,7 @@ namespace ClipperLib
         int wd = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
         TEdge e = edge.PrevInAEL;
         //find the edge of the same polytype that immediately preceeds 'edge' in AEL
-        while (e != null && ((e.PolyTyp != edge.PolyTyp) || (edge.WindDelta == 0))) e = e.PrevInAEL;
+        while (e != null && ((e.PolyTyp != edge.PolyTyp) || (e.WindDelta == 0))) e = e.PrevInAEL;
         if (e == null)
         {
           edge.WindCnt = wd;

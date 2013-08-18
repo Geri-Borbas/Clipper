@@ -1845,7 +1845,7 @@ void Clipper::SetWindingCount(TEdge &edge)
   int wd = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
   TEdge *e = edge.PrevInAEL;
   //find the edge of the same polytype that immediately preceeds 'edge' in AEL
-  while (e  && ((e->PolyTyp != edge.PolyTyp) || (edge.WindDelta == 0))) e = e->PrevInAEL;
+  while (e  && ((e->PolyTyp != edge.PolyTyp) || (e.WindDelta == 0))) e = e->PrevInAEL;
   if (!e)
   {
     edge.WindCnt = wd;
