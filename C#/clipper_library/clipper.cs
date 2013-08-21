@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  11 August 2013                                                  *
+* Date      :  21 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -46,7 +46,7 @@
 //#define use_xyz
 
 //UseLines: Enables line clipping. Adds a very minor cost to performance.
-#define use_lines
+//#define use_lines
 
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -1941,6 +1941,9 @@ namespace ClipperLib
           switch (pft)
           {
               case PolyFillType.pftEvenOdd:
+                  //return false if a subj line has been flagged as inside a subj polygon
+                  if (edge.WindDelta == 0 && edge.WindCnt != 1) return false;
+                  break;
               case PolyFillType.pftNonZero:
                   if (Math.Abs(edge.WindCnt) != 1) return false;
                   break;
@@ -2033,7 +2036,23 @@ namespace ClipperLib
         else if (IsEvenOddFillType(edge))
         {
           //EvenOdd filling ...
-          edge.WindCnt = wd;
+          if (edge.WindDelta == 0)
+          {
+            //are we inside a subj polygon ...
+            bool Inside = true;
+            TEdge e2 = e.PrevInAEL;
+            while (e2 != null)
+            {
+              if (e2.PolyTyp == e.PolyTyp && e2.WindDelta != 0)
+                Inside = !Inside;
+              e2 = e2.PrevInAEL;
+            }
+            edge.WindCnt = (Inside ? 0 : 1);
+          }
+          else
+          {
+            edge.WindCnt = wd;
+          }
           edge.WindCnt2 = e.WindCnt2;
           e = e.NextInAEL; //ie get ready to calc WindCnt2
         }
@@ -2658,16 +2677,36 @@ namespace ClipperLib
             {
               if (e1Contributing && e2Contributing)
                 AddLocalMaxPoly(e1, e2, pt);
-            } 
+            }
+            //if intersecting a subj line with a subj poly ...
+            else if (e1.PolyTyp == e2.PolyTyp && e1.WindDelta != e2.WindDelta)
+            {
+              if (e1.WindDelta == 0)
+              {
+                if (e2Contributing)
+                {
+                  AddOutPt(e1, pt);
+                  if (e1Contributing) e1.OutIdx = Unassigned;
+                }
+              }
+              else
+              {
+                if (e1Contributing)
+                {
+                  AddOutPt(e2, pt);
+                  if (e2Contributing) e2.OutIdx = Unassigned;
+                }
+              }
+            }
             else if (e1.PolyTyp != e2.PolyTyp)
             {
-              //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) = 1 ...
-              if ((e1.WindDelta == 0) && Math.Abs(e2.WindCnt) == 1)
+              //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) == 1 ...
+              if ((e1.WindDelta == 0) && Math.Abs(e2.WindCnt) == 1 && e2.WindCnt2 == 0)
               {
                 AddOutPt(e1, pt);
                 if (e1Contributing) e1.OutIdx = Unassigned;
               }
-              else if ((e2.WindDelta == 0) && (Math.Abs(e1.WindCnt) == 1))
+              else if ((e2.WindDelta == 0) && (Math.Abs(e1.WindCnt) == 1) && e1.WindCnt2 == 0)
               {
                 AddOutPt(e2, pt);
                 if (e2Contributing) e2.OutIdx = Unassigned;

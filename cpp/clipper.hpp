@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  18 August 2013                                                  *
+* Date      :  21 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -42,7 +42,7 @@
 //#define use_xyz
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-#define use_lines
+//#define use_lines
   
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -292,7 +292,7 @@ private:
   JoinList          m_Joins;
   JoinList          m_GhostJoins;
   ClipType          m_ClipType;
-  std::set<cInt, std::greater<cInt>> m_Scanbeam;
+  std::set< cInt, std::greater<cInt> > m_Scanbeam;
   TEdge           *m_ActiveEdges;
   TEdge           *m_SortedEdges;
   IntersectNode   *m_IntersectNodes;

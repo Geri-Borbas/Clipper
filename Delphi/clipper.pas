@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  11 August 2013                                                  *
+* Date      :  21 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2086,8 +2086,9 @@ end;
 
 procedure TClipper.SetWindingCount(Edge: PEdge);
 var
-  E: PEdge;
+  E, E2: PEdge;
   WD: Integer;
+  Inside: Boolean;
 begin
   if Edge.WindDelta = 0 then WD := 1 else WD := Edge.WindDelta;
   E := Edge.PrevInAEL;
@@ -2102,7 +2103,24 @@ begin
   end else if IsEvenOddFillType(Edge) then
   begin
     //even-odd filling ...
-    Edge.WindCnt := WD;
+    if (Edge.WindDelta = 0) then  //if edge is part of a line
+    begin
+      //are we inside a subj polygon ...
+      Inside := true;
+      E2 := E.PrevInAEL;
+      while assigned(E2) do
+      begin
+        if (E2.PolyType = E.PolyType) and (E2.WindDelta <> 0) then
+          Inside := not Inside;
+        E2 := E2.PrevInAEL;
+      end;
+      if Inside then Edge.WindCnt := 0
+      else Edge.WindCnt := 1;
+    end
+    else //else a polygon
+    begin
+      Edge.WindCnt := WD;
+    end;
     Edge.WindCnt2 := E.WindCnt2;
     E := E.NextInAEL; //ie get ready to calc WindCnt2
   end else
@@ -2180,8 +2198,10 @@ begin
     Pft := FClipFillType;
     Pft2 := FSubjFillType
   end;
+
   case Pft of
-    pftEvenOdd, pftNonZero: Result := abs(Edge.WindCnt) = 1;
+    pftEvenOdd: Result := (Edge.WindDelta <> 0) or (Edge.WindCnt = 1);
+    pftNonZero: Result := abs(Edge.WindCnt) = 1;
     pftPositive: Result := (Edge.WindCnt = 1);
     else Result := (Edge.WindCnt = -1);
   end;
@@ -2579,15 +2599,37 @@ begin
     begin
       if E1Contributing and E2Contributing then
         AddLocalMaxPoly(E1, E2, Pt);
-    end else if E1.PolyType <> E2.PolyType then
+    end
+    else if (E1.PolyType = E2.PolyType) and (E1.WindDelta <> E2.WindDelta) then
+    begin
+      //intersecting a subj line with a subj poly ...
+      if (E1.WindDelta = 0) then
+      begin
+        if (E2Contributing) then
+        begin
+          AddOutPt(e1, Pt);
+          if (E1Contributing) then E1.OutIdx := Unassigned;
+        end;
+      end else
+      begin
+        if (E1Contributing) then
+        begin
+          AddOutPt(E2, Pt);
+          if (E2Contributing) then E2.OutIdx := Unassigned;
+        end;
+      end;
+    end
+    else if E1.PolyType <> E2.PolyType then
     begin
       //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) = 1 ...
-      if (E1.WindDelta = 0) and (Abs(E2.WindCnt) = 1) then
+      if (E1.WindDelta = 0) and
+        (Abs(E2.WindCnt) = 1) and (E2.WindCnt2 = 0) then
       begin
         AddOutPt(E1, Pt);
         if E1Contributing then E1.OutIdx := Unassigned;
       end
-      else if (E2.WindDelta = 0) and (Abs(E1.WindCnt) = 1) then
+      else if (E2.WindDelta = 0) and
+        (Abs(E1.WindCnt) = 1) and (E1.WindCnt2 = 0) then
       begin
         AddOutPt(E2, Pt);
         if E2Contributing then E2.OutIdx := Unassigned;
