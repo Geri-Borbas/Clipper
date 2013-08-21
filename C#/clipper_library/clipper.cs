@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  21 August 2013                                                  *
+* Date      :  22 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2023,13 +2023,12 @@ namespace ClipperLib
 
       private void SetWindingCount(TEdge edge)
       {
-        int wd = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
         TEdge e = edge.PrevInAEL;
         //find the edge of the same polytype that immediately preceeds 'edge' in AEL
         while (e != null && ((e.PolyTyp != edge.PolyTyp) || (e.WindDelta == 0))) e = e.PrevInAEL;
         if (e == null)
         {
-          edge.WindCnt = wd;
+          edge.WindCnt = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
           edge.WindCnt2 = 0;
           e = m_ActiveEdges; //ie get ready to calc WindCnt2
         }
@@ -2051,7 +2050,7 @@ namespace ClipperLib
           }
           else
           {
-            edge.WindCnt = wd;
+            edge.WindCnt = edge.WindDelta;
           }
           edge.WindCnt2 = e.WindCnt2;
           e = e.NextInAEL; //ie get ready to calc WindCnt2
@@ -2061,21 +2060,31 @@ namespace ClipperLib
           //nonZero, Positive or Negative filling ...
           if (e.WindCnt * e.WindDelta < 0)
           {
+            //prev edge is 'decreasing' WindCount (WC) toward zero
+            //so we're outside the previous polygon ...
             if (Math.Abs(e.WindCnt) > 1)
             {
+              //outside prev poly but still inside another.
+              //when reversing direction of prev poly use the same WC 
               if (e.WindDelta * edge.WindDelta < 0) edge.WindCnt = e.WindCnt;
+              //otherwise continue to 'decrease' WC ...
               else edge.WindCnt = e.WindCnt + edge.WindDelta;
             }
             else
-              edge.WindCnt = e.WindCnt + e.WindDelta + wd;
+              //now outside all polys of same polytype so set own WC ...
+              edge.WindCnt = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
           }
           else
           {
-            if ((Math.Abs(e.WindCnt) > 1) && (e.WindDelta * wd < 0))
+            //prev edge is 'increasing' WindCount (WC) away from zero
+            //so we're inside the previous polygon ...
+            if (edge.WindDelta == 0)
+              edge.WindCnt = 0;
+            //if wind direction is reversing prev then use same WC
+            else if (e.WindDelta * edge.WindDelta < 0)
               edge.WindCnt = e.WindCnt;
-            else if (e.WindCnt + wd == 0)
-              edge.WindCnt = e.WindCnt;
-            else edge.WindCnt = e.WindCnt + wd;
+            //otherwise add to WC ...
+            else edge.WindCnt = e.WindCnt + edge.WindDelta;
           }
           edge.WindCnt2 = e.WindCnt2;
           e = e.NextInAEL; //ie get ready to calc WindCnt2

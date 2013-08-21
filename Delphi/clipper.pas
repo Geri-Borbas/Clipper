@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  21 August 2013                                                  *
+* Date      :  22 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -41,7 +41,7 @@ unit clipper;
 {.$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-{$DEFINE use_lines}
+//{$DEFINE use_lines}
 
 //When enabled, code developed with earlier versions of Clipper
 //(ie prior to ver 6) should compile without changes.
@@ -354,6 +354,9 @@ function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint;
 {$ELSE}
 function IntPoint(const X, Y: cInt): TIntPoint;
 {$ENDIF}
+
+function DoublePoint(const X, Y: Double): TDoublePoint; overload;
+function DoublePoint(const Ip: TIntPoint): TDoublePoint; overload;
 
 function ReversePath(const Pts: TPath): TPath;
 function ReversePaths(const Pts: TPaths): TPaths;
@@ -761,8 +764,22 @@ begin
   Result.X := X;
   Result.Y := Y;
 end;
-//------------------------------------------------------------------------------
 {$ENDIF}
+//------------------------------------------------------------------------------
+
+function DoublePoint(const X, Y: Double): TDoublePoint;
+begin
+  Result.X := X;
+  Result.Y := Y;
+end;
+//------------------------------------------------------------------------------
+
+function DoublePoint(const Ip: TIntPoint): TDoublePoint;
+begin
+  Result.X := Ip.X;
+  Result.Y := Ip.Y;
+end;
+//------------------------------------------------------------------------------
 
 function Area(const Pts: TPath): Double;
 var
@@ -2087,17 +2104,16 @@ end;
 procedure TClipper.SetWindingCount(Edge: PEdge);
 var
   E, E2: PEdge;
-  WD: Integer;
   Inside: Boolean;
 begin
-  if Edge.WindDelta = 0 then WD := 1 else WD := Edge.WindDelta;
   E := Edge.PrevInAEL;
   //find the Edge of the same PolyType that immediately preceeds 'Edge' in AEL
   while Assigned(E) and ((E.PolyType <> Edge.PolyType) or (E.WindDelta = 0)) do
     E := E.PrevInAEL;
   if not Assigned(E) then
   begin
-    Edge.WindCnt := WD;
+    if Edge.WindDelta = 0 then Edge.WindCnt := 1
+    else Edge.WindCnt := Edge.WindDelta;
     Edge.WindCnt2 := 0;
     E := FActiveEdges; //ie get ready to calc WindCnt2
   end else if IsEvenOddFillType(Edge) then
@@ -2119,28 +2135,40 @@ begin
     end
     else //else a polygon
     begin
-      Edge.WindCnt := WD;
+      Edge.WindCnt := Edge.WindDelta;
     end;
     Edge.WindCnt2 := E.WindCnt2;
     E := E.NextInAEL; //ie get ready to calc WindCnt2
   end else
   begin
     //NonZero, Positive, or Negative filling ...
-    if E.WindCnt * E.WindDelta < 0 then
+    if (e.WindCnt * e.WindDelta < 0) then
     begin
-      if (abs(E.WindCnt) > 1) then
+      //prev edge is 'decreasing' WindCount (WC) toward zero
+      //so we're outside the previous polygon ...
+      if (Abs(e.WindCnt) > 1) then
       begin
-        if (E.WindDelta * Edge.WindDelta < 0) then Edge.WindCnt := E.WindCnt
-        else Edge.WindCnt := E.WindCnt + Edge.WindDelta;
-      end else
-        Edge.WindCnt := E.WindCnt + E.WindDelta + WD;
+        //outside prev poly but still inside another.
+        //when reversing direction of prev poly use the same WC
+        if (e.WindDelta * edge.WindDelta < 0) then edge.WindCnt := e.WindCnt
+        //otherwise continue to 'decrease' WC ...
+        else edge.WindCnt := e.WindCnt + edge.WindDelta;
+      end
+      else
+        //now outside all polys of same polytype so set own WC ...
+        if edge.WindDelta = 0 then edge.WindCnt := 1
+        else edge.WindCnt := edge.WindDelta;
     end else
     begin
-      if (abs(E.WindCnt) > 1) and (E.WindDelta * WD < 0) then
-        Edge.WindCnt := E.WindCnt
-      else if E.WindCnt + WD = 0 then
-        Edge.WindCnt := E.WindCnt
-      else Edge.WindCnt := E.WindCnt + WD;
+      //prev edge is 'increasing' WindCount (WC) away from zero
+      //so we're inside the previous polygon ...
+      if (edge.WindDelta = 0) then
+        edge.WindCnt := 0
+      //if wind direction is reversing prev then use same WC
+      else if (e.WindDelta * edge.WindDelta < 0) then
+        edge.WindCnt := e.WindCnt
+      //otherwise add to WC ...
+      else edge.WindCnt := e.WindCnt + edge.WindDelta;
     end;
     Edge.WindCnt2 := E.WindCnt2;
     E := E.NextInAEL; //ie get ready to calc WindCnt2
