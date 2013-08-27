@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  22 August 2013                                                  *
+* Date      :  27 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -41,7 +41,7 @@ unit clipper;
 {.$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-//{$DEFINE use_lines}
+{.$DEFINE use_lines}
 
 //When enabled, code developed with earlier versions of Clipper
 //(ie prior to ver 6) should compile without changes.
@@ -2628,36 +2628,37 @@ begin
       if E1Contributing and E2Contributing then
         AddLocalMaxPoly(E1, E2, Pt);
     end
-    else if (E1.PolyType = E2.PolyType) and (E1.WindDelta <> E2.WindDelta) then
+    //if intersecting a subj line with a subj poly ...
+    else if (E1.PolyType = E2.PolyType) and
+      (E1.WindDelta <> E2.WindDelta) and (FClipType = ctUnion) then
     begin
-      //intersecting a subj line with a subj poly ...
       if (E1.WindDelta = 0) then
       begin
         if (E2Contributing) then
         begin
-          AddOutPt(e1, Pt);
+          AddOutPt(E1, pt);
           if (E1Contributing) then E1.OutIdx := Unassigned;
         end;
       end else
       begin
         if (E1Contributing) then
         begin
-          AddOutPt(E2, Pt);
+          AddOutPt(E2, pt);
           if (E2Contributing) then E2.OutIdx := Unassigned;
         end;
       end;
     end
-    else if E1.PolyType <> E2.PolyType then
+    else if (E1.PolyType <> E2.PolyType) then
     begin
       //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) = 1 ...
-      if (E1.WindDelta = 0) and
-        (Abs(E2.WindCnt) = 1) and (E2.WindCnt2 = 0) then
+      if (E1.WindDelta = 0) and (Abs(E2.WindCnt) = 1) and
+       ((FClipType <> ctUnion) or (E2.WindCnt2 = 0)) then
       begin
         AddOutPt(E1, Pt);
         if E1Contributing then E1.OutIdx := Unassigned;
       end
-      else if (E2.WindDelta = 0) and
-        (Abs(E1.WindCnt) = 1) and (E1.WindCnt2 = 0) then
+      else if (E2.WindDelta = 0) and (Abs(E1.WindCnt) = 1) and
+       ((FClipType <> ctUnion) or (E1.WindCnt2 = 0)) then
       begin
         AddOutPt(E2, Pt);
         if E2Contributing then E2.OutIdx := Unassigned;

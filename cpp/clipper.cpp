@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  22 August 2013                                                  *
+* Date      :  27 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1856,11 +1856,9 @@ void Clipper::SetWindingCount(TEdge &edge)
     {
       //prev edge is 'increasing' WindCount (WC) away from zero
       //so we're inside the previous polygon ...
-      if (edge.WindDelta == 0) 
-        edge.WindCnt = 0;
+      if (edge.WindDelta == 0) edge.WindCnt = 0;
       //if wind direction is reversing prev then use same WC
-      else if (e->WindDelta * edge.WindDelta < 0)
-        edge.WindCnt = e->WindCnt;
+      else if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
       //otherwise add to WC ...
       else edge.WindCnt = e->WindCnt + edge.WindDelta;
     }
@@ -2298,7 +2296,8 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     }
 
     //if intersecting a subj line with a subj poly ...
-    else if (e1->PolyTyp == e2->PolyTyp && e1->WindDelta != e2->WindDelta)
+    else if (e1->PolyTyp == e2->PolyTyp && 
+      e1->WindDelta != e2->WindDelta && m_ClipType == ctUnion)
     {
       if (e1->WindDelta == 0)
       {
@@ -2320,12 +2319,14 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     else if (e1->PolyTyp != e2->PolyTyp)
     {
       //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) == 1 ...
-      if (e1->WindDelta == 0 && abs(e2->WindCnt) == 1 && e2->WindCnt2 == 0)
+      if ((e1->WindDelta == 0) && abs(e2->WindCnt) == 1 && 
+        (m_ClipType != ctUnion || e2->WindCnt2 == 0))
       {
         AddOutPt(e1, Pt);
         if (e1Contributing) e1->OutIdx = Unassigned;
       }
-      else if ((e2->WindDelta == 0) && (abs(e1->WindCnt) == 1) && e1->WindCnt2 == 0)
+      else if ((e2->WindDelta == 0) && (abs(e1->WindCnt) == 1) && 
+        (m_ClipType != ctUnion || e1->WindCnt2 == 0))
       {
         AddOutPt(e2, Pt);
         if (e2Contributing) e2->OutIdx = Unassigned;

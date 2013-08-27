@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  22 August 2013                                                  *
+* Date      :  27 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -87,6 +87,10 @@ namespace ClipperLib
     public DoublePoint(DoublePoint dp)
     {
       this.X = dp.X; this.Y = dp.Y;
+    }
+    public DoublePoint(IntPoint ip)
+    {
+      this.X = ip.X; this.Y = ip.Y;
     }
   };
   //------------------------------------------------------------------------------
@@ -455,7 +459,7 @@ namespace ClipperLib
     public cInt Y;
 #if use_xyz
     public cInt Z;
-    public IntPoint(cInt x, cInt y, cInt z = 0)
+    public IntPoint(cInt x = 0, cInt y = 0, cInt z = 0)
     {
       this.X = x; this.Y = y; this.Z = z;
     }
@@ -2688,7 +2692,8 @@ namespace ClipperLib
                 AddLocalMaxPoly(e1, e2, pt);
             }
             //if intersecting a subj line with a subj poly ...
-            else if (e1.PolyTyp == e2.PolyTyp && e1.WindDelta != e2.WindDelta)
+            else if (e1.PolyTyp == e2.PolyTyp && 
+              e1.WindDelta != e2.WindDelta && m_ClipType == ClipType.ctUnion)
             {
               if (e1.WindDelta == 0)
               {
@@ -2710,12 +2715,14 @@ namespace ClipperLib
             else if (e1.PolyTyp != e2.PolyTyp)
             {
               //toggle subj open path OutIdx on/off when Abs(clip.WndCnt) == 1 ...
-              if ((e1.WindDelta == 0) && Math.Abs(e2.WindCnt) == 1 && e2.WindCnt2 == 0)
+              if ((e1.WindDelta == 0) && Math.Abs(e2.WindCnt) == 1 && 
+                (m_ClipType != ClipType.ctUnion || e2.WindCnt2 == 0))
               {
                 AddOutPt(e1, pt);
                 if (e1Contributing) e1.OutIdx = Unassigned;
               }
-              else if ((e2.WindDelta == 0) && (Math.Abs(e1.WindCnt) == 1) && e1.WindCnt2 == 0)
+              else if ((e2.WindDelta == 0) && (Math.Abs(e1.WindCnt) == 1) && 
+                (m_ClipType != ClipType.ctUnion || e1.WindCnt2 == 0))
               {
                 AddOutPt(e2, pt);
                 if (e2Contributing) e2.OutIdx = Unassigned;
@@ -4722,11 +4729,13 @@ namespace ClipperLib
 
       internal enum NodeType { ntAny, ntOpen, ntClosed };
 
-      public static void PolyTreeToPaths(PolyTree polytree, Paths paths)
+      public static Paths PolyTreeToPaths(PolyTree polytree)
       {
-          paths.Clear();
-          paths.Capacity = polytree.Total;
-          AddPolyNodeToPaths(polytree, NodeType.ntAny, paths);
+
+        Paths result = new Paths();
+        result.Capacity = polytree.Total;
+        AddPolyNodeToPaths(polytree, NodeType.ntAny, result);
+        return result;
       }
       //------------------------------------------------------------------------------
 
@@ -4747,21 +4756,23 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public static void OpenPathsFromPolyTree(PolyTree polytree, Paths paths)
+      public static Paths OpenPathsFromPolyTree(PolyTree polytree)
       {
-        paths.Clear();
-        paths.Capacity = polytree.ChildCount;
+        Paths result = new Paths();
+        result.Capacity = polytree.ChildCount;
         for (int i = 0; i < polytree.ChildCount; i++)
           if (polytree.Childs[i].IsOpen)
-            paths.Add(polytree.Childs[i].Contour);
+            result.Add(polytree.Childs[i].Contour);
+        return result;
       }
       //------------------------------------------------------------------------------
 
-      public static void ClosedPathsFromPolyTree(PolyTree polytree, Paths paths)
+      public static Paths ClosedPathsFromPolyTree(PolyTree polytree)
       {
-        paths.Clear();
-        paths.Capacity = polytree.Total;
-        AddPolyNodeToPaths(polytree, NodeType.ntClosed, paths);
+        Paths result = new Paths();
+        result.Capacity = polytree.Total;
+        AddPolyNodeToPaths(polytree, NodeType.ntClosed, result);
+        return result;
       }
       //------------------------------------------------------------------------------
 
