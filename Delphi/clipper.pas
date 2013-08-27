@@ -2121,16 +2121,20 @@ begin
     //even-odd filling ...
     if (Edge.WindDelta = 0) then  //if edge is part of a line
     begin
-      //are we inside a subj polygon ...
-      Inside := true;
-      E2 := E.PrevInAEL;
-      while assigned(E2) do
+      if (FClipType = ctUnion) then
       begin
-        if (E2.PolyType = E.PolyType) and (E2.WindDelta <> 0) then
-          Inside := not Inside;
-        E2 := E2.PrevInAEL;
-      end;
-      if Inside then Edge.WindCnt := 0
+        //are we inside a subj polygon ...
+        Inside := true;
+        E2 := E.PrevInAEL;
+        while assigned(E2) do
+        begin
+          if (E2.PolyType = E.PolyType) and (E2.WindDelta <> 0) then
+            Inside := not Inside;
+          E2 := E2.PrevInAEL;
+        end;
+        if Inside then Edge.WindCnt := 0
+        else Edge.WindCnt := 1;
+      end
       else Edge.WindCnt := 1;
     end
     else //else a polygon
@@ -2146,11 +2150,14 @@ begin
     begin
       //prev edge is 'decreasing' WindCount (WC) toward zero
       //so we're outside the previous polygon ...
-      if (Abs(e.WindCnt) > 1) then
+      if (Abs(E.WindCnt) > 1) then
       begin
         //outside prev poly but still inside another.
+        if (edge.WindDelta = 0) and (FClipType <> ctUnion) then
+          edge.WindCnt := 1
         //when reversing direction of prev poly use the same WC
-        if (e.WindDelta * edge.WindDelta < 0) then edge.WindCnt := e.WindCnt
+        else if (E.WindDelta * edge.WindDelta < 0) then
+          edge.WindCnt := E.WindCnt
         //otherwise continue to 'decrease' WC ...
         else edge.WindCnt := e.WindCnt + edge.WindDelta;
       end
@@ -2163,7 +2170,10 @@ begin
       //prev edge is 'increasing' WindCount (WC) away from zero
       //so we're inside the previous polygon ...
       if (edge.WindDelta = 0) then
-        edge.WindCnt := 0
+      begin
+        if (FClipType = ctUnion) then edge.WindCnt := 0
+        else edge.WindCnt := 1;
+      end
       //if wind direction is reversing prev then use same WC
       else if (e.WindDelta * edge.WindDelta < 0) then
         edge.WindCnt := e.WindCnt

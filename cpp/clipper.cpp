@@ -1816,16 +1816,20 @@ void Clipper::SetWindingCount(TEdge &edge)
     //EvenOdd filling ...
     if (edge.WindDelta == 0)
     {
-      //are we inside a subj polygon ...
-      bool Inside = true;
-      TEdge *e2 = e->PrevInAEL;
-      while (e2)
+      if (m_ClipType == ctUnion) 
       {
-        if (e2->PolyTyp == e->PolyTyp && e2->WindDelta != 0) 
-          Inside = !Inside;
-        e2 = e2->PrevInAEL;
+        //are we inside a subj polygon ...
+        bool Inside = true;
+        TEdge *e2 = e->PrevInAEL;
+        while (e2)
+        {
+          if (e2->PolyTyp == e->PolyTyp && e2->WindDelta != 0) 
+            Inside = !Inside;
+          e2 = e2->PrevInAEL;
+        }
+        edge.WindCnt = (Inside ? 0 : 1);
       }
-      edge.WindCnt = (Inside ? 0 : 1);
+      else edge.WindCnt = 1;
     }
     else
     {
@@ -1844,8 +1848,9 @@ void Clipper::SetWindingCount(TEdge &edge)
       if (Abs(e->WindCnt) > 1)
       {
         //outside prev poly but still inside another.
+        if (edge.WindDelta == 0 && m_ClipType != ctUnion) edge.WindCnt = 1;
         //when reversing direction of prev poly use the same WC 
-        if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
+        else if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
         //otherwise continue to 'decrease' WC ...
         else edge.WindCnt = e->WindCnt + edge.WindDelta;
       } 
@@ -1856,7 +1861,7 @@ void Clipper::SetWindingCount(TEdge &edge)
     {
       //prev edge is 'increasing' WindCount (WC) away from zero
       //so we're inside the previous polygon ...
-      if (edge.WindDelta == 0) edge.WindCnt = 0;
+      if (edge.WindDelta == 0) edge.WindCnt = (m_ClipType == ctUnion ? 0 : 1);
       //if wind direction is reversing prev then use same WC
       else if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
       //otherwise add to WC ...
