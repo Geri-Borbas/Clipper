@@ -2036,25 +2036,27 @@ namespace ClipperLib
           edge.WindCnt2 = 0;
           e = m_ActiveEdges; //ie get ready to calc WindCnt2
         }
+        else if (edge.WindDelta == 0 && m_ClipType != ClipType.ctUnion)
+        {
+          edge.WindCnt = 1;
+          edge.WindCnt2 = e.WindCnt2;
+          e = e.NextInAEL; //ie get ready to calc WindCnt2
+        }
         else if (IsEvenOddFillType(edge))
         {
           //EvenOdd filling ...
           if (edge.WindDelta == 0)
           {
-            if (m_ClipType == ClipType.ctUnion)
+            //are we inside a subj polygon ...
+            bool Inside = true;
+            TEdge e2 = e.PrevInAEL;
+            while (e2 != null)
             {
-              //are we inside a subj polygon ...
-              bool Inside = true;
-              TEdge e2 = e.PrevInAEL;
-              while (e2 != null)
-              {
-                if (e2.PolyTyp == e.PolyTyp && e2.WindDelta != 0)
-                  Inside = !Inside;
-                e2 = e2.PrevInAEL;
-              }
-              edge.WindCnt = (Inside ? 0 : 1);
+              if (e2.PolyTyp == e.PolyTyp && e2.WindDelta != 0)
+                Inside = !Inside;
+              e2 = e2.PrevInAEL;
             }
-            else edge.WindCnt = 1;
+            edge.WindCnt = (Inside ? 0 : 1);
           }
           else
           {
@@ -2074,9 +2076,7 @@ namespace ClipperLib
             {
               //outside prev poly but still inside another.
               //when reversing direction of prev poly use the same WC 
-
-              if (edge.WindDelta == 0 && m_ClipType != ClipType.ctUnion) edge.WindCnt = 1;
-              else if (e.WindDelta * edge.WindDelta < 0) edge.WindCnt = e.WindCnt;
+              if (e.WindDelta * edge.WindDelta < 0) edge.WindCnt = e.WindCnt;
               //otherwise continue to 'decrease' WC ...
               else edge.WindCnt = e.WindCnt + edge.WindDelta;
             }
@@ -2088,8 +2088,8 @@ namespace ClipperLib
           {
             //prev edge is 'increasing' WindCount (WC) away from zero
             //so we're inside the previous polygon ...
-            if (edge.WindDelta == 0) 
-              edge.WindCnt = (m_ClipType == ClipType.ctUnion ? 0 : 1);
+            if (edge.WindDelta == 0)
+              edge.WindCnt = (e.WindCnt < 0 ? e.WindCnt - 1 : e.WindCnt + 1);
             //if wind direction is reversing prev then use same WC
             else if (e.WindDelta * edge.WindDelta < 0)
               edge.WindCnt = e.WindCnt;

@@ -1811,7 +1811,14 @@ void Clipper::SetWindingCount(TEdge &edge)
     edge.WindCnt = (edge.WindDelta == 0 ? 1 : edge.WindDelta);
     edge.WindCnt2 = 0;
     e = m_ActiveEdges; //ie get ready to calc WindCnt2
-  } else if (IsEvenOddFillType(edge))
+  }   
+  else if (edge.WindDelta == 0 && m_ClipType != ctUnion)
+  {
+    edge.WindCnt = 1;
+    edge.WindCnt2 = e->WindCnt2;
+    e = e->NextInAEL; //ie get ready to calc WindCnt2
+  }
+  else if (IsEvenOddFillType(edge))
   {
     //EvenOdd filling ...
     if (edge.WindDelta == 0)

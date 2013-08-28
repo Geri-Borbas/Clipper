@@ -2116,25 +2116,28 @@ begin
     else Edge.WindCnt := Edge.WindDelta;
     Edge.WindCnt2 := 0;
     E := FActiveEdges; //ie get ready to calc WindCnt2
-  end else if IsEvenOddFillType(Edge) then
+  end
+  else if (Edge.WindDelta = 0) and (FClipType <> ctUnion) then
+  begin
+    Edge.WindCnt := 1;
+    Edge.WindCnt2 := E.WindCnt2;
+    E := E.NextInAEL; //ie get ready to calc WindCnt2
+  end
+  else if IsEvenOddFillType(Edge) then
   begin
     //even-odd filling ...
     if (Edge.WindDelta = 0) then  //if edge is part of a line
     begin
-      if (FClipType = ctUnion) then
+      //are we inside a subj polygon ...
+      Inside := true;
+      E2 := E.PrevInAEL;
+      while assigned(E2) do
       begin
-        //are we inside a subj polygon ...
-        Inside := true;
-        E2 := E.PrevInAEL;
-        while assigned(E2) do
-        begin
-          if (E2.PolyType = E.PolyType) and (E2.WindDelta <> 0) then
-            Inside := not Inside;
-          E2 := E2.PrevInAEL;
-        end;
-        if Inside then Edge.WindCnt := 0
-        else Edge.WindCnt := 1;
-      end
+        if (E2.PolyType = E.PolyType) and (E2.WindDelta <> 0) then
+          Inside := not Inside;
+        E2 := E2.PrevInAEL;
+      end;
+      if Inside then Edge.WindCnt := 0
       else Edge.WindCnt := 1;
     end
     else //else a polygon
@@ -2146,39 +2149,37 @@ begin
   end else
   begin
     //NonZero, Positive, or Negative filling ...
-    if (e.WindCnt * e.WindDelta < 0) then
+    if (E.WindCnt * E.WindDelta < 0) then
     begin
       //prev edge is 'decreasing' WindCount (WC) toward zero
       //so we're outside the previous polygon ...
       if (Abs(E.WindCnt) > 1) then
       begin
         //outside prev poly but still inside another.
-        if (edge.WindDelta = 0) and (FClipType <> ctUnion) then
-          edge.WindCnt := 1
         //when reversing direction of prev poly use the same WC
-        else if (E.WindDelta * edge.WindDelta < 0) then
-          edge.WindCnt := E.WindCnt
+        if (E.WindDelta * Edge.WindDelta < 0) then
+          Edge.WindCnt := E.WindCnt
         //otherwise continue to 'decrease' WC ...
-        else edge.WindCnt := e.WindCnt + edge.WindDelta;
+        else Edge.WindCnt := E.WindCnt + Edge.WindDelta;
       end
       else
         //now outside all polys of same polytype so set own WC ...
-        if edge.WindDelta = 0 then edge.WindCnt := 1
-        else edge.WindCnt := edge.WindDelta;
+        if Edge.WindDelta = 0 then Edge.WindCnt := 1
+        else Edge.WindCnt := Edge.WindDelta;
     end else
     begin
       //prev edge is 'increasing' WindCount (WC) away from zero
       //so we're inside the previous polygon ...
-      if (edge.WindDelta = 0) then
+      if (Edge.WindDelta = 0) then
       begin
-        if (FClipType = ctUnion) then edge.WindCnt := 0
-        else edge.WindCnt := 1;
+        if (E.WindCnt < 0) then Edge.WindCnt := E.WindCnt -1
+        else Edge.WindCnt := E.WindCnt +1;
       end
       //if wind direction is reversing prev then use same WC
-      else if (e.WindDelta * edge.WindDelta < 0) then
-        edge.WindCnt := e.WindCnt
+      else if (E.WindDelta * Edge.WindDelta < 0) then
+        Edge.WindCnt := E.WindCnt
       //otherwise add to WC ...
-      else edge.WindCnt := e.WindCnt + edge.WindDelta;
+      else Edge.WindCnt := E.WindCnt + Edge.WindDelta;
     end;
     Edge.WindCnt2 := E.WindCnt2;
     E := E.NextInAEL; //ie get ready to calc WindCnt2
