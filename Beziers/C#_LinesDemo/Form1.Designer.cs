@@ -50,6 +50,7 @@
       this.helpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
       this.quickTipsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
       this.panel1 = new System.Windows.Forms.Panel();
+      this.cbShowCtrls = new System.Windows.Forms.CheckBox();
       this.cbReconstBez = new System.Windows.Forms.CheckBox();
       this.bNewPath = new System.Windows.Forms.Button();
       this.rbClipPoly = new System.Windows.Forms.RadioButton();
@@ -58,7 +59,6 @@
       this.rbSubjLine = new System.Windows.Forms.RadioButton();
       this.groupBox1 = new System.Windows.Forms.GroupBox();
       this.DisplayPanel = new System.Windows.Forms.Panel();
-      this.cbShowCtrls = new System.Windows.Forms.CheckBox();
       this.statusStrip1.SuspendLayout();
       this.menuStrip1.SuspendLayout();
       this.panel1.SuspendLayout();
@@ -124,7 +124,7 @@
       // exitToolStripMenuItem
       // 
       this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-      this.exitToolStripMenuItem.Size = new System.Drawing.Size(152, 22);
+      this.exitToolStripMenuItem.Size = new System.Drawing.Size(98, 22);
       this.exitToolStripMenuItem.Text = "E&xit  ";
       this.exitToolStripMenuItem.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
       // 
@@ -285,6 +285,18 @@
       this.panel1.Size = new System.Drawing.Size(159, 356);
       this.panel1.TabIndex = 5;
       // 
+      // cbShowCtrls
+      // 
+      this.cbShowCtrls.AutoSize = true;
+      this.cbShowCtrls.Enabled = false;
+      this.cbShowCtrls.Location = new System.Drawing.Point(12, 255);
+      this.cbShowCtrls.Name = "cbShowCtrls";
+      this.cbShowCtrls.Size = new System.Drawing.Size(121, 17);
+      this.cbShowCtrls.TabIndex = 21;
+      this.cbShowCtrls.Text = "Show C&trl Points too";
+      this.cbShowCtrls.UseVisualStyleBackColor = true;
+      this.cbShowCtrls.Click += new System.EventHandler(this.cbShowCtrls_Click);
+      // 
       // cbReconstBez
       // 
       this.cbReconstBez.AutoSize = true;
@@ -374,18 +386,8 @@
       this.DisplayPanel.TabIndex = 6;
       this.DisplayPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.DisplayPanel_Paint);
       this.DisplayPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseDown);
-      // 
-      // cbShowCtrls
-      // 
-      this.cbShowCtrls.AutoSize = true;
-      this.cbShowCtrls.Enabled = false;
-      this.cbShowCtrls.Location = new System.Drawing.Point(12, 255);
-      this.cbShowCtrls.Name = "cbShowCtrls";
-      this.cbShowCtrls.Size = new System.Drawing.Size(121, 17);
-      this.cbShowCtrls.TabIndex = 21;
-      this.cbShowCtrls.Text = "Show C&trl Points too";
-      this.cbShowCtrls.UseVisualStyleBackColor = true;
-      this.cbShowCtrls.Click += new System.EventHandler(this.cbShowCtrls_Click);
+      this.DisplayPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseMove);
+      this.DisplayPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseUp);
       // 
       // MainForm
       // 

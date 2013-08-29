@@ -16,7 +16,10 @@ namespace Clipper_Lines_Demo
   public partial class MainForm : Form
   {
 
-    const int scale = 10;
+    const int scale = 5;
+    const int btnRadius = 3 * scale;
+    bool LeftButtonPressed = false;
+    int MovingButton = -1;
 
     public Paths subjLines = new Paths();
     public Paths subjBeziers = new Paths();
@@ -45,9 +48,22 @@ namespace Clipper_Lines_Demo
 
       Paths ap = GetActivePaths();
       if (ap == subjBeziers)
-        DrawBezierCtrlLines(bmpGraphics, subjBeziers);
+        DrawBezierCtrlLines(bmpGraphics, subjBeziers, 0xFFEEEEEE);
       Paths paths = MakeCtrlButtons(ap);
       DrawButtons(bmpGraphics, paths);
+
+      if (MovingButton >= 0)
+      {
+        Font f = new Font("Arial", 8);
+        SolidBrush b = new SolidBrush(Color.Navy);
+        IntPoint ip = ap[ap.Count - 1][MovingButton];
+        ip.X = ip.X / scale - 20; ip.Y = ip.Y / scale - 20;
+        string coords = ip.X.ToString() + "," + ip.Y.ToString();
+        bmpGraphics.DrawString(coords, f, b, ip.X, ip.Y, null);
+        f.Dispose();
+        b.Dispose();
+      }
+
       DrawPath(bmpGraphics, subjLines, false, 0x0, 0xFFAAAAAA, fm, 1.0);
       DrawPath(bmpGraphics, subjPolygons, true, 0x20808080, 0xFFAAAAAA, fm, 1.0);
       DrawPath(bmpGraphics, clipPolygons, true, 0x10FF6600, 0x99FF6600, fm, 1.0);
@@ -99,16 +115,15 @@ namespace Clipper_Lines_Demo
             z2 = (p[cnt - 1].Z == -1 ? p[cnt - 2].Z : p[cnt - 1].Z);
             //and reconstruct each bezier ...
             Path CtrlPts = beziers.Reconstruct(z1, z2);
-
             if (cbShowCtrls.Enabled && cbShowCtrls.Checked)
             {
               //show CtrlPts as buttons too ...
               Paths tmp = new Paths(1);
               tmp.Add(CtrlPts);
-              tmp = MakeCtrlButtons(tmp);
+              DrawBezierCtrlLines(bmpGraphics, tmp, 0xFFFFCCCC);
+              tmp = MakeCtrlButtons(tmp, true);
               DrawButtons(bmpGraphics, tmp);
             }
-            
             paths.Add(CtrlPts);
           }
           //now flatten the reconstructed beziers just to show that they're accurate ...
@@ -170,13 +185,12 @@ namespace Clipper_Lines_Demo
     }
     //------------------------------------------------------------------------------
 
-    private static Paths MakeCtrlButtons(Paths paths)
+    private static Paths MakeCtrlButtons(Paths paths, bool small = false)
     {
       if (paths.Count == 0) return new Paths();
-      const int btnRadius = 3 * scale;
-      const int q = 2 * scale;
-      //make buttons for each IntPoint in the last path of paths
+      //make buttons for each vertex in the last path of paths
       int i = paths.Count -1;
+      int radius = (small ? btnRadius * 2 / 3 : btnRadius);
       int len = paths[i].Count;
       Paths result = new Paths(len);
       for (int j = 0; j < len; ++j)
@@ -184,14 +198,14 @@ namespace Clipper_Lines_Demo
         Path p = new Path(8);
         cInt x = paths[i][j].X;
         cInt y = paths[i][j].Y;
-        p.Add(new IntPoint(x-btnRadius+q, y-btnRadius));
-        p.Add(new IntPoint(x + btnRadius - q, y - btnRadius));
-        p.Add(new IntPoint(x+btnRadius, y-btnRadius+q));
-        p.Add(new IntPoint(x+btnRadius, y+btnRadius-q));
-        p.Add(new IntPoint(x+btnRadius-q, y+btnRadius));
-        p.Add(new IntPoint(x-btnRadius+q, y+btnRadius));
-        p.Add(new IntPoint(x-btnRadius, y+btnRadius-q));
-        p.Add(new IntPoint(x-btnRadius, y-btnRadius+q));
+        p.Add(new IntPoint(x - scale, y - radius));
+        p.Add(new IntPoint(x + scale, y - radius));
+        p.Add(new IntPoint(x + radius, y - scale));
+        p.Add(new IntPoint(x + radius, y + scale));
+        p.Add(new IntPoint(x + scale, y + radius));
+        p.Add(new IntPoint(x - scale, y + radius));
+        p.Add(new IntPoint(x - radius, y + scale));
+        p.Add(new IntPoint(x - radius, y - scale));
         result.Add(p);
       }
       return result;
@@ -208,20 +222,27 @@ namespace Clipper_Lines_Demo
       Pen pen = new Pen(Color.Black, (float)penWidth);
       GraphicsPath gpath = new GraphicsPath(fillMode);
       int highI = paths.Count - 1;
+
+      //draw each button polygon ...
       for (int i = 0; i <= highI; ++i)
         ClipperPathToGraphicsPath(paths[i], gpath, true);
       graphics.FillPath(midBrush, gpath);
       graphics.DrawPath(pen, gpath);
 
+      //draw the start button a shade of green ...
       gpath.Reset();
       ClipperPathToGraphicsPath(paths[0], gpath, true);
       graphics.FillPath(startBrush, gpath);
+
+      //draw the end button a shade of red ...
       if (highI > 0)
       {
         gpath.Reset();
         ClipperPathToGraphicsPath(paths[highI], gpath, true);
         graphics.FillPath(endBrush, gpath);
       }
+
+      //clean-up
       midBrush.Dispose();
       startBrush.Dispose();
       endBrush.Dispose();
@@ -230,17 +251,15 @@ namespace Clipper_Lines_Demo
     }
     //------------------------------------------------------------------------------
 
-    private static void DrawBezierCtrlLines(Graphics graphics, Paths paths)
+    private static void DrawBezierCtrlLines(Graphics graphics, Paths paths, uint color)
     {
       if (paths.Count == 0) return;
-      Pen pen = new Pen(MakeColor(0xFFEEEEEE));
+      Pen pen = new Pen(MakeColor(color));
       GraphicsPath gpath = new GraphicsPath();
-      int highI = paths.Count - 1;
+      int i = paths.Count - 1, j = paths[i].Count;
       PointF[] pts = new PointF[2];
-      for (int i = 0; i <= highI; ++i)
+      if (j > 1)
       {
-        int j = paths[i].Count;
-        if (j < 2) continue;
         pts[0].X = (float)paths[i][0].X / scale;
         pts[0].Y = (float)paths[i][0].Y / scale;
         pts[1].X = (float)paths[i][1].X / scale;
@@ -296,20 +315,71 @@ namespace Clipper_Lines_Demo
     }
     //------------------------------------------------------------------------------
 
+    private int GetButtonIndex(IntPoint mousePt)
+    {
+      Paths p = GetActivePaths();
+      int i = p.Count -1;
+      if (i < 0 || p[i].Count == 0) return -1;
+      for (int j = 0; j < p[i].Count; j++)
+        if (Math.Abs(p[i][j].X - mousePt.X) <= btnRadius &&
+          Math.Abs(p[i][j].Y - mousePt.Y) <= btnRadius) return j;
+      return -1;
+    }
+    //------------------------------------------------------------------------------
+
     private void DisplayPanel_MouseDown(object sender, MouseEventArgs e)
     {
       if (e.Button == MouseButtons.Right)
       {
         mNewPath_Click(sender, e);
-        return;
+        MovingButton = -1;
       }
-      Paths p = GetActivePaths();
-      if (p.Count == 0) p.Add(new Path());
-      int i = p.Count;
-      p[i - 1].Add(new IntPoint(e.X * scale, e.Y * scale));
-      i = p[i - 1].Count;
-      UpdateBtnAndMenuState();
-      BmpUpdateNeeded();
+      else if (DisplayPanel.Cursor == Cursors.Hand)
+      {
+        MovingButton = GetButtonIndex(new IntPoint(e.X * scale, e.Y * scale));
+        BmpUpdateNeeded();
+      }
+      else
+      {
+        Paths p = GetActivePaths();
+        if (p.Count == 0) p.Add(new Path());
+        int i = p.Count;
+        p[i - 1].Add(new IntPoint(e.X * scale, e.Y * scale));
+        i = p[i - 1].Count;
+        UpdateBtnAndMenuState();
+        BmpUpdateNeeded();
+        MovingButton = -1;
+      }
+      LeftButtonPressed = (e.Button == MouseButtons.Left);
+    }
+    //------------------------------------------------------------------------------
+
+    private void DisplayPanel_MouseMove(object sender, MouseEventArgs e)
+    {
+      if (LeftButtonPressed)
+      { 
+        if (MovingButton < 0) return;
+        Paths p = GetActivePaths();
+        int i = p.Count - 1;
+        p[i][MovingButton] = new IntPoint(e.X * scale, e.Y * scale);
+        BmpUpdateNeeded();
+      }
+      else
+      {
+        int i = GetButtonIndex(new IntPoint(e.X * scale, e.Y * scale));
+        DisplayPanel.Cursor = (i >= 0 ? Cursors.Hand : Cursors.Default);
+      }
+    }
+    //------------------------------------------------------------------------------
+
+    private void DisplayPanel_MouseUp(object sender, MouseEventArgs e)
+    {
+      if (e.Button == MouseButtons.Left) LeftButtonPressed = false;
+      if (MovingButton >= 0)
+      {
+        MovingButton = -1;
+        BmpUpdateNeeded();
+      }
     }
     //------------------------------------------------------------------------------
 
@@ -401,7 +471,7 @@ namespace Clipper_Lines_Demo
         if (i > 3)
         {
           int j = (i - 1) % 3; //nb: cubic bezier
-          if (i != 0) p[i-1].RemoveRange(i-j-1, j);
+          if (j != 0) p[p.Count-1].RemoveRange(i-j, j);
           p.Add(new Path());
         }
       }
@@ -496,7 +566,6 @@ namespace Clipper_Lines_Demo
     {
       BmpUpdateNeeded();
     }
-    //------------------------------------------------------------------------------
 
   }
 }
