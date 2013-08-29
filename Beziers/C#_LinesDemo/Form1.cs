@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Drawing;
+using System.IO;
 using System.Drawing.Drawing2D;
 using ClipperLib;
 using BezierLib;
@@ -566,6 +567,86 @@ namespace Clipper_Lines_Demo
     {
       BmpUpdateNeeded();
     }
+    //------------------------------------------------------------------------------
+
+    void SaveToFile(string filename, Paths ppg)
+    {
+      StreamWriter writer = new StreamWriter(filename);
+      if (writer == null) return;
+      writer.Write("{0}\n", ppg.Count);
+      foreach (Path pg in ppg)
+      {
+        writer.Write("{0}\n", pg.Count);
+        foreach (IntPoint ip in pg)
+          writer.Write("{0:0.00}, {1:0.00}\n",
+              (double)ip.X / scale, (double)ip.Y / scale);
+      }
+      writer.Close();
+    }
+    //------------------------------------------------------------------------------
+
+    bool LoadFromFile(string filename, Paths ppg)
+    {
+      ppg.Clear();
+      if (!File.Exists(filename)) return false;
+      StreamReader sr = new StreamReader(filename);
+      if (sr == null) return false;
+      string line;
+      if ((line = sr.ReadLine()) == null) return false;
+      int polyCnt, vertCnt;
+      if (!Int32.TryParse(line, out polyCnt) || polyCnt < 0) return false;
+      ppg.Capacity = polyCnt;
+      for (int i = 0; i < polyCnt; i++)
+      {
+        if ((line = sr.ReadLine()) == null) return false;
+        if (!Int32.TryParse(line, out vertCnt) || vertCnt < 0) return false;
+        Path pg = new Path(vertCnt);
+        ppg.Add(pg);
+        for (int j = 0; j < vertCnt; j++)
+        {
+          double x, y;
+          if ((line = sr.ReadLine()) == null) return false;
+          char[] delimiters = new char[] { ',', ' ' };
+          string[] vals = line.Split(delimiters);
+          if (vals.Length < 2) return false;
+          if (!double.TryParse(vals[0], out x)) return false;
+          if (!double.TryParse(vals[1], out y))
+            if (vals.Length < 2 || !double.TryParse(vals[2], out y)) return false;
+          x = x * scale;
+          y = y * scale;
+          pg.Add(new IntPoint((int)Math.Round(x), (int)Math.Round(y)));
+        }
+      }
+      return true;
+    }
+    //------------------------------------------------------------------------------
+
+    private void mSave_Click(object sender, EventArgs e)
+    {
+      SaveToFile("SubjLines.txt", subjLines);
+      SaveToFile("SubjBeziers.txt", subjBeziers);
+      SaveToFile("SubjPolys.txt", subjPolygons);
+      SaveToFile("ClipPolys.txt", clipPolygons);
+    }
+    //------------------------------------------------------------------------------
+
+    private void mLoad_Click(object sender, EventArgs e)
+    {
+      subjLines.Clear();
+      subjBeziers.Clear();
+      subjPolygons.Clear();
+      clipPolygons.Clear();
+
+      LoadFromFile("SubjLines.txt", subjLines);
+      LoadFromFile("SubjBeziers.txt", subjBeziers);
+      LoadFromFile("SubjPolys.txt", subjPolygons);
+      LoadFromFile("ClipPolys.txt", clipPolygons);
+      
+      UpdateBtnAndMenuState();
+      BmpUpdateNeeded();
+    }
+    //---------------------------------------------------------------------------
+
 
   }
 }

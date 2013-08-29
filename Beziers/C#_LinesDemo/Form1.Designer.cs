@@ -33,7 +33,7 @@
       this.toolStripStatusLabel2 = new System.Windows.Forms.ToolStripStatusLabel();
       this.menuStrip1 = new System.Windows.Forms.MenuStrip();
       this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-      this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+      this.mExit = new System.Windows.Forms.ToolStripMenuItem();
       this.editToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
       this.mIntersection = new System.Windows.Forms.ToolStripMenuItem();
       this.mUnion = new System.Windows.Forms.ToolStripMenuItem();
@@ -59,6 +59,9 @@
       this.rbSubjLine = new System.Windows.Forms.RadioButton();
       this.groupBox1 = new System.Windows.Forms.GroupBox();
       this.DisplayPanel = new System.Windows.Forms.Panel();
+      this.toolStripMenuItem3 = new System.Windows.Forms.ToolStripSeparator();
+      this.mSave = new System.Windows.Forms.ToolStripMenuItem();
+      this.mLoad = new System.Windows.Forms.ToolStripMenuItem();
       this.statusStrip1.SuspendLayout();
       this.menuStrip1.SuspendLayout();
       this.panel1.SuspendLayout();
@@ -116,17 +119,20 @@
       // fileToolStripMenuItem
       // 
       this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.exitToolStripMenuItem});
+            this.mSave,
+            this.mLoad,
+            this.toolStripMenuItem3,
+            this.mExit});
       this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
       this.fileToolStripMenuItem.Size = new System.Drawing.Size(35, 20);
       this.fileToolStripMenuItem.Text = "&File";
       // 
-      // exitToolStripMenuItem
+      // mExit
       // 
-      this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-      this.exitToolStripMenuItem.Size = new System.Drawing.Size(98, 22);
-      this.exitToolStripMenuItem.Text = "E&xit  ";
-      this.exitToolStripMenuItem.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+      this.mExit.Name = "mExit";
+      this.mExit.Size = new System.Drawing.Size(152, 22);
+      this.mExit.Text = "E&xit  ";
+      this.mExit.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
       // 
       // editToolStripMenuItem
       // 
@@ -389,6 +395,25 @@
       this.DisplayPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseMove);
       this.DisplayPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseUp);
       // 
+      // toolStripMenuItem3
+      // 
+      this.toolStripMenuItem3.Name = "toolStripMenuItem3";
+      this.toolStripMenuItem3.Size = new System.Drawing.Size(149, 6);
+      // 
+      // mSave
+      // 
+      this.mSave.Name = "mSave";
+      this.mSave.Size = new System.Drawing.Size(152, 22);
+      this.mSave.Text = "&Save";
+      this.mSave.Click += new System.EventHandler(this.mSave_Click);
+      // 
+      // mLoad
+      // 
+      this.mLoad.Name = "mLoad";
+      this.mLoad.Size = new System.Drawing.Size(152, 22);
+      this.mLoad.Text = "&Load";
+      this.mLoad.Click += new System.EventHandler(this.mLoad_Click);
+      // 
       // MainForm
       // 
       this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -423,7 +448,7 @@
     private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel2;
     private System.Windows.Forms.MenuStrip menuStrip1;
     private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
-    private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
+    private System.Windows.Forms.ToolStripMenuItem mExit;
     private System.Windows.Forms.ToolStripMenuItem editToolStripMenuItem;
     private System.Windows.Forms.ToolStripMenuItem mIntersection;
     private System.Windows.Forms.ToolStripMenuItem mUnion;
@@ -449,6 +474,9 @@
     private System.Windows.Forms.Panel DisplayPanel;
     private System.Windows.Forms.CheckBox cbReconstBez;
     private System.Windows.Forms.CheckBox cbShowCtrls;
+    private System.Windows.Forms.ToolStripMenuItem mSave;
+    private System.Windows.Forms.ToolStripMenuItem mLoad;
+    private System.Windows.Forms.ToolStripSeparator toolStripMenuItem3;
   }
 }
 
