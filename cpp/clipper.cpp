@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  27 August 2013                                                  *
+* Date      :  29 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -129,6 +129,13 @@ struct Join {
 };
 
 //------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+inline cInt Round(double val)
+{
+  if ((val < 0)) return static_cast<cInt>(val - 0.5); 
+  else return static_cast<cInt>(val + 0.5);
+}
 //------------------------------------------------------------------------------
 
 inline cInt Abs(cInt val)
@@ -430,58 +437,7 @@ Int128 Int128Mul (cInt lhs, cInt rhs)
 #endif
 
 //------------------------------------------------------------------------------
-// ClipperConvert methods
-//------------------------------------------------------------------------------
-
-ClipperConvert::ClipperConvert(const double scaling_factor): scale(scaling_factor)
-{
-  if (NEAR_ZERO(scale)) throw "Invalid scaling factor";
-}
-//------------------------------------------------------------------------------
-
-IntPoint ClipperConvert::operator()(const DoublePoint& v) 
-{
-  return IntPoint(cInt(v.X * scale), cInt(v.Y * scale));
-}
-//------------------------------------------------------------------------------
-
-inline cInt Round(double val)
-{
-  if ((val < 0)) return static_cast<cInt>(val - 0.5); 
-  else return static_cast<cInt>(val + 0.5);
-}
-//------------------------------------------------------------------------------
-
-void ClipperConvert::ToIntPoints(
-  const std::vector<DoublePoint>& dps, std::vector<IntPoint>& ips) 
-{
-  ips.resize(dps.size());
-  for (size_t i = 0; i < dps.size(); ++i)
-  {
-    ips[i].X = Round(dps[i].X * scale);
-    ips[i].Y = Round(dps[i].Y * scale);
-  }
-}
-//------------------------------------------------------------------------------
-
-DoublePoint ClipperConvert::operator()(const IntPoint& v) 
-{
-  return DoublePoint((double)v.X / scale, (double)v.Y / scale);
-}
-//------------------------------------------------------------------------------
-
-void ClipperConvert::ToDoublePoints(
-  const std::vector<IntPoint>& ips, std::vector<DoublePoint>& dps) 
-{
-  dps.resize(ips.size());
-  for (size_t i = 0; i < ips.size(); ++i)
-  {
-    dps[i].X = double(ips[i].X) / scale;
-    dps[i].Y = double(ips[i].Y) / scale;
-  }
-}
-
-//------------------------------------------------------------------------------
+// Miscellaneous global functions
 //------------------------------------------------------------------------------
 
 bool Orientation(const Path &poly)
@@ -1823,20 +1779,16 @@ void Clipper::SetWindingCount(TEdge &edge)
     //EvenOdd filling ...
     if (edge.WindDelta == 0)
     {
-      if (m_ClipType == ctUnion) 
+      //are we inside a subj polygon ...
+      bool Inside = true;
+      TEdge *e2 = e->PrevInAEL;
+      while (e2)
       {
-        //are we inside a subj polygon ...
-        bool Inside = true;
-        TEdge *e2 = e->PrevInAEL;
-        while (e2)
-        {
-          if (e2->PolyTyp == e->PolyTyp && e2->WindDelta != 0) 
-            Inside = !Inside;
-          e2 = e2->PrevInAEL;
-        }
-        edge.WindCnt = (Inside ? 0 : 1);
+        if (e2->PolyTyp == e->PolyTyp && e2->WindDelta != 0) 
+          Inside = !Inside;
+        e2 = e2->PrevInAEL;
       }
-      else edge.WindCnt = 1;
+      edge.WindCnt = (Inside ? 0 : 1);
     }
     else
     {
@@ -1855,9 +1807,8 @@ void Clipper::SetWindingCount(TEdge &edge)
       if (Abs(e->WindCnt) > 1)
       {
         //outside prev poly but still inside another.
-        if (edge.WindDelta == 0 && m_ClipType != ctUnion) edge.WindCnt = 1;
         //when reversing direction of prev poly use the same WC 
-        else if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
+        if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
         //otherwise continue to 'decrease' WC ...
         else edge.WindCnt = e->WindCnt + edge.WindDelta;
       } 
@@ -1868,7 +1819,8 @@ void Clipper::SetWindingCount(TEdge &edge)
     {
       //prev edge is 'increasing' WindCount (WC) away from zero
       //so we're inside the previous polygon ...
-      if (edge.WindDelta == 0) edge.WindCnt = (m_ClipType == ctUnion ? 0 : 1);
+      if (edge.WindDelta == 0) 
+        edge.WindCnt = (e->WindCnt < 0 ? e->WindCnt - 1 : e->WindCnt + 1);
       //if wind direction is reversing prev then use same WC
       else if (e->WindDelta * edge.WindDelta < 0) edge.WindCnt = e->WindCnt;
       //otherwise add to WC ...

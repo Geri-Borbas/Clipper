@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  27 August 2013                                                  *
+* Date      :  29 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -119,20 +119,6 @@ struct DoublePoint
   DoublePoint(IntPoint ip) : X((double)ip.X), Y((double)ip.Y) {}
 };
 //------------------------------------------------------------------------------
-
-//ClipperConvert: converts IntPoint to and from DoublePoint based on "scaling_factor"
-class ClipperConvert
-{
-private:
-  const double scale;
-public:
-  IntPoint operator()(const DoublePoint& v);
-  void ToIntPoints(const std::vector<DoublePoint>& dps, std::vector<IntPoint>& ips);
-  DoublePoint operator()(const IntPoint& v);
-  void ToDoublePoints(const std::vector<IntPoint>& ips, std::vector<DoublePoint>& dps);
-  ClipperConvert(const double scaling_factor);
-};
-
 
 #ifdef use_xyz
 typedef void (*TZFillCallback)(cInt z1, cInt z2, IntPoint& pt);

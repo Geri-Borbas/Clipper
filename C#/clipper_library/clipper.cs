@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  27 August 2013                                                  *
+* Date      :  29 August 2013                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -93,48 +93,6 @@ namespace ClipperLib
       this.X = ip.X; this.Y = ip.Y;
     }
   };
-  //------------------------------------------------------------------------------
-
-  //ClipperConvert: converts IntPoint to and from DoublePoint based on "scaling_factor"
-  public class ClipperConvert
-  {
-
-    public ClipperConvert(double scaling_factor) 
-    {
-      if (ClipperBase.near_zero(scaling_factor))
-        throw new ClipperException("Invalid scaling factor");
-      scale = scaling_factor; 
-    }
-
-    public IntPoint Convert(DoublePoint dp)
-    {
-      return new IntPoint(Clipper.Round(scale * dp.X), Clipper.Round(scale * dp.Y));
-    }
-
-    public DoublePoint Convert(IntPoint ip)
-    {
-      return new DoublePoint((double)ip.X / scale, (double)ip.Y / scale);
-    }
-
-    public Path Convert(List<DoublePoint> dps)
-    { 
-      Path path = new Path(dps.Count);
-      foreach (DoublePoint dp in dps)
-        path.Add(new IntPoint(Clipper.Round(scale * dp.X), Clipper.Round(scale * dp.Y)));
-      return path;
-    }
-    
-    public List<DoublePoint> Convert(Path path)
-    {
-      List<DoublePoint> dps = new List<DoublePoint>(path.Count);
-      foreach (IntPoint ip in path)
-        dps.Add(new DoublePoint((double)ip.X/scale, (double)ip.Y/scale));
-      return dps;
-    }
-    
-    private double scale;
-  };
-
 
 
   //------------------------------------------------------------------------------
