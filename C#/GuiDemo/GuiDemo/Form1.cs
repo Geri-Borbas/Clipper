@@ -1,4 +1,6 @@
-﻿using System;
+﻿//#define UsePolyTree
+
+using System;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
@@ -12,12 +14,10 @@ using System.Windows.Forms;
 using System.Globalization;
 using ClipperLib;
 
-
 namespace WindowsFormsApplication1
 {
-
-    using Path = List<IntPoint>;
-    using Paths = List<List<IntPoint>>;
+    using Polygon = List<IntPoint>;
+    using Polygons = List<List<IntPoint>>;
 
     public partial class Form1 : Form
     {
@@ -26,17 +26,18 @@ namespace WindowsFormsApplication1
         Stream polyStream;
 
         private Bitmap mybitmap;
-        private Paths subjects;
-        private Paths clips;
-        private Paths solution;
+        private Polygons subjects;
+        private Polygons clips;
+        private Polygons solution;
+        private PolyTree solutionTree;
 
         //Here we are scaling all coordinates up by 100 when they're passed to Clipper 
-        //via Polygon (or Paths) objects because Clipper no longer accepts floating  
-        //point values. Likewise when Clipper returns a solution in a Paths object, 
+        //via Polygon (or Polygons) objects because Clipper no longer accepts floating  
+        //point values. Likewise when Clipper returns a solution in a Polygons object, 
         //we need to scale down these returned values by the same amount before displaying.
-        private int scale = 100; //or 1 or 10 or 10000 etc for lesser or greater precision.
+        private float scale = 100; //or 1 or 10 or 10000 etc for lesser or greater precision.
 
-        //---------------------------------------------------------------------
+        //------------------------------------------------------------------------------
         //---------------------------------------------------------------------
 
         //a very simple class that builds an SVG file with any number of 
@@ -76,7 +77,7 @@ namespace WindowsFormsApplication1
 
             public class PolyInfo
             {
-                public Paths paths;
+                public Polygons polygons;
                 public StyleInfo si;
             }
 
@@ -97,11 +98,11 @@ namespace WindowsFormsApplication1
                 style = new StyleInfo();
             }
 
-            public void AddPaths(Paths poly)
+            public void AddPolygons(Polygons poly)
             {
                 if (poly.Count == 0) return;
                 PolyInfo pi = new PolyInfo();
-                pi.paths = poly;
+                pi.polygons = poly;
                 pi.si = style.Clone();
                 PolyInfoList.Add(pi);
             }
@@ -116,21 +117,21 @@ namespace WindowsFormsApplication1
                 while (i < PolyInfoList.Count)
                 {
                     j = 0;
-                    while (j < PolyInfoList[i].paths.Count &&
-                        PolyInfoList[i].paths[j].Count == 0) j++;
-                    if (j < PolyInfoList[i].paths.Count) break;
+                    while (j < PolyInfoList[i].polygons.Count &&
+                        PolyInfoList[i].polygons[j].Count == 0) j++;
+                    if (j < PolyInfoList[i].polygons.Count) break;
                     i++;
                 }
                 if (i == PolyInfoList.Count) return false;
                 IntRect rec = new IntRect();
-                rec.left = PolyInfoList[i].paths[j][0].X;
+                rec.left = PolyInfoList[i].polygons[j][0].X;
                 rec.right = rec.left;
-                rec.top = PolyInfoList[0].paths[j][0].Y;
+                rec.top = PolyInfoList[0].polygons[j][0].Y;
                 rec.bottom = rec.top;
 
                 for (; i < PolyInfoList.Count; i++)
                 {
-                    foreach (Path pg in PolyInfoList[i].paths)
+                    foreach (Polygon pg in PolyInfoList[i].polygons)
                         foreach (IntPoint pt in pg)
                         {
                             if (pt.X < rec.left) rec.left = pt.X;
@@ -158,7 +159,7 @@ namespace WindowsFormsApplication1
                 foreach (PolyInfo pi in PolyInfoList)
                 {
                     writer.Write(" <path d=\"");
-                    foreach (Path p in pi.paths)
+                    foreach (Polygon p in pi.polygons)
                     {
                         if (p.Count < 3) continue;
                         writer.Write(String.Format(NumberFormatInfo.InvariantInfo, " M {0:f2} {1:f2}",
@@ -184,7 +185,7 @@ namespace WindowsFormsApplication1
                     if (pi.si.showCoords)
                     {
                         writer.Write("<g font-family=\"Verdana\" font-size=\"11\" fill=\"black\">\n\n");
-                        foreach (Path p in pi.paths)
+                        foreach (Polygon p in pi.polygons)
                         {
                             foreach (IntPoint pt in p)
                             {
@@ -209,9 +210,9 @@ namespace WindowsFormsApplication1
         //------------------------------------------------------------------------------
         //------------------------------------------------------------------------------
 
-        static private System.Drawing.PointF[] PolygonToPointFArray(Path pg, int scale)
+        static private PointF[] PolygonToPointFArray(Polygon pg, float scale)
         {
-            System.Drawing.PointF[] result = new System.Drawing.PointF[pg.Count];
+            PointF[] result = new PointF[pg.Count];
             for (int i = 0; i < pg.Count; ++i)
             {
                 result[i].X = (float)pg[i].X / scale;
@@ -219,6 +220,16 @@ namespace WindowsFormsApplication1
             }
             return result;
         }
+        //---------------------------------------------------------------------
+
+        //static public Polygon IntArrayToPolygon(int[] ints)
+        //{
+        //    int cnt = ints.Length / 2;
+        //    Polygon result = new Polygon(cnt);
+        //    for (int i = 0; i < cnt; i++)
+        //        result.Add(new IntPoint(ints[i * 2], ints[i * 2 + 1]));
+        //    return result;
+        //}
         //---------------------------------------------------------------------
 
         public Form1()
@@ -256,7 +267,7 @@ namespace WindowsFormsApplication1
             {
                 int vertCnt = BitConverter.ToInt32(b, k);
                 k += 4;
-                Path pg = new Path(vertCnt);
+                Polygon pg = new Polygon(vertCnt);
                 for (int j = 0; j < vertCnt; ++j)
                 {
                     float x = BitConverter.ToSingle(b, k) * scale;
@@ -275,7 +286,7 @@ namespace WindowsFormsApplication1
             const int ellipse_size = 100, margin = 10;
             for (int i = 0; i < count; ++i)
             {
-                int w = pictureBox1.ClientRectangle.Width - ellipse_size - margin *2;
+                int w = pictureBox1.ClientRectangle.Width - ellipse_size - margin * 2;
                 int h = pictureBox1.ClientRectangle.Height - ellipse_size - margin * 2 - statusStrip1.Height;
 
                 pt.X = rand.Next(w) + margin;
@@ -284,7 +295,7 @@ namespace WindowsFormsApplication1
                 path.Reset();
                 path.AddEllipse(pt.X, pt.Y, size, size);
                 path.Flatten();
-                Path clip = new Path(path.PathPoints.Count());
+                Polygon clip = new Polygon(path.PathPoints.Count());
                 foreach (PointF p in path.PathPoints)
                     clip.Add(new IntPoint((int)(p.X * scale), (int)(p.Y * scale)));
                 clips.Add(clip);
@@ -296,8 +307,8 @@ namespace WindowsFormsApplication1
         {
             int Q = 10;
             IntPoint newPt = new IntPoint();
-            newPt.X = (rand.Next(r / Q) * Q + l + 10) * scale;
-            newPt.Y = (rand.Next(b / Q) * Q + t + 10) * scale;
+            newPt.X = (Int64)Math.Round((rand.Next(r / Q) * Q + l + 10) * scale);
+            newPt.Y = (Int64)Math.Round((rand.Next(b / Q) * Q + t + 10) * scale);
             return newPt;
         }
         //---------------------------------------------------------------------
@@ -314,12 +325,12 @@ namespace WindowsFormsApplication1
             subjects.Clear();
             clips.Clear();
 
-            Path subj = new Path(count);
+            Polygon subj = new Polygon(count);
             for (int i = 0; i < count; ++i)
                 subj.Add(GenerateRandomPoint(l, t, r, b, rand));
             subjects.Add(subj);
 
-            Path clip = new Path(count);
+            Polygon clip = new Polygon(count);
             for (int i = 0; i < count; ++i)
                 clip.Add(GenerateRandomPoint(l, t, r, b, rand));
             clips.Add(clip);
@@ -342,7 +353,7 @@ namespace WindowsFormsApplication1
         }
         //---------------------------------------------------------------------
 
-        bool LoadFromFile(string filename, Paths ppg, double scale = 0,
+        bool LoadFromFile(string filename, Polygons ppg, double scale = 0,
           int xOffset = 0, int yOffset = 0)
         {
             double scaling = Math.Pow(10, scale);
@@ -359,7 +370,7 @@ namespace WindowsFormsApplication1
             {
                 if ((line = sr.ReadLine()) == null) return false;
                 if (!Int32.TryParse(line, out vertCnt) || vertCnt < 0) return false;
-                Path pg = new Path(vertCnt);
+                Polygon pg = new Polygon(vertCnt);
                 ppg.Add(pg);
                 for (int j = 0; j < vertCnt; j++)
                 {
@@ -380,13 +391,13 @@ namespace WindowsFormsApplication1
         }
         //------------------------------------------------------------------------------
 
-        void SaveToFile(string filename, Paths ppg, int scale = 0)
+        void SaveToFile(string filename, Polygons ppg, int scale = 0)
         {
             double scaling = Math.Pow(10, scale);
             StreamWriter writer = new StreamWriter(filename);
             if (writer == null) return;
             writer.Write("{0}\n", ppg.Count);
-            foreach (Path pg in ppg)
+            foreach (Polygon pg in ppg)
             {
                 writer.Write("{0}\n", pg.Count);
                 foreach (IntPoint ip in pg)
@@ -402,10 +413,10 @@ namespace WindowsFormsApplication1
 
             if (!justClip)
             {
-              if (rbTest2.Checked)
-                GenerateAustPlusRandomEllipses((int)nudCount.Value);
-              else
-                GenerateRandomPolygon((int)nudCount.Value);
+                if (rbTest2.Checked)
+                    GenerateAustPlusRandomEllipses((int)nudCount.Value);
+                else
+                    GenerateRandomPolygon((int)nudCount.Value);
             }
 
             Cursor.Current = Cursors.WaitCursor;
@@ -418,7 +429,7 @@ namespace WindowsFormsApplication1
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
 
             //draw subjects ...
-            foreach (Path pg in subjects)
+            foreach (Polygon pg in subjects)
             {
                 PointF[] pts = PolygonToPointFArray(pg, scale);
                 path.AddPolygon(pts);
@@ -432,7 +443,7 @@ namespace WindowsFormsApplication1
 
             //draw clips ...
             if (rbNonZero.Checked) path.FillMode = FillMode.Winding;
-            foreach (Path pg in clips)
+            foreach (Polygon pg in clips)
             {
                 PointF[] pts = PolygonToPointFArray(pg, scale);
                 path.AddPolygon(pts);
@@ -445,15 +456,23 @@ namespace WindowsFormsApplication1
 
             //do the clipping ...
             if ((clips.Count > 0 || subjects.Count > 0) && !rbNone.Checked)
-            {                
-                Paths solution2 = new Paths();
+            {
+                Polygons solution2 = new Polygons();
                 Clipper c = new Clipper();
-                c.AddPaths(subjects, PolyType.ptSubject, true);
-                c.AddPaths(clips, PolyType.ptClip, true);
+                c.AddPolygons(subjects, PolyType.ptSubject);
+                c.AddPolygons(clips, PolyType.ptClip);
                 solution.Clear();
+#if UsePolyTree
+                bool succeeded = c.Execute(GetClipType(), solutionTree, GetPolyFillType(), GetPolyFillType());
+                //nb: we aren't doing anything useful here with solutionTree except to show
+                //that it works. Convert PolyTree back to Polygons structure ...
+                Clipper.PolyTreeToPolygons(solutionTree, solution);
+#else
                 bool succeeded = c.Execute(GetClipType(), solution, GetPolyFillType(), GetPolyFillType());
+#endif
                 if (succeeded)
                 {
+                    //SaveToFile("solution", solution);
                     myBrush.Color = Color.Black;
                     path.Reset();
 
@@ -464,11 +483,15 @@ namespace WindowsFormsApplication1
                     path.FillMode = FillMode.Winding;
 
                     //or for something fancy ...
+
                     if (nudOffset.Value != 0)
-                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, JoinType.jtMiter);
+                    {
+                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, JoinType.jtRound);
+                    }
                     else
-                        solution2 = new Paths(solution);
-                    foreach (Path pg in solution2)
+                        solution2 = new Polygons(solution);
+
+                    foreach (Polygon pg in solution2)
                     {
                         PointF[] pts = PolygonToPointFArray(pg, scale);
                         if (pts.Count() > 2)
@@ -486,18 +509,18 @@ namespace WindowsFormsApplication1
                     SolidBrush b = new SolidBrush(Color.Navy);
                     double subj_area = 0, clip_area = 0, int_area = 0, union_area = 0;
                     c.Clear();
-                    c.AddPaths(subjects, PolyType.ptSubject, true);
+                    c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Path pg in solution2) subj_area += Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) subj_area += Clipper.Area(pg);
                     c.Clear();
-                    c.AddPaths(clips, PolyType.ptClip, true);
+                    c.AddPolygons(clips, PolyType.ptClip);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Path pg in solution2) clip_area += Clipper.Area(pg);
-                    c.AddPaths(subjects, PolyType.ptSubject, true);
+                    foreach (Polygon pg in solution2) clip_area += Clipper.Area(pg);
+                    c.AddPolygons(subjects, PolyType.ptSubject);
                     c.Execute(ClipType.ctIntersection, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Path pg in solution2) int_area += Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) int_area += Clipper.Area(pg);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
-                    foreach (Path pg in solution2) union_area += Clipper.Area(pg);
+                    foreach (Polygon pg in solution2) union_area += Clipper.Area(pg);
 
                     StringFormat lftStringFormat = new StringFormat();
                     lftStringFormat.Alignment = StringAlignment.Near;
@@ -505,7 +528,7 @@ namespace WindowsFormsApplication1
                     StringFormat rtStringFormat = new StringFormat();
                     rtStringFormat.Alignment = StringAlignment.Far;
                     rtStringFormat.LineAlignment = StringAlignment.Near;
-                    Rectangle rec = new Rectangle(pictureBox1.ClientSize.Width - 108, 
+                    Rectangle rec = new Rectangle(pictureBox1.ClientSize.Width - 108,
                         pictureBox1.ClientSize.Height - 116, 104, 106);
                     newgraphic.FillRectangle(new SolidBrush(Color.FromArgb(196, Color.WhiteSmoke)), rec);
                     newgraphic.DrawRectangle(myPen, rec);
@@ -532,10 +555,19 @@ namespace WindowsFormsApplication1
                     newgraphic.DrawString((union_area / 100000).ToString("0,0"), f, b, rec, rtStringFormat);
                     rec.Offset(new Point(0, 10));
                     newgraphic.DrawString("---------", f, b, rec, rtStringFormat);
+
+                    lftStringFormat.Dispose();
+                    rtStringFormat.Dispose();
+                    f.Dispose();
+                    b.Dispose();
                 } //end if succeeded
             } //end if something to clip
 
             pictureBox1.Image = mybitmap;
+            
+            myBrush.Dispose();
+            myPen.Dispose();
+            path.Dispose();
             newgraphic.Dispose();
             Cursor.Current = Cursors.Default;
         }
@@ -548,9 +580,10 @@ namespace WindowsFormsApplication1
                 pictureBox1.ClientRectangle.Height,
                 PixelFormat.Format32bppArgb);
 
-            subjects = new Paths(); 
-            clips = new Paths();
-            solution = new Paths();
+            subjects = new Polygons(); 
+            clips = new Polygons();
+            solution = new Polygons();
+            solutionTree = new PolyTree();
 
             toolStripStatusLabel1.Text =
                 "Tip: Use the mouse-wheel (or +,-,0) to adjust the offset of the solution polygons.";
@@ -645,13 +678,13 @@ namespace WindowsFormsApplication1
                 SVGBuilder svg = new SVGBuilder();
                 svg.style.brushClr = Color.FromArgb(0x10, 0, 0, 0x9c);
                 svg.style.penClr = Color.FromArgb(0xd3, 0xd3, 0xda);
-                svg.AddPaths(subjects);
+                svg.AddPolygons(subjects);
                 svg.style.brushClr = Color.FromArgb(0x10, 0x9c, 0, 0);
                 svg.style.penClr = Color.FromArgb(0xff, 0xa0, 0x7a);
-                svg.AddPaths(clips);
+                svg.AddPolygons(clips);
                 svg.style.brushClr = Color.FromArgb(0xAA, 0x80, 0xff, 0x9c);
                 svg.style.penClr = Color.FromArgb(0, 0x33, 0);
-                svg.AddPaths(solution);
+                svg.AddPolygons(solution);
                 svg.SaveToFile(saveFileDialog1.FileName, 1.0 / scale);
             }
         }

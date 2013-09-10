@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  27 August 2013                                                  *
+* Date      :  11 September 2013                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -73,7 +73,7 @@ type
   TArrayOfDoublePoint = array of TDoublePoint;
 
 {$IFDEF use_xyz}
-  TZFillCallback = procedure (const Z1, Z2: cInt; var Pt: TIntPoint);
+  TZFillCallback = procedure (const Pt1, Pt2: TIntPoint; var Pt: TIntPoint);
 {$ENDIF}
 
   TInitOption = (ioReverseSolution, ioStrictlySimple, ioPreserveCollinear);
@@ -350,9 +350,11 @@ function Orientation(const Pts: TPath): Boolean; overload;
 function Area(const Pts: TPath): Double; overload;
 
 {$IFDEF use_xyz}
-function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint;
+function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint; overload;
+function IntPoint(const X, Y: Double; Z: Double = 0): TIntPoint; overload;
 {$ELSE}
-function IntPoint(const X, Y: cInt): TIntPoint;
+function IntPoint(const X, Y: cInt): TIntPoint; overload;
+function IntPoint(const X, Y: Double): TIntPoint; overload;
 {$ENDIF}
 
 function DoublePoint(const X, Y: Double): TDoublePoint; overload;
@@ -419,8 +421,12 @@ resourcestring
 
 {$IFDEF FPC}
   {$DEFINE INLINING}
+  {$DEFINE UInt64Support}
 {$ELSE}
-  {$IF CompilerVersion >= 20}
+  {$IF CompilerVersion >= 15} //Delphi 7
+    {$DEFINE UInt64Support}
+  {$IFEND}
+  {$IF CompilerVersion >= 18} //Delphi 2007, QC41166
     {$DEFINE INLINING}
   {$IFEND}
 {$ENDIF}
@@ -522,6 +528,44 @@ end;
 {$IFNDEF use_int32}
 
 //------------------------------------------------------------------------------
+// UInt64 math support for Delphi 6
+//------------------------------------------------------------------------------
+
+{$IFNDEF UInt64Support}
+function CompareUInt64(const i, j: Int64): Integer;
+begin
+  if Int64Rec(i).Hi < Int64Rec(j).Hi then
+    Result := -1
+  else if Int64Rec(i).Hi > Int64Rec(j).Hi then
+    Result := 1
+  else if Int64Rec(i).Lo < Int64Rec(j).Lo then
+    Result := -1
+  else if Int64Rec(i).Lo > Int64Rec(j).Lo then
+    Result := 1
+  else
+    Result := 0;
+end;
+{$ENDIF}
+
+function UInt64LT(const i, j: Int64): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
+begin
+{$IFDEF UInt64Support}
+  Result := UInt64(i) < UInt64(j);
+{$ELSE}
+  Result := CompareUInt64(i, j) = -1;
+{$ENDIF}
+end;
+
+function UInt64GT(const i, j: Int64): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
+begin
+{$IFDEF UInt64Support}
+  Result := UInt64(i) > UInt64(j);
+{$ELSE}
+  Result := CompareUInt64(i, j) = 1;
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
 // Int128 Functions ...
 //------------------------------------------------------------------------------
 
@@ -570,7 +614,7 @@ end;
 function Int128LessThan(const Int1, Int2: TInt128): Boolean;
 begin
   if (Int1.Hi <> Int2.Hi) then Result := Int1.Hi < Int2.Hi
-  else Result := UInt64(Int1.Lo) < UInt64(Int2.Lo);
+  else Result := UInt64LT(Int1.Lo, Int2.Lo);
 end;
 //------------------------------------------------------------------------------
 
@@ -578,7 +622,7 @@ function Int128Add(const Int1, Int2: TInt128): TInt128;
 begin
   Result.Lo := Int1.Lo + Int2.Lo;
   Result.Hi := Int1.Hi + Int2.Hi;
-  if UInt64(Result.Lo) < UInt64(Int1.Lo) then Inc(Result.Hi);
+  if UInt64LT(Result.Lo, Int1.Lo) then Inc(Result.Hi);
 end;
 //------------------------------------------------------------------------------
 
@@ -586,7 +630,7 @@ function Int128Sub(const Int1, Int2: TInt128): TInt128;
 begin
   Result.Hi := Int1.Hi - Int2.Hi;
   Result.Lo := Int1.Lo - Int2.Lo;
-  if UInt64(Result.Lo) > UInt64(Int1.Lo) then Dec(Result.Hi);
+  if UInt64GT(Result.Lo, Int1.Lo) then Dec(Result.Hi);
 end;
 //------------------------------------------------------------------------------
 
@@ -617,7 +661,7 @@ begin
   A := C shl 32;
 
   Result.Lo := A + B;
-  if UInt64(Result.Lo) < UInt64(A) then
+  if UInt64LT(Result.Lo, A) then
     Inc(Result.Hi);
 
   if Negate then Int128Negate(Result);
@@ -758,12 +802,31 @@ begin
   Result.Y := Y;
   Result.Z := Z;
 end;
+//------------------------------------------------------------------------------
+
+function IntPoint(const X, Y: Double; Z: Double = 0): TIntPoint;
+begin
+  Result.X := Round(X);
+  Result.Y := Round(Y);
+  Result.Z := Round(Z);
+end;
+//------------------------------------------------------------------------------
+
 {$ELSE}
+
 function IntPoint(const X, Y: cInt): TIntPoint;
 begin
   Result.X := X;
   Result.Y := Y;
 end;
+//------------------------------------------------------------------------------
+
+function IntPoint(const X, Y: Double): TIntPoint;
+begin
+  Result.X := Round(X);
+  Result.Y := Round(Y);
+end;
+
 {$ENDIF}
 //------------------------------------------------------------------------------
 
@@ -1008,27 +1071,16 @@ end;
 //------------------------------------------------------------------------------
 
 {$IFDEF use_xyz}
-procedure GetZ(var Pt: TIntPoint; E: PEdge); {$IFDEF INLINING} inline; {$ENDIF}
-begin
-  if PointsEqual(Pt, E.Bot) then Pt.Z := E.Bot.Z
-  else if PointsEqual(Pt, E.Top) then Pt.Z := E.Top.Z
-  else if E.WindDelta > 0 then Pt.Z := E.Bot.Z
-  else Pt.Z := E.Top.Z;
-end;
-//------------------------------------------------------------------------------
-
-Procedure SetZ(var Pt: TIntPoint; E, eNext: PEdge; ZFillFunc: TZFillCallback);
-var
-  Pt1, Pt2: TIntPoint;
+Procedure SetZ(var Pt: TIntPoint; E: PEdge; ZFillFunc: TZFillCallback);
 begin
   Pt.Z := 0;
   if assigned(ZFillFunc) then
   begin
-    Pt1 := Pt;
-    GetZ(Pt1, E);
-    Pt2 := Pt;
-    GetZ(Pt2, eNext);
-    ZFillFunc(Pt1.Z, Pt2.Z, Pt);
+    //put the 'preferred' point as first parameter ...
+    if E.OutIdx < 0 then
+      ZFillFunc(E.Bot, E.Top, Pt) //outside a path so presume entering ...
+    else
+      ZFillFunc(E.Top, E.Bot, Pt); //inside a path so presume exiting ...
   end;
 end;
 //------------------------------------------------------------------------------
@@ -1620,11 +1672,6 @@ var
   E, EStart, ELoopStop, EHighest: PEdge;
   ClosedOrSemiClosed: Boolean;
 begin
-  {AddPath}
-  Result := False; //ie assume nothing added
-  HighI := High(Path);
-  if HighI < 1 then Exit;
-
 {$IFDEF use_lines}
   if not Closed and (polyType = ptClip) then
     raise exception.Create(rsOpenPath);
@@ -1632,9 +1679,12 @@ begin
   if not Closed then raise exception.Create(rsOpenPath2);
 {$ENDIF}
 
-  ClosedOrSemiClosed := Closed or PointsEqual(Path[0],Path[HighI]);
+  Result := False; //ie assume nothing added
+  HighI := High(Path);
+  ClosedOrSemiClosed :=
+    (HighI > 0) and (Closed or PointsEqual(Path[0],Path[HighI]));
+  while (HighI > 0) and PointsEqual(Path[HighI],Path[0]) do Dec(HighI);
   while (HighI > 0) and PointsEqual(Path[HighI],Path[HighI -1]) do Dec(HighI);
-  if (highI > 0) and PointsEqual(Path[0],Path[highI]) then Dec(HighI);
   if (Closed and (HighI < 2)) or (not Closed and (HighI < 1)) then Exit;
 
   //1. Basic initialization of Edges ...
@@ -2488,7 +2538,6 @@ procedure TClipper.InsertLocalMinimaIntoAEL(const BotY: cInt);
 var
   I: Integer;
   E: PEdge;
-  Pt: TIntPoint;
   Lb, Rb: PEdge;
   Jr: PJoin;
   Op1, Op2: POutPt;
@@ -2560,16 +2609,12 @@ begin
       end;
 
       E := Lb.NextInAEL;
-      Pt := Lb.Curr;
       if Assigned(E) then
         while (E <> Rb) do
         begin
-{$IFDEF use_xyz}
-          SetZ(Pt, Rb, E, FZFillCallback);
-{$ENDIF}
           //nb: For calculating winding counts etc, IntersectEdges() assumes
           //that param1 will be to the right of param2 ABOVE the intersection ...
-          IntersectEdges(Rb, E, Pt);
+          IntersectEdges(Rb, E, Lb.Curr);
           E := E.NextInAEL;
         end;
     end;
@@ -2634,9 +2679,9 @@ begin
   begin
     //ignore subject-subject open path intersections UNLESS they
     //are both open paths, AND they are both 'contributing maximas' ...
-    if (E1.WindDelta = 0) AND (E2.WindDelta = 0) and (E1stops or E2stops) then
+    if (E1.WindDelta = 0) AND (E2.WindDelta = 0) then
     begin
-      if E1Contributing and E2Contributing then
+      if (E1stops or E2stops) and E1Contributing and E2Contributing then
         AddLocalMaxPoly(E1, E2, Pt);
     end
     //if intersecting a subj line with a subj poly ...
@@ -3082,14 +3127,23 @@ begin
   begin
     OutRec := CreateOutRec;
     OutRec.IsOpen := (E.WindDelta = 0);
-    E.OutIdx := OutRec.Idx;
     new(Result);
     OutRec.Pts := Result;
+    Result.Pt := Pt;
     Result.Next := Result;
     Result.Prev := Result;
     Result.Idx := OutRec.Idx;
     if not OutRec.IsOpen then
       SetHoleState(E, OutRec);
+{$IFDEF use_xyz}
+    if PointsEqual(E.Bot, Pt) then
+      Result.Pt.Z := E.Bot.Z
+    else if PointsEqual(E.Top, Pt) then
+      Result.Pt.Z := E.Top.Z
+    else
+      SetZ(Result.Pt, E, FZFillCallback);
+{$ENDIF}
+    E.OutIdx := OutRec.Idx; //nb: do this after SetZ !
   end else
   begin
     OutRec := FPolyOutList[E.OutIdx];
@@ -3102,14 +3156,22 @@ begin
       Exit;
     end;
     new(Result);
+    Result.Pt := Pt;
     Result.Idx := OutRec.Idx;
     Result.Next := Op;
     Result.Prev := Op.Prev;
     Op.Prev.Next := Result;
     Op.Prev := Result;
     if ToFront then OutRec.Pts := Result;
+{$IFDEF use_xyz}
+    if PointsEqual(E.Bot, Pt) then
+      Result.Pt.Z := E.Bot.Z
+    else if PointsEqual(E.Top, Pt) then
+      Result.Pt.Z := E.Top.Z
+    else
+      SetZ(Result.Pt, E, FZFillCallback);
+{$ENDIF}
   end;
-  Result.Pt := Pt;
 end;
 //------------------------------------------------------------------------------
 
@@ -3373,16 +3435,10 @@ begin
         else if (Direction = dLeftToRight) then
         begin
           Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-{$IFDEF use_xyz}
-          SetZ(Pt, HorzEdge, E, FZFillCallback);
-{$ENDIF}
           IntersectEdges(HorzEdge, E, Pt, True);
         end else
         begin
           Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-{$IFDEF use_xyz}
-          SetZ(Pt, E, HorzEdge, FZFillCallback);
-{$ENDIF}
           IntersectEdges(E, HorzEdge, Pt, True);
         end;
         SwapPositionsInAEL(HorzEdge, E);
@@ -3553,12 +3609,8 @@ begin
           Pt.Y := botY;
           if (abs(E.Dx) > abs(eNext.Dx)) then
             Pt.X := TopX(eNext, botY) else
-            Pt.X := TopX(e, botY);
+            Pt.X := TopX(E, botY);
         end;
-
-{$IFDEF use_xyz}
-        SetZ(Pt, E, eNext, FZFillCallback);
-{$ENDIF}
         InsertIntersectNode(E, eNext, Pt);
         SwapPositionsInSEL(E, eNext);
         IsModified := True;
@@ -3619,7 +3671,6 @@ end;
 procedure TClipper.DoMaxima(E: PEdge);
 var
   ENext, EMaxPair: PEdge;
-  Pt: TIntPoint;
 begin
   EMaxPair := GetMaximaPair(E);
   if not assigned(EMaxPair) then
@@ -3634,11 +3685,7 @@ begin
   //rarely, with overlapping collinear edges (in open paths) ENext can be nil
   while Assigned(ENext) and (ENext <> EMaxPair) do
   begin
-    Pt := E.Top;
-{$IFDEF use_xyz}
-    SetZ(Pt, E, ENext, FZFillCallback);
-{$ENDIF}
-    IntersectEdges(E, ENext, Pt, True);
+    IntersectEdges(E, ENext, E.Top, True);
     SwapPositionsInAEL(E, ENext);
     ENext := E.NextInAEL;
   end;
@@ -3678,7 +3725,6 @@ end;
 procedure TClipper.ProcessEdgesAtTopOfScanbeam(const TopY: cInt);
 var
   E, EMaxPair, ePrev, eNext: PEdge;
-  Pt: TIntPoint;
   Op, Op2: POutPt;
   IsMaximaEdge: Boolean;
 begin
@@ -3747,16 +3793,9 @@ begin
           Assigned(ePrev) and (ePrev.Curr.X = E.Curr.X) and
           (ePrev.OutIdx >= 0) and (ePrev.WindDelta <> 0) then
         begin
-          Pt := IntPoint(E.Curr.X, TopY);
-{$IFDEF use_xyz}
-          GetZ(Pt, ePrev);
-          Op := AddOutPt(ePrev, Pt);
-          GetZ(Pt, E);
-{$ELSE}
-          Op := AddOutPt(ePrev, Pt);
-{$ENDIF}
-          Op2 := AddOutPt(E, Pt);
-          AddJoin(Op, Op2, Pt); //strictly-simple (type-3) 'join'
+          Op := AddOutPt(ePrev, E.Curr);
+          Op2 := AddOutPt(E, E.Curr);
+          AddJoin(Op, Op2, E.Curr); //strictly-simple (type-3) 'join'
         end;
       end;
 
@@ -4020,9 +4059,9 @@ begin
 
   //When DiscardLeft, we want Op1b to be on the left of Op1, otherwise we
   //want Op1b to be on the right. (And likewise with Op2 and Op2b.)
-  //So, to facilitate this while inserting Op1b and Op2b ...
-  //when DiscardLeft, make sure we're AT or RIGHT of Pt before adding Op1b,
-  //otherwise make sure we're AT or LEFT of Pt. (Likewise with Op2b.)
+  //To facilitate this while inserting Op1b & Op2b when DiscardLeft == true,
+  //make sure we're either AT or RIGHT OF Pt before adding Op1b, otherwise
+  //make sure we're AT or LEFT OF Pt. (Likewise with Op2b.)
   if Dir1 = dLeftToRight then
   begin
     while (Op1.Next.Pt.X <= Pt.X) and
@@ -4160,28 +4199,29 @@ begin
   end
   else if IsHorizontal then
   begin
-    //treat horizontal joins differently to non-horizontal joins since with
-    //them we're not yet sure where the overlapping is, so
-    //OutPt1.Pt & OutPt2.Pt may be anywhere along the horizontal edge.
-    Op1 := Jr.OutPt1; Op1b := Jr.OutPt1;
-    while (Op1.Prev.Pt.Y = Op1.Pt.Y) and (Op1.Prev <> Jr.OutPt1) do
-      Op1 := Op1.Prev;
-    while (Op1b.Next.Pt.Y = Op1b.Pt.Y) and (Op1b.Next <> Jr.OutPt1) do
-      Op1b := Op1b.Next;
-    if Op1.Pt.X = Op1b.Pt.X then Exit; //todo - test if this ever happens
+    op1b := op1;
+    while (op1.Prev.Pt.Y = op1.Pt.Y) and
+      (op1.Prev <> Op1b) and (op1.Prev <> op2) do
+        op1 := op1.Prev;
+    while (op1b.Next.Pt.Y = op1b.Pt.Y) and
+      (op1b.Next <> Op1) and (op1b.Next <> op2) do
+        op1b := op1b.Next;
+    if (op1b.Next = Op1) or (op1b.Next = op2) then Exit; //a flat 'polygon'
 
-    Op2 := Jr.OutPt2; Op2b := Jr.OutPt2;
-    while (Op2.Prev.Pt.Y = Op2.Pt.Y) and (Op2.Prev <> Jr.OutPt2) do
-      Op2 := Op2.Prev;
-    while (Op2b.Next.Pt.Y = Op2b.Pt.Y) and (Op2b.Next <> Jr.OutPt2) do
-      Op2b := Op2b.Next;
-    if Op2.Pt.X = Op2b.Pt.X then Exit; //todo - test if this ever happens
+    op2b := op2;
+    while (op2.Prev.Pt.Y = op2.Pt.Y) and
+      (op2.Prev <> Op2b) and (op2.Prev <> op1b) do
+        op2 := op2.Prev;
+    while (op2b.Next.Pt.Y = op2b.Pt.Y) and
+      (op2b.Next <> Op2) and (op2b.Next <> op1) do
+        op2b := op2b.Next;
+    if (op2b.Next = Op2) or (op2b.Next = op1) then Exit; //a flat 'polygon'
 
     //Op1 --> Op1b & Op2 --> Op2b are the extremites of the horizontal edges
     if not GetOverlap(Op1.Pt.X, Op1b.Pt.X, Op2.Pt.X, Op2b.Pt.X, Left, Right) then
       Exit;
 
-    //DiscardLeftSide: when overlapping edges are joined, a spike will created
+    //DiscardLeftSide: when joining overlapping edges, a spike will be created
     //which needs to be cleaned up. However, we don't want Op1 or Op2 caught up
     //on the discard side as either may still be needed for other joins ...
     if (Op1.Pt.X >= Left) and (Op1.Pt.X <= Right) then
