@@ -423,14 +423,18 @@ resourcestring
   {$DEFINE INLINING}
   {$DEFINE UInt64Support}
 {$ELSE}
-  {$IF CompilerVersion >= 15} //Delphi 7
-    {$DEFINE UInt64Support}
-  {$IFEND}
-  {$IF CompilerVersion >= 18} //Delphi 2007, QC41166
-    {$DEFINE INLINING}
-  {$IFEND}
+  {$IFDEF ConditionalExpressions}
+    {$IF CompilerVersion >= 15} //Delphi 7
+      {$DEFINE UInt64Support} //nb: Delphi7 only marginally supports UInt64.
+    {$IFEND}
+    {$IF CompilerVersion >= 18} //Delphi 2007
+      //Inline has been supported since D2005.
+      //However D2005 and D2006 have an Inline codegen bug (QC41166).
+      //http://www.thedelphigeek.com/2007/02/nasty-inline-codegen-bug-in-bds-2006.html
+      {$DEFINE INLINING}
+    {$IFEND}
+  {$ENDIF}
 {$ENDIF}
-
 //------------------------------------------------------------------------------
 // TPolyNode methods ...
 //------------------------------------------------------------------------------
@@ -531,6 +535,7 @@ end;
 // UInt64 math support for Delphi 6
 //------------------------------------------------------------------------------
 
+{$OVERFLOWCHECKS OFF}
 {$IFNDEF UInt64Support}
 function CompareUInt64(const i, j: Int64): Integer;
 begin
@@ -564,6 +569,7 @@ begin
   Result := CompareUInt64(i, j) = 1;
 {$ENDIF}
 end;
+{$OVERFLOWCHECKS ON}
 
 //------------------------------------------------------------------------------
 // Int128 Functions ...
@@ -860,7 +866,7 @@ begin
     D2 := (Pts[I-1].X + Pts[I].X); //ie forces floating point multiplication
     D := D + D2 * (Pts[I].Y - Pts[I-1].Y);
   end;
-  Result := D / 2;
+  Result := D * 0.5;
 end;
 //------------------------------------------------------------------------------
 
@@ -878,7 +884,7 @@ begin
       D := D + D2 * (Op.Prev.Pt.Y - Op.Pt.Y);
       Op := Op.Next;
     until Op = OutRec.Pts;
-  Result := D / 2;
+  Result := D * 0.5;
 end;
 //------------------------------------------------------------------------------
 
