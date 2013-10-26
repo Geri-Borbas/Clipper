@@ -48,6 +48,26 @@ unit clipper;
 //In a future update, this compatibility code will be removed.
 {$DEFINE use_deprecated}
 
+{$IFDEF FPC}
+  {$DEFINE INLINING}
+  {$DEFINE UInt64Support}
+{$ELSE}
+  {$IFDEF ConditionalExpressions}
+    {$IF CompilerVersion < 20} //Delphi 2009
+      Int32 = Integer; //Int32 supported since D2009.
+    {$IFEND}
+    {$IF CompilerVersion >= 15} //Delphi 7
+      {$DEFINE UInt64Support} //nb: Delphi7 only marginally supports UInt64.
+    {$IFEND}
+    {$IF CompilerVersion >= 18} //Delphi 2007
+      //Inline has been supported since D2005.
+      //However D2005 and D2006 have an Inline codegen bug (QC41166).
+      //http://www.thedelphigeek.com/2007/02/nasty-inline-codegen-bug-in-bds-2006.html
+      {$DEFINE INLINING}
+    {$IFEND}
+  {$ENDIF}
+{$ENDIF}
+
 interface
 
 uses
@@ -419,22 +439,6 @@ resourcestring
   rsOpenPath3  = 'Error: TPolyTree struct is need for open path clipping.';
   rsPolylines = 'Error intersecting polylines';
 
-{$IFDEF FPC}
-  {$DEFINE INLINING}
-  {$DEFINE UInt64Support}
-{$ELSE}
-  {$IFDEF ConditionalExpressions}
-    {$IF CompilerVersion >= 15} //Delphi 7
-      {$DEFINE UInt64Support} //nb: Delphi7 only marginally supports UInt64.
-    {$IFEND}
-    {$IF CompilerVersion >= 18} //Delphi 2007
-      //Inline has been supported since D2005.
-      //However D2005 and D2006 have an Inline codegen bug (QC41166).
-      //http://www.thedelphigeek.com/2007/02/nasty-inline-codegen-bug-in-bds-2006.html
-      {$DEFINE INLINING}
-    {$IFEND}
-  {$ENDIF}
-{$ENDIF}
 //------------------------------------------------------------------------------
 // TPolyNode methods ...
 //------------------------------------------------------------------------------
