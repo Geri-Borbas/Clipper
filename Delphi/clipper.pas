@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  11 September 2013                                               *
+* Date      :  26 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -37,7 +37,7 @@ unit clipper;
 //improve performance but coordinate values are limited to the range +/- 46340
 {.$DEFINE use_int32}
 
-//use_xyz: adds a Z member to IntPoint (with only a minor cost to perfomance)
+//use_xyz: adds a Z member to IntPoint (with only a minor cost to performance)
 {.$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
@@ -45,7 +45,7 @@ unit clipper;
 
 //When enabled, code developed with earlier versions of Clipper
 //(ie prior to ver 6) should compile without changes.
-//In a future update, this compatability code will be removed.
+//In a future update, this compatibility code will be removed.
 {$DEFINE use_deprecated}
 
 interface
@@ -967,9 +967,6 @@ function PointInPolygon(const Pt: TIntPoint;
   PP: POutPt; UseFullInt64Range: Boolean): Boolean;
 var
   Pp2: POutPt;
-{$IFNDEF use_int32}
-  A, B: TInt128;
-{$ENDIF}
 begin
   Result := False;
   Pp2 := PP;
@@ -980,10 +977,10 @@ begin
       if (((Pp2.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Prev.Pt.Y)) or
         ((Pp2.Prev.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Pt.Y))) then
       begin
-        A := Int128(Pt.X - Pp2.Pt.X);
-        B := Int128Div( Int128Mul(Pp2.Prev.Pt.X - Pp2.Pt.X,
-          Pt.Y - Pp2.Pt.Y), Int128(Pp2.Prev.Pt.Y - Pp2.Pt.Y) );
-        if Int128LessThan(A, B) then Result := not Result;
+        if Int128LessThan(
+          Int128Mul(Pt.X - Pp2.Pt.X, Pp2.Prev.Pt.Y - Pp2.Pt.Y),
+          Int128Mul(Pp2.Prev.Pt.X - Pp2.Pt.X, Pt.Y - Pp2.Pt.Y)) then
+            Result := not Result;
       end;
       Pp2 := Pp2.Next;
     until Pp2 = PP;
@@ -992,8 +989,9 @@ begin
     repeat
       if ((((Pp2.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Prev.Pt.Y)) or
         ((Pp2.Prev.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Pt.Y))) and
-        (Pt.X < (Pp2.Prev.Pt.X - Pp2.Pt.X) * (Pt.Y - Pp2.Pt.Y) /
-        (Pp2.Prev.Pt.Y - Pp2.Pt.Y) + Pp2.Pt.X)) then Result := not Result;
+        ((Pt.X - Pp2.Pt.X) * (Pp2.Prev.Pt.Y - Pp2.Pt.Y) <
+        (Pp2.Prev.Pt.X - Pp2.Pt.X) * (Pt.Y - Pp2.Pt.Y))) then
+          Result := not Result;
       Pp2 := Pp2.Next;
     until Pp2 = PP;
 end;
@@ -1100,7 +1098,10 @@ begin
 {$IFDEF use_xyz}
   ip.Z := 0;
 {$ENDIF}
-  if SlopesEqual(Edge1, Edge2, UseFullInt64Range) then
+  //nb: with very large coordinate values, it's possible for SlopesEqual() to
+  //return false but for the edge.Dx value be equal due to double precision
+  //rounding ...
+  if SlopesEqual(Edge1, Edge2, UseFullInt64Range) or (edge1.Dx = edge2.Dx) then
   begin
     //parallel edges, but nevertheless prepare to force the intersection
     //since Edge2.Curr.X < Edge1.Curr.X ...
@@ -4655,8 +4656,9 @@ var
   R: Double;
 begin
   FSinA := (FNorms[K].X * FNorms[J].Y - FNorms[J].X * FNorms[K].Y);
-  if FSinA > 1 then FSinA := 1
-  else if FSinA < -1 then FSinA := -1;
+  if (FSinA < 0.00005) and (FSinA > -0.00005) then Exit
+  else if (FSinA > 1.0) then FSinA := 1.0
+  else if (FSinA < -1.0) then FSinA := -1.0;
 
   if FSinA * FDelta < 0 then
   begin

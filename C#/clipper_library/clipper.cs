@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  11 September 2013                                               *
+* Date      :  26 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -42,7 +42,7 @@
 //improve performance but coordinate values are limited to the range +/- 46340
 //#define use_int32
 
-//use_xyz: adds a Z member to IntPoint. Adds a minor cost to perfomance.
+//use_xyz: adds a Z member to IntPoint. Adds a minor cost to performance.
 //#define use_xyz
 
 //UseLines: Enables line clipping. Adds a very minor cost to performance.
@@ -50,7 +50,7 @@
 
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
-//In a future update, this compatability code will be removed.
+//In a future update, this compatibility code will be removed.
 #define use_deprecated
 
 
@@ -76,10 +76,11 @@ namespace ClipperLib
   using Polygons = List<List<IntPoint>>;
 #endif
 
-  public class DoublePoint
+  public struct DoublePoint
   {
-    public double X { get; set; }
-    public double Y { get; set; }
+    public double X;
+    public double Y;
+
     public DoublePoint(double x = 0, double y = 0)
     {
       this.X = x; this.Y = y;
@@ -422,10 +423,17 @@ namespace ClipperLib
     {
       this.X = x; this.Y = y; this.Z = z;
     }
+    
     public IntPoint(double x, double y, double z = 0)
     {
       this.X = (cInt)x; this.Y = (cInt)y; this.Z = (cInt)z;
     }
+    
+    public IntPoint(DoublePoint dp)
+    {
+      this.X = (cInt)dp.X; this.Y = (cInt)dp.Y; this.Z = 0;
+    }
+
     public IntPoint(IntPoint pt)
     {
       this.X = pt.X; this.Y = pt.Y; this.Z = pt.Z;
@@ -671,9 +679,8 @@ namespace ClipperLib
             {
                 if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
                     ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-                    new Int128(pt.X - pp2.Pt.X) < 
-                    Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X,  pt.Y - pp2.Pt.Y) / 
-                    new Int128(pp2.Prev.Pt.Y - pp2.Pt.Y))
+                    Int128.Int128Mul(pt.X - pp2.Pt.X, pp2.Prev.Pt.Y - pp2.Pt.Y) < 
+                    Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X,  pt.Y - pp2.Pt.Y))
                       result = !result;
                 pp2 = pp2.Next;
             }
@@ -685,8 +692,9 @@ namespace ClipperLib
             {
                 if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
                   ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-                  (pt.X - pp2.Pt.X < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) /
-                  (pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
+                  ((pt.X - pp2.Pt.X) * (pp2.Prev.Pt.Y - pp2.Pt.Y) < 
+                  (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y))) 
+                    result = !result;
                 pp2 = pp2.Next;
             }
             while (pp2 != pp);
@@ -3315,7 +3323,9 @@ namespace ClipperLib
       {
         ip = new IntPoint();
         double b1, b2;
-        if (SlopesEqual(edge1, edge2, m_UseFullRange))
+        //nb: with very large coordinate values, it's possible for SlopesEqual() to 
+        //return false but for the edge.Dx value be equal due to double precision rounding.
+        if (SlopesEqual(edge1, edge2, m_UseFullRange) || edge1.Dx == edge2.Dx)
         {
             if (edge2.Bot.Y > edge1.Bot.Y)
               ip.Y = edge2.Bot.Y;
@@ -4209,7 +4219,9 @@ namespace ClipperLib
           void OffsetPoint(JoinType jointype)
           {
               m_sinA = (normals[m_k].X * normals[m_j].Y - normals[m_j].X * normals[m_k].Y);
-              if (m_sinA > 1.0) m_sinA = 1.0; else if (m_sinA < -1.0) m_sinA = -1.0;
+              if (m_sinA < 0.00005 && m_sinA > -0.00005) return;
+              else if (m_sinA > 1.0) m_sinA = 1.0;
+              else if (m_sinA < -1.0) m_sinA = -1.0;
 
               if (m_sinA * m_delta < 0)
               {
@@ -4342,8 +4354,7 @@ namespace ClipperLib
                           m_j = len - 1;
                           m_k = len - 2;
                           m_sinA = 0;
-                          normals[m_j].X = -normals[m_j].X;
-                          normals[m_j].Y = -normals[m_j].Y;
+                          normals[m_j] = new DoublePoint(-normals[m_j].X, -normals[m_j].Y);
                           if (endtype == EndType.etSquare)
                             DoSquare();
                           else
@@ -4352,12 +4363,9 @@ namespace ClipperLib
 
                       //re-build Normals ...
                       for (int j = len - 1; j > 0; j--)
-                      {
-                          normals[j].X = -normals[j - 1].X;
-                          normals[j].Y = -normals[j - 1].Y;
-                      }
-                      normals[0].X = -normals[1].X;
-                      normals[0].Y = -normals[1].Y;
+                        normals[j] = new DoublePoint(-normals[j - 1].X, -normals[j - 1].Y);
+                      
+                      normals[0] = new DoublePoint(-normals[1].X, -normals[1].Y);
 
                       m_k = len - 1;
                       for (m_j = m_k - 1; m_j > 0; --m_j)
