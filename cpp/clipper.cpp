@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  28 October 2013                                                 *
+* Date      :  29 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -532,9 +532,9 @@ bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
     {
       if ((((Pt.Y >= pp2->Pt.Y) && (Pt.Y < pp2->Prev->Pt.Y)) ||
           ((Pt.Y >= pp2->Prev->Pt.Y) && (Pt.Y < pp2->Pt.Y))) &&
-          Int128Mul(Pt.X - pp2->Pt.X, pp2->Prev->Pt.Y - pp2->Pt.Y) < 
-          Int128Mul(pp2->Prev->Pt.X - pp2->Pt.X, Pt.Y - pp2->Pt.Y))
-            result = !result;
+          Int128(Pt.X - pp2->Pt.X) < 
+          Int128Mul(pp2->Prev->Pt.X - pp2->Pt.X, Pt.Y - pp2->Pt.Y) / 
+          Int128(pp2->Prev->Pt.Y - pp2->Pt.Y))
       pp2 = pp2->Next;
     }
     while (pp2 != pp);
@@ -545,9 +545,8 @@ bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
   {
     if ((((pp2->Pt.Y <= Pt.Y) && (Pt.Y < pp2->Prev->Pt.Y)) ||
       ((pp2->Prev->Pt.Y <= Pt.Y) && (Pt.Y < pp2->Pt.Y))) &&
-      ((Pt.X - pp2->Pt.X) * (pp2->Prev->Pt.Y - pp2->Pt.Y) < 
-      (pp2->Prev->Pt.X - pp2->Pt.X) * (Pt.Y - pp2->Pt.Y))) 
-        result = !result;
+      (Pt.X < (pp2->Prev->Pt.X - pp2->Pt.X) * (Pt.Y - pp2->Pt.Y) /
+      (pp2->Prev->Pt.Y - pp2->Pt.Y) + pp2->Pt.X )) result = !result;
     pp2 = pp2->Next;
   }
   while (pp2 != pp);

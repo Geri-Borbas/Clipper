@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  28 October 2013                                                 *
+* Date      :  29 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -56,8 +56,9 @@
 
 using System;
 using System.Collections.Generic;
-//using System.Text; //for Int128.AsString() & StringBuilder
-//using System.IO; //streamReader & StreamWriter
+//using System.Text;          //for Int128.AsString() & StringBuilder
+//using System.IO;            //debugging with streamReader & StreamWriter
+//using System.Windows.Forms; //debugging to clipboard
 
 namespace ClipperLib
 {
@@ -677,27 +678,26 @@ namespace ClipperLib
         {
             do
             {
-                if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
-                    ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-                    Int128.Int128Mul(pt.X - pp2.Pt.X, pp2.Prev.Pt.Y - pp2.Pt.Y) < 
-                    Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X,  pt.Y - pp2.Pt.Y))
-                      result = !result;
-                pp2 = pp2.Next;
+              if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
+                  ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
+                  new Int128(pt.X - pp2.Pt.X) <
+                  Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y) /
+                  new Int128(pp2.Prev.Pt.Y - pp2.Pt.Y))
+                result = !result; pp2 = pp2.Next;
             }
             while (pp2 != pp);
         }
         else
         {
-            do
-            {
-                if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
-                  ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-                  ((pt.X - pp2.Pt.X) * (pp2.Prev.Pt.Y - pp2.Pt.Y) < 
-                  (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y))) 
-                    result = !result;
-                pp2 = pp2.Next;
-            }
-            while (pp2 != pp);
+          do
+          {
+            if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
+              ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
+              (pt.X - pp2.Pt.X < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) /
+              (pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
+            pp2 = pp2.Next;
+          }
+          while (pp2 != pp);
         }
         return result;
       }
@@ -3441,10 +3441,10 @@ namespace ClipperLib
             }
 
             if (StrictlySimple)
-            {  
+            {
               TEdge ePrev = e.PrevInAEL;
-              if ((e.OutIdx >= 0) && (e.WindDelta != 0) && ePrev != null && 
-                (ePrev.OutIdx >= 0) && (ePrev.Curr.X == e.Curr.X) && 
+              if ((e.OutIdx >= 0) && (e.WindDelta != 0) && ePrev != null &&
+                (ePrev.OutIdx >= 0) && (ePrev.Curr.X == e.Curr.X) &&
                 (ePrev.WindDelta != 0))
               {
                 OutPt op = AddOutPt(ePrev, e.Curr);
@@ -3820,12 +3820,12 @@ namespace ClipperLib
         //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
         //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
         //location at the Bottom of the overlapping segment (& Join.OffPt is above).
-        //3. StrictSimple joins where edges touch but are not collinear and where
+        //3. StrictlySimple joins where edges touch but are not collinear and where
         //Join.OutPt1, Join.OutPt2 & Join.OffPt all share the same point.
         bool isHorizontal = (j.OutPt1.Pt.Y == j.OffPt.Y);
 
         if (isHorizontal && (j.OffPt == j.OutPt1.Pt) && (j.OffPt == j.OutPt2.Pt))
-        {
+        {          
           //Strictly Simple join ...
           op1b = j.OutPt1.Next;
           while (op1b != op1 && (op1b.Pt == j.OffPt)) 
@@ -3971,6 +3971,7 @@ namespace ClipperLib
       private bool Poly2ContainsPoly1(OutPt outPt1, OutPt outPt2, bool UseFullInt64Range)
       {
           OutPt pt = outPt1;
+
           //Because the polygons may be touching, we need to find a vertex that
           //isn't touching the other polygon ...
           if (PointOnPolygon(pt.Pt, outPt2, UseFullInt64Range))
@@ -4050,8 +4051,9 @@ namespace ClipperLib
 
               if ((outRec2.IsHole ^ ReverseSolution) == (Area(outRec2) > 0))
                 ReversePolyPtLinks(outRec2.Pts);
-            
-            } else if (Poly2ContainsPoly1(outRec1.Pts, outRec2.Pts, m_UseFullRange))
+
+            }
+            else if (Poly2ContainsPoly1(outRec1.Pts, outRec2.Pts, m_UseFullRange))
             {
               //outRec1 is contained by outRec2 ...
               outRec2.IsHole = outRec1.IsHole;
@@ -4064,7 +4066,7 @@ namespace ClipperLib
 
               if ((outRec1.IsHole ^ ReverseSolution) == (Area(outRec1) > 0))
                 ReversePolyPtLinks(outRec1.Pts);
-            } 
+            }
             else
             {
               //the 2 polygons are completely separate ...
