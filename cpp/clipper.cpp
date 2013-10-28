@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  26 October 2013                                                 *
+* Date      :  28 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -4442,6 +4442,66 @@ void CleanPolygons(const Paths& in_polys, Paths& out_polys, double distance)
 void CleanPolygons(Paths& polys, double distance)
 {
   CleanPolygons(polys, polys, distance);
+}
+//------------------------------------------------------------------------------
+
+void Minkowki(const Path& poly, const Path& path, 
+  Paths& solution, bool isSum, bool isClosed)
+{
+  int delta = (isClosed ? 1 : 0);
+  size_t polyCnt = poly.size();
+  size_t pathCnt = path.size();
+  Paths pp;
+  pp.reserve(pathCnt);
+  if (isSum)
+    for (size_t i = 0; i < pathCnt; ++i)
+    {
+      Path p;
+      p.reserve(polyCnt);
+      for (size_t j = 0; j < poly.size(); ++j)
+        p.push_back(IntPoint(path[i].X + poly[j].X, path[i].Y + poly[j].Y));
+      pp.push_back(p);
+    }
+  else
+    for (size_t i = 0; i < pathCnt; ++i)
+    {
+      Path p;
+      p.reserve(polyCnt);
+      for (size_t j = 0; j < poly.size(); ++j)
+        p.push_back(IntPoint(path[i].X - poly[j].X, path[i].Y - poly[j].Y));
+      pp.push_back(p);
+    }
+
+  Paths quads; 
+  quads.reserve((pathCnt + delta) * (polyCnt + 1));
+  for (size_t i = 0; i <= pathCnt - 2 + delta; ++i)
+    for (size_t j = 0; j <= polyCnt - 1; ++j)
+    {
+      Path quad;
+      quad.reserve(4);
+      quad.push_back(pp[i % pathCnt][j % polyCnt]);
+      quad.push_back(pp[(i + 1) % pathCnt][j % polyCnt]);
+      quad.push_back(pp[(i + 1) % pathCnt][(j + 1) % polyCnt]);
+      quad.push_back(pp[i % pathCnt][(j + 1) % polyCnt]);
+      if (!Orientation(quad)) ReversePath(quad);
+      quads.push_back(quad);
+    }
+
+  Clipper c;
+  c.AddPaths(quads, ptSubject, true);
+  c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
+}
+//------------------------------------------------------------------------------
+
+void MinkowkiSum(const Path& poly, const Path& path, Paths& solution, bool isClosed)
+{
+  Minkowki(poly, path, solution, true, isClosed);
+}
+//------------------------------------------------------------------------------
+
+void MinkowkiDiff(const Path& poly, const Path& path, Paths& solution, bool isClosed)
+{
+  Minkowki(poly, path, solution, false, isClosed);
 }
 //------------------------------------------------------------------------------
 
