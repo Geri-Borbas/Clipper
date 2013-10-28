@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  26 October 2013                                                 *
+* Date      :  28 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -403,6 +403,9 @@ function SimplifyPolygons(const Polys: TPaths; FillType: TPolyFillType = pftEven
 //CleanPolygon removes adjacent vertices closer than the specified distance.
 function CleanPolygon(const Poly: TPath; Distance: double = 1.415): TPath;
 function CleanPolygons(const Polys: TPaths; Distance: double = 1.415): TPaths;
+
+function MinkowkiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowkiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
 
 function PolyTreeToPaths(PolyTree: TPolyTree): TPaths;
 function ClosedPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
@@ -5065,6 +5068,76 @@ begin
   SetLength(Result, Len);
   for I := 0 to Len - 1 do
     Result[I] := CleanPolygon(Polys[I], Distance);
+end;
+//------------------------------------------------------------------------------
+
+function Minkowki(const Base, Path: TPath;
+IsSum: Boolean = true; IsClosed: Boolean = true): TPaths;
+var
+  i, j, delta, baseLen, pathLen: integer;
+  quads: TPaths;
+  quad: TPath;
+begin
+  if IsClosed then delta := 1 else delta := 0;
+
+  baseLen := Length(Base);
+  pathLen := Length(Path);
+  setLength(Result, pathLen);
+  if IsSum then
+    for i := 0 to pathLen -1 do
+    begin
+      setLength(Result[i], baseLen);
+      for j := 0 to baseLen -1 do
+      begin
+        Result[i][j].X := Path[i].X + Base[j].X;
+        Result[i][j].Y := Path[i].Y + Base[j].Y;
+      end;
+    end
+  else
+    for i := 0 to pathLen -1 do
+    begin
+      setLength(Result[i], baseLen);
+      for j := 0 to baseLen -1 do
+      begin
+        Result[i][j].X := Path[i].X - Base[j].X;
+        Result[i][j].Y := Path[i].Y - Base[j].Y;
+      end;
+    end;
+
+  SetLength(quad, 4);
+  SetLength(quads, (pathLen + delta) * (baseLen + 1));
+  for i := 0 to pathLen - 2 + delta do
+  begin
+    for j := 1 to baseLen - 1 do
+    begin
+      quad[0] := Result[i mod pathLen][j mod baseLen];
+      quad[1] := Result[(i+1) mod pathLen][j mod baseLen];
+      quad[2] := Result[(i+1) mod pathLen][(j+1) mod baseLen];
+      quad[3] := Result[i mod pathLen][(j+1) mod baseLen];
+      if not Orientation(quad) then quad := ReversePath(quad);
+      quads[i*baseLen + j] := copy(quad, 0, 4);
+    end;
+  end;
+
+  with TClipper.Create() do
+  try
+    AddPaths(quads, ptSubject, True);
+    Execute(ctUnion, Result, pftNonZero);
+  finally
+    Free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function MinkowkiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+begin
+  Result := Minkowki(Base, Path, true, IsClosed);
+end;
+//------------------------------------------------------------------------------
+
+function MinkowkiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+begin
+  Result := Minkowki(Base, Path, false, IsClosed);
 end;
 //------------------------------------------------------------------------------
 

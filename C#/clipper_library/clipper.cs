@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  26 October 2013                                                 *
+* Date      :  28 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -4679,6 +4679,61 @@ namespace ClipperLib
               result.RemoveAt(i -1);
           if (result.Count < 3) result.Clear();
           return result;
+      }
+      //------------------------------------------------------------------------------
+
+      internal static Paths Minkowki(Path poly, Path path, bool IsSum, bool IsClosed)
+      {
+        int delta = (IsClosed ? 1 : 0);
+        int polyCnt = poly.Count;
+        int pathCnt = path.Count;
+        Paths result = new Paths(pathCnt);
+        if (IsSum)
+          for (int i = 0; i < pathCnt; i++)
+          {
+            Path p = new Path(polyCnt);
+            foreach (IntPoint ip in poly)
+              p.Add(new IntPoint(path[i].X + ip.X, path[i].Y + ip.Y));
+            result.Add(p);
+          }
+        else
+          for (int i = 0; i < pathCnt; i++)
+          {
+            Path p = new Path(polyCnt);
+            foreach (IntPoint ip in poly)
+              p.Add(new IntPoint(path[i].X - ip.X, path[i].Y - ip.Y));
+            result.Add(p);
+          }
+
+        Paths quads = new Paths((pathCnt + delta) * (polyCnt + 1));
+        for (int i = 0; i <= pathCnt - 2 + delta; i++)
+          for (int j = 0; j <= polyCnt - 1; j++)
+          {
+            Path quad = new Path(4);
+            quad.Add(result[i % pathCnt][j % polyCnt]);
+            quad.Add(result[(i + 1) % pathCnt][j % polyCnt]);
+            quad.Add(result[(i + 1) % pathCnt][(j + 1) % polyCnt]);
+            quad.Add(result[i % pathCnt][(j + 1) % polyCnt]);
+            if (!Orientation(quad)) quad.Reverse();
+            quads.Add(quad);
+          }
+
+        Clipper c = new Clipper();
+        c.AddPaths(quads, PolyType.ptSubject, true);
+        c.Execute(ClipType.ctUnion, result, PolyFillType.pftNonZero, PolyFillType.pftNonZero);
+        return result;
+      }
+      //------------------------------------------------------------------------------
+
+      public static Paths MinkowkiSum(Path poly, Path path, bool IsClosed)
+      {
+        return Minkowki(poly, path, true, IsClosed);
+      }
+      //------------------------------------------------------------------------------
+
+      public static Paths MinkowkiDiff(Path poly, Path path, bool IsClosed)
+      {
+        return Minkowki(poly, path, false, IsClosed);
       }
       //------------------------------------------------------------------------------
 
