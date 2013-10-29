@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  29 October 2013                                                 *
+* Date      :  30 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -530,11 +530,10 @@ bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
   if (UseFullInt64Range) {
     do
     {
-      if ((((Pt.Y >= pp2->Pt.Y) && (Pt.Y < pp2->Prev->Pt.Y)) ||
-          ((Pt.Y >= pp2->Prev->Pt.Y) && (Pt.Y < pp2->Pt.Y))) &&
-          Int128(Pt.X - pp2->Pt.X) < 
-          Int128Mul(pp2->Prev->Pt.X - pp2->Pt.X, Pt.Y - pp2->Pt.Y) / 
-          Int128(pp2->Prev->Pt.Y - pp2->Pt.Y))
+      if (((pp2->Pt.Y > Pt.Y) != (pp2->Prev->Pt.Y > Pt.Y)) &&                     
+        (Int128(Pt.X - pp2->Pt.X) < 
+        Int128Mul(pp2->Prev->Pt.X - pp2->Pt.X, Pt.Y - pp2->Pt.Y) / 
+        Int128(pp2->Prev->Pt.Y - pp2->Pt.Y))) result = !result;
       pp2 = pp2->Next;
     }
     while (pp2 != pp);
@@ -543,10 +542,10 @@ bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
 #endif
   do
   {
-    if ((((pp2->Pt.Y <= Pt.Y) && (Pt.Y < pp2->Prev->Pt.Y)) ||
-      ((pp2->Prev->Pt.Y <= Pt.Y) && (Pt.Y < pp2->Pt.Y))) &&
-      (Pt.X < (pp2->Prev->Pt.X - pp2->Pt.X) * (Pt.Y - pp2->Pt.Y) /
-      (pp2->Prev->Pt.Y - pp2->Pt.Y) + pp2->Pt.X )) result = !result;
+    //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+    if (((pp2->Pt.Y > Pt.Y) != (pp2->Prev->Pt.Y > Pt.Y)) &&                     
+      ((Pt.X - pp2->Pt.X) < (pp2->Prev->Pt.X - pp2->Pt.X) * (Pt.Y - pp2->Pt.Y) / 
+      (pp2->Prev->Pt.Y - pp2->Pt.Y))) result = !result;
     pp2 = pp2->Next;
   }
   while (pp2 != pp);

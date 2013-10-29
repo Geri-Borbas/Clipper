@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  29 October 2013                                                 *
+* Date      :  30 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -637,9 +637,9 @@ namespace ClipperLib
       //------------------------------------------------------------------------------
 
       internal bool PointOnLineSegment(IntPoint pt, 
-          IntPoint linePt1, IntPoint linePt2, bool UseFullInt64Range)
+          IntPoint linePt1, IntPoint linePt2, bool UseFullRange)
       {
-        if (UseFullInt64Range)
+        if (UseFullRange)
           return ((pt.X == linePt1.X) && (pt.Y == linePt1.Y)) ||
             ((pt.X == linePt2.X) && (pt.Y == linePt2.Y)) ||
             (((pt.X > linePt1.X) == (pt.X < linePt2.X)) &&
@@ -656,12 +656,12 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal bool PointOnPolygon(IntPoint pt, OutPt pp, bool UseFullInt64Range)
+      internal bool PointOnPolygon(IntPoint pt, OutPt pp, bool UseFullRange)
       {
         OutPt pp2 = pp;
         while (true)
         {
-          if (PointOnLineSegment(pt, pp2.Pt, pp2.Next.Pt, UseFullInt64Range))
+          if (PointOnLineSegment(pt, pp2.Pt, pp2.Next.Pt, UseFullRange))
             return true;
           pp2 = pp2.Next;
           if (pp2 == pp) break;
@@ -670,20 +670,19 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal bool PointInPolygon(IntPoint pt, OutPt pp, bool UseFulllongRange)
+      internal bool PointInPolygon(IntPoint pt, OutPt pp, bool UseFullRange)
       {
         OutPt pp2 = pp;
         bool result = false;
-        if (UseFulllongRange)
+        if (UseFullRange)
         {
             do
             {
-              if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
-                  ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-                  new Int128(pt.X - pp2.Pt.X) <
-                  Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y) /
-                  new Int128(pp2.Prev.Pt.Y - pp2.Pt.Y))
-                result = !result; pp2 = pp2.Next;
+              if (((pp2.Pt.Y > pt.Y) != (pp2.Prev.Pt.Y > pt.Y)) && 
+                (new Int128(pt.X - pp2.Pt.X) < 
+                Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y) /
+                new Int128(pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
+              pp2 = pp2.Next;
             }
             while (pp2 != pp);
         }
@@ -691,9 +690,9 @@ namespace ClipperLib
         {
           do
           {
-            if ((((pp2.Pt.Y <= pt.Y) && (pt.Y < pp2.Prev.Pt.Y)) ||
-              ((pp2.Prev.Pt.Y <= pt.Y) && (pt.Y < pp2.Pt.Y))) &&
-              (pt.X - pp2.Pt.X < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) /
+            //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+            if (((pp2.Pt.Y > pt.Y) != (pp2.Prev.Pt.Y > pt.Y)) &&                     
+              ((pt.X - pp2.Pt.X) < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) / 
               (pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
             pp2 = pp2.Next;
           }
@@ -3968,20 +3967,20 @@ namespace ClipperLib
       //----------------------------------------------------------------------
 
 
-      private bool Poly2ContainsPoly1(OutPt outPt1, OutPt outPt2, bool UseFullInt64Range)
+      private bool Poly2ContainsPoly1(OutPt outPt1, OutPt outPt2, bool UseFullRange)
       {
           OutPt pt = outPt1;
 
           //Because the polygons may be touching, we need to find a vertex that
           //isn't touching the other polygon ...
-          if (PointOnPolygon(pt.Pt, outPt2, UseFullInt64Range))
+          if (PointOnPolygon(pt.Pt, outPt2, UseFullRange))
           {
               pt = pt.Next;
-              while (pt != outPt1 && PointOnPolygon(pt.Pt, outPt2, UseFullInt64Range))
+              while (pt != outPt1 && PointOnPolygon(pt.Pt, outPt2, UseFullRange))
                   pt = pt.Next;
               if (pt == outPt1) return true;
           }
-          return PointInPolygon(pt.Pt, outPt2, UseFullInt64Range);
+          return PointInPolygon(pt.Pt, outPt2, UseFullRange);
       }
       //----------------------------------------------------------------------
 

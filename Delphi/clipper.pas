@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.0                                                           *
-* Date      :  29 October 2013                                                 *
+* Date      :  30 October 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -974,9 +974,6 @@ function PointInPolygon(const Pt: TIntPoint;
   PP: POutPt; UseFullInt64Range: Boolean): Boolean;
 var
   Pp2: POutPt;
-{$IFNDEF use_int32}
-  A, B: TInt128;
-{$ENDIF}
 begin
   Result := False;
   Pp2 := PP;
@@ -984,23 +981,19 @@ begin
   if UseFullInt64Range then
   begin
     repeat
-      if (((Pp2.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Prev.Pt.Y)) or
-        ((Pp2.Prev.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Pt.Y))) then
-      begin
-        A := Int128(Pt.X - Pp2.Pt.X);
-        B := Int128Div( Int128Mul(Pp2.Prev.Pt.X - Pp2.Pt.X,
-          Pt.Y - Pp2.Pt.Y), Int128(Pp2.Prev.Pt.Y - Pp2.Pt.Y) );
-        if Int128LessThan(A, B) then Result := not Result;
-      end;
+      if ((pp2.Pt.Y > pt.Y) <> (pp2.Prev.Pt.Y > pt.Y)) and
+        Int128LessThan( Int128(pt.X - pp2.Pt.X),
+          Int128Div( Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y),
+            Int128(pp2.Prev.Pt.Y - pp2.Pt.Y)) ) then Result := not Result;
       Pp2 := Pp2.Next;
     until Pp2 = PP;
   end else
 {$ENDIF}
     repeat
-      if ((((Pp2.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Prev.Pt.Y)) or
-        ((Pp2.Prev.Pt.Y <= Pt.Y) and (Pt.Y < Pp2.Pt.Y))) and
-        (Pt.X < (Pp2.Prev.Pt.X - Pp2.Pt.X) * (Pt.Y - Pp2.Pt.Y) /
-        (Pp2.Prev.Pt.Y - Pp2.Pt.Y) + Pp2.Pt.X)) then Result := not Result;
+      //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+      if (((pp2.Pt.Y > pt.Y) <> (pp2.Prev.Pt.Y > pt.Y)) and
+        ((pt.X - pp2.Pt.X) < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) /
+        (pp2.Prev.Pt.Y - pp2.Pt.Y))) then Result := not Result;
       Pp2 := Pp2.Next;
     until Pp2 = PP;
 end;
