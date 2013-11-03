@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0                                                           *
-* Date      :  30 October 2013                                                 *
+* Version   :  6.0.1                                                           *
+* Date      :  3 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -43,10 +43,10 @@
 //#define use_int32
 
 //use_xyz: adds a Z member to IntPoint. Adds a minor cost to performance.
-//#define use_xyz
+#define use_xyz
 
 //UseLines: Enables line clipping. Adds a very minor cost to performance.
-//#define use_lines
+#define use_lines
 
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -483,7 +483,6 @@ namespace ClipperLib
     }
 }
 
-
   public struct IntRect
   {
     public cInt left;
@@ -518,72 +517,79 @@ namespace ClipperLib
   internal enum Direction {dRightToLeft, dLeftToRight};
     
   internal class TEdge {
-      public IntPoint Bot;
-      public IntPoint Curr;
-      public IntPoint Top;
-      public IntPoint Delta;
-      public double Dx;
-      public PolyType PolyTyp;
-      public EdgeSide Side;
-      public int WindDelta; //1 or -1 depending on winding direction
-      public int WindCnt;
-      public int WindCnt2; //winding count of the opposite polytype
-      public int OutIdx;
-      public TEdge Next;
-      public TEdge Prev;
-      public TEdge NextInLML;
-      public TEdge NextInAEL;
-      public TEdge PrevInAEL;
-      public TEdge NextInSEL;
-      public TEdge PrevInSEL;
+    internal IntPoint Bot;
+    internal IntPoint Curr;
+    internal IntPoint Top;
+    internal IntPoint Delta;
+    internal double Dx;
+    internal PolyType PolyTyp;
+    internal EdgeSide Side;
+    internal int WindDelta; //1 or -1 depending on winding direction
+    internal int WindCnt;
+    internal int WindCnt2; //winding count of the opposite polytype
+    internal int OutIdx;
+    internal TEdge Next;
+    internal TEdge Prev;
+    internal TEdge NextInLML;
+    internal TEdge NextInAEL;
+    internal TEdge PrevInAEL;
+    internal TEdge NextInSEL;
+    internal TEdge PrevInSEL;
   };
 
-  internal class IntersectNode
+  public class IntersectNode
   {
-      public TEdge Edge1;
-      public TEdge Edge2;
-      public IntPoint Pt;
-      public IntersectNode Next;
+      internal TEdge Edge1;
+      internal TEdge Edge2;
+      internal IntPoint Pt;
   };
+
+  public class MyIntersectNodeSort : IComparer<IntersectNode>
+  {
+    public int Compare(IntersectNode node1, IntersectNode node2)
+    {
+      return (int)(node2.Pt.Y - node1.Pt.Y);
+    }
+  }
 
   internal class LocalMinima
   {
-      public cInt Y;
-      public TEdge LeftBound;
-      public TEdge RightBound;
-      public LocalMinima Next;
+    internal cInt Y;
+    internal TEdge LeftBound;
+    internal TEdge RightBound;
+    internal LocalMinima Next;
   };
 
   internal class Scanbeam
   {
-      public cInt Y;
-      public Scanbeam Next;
+    internal cInt Y;
+    internal Scanbeam Next;
   };
 
   internal class OutRec
   {
-      public int Idx;
-      public bool IsHole;
-      public bool IsOpen;
-      public OutRec FirstLeft; //see comments in clipper.pas
-      public OutPt Pts;
-      public OutPt BottomPt;
-      public PolyNode PolyNode;
+    internal int Idx;
+    internal bool IsHole;
+    internal bool IsOpen;
+    internal OutRec FirstLeft; //see comments in clipper.pas
+    internal OutPt Pts;
+    internal OutPt BottomPt;
+    internal PolyNode PolyNode;
   };
 
   internal class OutPt
   {
-      public int Idx;
-      public IntPoint Pt;
-      public OutPt Next;
-      public OutPt Prev;
+    internal int Idx;
+    internal IntPoint Pt;
+    internal OutPt Next;
+    internal OutPt Prev;
   };
 
   internal class Join
   {
-    public OutPt OutPt1;
-    public OutPt OutPt2;
-    public IntPoint OffPt;
+    internal OutPt OutPt1;
+    internal OutPt OutPt2;
+    internal IntPoint OffPt;
   };
 
   public class ClipperBase
@@ -1446,7 +1452,8 @@ namespace ClipperLib
       private Scanbeam m_Scanbeam;
       private TEdge m_ActiveEdges;
       private TEdge m_SortedEdges;
-      private IntersectNode m_IntersectNodes;
+      private List<IntersectNode> m_IntersectList;
+      IComparer<IntersectNode> m_IntersectNodeComparer;
       private bool m_ExecuteLocked;
       private PolyFillType m_ClipFillType;
       private PolyFillType m_SubjFillType;
@@ -1462,7 +1469,8 @@ namespace ClipperLib
           m_Scanbeam = null;
           m_ActiveEdges = null;
           m_SortedEdges = null;
-          m_IntersectNodes = null;
+          m_IntersectList = new List<IntersectNode>();
+          m_IntersectNodeComparer = new MyIntersectNodeSort();
           m_ExecuteLocked = false;
           m_UsingPolyTree = false;
           m_PolyOuts = new List<OutRec>();
@@ -3152,15 +3160,15 @@ namespace ClipperLib
         if( m_ActiveEdges == null ) return true;
         try {
           BuildIntersectList(botY, topY);
-          if ( m_IntersectNodes == null) return true;
-          if (m_IntersectNodes.Next == null || FixupIntersectionOrder()) 
+          if ( m_IntersectList.Count == 0) return true;
+          if (m_IntersectList.Count == 1 || FixupIntersectionOrder()) 
               ProcessIntersectList();
           else 
               return false;
         }
         catch {
           m_SortedEdges = null;
-          DisposeIntersectNodes();
+          m_IntersectList.Clear();
           throw new ClipperException("ProcessIntersections error");
         }
         m_SortedEdges = null;
@@ -3204,7 +3212,13 @@ namespace ClipperLib
                       pt.X = TopX(eNext, botY); else
                       pt.X = TopX(e, botY);
                 }
-                InsertIntersectNode(e, eNext, pt);
+
+                IntersectNode newNode = new IntersectNode();
+                newNode.Edge1 = e;
+                newNode.Edge2 = eNext;
+                newNode.Pt = pt;
+                m_IntersectList.Add(newNode);
+
                 SwapPositionsInSEL(e, eNext);
                 isModified = true;
             }
@@ -3225,44 +3239,53 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
+      private static int IntersectNodeSort(IntersectNode node1, IntersectNode node2)
+      {
+        //the following typecast is safe because the differences in Pt.Y will
+        //be limited to the height of the scanbeam.
+        return (int)(node2.Pt.Y - node1.Pt.Y); 
+      }
+      //------------------------------------------------------------------------------
+
       private bool FixupIntersectionOrder()
       {
-          //pre-condition: intersections are sorted bottom-most (then left-most) first.
-          //Now it's crucial that intersections are made only between adjacent edges,
-          //so to ensure this the order of intersections may need adjusting ...
-          IntersectNode inode = m_IntersectNodes;
-          CopyAELToSEL();
-          while (inode != null)
+        //pre-condition: intersections are sorted bottom-most first.
+        //Now it's crucial that intersections are made only between adjacent edges,
+        //so to ensure this the order of intersections may need adjusting ...
+        m_IntersectList.Sort(m_IntersectNodeComparer);
+
+        CopyAELToSEL();
+        int cnt = m_IntersectList.Count;
+        for (int i = 0; i < cnt; i++)
+        {
+          if (!EdgesAdjacent(m_IntersectList[i]))
           {
-              if (!EdgesAdjacent(inode))
-              {
-                  IntersectNode nextNode = inode.Next;
-                  while (nextNode != null && !EdgesAdjacent(nextNode))
-                      nextNode = nextNode.Next;
-                  if (nextNode == null)
-                      return false;
-                  SwapIntersectNodes(inode, nextNode);
-              }
-              SwapPositionsInSEL(inode.Edge1, inode.Edge2);
-              inode = inode.Next;
+            int j = i + 1;
+            while (j < cnt && !EdgesAdjacent(m_IntersectList[j])) j++;
+            if (j == cnt) return false;
+
+            IntersectNode tmp = m_IntersectList[i];
+            m_IntersectList[i] = m_IntersectList[j];
+            m_IntersectList[j] = tmp;
+
           }
+          SwapPositionsInSEL(m_IntersectList[i].Edge1, m_IntersectList[i].Edge2);
+        }
           return true;
       }
       //------------------------------------------------------------------------------
 
       private void ProcessIntersectList()
       {
-          while (m_IntersectNodes != null)
+        for (int i = 0; i < m_IntersectList.Count; i++)
+        {
+          IntersectNode iNode = m_IntersectList[i];
           {
-          IntersectNode iNode = m_IntersectNodes.Next;
-          {
-            IntersectEdges( m_IntersectNodes.Edge1 ,
-              m_IntersectNodes.Edge2 , m_IntersectNodes.Pt, true);
-            SwapPositionsInAEL( m_IntersectNodes.Edge1 , m_IntersectNodes.Edge2 );
+            IntersectEdges(iNode.Edge1, iNode.Edge2, iNode.Pt, true);
+            SwapPositionsInAEL(iNode.Edge1, iNode.Edge2);
           }
-          m_IntersectNodes = null;
-          m_IntersectNodes = iNode;
         }
+        m_IntersectList.Clear();
       }
       //------------------------------------------------------------------------------
 
@@ -3277,44 +3300,6 @@ namespace ClipperLib
           if (currentY == edge.Top.Y)
               return edge.Top.X;
           return edge.Bot.X + Round(edge.Dx *(currentY - edge.Bot.Y));
-      }
-      //------------------------------------------------------------------------------
-
-      private void InsertIntersectNode(TEdge e1, TEdge e2, IntPoint pt)
-      {
-        IntersectNode newNode = new IntersectNode();
-        newNode.Edge1 = e1;
-        newNode.Edge2 = e2;
-        newNode.Pt = pt;
-        newNode.Next = null;
-        if (m_IntersectNodes == null) m_IntersectNodes = newNode;
-        else if (newNode.Pt.Y > m_IntersectNodes.Pt.Y)
-        {
-          newNode.Next = m_IntersectNodes;
-          m_IntersectNodes = newNode;
-        }
-        else
-        {
-          IntersectNode iNode = m_IntersectNodes;
-          while (iNode.Next != null && newNode.Pt.Y < iNode.Next.Pt.Y)
-              iNode = iNode.Next;
-          newNode.Next = iNode.Next;
-          iNode.Next = newNode;
-        }
-      }
-      //------------------------------------------------------------------------------
-
-      private void SwapIntersectNodes(IntersectNode int1, IntersectNode int2)
-      {
-          TEdge e1 = int1.Edge1;
-          TEdge e2 = int1.Edge2;
-          IntPoint p = new IntPoint(int1.Pt);
-          int1.Edge1 = int2.Edge1;
-          int1.Edge2 = int2.Edge2;
-          int1.Pt = int2.Pt;
-          int2.Edge1 = e1;
-          int2.Edge2 = e2;
-          int2.Pt = p;
       }
       //------------------------------------------------------------------------------
 
@@ -3387,17 +3372,6 @@ namespace ClipperLib
         }
         else
             return true;
-      }
-      //------------------------------------------------------------------------------
-
-      private void DisposeIntersectNodes()
-      {
-        while ( m_IntersectNodes != null )
-        {
-          IntersectNode iNode = m_IntersectNodes.Next;
-          m_IntersectNodes = null;
-          m_IntersectNodes = iNode;
-        }
       }
       //------------------------------------------------------------------------------
 
@@ -4649,37 +4623,83 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public static Path CleanPolygon(Path path,
+      private static OutPt ExcludeOp(OutPt op)
+      {
+        OutPt result = op.Prev;
+        result.Next = op.Next;
+        op.Next.Prev = result;
+        result.Idx = 0;
+        return result;
+      }
+      //------------------------------------------------------------------------------
+
+      public static Path CleanPolygon(Path path, double distance = 1.415)
+      {
+        //distance = proximity in units/pixels below which vertices will be stripped. 
+        //Default ~= sqrt(2) so when adjacent vertices or semi-adjacent vertices have 
+        //both x & y coords within 1 unit, then the second vertex will be stripped.
+
+        int cnt = path.Count;
+
+        if (cnt == 0) return new Path();
+
+        OutPt [] outPts = new OutPt[cnt];
+        for (int i = 0; i < cnt; ++i) outPts[i] = new OutPt();
+
+        for (int i = 0; i < cnt; ++i)
+        {
+          outPts[i].Pt = path[i];
+          outPts[i].Next = outPts[(i + 1) % cnt];
+          outPts[i].Next.Prev = outPts[i];
+          outPts[i].Idx = 0;
+        }
+
+        double distSqrd = distance * distance;
+        OutPt op = outPts[0];
+        while (op.Idx == 0 && op.Next != op.Prev)
+        {
+          if (PointsAreClose(op.Pt, op.Prev.Pt, distSqrd))
+          {
+            op = ExcludeOp(op);
+            cnt--;
+          }
+          else if (PointsAreClose(op.Prev.Pt, op.Next.Pt, distSqrd))
+          {
+            ExcludeOp(op.Next);
+            op = ExcludeOp(op);
+            cnt -= 2;
+          }
+          else if (SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, distSqrd))
+          {
+            op = ExcludeOp(op);
+            cnt--;
+          }
+          else
+          {
+            op.Idx = 1;
+            op = op.Next;
+          }
+        }
+
+        if (cnt < 3) cnt = 0;
+        Path result = new Path(cnt);
+        for (int i = 0; i < cnt; ++i)
+        {
+          result.Add(op.Pt);
+          op = op.Next;
+        }
+        outPts = null;
+        return result;
+      }
+      //------------------------------------------------------------------------------
+
+      public static Paths CleanPolygons(Paths polys,
           double distance = 1.415)
       {
-          //distance = proximity in units/pixels below which vertices
-          //will be stripped. Default ~= sqrt(2) so when adjacent
-          //vertices have both x & y coords within 1 unit, then
-          //the second vertex will be stripped.
-          double distSqrd = (distance * distance);
-          int highI = path.Count -1;
-          Path result = new Path(highI + 1);
-          while (highI > 0 && PointsAreClose(path[highI], path[0], distSqrd)) highI--;
-          if (highI < 2) return result;
-          IntPoint pt = path[highI];
-          int i = 0;
-          for (;;)
-          {
-              while (i < highI && PointsAreClose(pt, path[i], distSqrd)) i+=2;
-              int i2 = i;
-              while (i < highI && (PointsAreClose(path[i], path[i + 1], distSqrd) ||
-                  SlopesNearCollinear(pt, path[i], path[i + 1], distSqrd))) i++;
-              if (i >= highI) break;
-              else if (i != i2) continue;
-              pt = path[i++];
-              result.Add(pt);
-          }
-          if (i <= highI) result.Add(path[i]);
-          i = result.Count;
-          if (i > 2 && SlopesNearCollinear(result[i - 2], result[i - 1], result[0], distSqrd)) 
-              result.RemoveAt(i -1);
-          if (result.Count < 3) result.Clear();
-          return result;
+        Paths result = new Paths(polys.Count);
+        for (int i = 0; i < polys.Count; i++)
+          result.Add(CleanPolygon(polys[i], distance));
+        return result;
       }
       //------------------------------------------------------------------------------
 
@@ -4735,16 +4755,6 @@ namespace ClipperLib
       public static Paths MinkowkiDiff(Path poly, Path path, bool IsClosed)
       {
         return Minkowki(poly, path, false, IsClosed);
-      }
-      //------------------------------------------------------------------------------
-
-      public static Paths CleanPolygons(Paths polys,
-          double distance = 1.415)
-      {
-          Paths result = new Paths(polys.Count);
-          for (int i = 0; i < polys.Count; i++)
-              result.Add(CleanPolygon(polys[i], distance));
-          return result;
       }
       //------------------------------------------------------------------------------
 

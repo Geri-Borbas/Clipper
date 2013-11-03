@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0                                                           *
-* Date      :  30 October 2013                                                 *
+* Version   :  6.0.1                                                           *
+* Date      :  3 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -34,7 +34,7 @@
 #ifndef clipper_hpp
 #define clipper_hpp
 
-#define CLIPPER_VERSION "6.0.0"
+#define CLIPPER_VERSION "6.0.1"
 
 //use_int32: When enabled 32bit ints are used instead of 64bit ints. This
 //improve performance but coordinate values are limited to the range +/- 46340
@@ -142,9 +142,9 @@ public:
     bool IsOpen() const;
     int ChildCount() const;
 private:
+    unsigned Index; //node index in Parent.Childs
     bool m_IsOpen;
     PolyNode* GetNextSiblingUp() const;
-    unsigned Index; //node index in Parent.Childs
     void AddChild(PolyNode& child);
     friend class Clipper; //to access Index
 };
@@ -215,6 +215,8 @@ struct Join;
 typedef std::vector < OutRec* > PolyOutList;
 typedef std::vector < TEdge* > EdgeList;
 typedef std::vector < Join* > JoinList;
+typedef std::vector < IntersectNode* > IntersectList;
+
 
 //------------------------------------------------------------------------------
 
@@ -285,11 +287,11 @@ private:
   PolyOutList       m_PolyOuts;
   JoinList          m_Joins;
   JoinList          m_GhostJoins;
+  IntersectList     m_IntersectList;
   ClipType          m_ClipType;
   std::set< cInt, std::greater<cInt> > m_Scanbeam;
   TEdge           *m_ActiveEdges;
   TEdge           *m_SortedEdges;
-  IntersectNode   *m_IntersectNodes;
   bool             m_ExecuteLocked;
   PolyFillType     m_ClipFillType;
   PolyFillType     m_SubjFillType;
@@ -330,7 +332,6 @@ private:
   void DisposeAllOutRecs();
   void DisposeOutRec(PolyOutList::size_type index);
   bool ProcessIntersections(const cInt botY, const cInt topY);
-  void InsertIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &pt);
   void BuildIntersectList(const cInt botY, const cInt topY);
   void ProcessIntersectList();
   void ProcessEdgesAtTopOfScanbeam(const cInt topY);

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0                                                           *
-* Date      :  30 October 2013                                                 *
+* Version   :  6.0.1                                                           *
+* Date      :  3 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -198,7 +198,6 @@ type
     Edge1: PEdge;
     Edge2: PEdge;
     Pt   : TIntPoint;
-    Next : PIntersectNode;
   end;
 
   PLocalMinima = ^TLocalMinima;
@@ -279,11 +278,11 @@ type
     FPolyOutList      : TList;
     FJoinList         : TList;
     FGhostJoinList    : TList;
+    FIntersectList    : TList;
     FClipType         : TClipType;
     FScanbeam         : PScanbeam; //scanbeam list
     FActiveEdges      : PEdge;     //active Edge list
     FSortedEdges      : PEdge;     //used for temporary sorting
-    FIntersectNodes   : PIntersectNode;
     FClipFillType     : TPolyFillType;
     FSubjFillType     : TPolyFillType;
     FExecuteLocked    : Boolean;
@@ -306,7 +305,6 @@ type
     procedure SwapPositionsInSEL(E1, E2: PEdge);
     procedure ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
     procedure ProcessHorizontals(IsTopOfScanbeam: Boolean);
-    procedure InsertIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
     function ProcessIntersections(const BotY, TopY: cInt): Boolean;
     procedure BuildIntersectList(const BotY, TopY: cInt);
     procedure ProcessIntersectList;
@@ -1926,6 +1924,7 @@ begin
   FJoinList := TList.Create;
   FGhostJoinList := TList.Create;
   FPolyOutList := TList.Create;
+  FIntersectList := TList.Create;
   if ioReverseSolution in InitOptions then
     FReverseOutput := true;
   if ioStrictlySimple in InitOptions then
@@ -1942,6 +1941,7 @@ begin
   FJoinList.Free;
   FGhostJoinList.Free;
   FPolyOutList.Free;
+  FIntersectList.Free;
 end;
 //------------------------------------------------------------------------------
 
@@ -3557,9 +3557,10 @@ begin
   Result := True;
   try
     BuildIntersectList(BotY, TopY);
-    if (FIntersectNodes = nil) then Exit;
-    if (FIntersectNodes.Next = nil) or FixupIntersectionOrder then
-      ProcessIntersectList
+    if (FIntersectList.Count = 0) then
+      Exit
+    else if FixupIntersectionOrder then
+      ProcessIntersectList()
     else
       Result := False;
   finally
@@ -3571,14 +3572,11 @@ end;
 
 procedure TClipper.DisposeIntersectNodes;
 var
-  N: PIntersectNode;
+  I: Integer;
 begin
-  while Assigned(fIntersectNodes) do
-  begin
-    N := FIntersectNodes.Next;
-    dispose(fIntersectNodes);
-    FIntersectNodes := N;
-  end;
+  for I := 0 to FIntersectList.Count - 1 do
+    Dispose(PIntersectNode(FIntersectList[I]));
+  FIntersectList.Clear;
 end;
 //------------------------------------------------------------------------------
 
@@ -3587,6 +3585,7 @@ var
   E, eNext: PEdge;
   Pt: TIntPoint;
   IsModified: Boolean;
+  NewNode: PIntersectNode;
 begin
   if not Assigned(fActiveEdges) then Exit;
 
@@ -3620,7 +3619,13 @@ begin
             Pt.X := TopX(eNext, botY) else
             Pt.X := TopX(E, botY);
         end;
-        InsertIntersectNode(E, eNext, Pt);
+
+        new(NewNode);
+        NewNode.Edge1 := E;
+        NewNode.Edge2 := eNext;
+        NewNode.Pt := Pt;
+        FIntersectList.Add(NewNode);
+
         SwapPositionsInSEL(E, eNext);
         IsModified := True;
       end else
@@ -3633,47 +3638,20 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.InsertIntersectNode(E1, E2: PEdge; const Pt: TIntPoint);
-var
-  Node, NewNode: PIntersectNode;
-begin
-  new(NewNode);
-  NewNode.Edge1 := E1;
-  NewNode.Edge2 := E2;
-  NewNode.Pt := Pt;
-  NewNode.Next := nil;
-  if not Assigned(fIntersectNodes) then
-    FIntersectNodes := NewNode
-  else if NewNode.Pt.Y > FIntersectNodes.Pt.Y then
-  begin
-    NewNode.Next := FIntersectNodes;
-    FIntersectNodes := NewNode;
-  end else
-  begin
-    Node := FIntersectNodes;
-    while Assigned(Node.Next) and (NewNode.Pt.Y <= Node.Next.Pt.Y) do
-      Node := Node.Next;
-    NewNode.Next := Node.Next;
-    Node.Next := NewNode;
-  end;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.ProcessIntersectList;
 var
-  Node: PIntersectNode;
+  I: Integer;
 begin
-  while Assigned(fIntersectNodes) do
+  for I := 0 to FIntersectList.Count - 1 do
   begin
-    Node := FIntersectNodes.Next;
-    with FIntersectNodes^ do
+    with PIntersectNode(FIntersectList[I])^ do
     begin
       IntersectEdges(Edge1, Edge2, Pt, True);
       SwapPositionsInAEL(Edge1, Edge2);
     end;
-    dispose(fIntersectNodes);
-    FIntersectNodes := Node;
+    dispose(PIntersectNode(FIntersectList[I]));
   end;
+  FIntersectList.Clear;
 end;
 //------------------------------------------------------------------------------
 
@@ -3990,47 +3968,44 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure SwapIntersectNodes(Int1, Int2: PIntersectNode); {$IFDEF INLINING} inline; {$ENDIF}
-var
-  Int: TIntersectNode;
+function IntersectListSort(Node1, Node2: Pointer): Integer;
 begin
-  //just swap the contents (because fIntersectNodes is a single-linked-list)
-  Int := Int1^; //gets a copy of Int1
-  Int1.Edge1 := Int2.Edge1;
-  Int1.Edge2 := Int2.Edge2;
-  Int1.Pt := Int2.Pt;
-  Int2.Edge1 := Int.Edge1;
-  Int2.Edge2 := Int.Edge2;
-  Int2.Pt := Int.Pt;
+  Result := PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y;
 end;
 //------------------------------------------------------------------------------
 
 function TClipper.FixupIntersectionOrder: Boolean;
 var
-  Inode, NextNode: PIntersectNode;
+  I, J, Cnt: Integer;
+  Node: PIntersectNode;
 begin
   //pre-condition: intersections are sorted bottom-most first.
   //Now it's crucial that intersections are made only between adjacent edges,
   //and to ensure this the order of intersections may need adjusting ...
   Result := True;
-  Inode := FIntersectNodes;
+  Cnt := FIntersectList.Count;
+  if Cnt < 2 then exit;
+
   CopyAELToSEL;
-  while Assigned(Inode) do
+  FIntersectList.Sort(IntersectListSort);
+  for I := 0 to Cnt - 1 do
   begin
-    if not EdgesAdjacent(Inode) then
+    if not EdgesAdjacent(FIntersectList[I]) then
     begin
-      NextNode := Inode.Next;
-      while (assigned(NextNode) and not EdgesAdjacent(NextNode)) do
-        NextNode := NextNode.Next;
-      if not assigned(NextNode) then
+      J := I + 1;
+      while (J < Cnt) and not EdgesAdjacent(FIntersectList[J]) do inc(J);
+      if J = Cnt then
       begin
         Result := False;
         Exit; //error!!
       end;
-      SwapIntersectNodes(Inode, NextNode);
+      //Swap IntersectNodes ...
+      Node := FIntersectList[I];
+      FIntersectList[I] := FIntersectList[J];
+      FIntersectList[J] := Node;
     end;
-    SwapPositionsInSEL(Inode.Edge1, Inode.Edge2);
-    Inode := Inode.Next;
+    with PIntersectNode(FIntersectList[I])^ do
+      SwapPositionsInSEL(Edge1, Edge2);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -4984,7 +4959,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SlopesNearCollinear(const Pt1, Pt2, Pt3: TIntPoint; DistSqrd: Double): Boolean;
+function SlopesNearCollinear(const Pt1, Pt2, Pt3: TIntPoint;
+  DistSqrd: Double): Boolean;
 var
   Cpol: TDoublePoint;
   Dx, Dy: Double;
@@ -5007,51 +4983,70 @@ end;
 
 function CleanPolygon(const Poly: TPath; Distance: Double = 1.415): TPath;
 var
-  I, I2, K, HighI: Integer;
+  I, Len: Integer;
   DistSqrd: double;
-  Pt: TIntPoint;
+  OutPts: array of TOutPt;
+  op: POutPt;
+
+  function ExcludeOp(op: POutPt): POutPt;
+  begin
+    Result := op.Prev;
+    Result.Next := op.Next;
+    op.Next.Prev := Result;
+    Result.Idx := 0;
+  end;
+
 begin
   //Distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2) so when adjacent
   //vertices have both x & y coords within 1 unit, then
   //the second vertex will be stripped.
   DistSqrd := Round(Distance * Distance);
-  HighI := High(Poly);
-  while (HighI > 0) and PointsAreClose(Poly[HighI], Poly[0], DistSqrd) do
-    Dec(HighI);
-  if (HighI < 2) then
+  Result := nil;
+  Len := Length(Poly);
+  if Len = 0 then Exit;
+
+  SetLength(OutPts, Len);
+  for I := 0 to Len -1 do
   begin
-    Result := nil;
-    Exit;
-  end;
-  SetLength(Result, HighI +1);
-  Pt := Poly[HighI];
-  I := 0;
-  K := 0;
-  while true do
-  begin
-    while (I < HighI) and PointsAreClose(Pt, Poly[I+1], DistSqrd) do inc(I,2);
-    I2 := I;
-    while (I < HighI) and (PointsAreClose(Poly[I], Poly[I+1], DistSqrd) or
-      SlopesNearCollinear(Pt, Poly[I], Poly[I+1], DistSqrd)) do inc(I);
-    if I >= highI then Break
-    else if I <> I2 then Continue;
-    Pt := Poly[I];
-    inc(I);
-    Result[K] := Pt;
-    inc(K);
+    OutPts[I].Pt := Poly[I];
+    OutPts[I].Next := @OutPts[(I + 1) mod Len];
+    OutPts[I].Next.Prev := @OutPts[I];
+    OutPts[I].Idx := 0;
   end;
 
-  if (I <= HighI) then
+  op := @OutPts[0];
+  while (op.Idx = 0) and (op.Next <> op.Prev) do
   begin
-    Result[K] := Poly[I];
-    inc(K);
+    if PointsAreClose(op.Pt, op.Prev.Pt, DistSqrd) then
+    begin
+      op := ExcludeOp(op);
+      Dec(Len);
+    end else if PointsAreClose(op.Prev.Pt, op.Next.Pt, DistSqrd) then
+    begin
+      ExcludeOp(op.Next);
+      op := ExcludeOp(op);
+      Dec(Len, 2);
+    end
+    else if SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, DistSqrd) then
+    begin
+      op := ExcludeOp(op);
+      Dec(Len);
+    end
+    else
+    begin
+      op.Idx := 1;
+      op := op.Next;
+    end;
   end;
 
-  if (K > 2) and SlopesNearCollinear(Result[K -2],
-      Result[K -1], Result[0], DistSqrd) then Dec(K);
-  if (K < 3) then Result := nil
-  else if (K <= HighI) then SetLength(Result, K);
+  if Len < 3 then Len := 0;
+  SetLength(Result, Len);
+  for I := 0 to Len -1 do
+  begin
+    Result[I] := op.Pt;
+    op := op.Next;
+  end;
 end;
 //------------------------------------------------------------------------------
 

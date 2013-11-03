@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.0                                                           *
-* Date      :  30 October 2013                                                 *
+* Version   :  6.0.1                                                           *
+* Date      :  3 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -94,7 +94,6 @@ struct IntersectNode {
   TEdge          *Edge1;
   TEdge          *Edge2;
   IntPoint        Pt;
-  IntersectNode  *Next;
 };
 
 struct LocalMinima {
@@ -1568,7 +1567,6 @@ Clipper::Clipper(int initOptions) : ClipperBase() //constructor
 {
   m_ActiveEdges = 0;
   m_SortedEdges = 0;
-  m_IntersectNodes = 0;
   m_ExecuteLocked = false;
   m_UseFullRange = false;
   m_ReverseOutput = ((initOptions & ioReverseSolution) != 0);
@@ -2840,10 +2838,12 @@ void Clipper::PrepareHorzJoins(TEdge* horzEdge, bool isTopOfScanbeam)
   //we need to create 'ghost' Join records of 'contrubuting' horizontals that
   //we can compare with horizontals at the bottom of the next SB.
   if (isTopOfScanbeam) 
+  {
     if (outPt->Pt == horzEdge->Top)
       AddGhostJoin(outPt, horzEdge->Bot); 
     else
       AddGhostJoin(outPt, horzEdge->Top);
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -3009,8 +3009,9 @@ bool Clipper::ProcessIntersections(const cInt botY, const cInt topY)
   if( !m_ActiveEdges ) return true;
   try {
     BuildIntersectList(botY, topY);
-    if (!m_IntersectNodes) return true;
-    if (!m_IntersectNodes->Next || FixupIntersectionOrder()) ProcessIntersectList();
+    size_t IlSize = m_IntersectList.size();
+    if (IlSize == 0) return true;
+    if (IlSize == 1 || FixupIntersectionOrder()) ProcessIntersectList();
     else return false;
   }
   catch(...) 
@@ -3026,12 +3027,9 @@ bool Clipper::ProcessIntersections(const cInt botY, const cInt topY)
 
 void Clipper::DisposeIntersectNodes()
 {
-  while ( m_IntersectNodes )
-  {
-    IntersectNode* iNode = m_IntersectNodes->Next;
-    delete m_IntersectNodes;
-    m_IntersectNodes = iNode;
-  }
+  for (size_t i = 0; i < m_IntersectList.size(); ++i )
+    delete m_IntersectList[i];
+  m_IntersectList.clear();
 }
 //------------------------------------------------------------------------------
 
@@ -3071,7 +3069,13 @@ void Clipper::BuildIntersectList(const cInt botY, const cInt topY)
               Pt.X = TopX(*eNext, botY); else
               Pt.X = TopX(*e, botY);
         }
-        InsertIntersectNode( e, eNext, Pt );
+
+        IntersectNode * newNode = new IntersectNode;
+        newNode->Edge1 = e;
+        newNode->Edge2 = eNext;
+        newNode->Pt = Pt;
+        m_IntersectList.push_back(newNode);
+
         SwapPositionsInSEL(e, eNext);
         isModified = true;
       }
@@ -3086,43 +3090,55 @@ void Clipper::BuildIntersectList(const cInt botY, const cInt topY)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::InsertIntersectNode(TEdge *e1, TEdge *e2, const IntPoint &Pt)
-{
-  IntersectNode* newNode = new IntersectNode;
-  newNode->Edge1 = e1;
-  newNode->Edge2 = e2;
-  newNode->Pt = Pt;
-  newNode->Next = 0;
-  if( !m_IntersectNodes ) m_IntersectNodes = newNode;
-  else if(newNode->Pt.Y > m_IntersectNodes->Pt.Y )
-  {
-    newNode->Next = m_IntersectNodes;
-    m_IntersectNodes = newNode;
-  }
-  else
-  {
-    IntersectNode* iNode = m_IntersectNodes;
-    while(iNode->Next  && newNode->Pt.Y <= iNode->Next->Pt.Y)
-      iNode = iNode->Next;
-    newNode->Next = iNode->Next;
-    iNode->Next = newNode;
-  }
-}
-//------------------------------------------------------------------------------
 
 void Clipper::ProcessIntersectList()
 {
-  while( m_IntersectNodes )
+  for (size_t i = 0; i < m_IntersectList.size(); ++i)
   {
-    IntersectNode* iNode = m_IntersectNodes->Next;
+    IntersectNode* iNode = m_IntersectList[i];
     {
-      IntersectEdges( m_IntersectNodes->Edge1 ,
-        m_IntersectNodes->Edge2 , m_IntersectNodes->Pt, true);
-      SwapPositionsInAEL( m_IntersectNodes->Edge1 , m_IntersectNodes->Edge2 );
+      IntersectEdges( iNode->Edge1, iNode->Edge2, iNode->Pt, true);
+      SwapPositionsInAEL( iNode->Edge1 , iNode->Edge2 );
     }
-    delete m_IntersectNodes;
-    m_IntersectNodes = iNode;
+    delete iNode;
   }
+  m_IntersectList.clear();
+}
+//------------------------------------------------------------------------------
+
+bool IntersectListSort(IntersectNode* node1, IntersectNode* node2)
+{
+  return node2->Pt.Y < node1->Pt.Y;
+}
+//------------------------------------------------------------------------------
+
+inline bool EdgesAdjacent(const IntersectNode &inode)
+{
+  return (inode.Edge1->NextInSEL == inode.Edge2) ||
+    (inode.Edge1->PrevInSEL == inode.Edge2);
+}
+//------------------------------------------------------------------------------
+
+bool Clipper::FixupIntersectionOrder()
+{
+  //pre-condition: intersections are sorted Bottom-most first.
+  //Now it's crucial that intersections are made only between adjacent edges,
+  //so to ensure this the order of intersections may need adjusting ...
+  CopyAELToSEL();
+  std::sort(m_IntersectList.begin(), m_IntersectList.end(), IntersectListSort);
+  size_t cnt = m_IntersectList.size();
+  for (size_t i = 0; i < cnt; ++i) 
+  {
+    if (!EdgesAdjacent(*m_IntersectList[i]))
+    {
+      size_t j = i + 1;
+      while (j < cnt && !EdgesAdjacent(*m_IntersectList[j])) j++;
+      if (j == cnt)  return false;
+      std::swap(m_IntersectList[i], m_IntersectList[j]);
+    }
+    SwapPositionsInSEL(m_IntersectList[i]->Edge1, m_IntersectList[i]->Edge2);
+  }
+  return true;
 }
 //------------------------------------------------------------------------------
 
@@ -3403,38 +3419,6 @@ void SwapIntersectNodes(IntersectNode &int1, IntersectNode &int2)
   int2.Edge1 = inode.Edge1;
   int2.Edge2 = inode.Edge2;
   int2.Pt = inode.Pt;
-}
-//------------------------------------------------------------------------------
-
-inline bool EdgesAdjacent(const IntersectNode &inode)
-{
-  return (inode.Edge1->NextInSEL == inode.Edge2) ||
-    (inode.Edge1->PrevInSEL == inode.Edge2);
-}
-//------------------------------------------------------------------------------
-
-bool Clipper::FixupIntersectionOrder()
-{
-  //pre-condition: intersections are sorted Bottom-most (then Left-most) first.
-  //Now it's crucial that intersections are made only between adjacent edges,
-  //so to ensure this the order of intersections may need adjusting ...
-  IntersectNode *inode = m_IntersectNodes;  
-  CopyAELToSEL();
-  while (inode) 
-  {
-    if (!EdgesAdjacent(*inode))
-    {
-      IntersectNode *nextNode = inode->Next;
-      while (nextNode && !EdgesAdjacent(*nextNode))
-        nextNode = nextNode->Next;
-      if (!nextNode) 
-        return false;
-      SwapIntersectNodes(*inode, *nextNode);
-    }
-    SwapPositionsInSEL(inode->Edge1, inode->Edge2);
-    inode = inode->Next;
-  }
-  return true;
 }
 //------------------------------------------------------------------------------
 
@@ -4392,35 +4376,73 @@ bool PointsAreClose(IntPoint pt1, IntPoint pt2, double distSqrd)
 }
 //------------------------------------------------------------------------------
 
+OutPt* ExcludeOp(OutPt* op)
+{
+  OutPt* result = op->Prev;
+  result->Next = op->Next;
+  op->Next->Prev = result;
+  result->Idx = 0;
+  return result;
+}
+//------------------------------------------------------------------------------
+
 void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
 {
   //distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2).
-  int highI = in_poly.size() -1;
-  double distSqrd = distance * distance;
-  while (highI > 0 && PointsAreClose(in_poly[highI], in_poly[0], distSqrd)) highI--;
-  if (highI < 2) { out_poly.clear(); return; }
   
-  if (&in_poly != &out_poly) 
-    out_poly.resize(highI + 1);
-
-  IntPoint Pt = in_poly[highI];
-  int i = 0, k = 0;
-  for (;;)
+  size_t size = in_poly.size();
+  
+  if (size == 0) 
   {
-    while (i < highI && PointsAreClose(Pt, in_poly[i+1], distSqrd)) i+=2;
-    int i2 = i;
-    while (i < highI && (PointsAreClose(in_poly[i], in_poly[i+1], distSqrd) ||
-      SlopesNearCollinear(Pt, in_poly[i], in_poly[i+1], distSqrd))) i++;
-    if (i >= highI) break;
-    else if (i != i2) continue;
-    Pt = in_poly[i++];
-    out_poly[k++] = Pt;
+    out_poly.clear();
+    return;
   }
-  if (i <= highI) out_poly[k++] = in_poly[i];
-  if (k > 2 && SlopesNearCollinear(out_poly[k -2], out_poly[k -1], out_poly[0], distSqrd)) k--;    
-  if (k < 3) out_poly.clear();
-  else if (k <= highI) out_poly.resize(k);
+
+  OutPt* outPts = new OutPt[size];
+  for (size_t i = 0; i < size; ++i)
+  {
+    outPts[i].Pt = in_poly[i];
+    outPts[i].Next = &outPts[(i + 1) % size];
+    outPts[i].Next->Prev = &outPts[i];
+    outPts[i].Idx = 0;
+  }
+
+  double distSqrd = distance * distance;
+  OutPt* op = &outPts[0];
+  while (op->Idx == 0 && op->Next != op->Prev) 
+  {
+    if (PointsAreClose(op->Pt, op->Prev->Pt, distSqrd))
+    {
+      op = ExcludeOp(op);
+      size--;
+    } 
+    else if (PointsAreClose(op->Prev->Pt, op->Next->Pt, distSqrd))
+    {
+      ExcludeOp(op->Next);
+      op = ExcludeOp(op);
+      size -= 2;
+    }
+    else if (SlopesNearCollinear(op->Prev->Pt, op->Pt, op->Next->Pt, distSqrd))
+    {
+      op = ExcludeOp(op);
+      size--;
+    }
+    else
+    {
+      op->Idx = 1;
+      op = op->Next;
+    }
+  }
+
+  if (size < 3) size = 0;
+  out_poly.resize(size);
+  for (size_t i = 0; i < size; ++i)
+  {
+    out_poly[i] = op->Pt;
+    op = op->Next;
+  }
+  delete [] outPts;
 }
 //------------------------------------------------------------------------------
 
@@ -4589,8 +4611,9 @@ bool ClipperBase::AddPolygons(const Paths &ppg, PolyType PolyTyp)
 //------------------------------------------------------------------------------
 
 void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double limit, bool autoFix)
+  double delta, JoinType jointype, double limit, bool)
 {
+  //nb: autoFix parameter is now unused - but preserved here for compatibility
   OffsetPaths(in_polys, out_polys, delta, jointype, etClosed, limit);
 }
 //------------------------------------------------------------------------------
