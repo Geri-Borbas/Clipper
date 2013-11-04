@@ -53,9 +53,6 @@ unit clipper;
   {$DEFINE UInt64Support}
 {$ELSE}
   {$IFDEF ConditionalExpressions}
-    {$IF CompilerVersion < 20} //Delphi 2009
-      Int32 = Integer; //Int32 supported since D2009.
-    {$IFEND}
     {$IF CompilerVersion >= 15} //Delphi 7
       {$DEFINE UInt64Support} //nb: Delphi7 only marginally supports UInt64.
     {$IFEND}
@@ -75,7 +72,11 @@ uses
 
 type
 {$IFDEF use_int32}
+{$IF CompilerVersion < 20} //Delphi 2009
+  cInt = Integer; //Int32 supported since D2009.
+{$ELSE}
   cInt = Int32;
+{$IFEND}
 {$ELSE}
   cInt = Int64;
 {$ENDIF}
@@ -857,21 +858,20 @@ end;
 
 function Area(const Pts: TPath): Double;
 var
-  I, HighI: Integer;
-  D, D2: Double;
+  I, J, Cnt: Integer;
+  D: Double;
 begin
-  Result := 0;
-  HighI := high(Pts);
-  if HighI < 2 then Exit;
-  //see http://www.mathopenref.com/coordpolygonarea2.html
-  D2 := (Pts[HighI].X + Pts[0].X);
-  D := D2 * (Pts[0].Y - Pts[HighI].Y);
-  for I := 1 to HighI do
+  Result := 0.0;
+  Cnt := Length(Pts);
+  if (Cnt < 3) then Exit;
+  J := cnt - 1;
+  for I := 0 to Cnt -1 do
   begin
-    D2 := (Pts[I-1].X + Pts[I].X); //ie forces floating point multiplication
-    D := D + D2 * (Pts[I].Y - Pts[I-1].Y);
+    D := (Pts[j].X + Pts[i].X);
+    Result := Result + D * (Pts[j].Y - Pts[i].Y);
+    J := I;
   end;
-  Result := D * 0.5;
+  Result := -Result * 0.5;
 end;
 //------------------------------------------------------------------------------
 
@@ -884,8 +884,7 @@ begin
   Op := OutRec.Pts;
   if Assigned(Op) then
     repeat
-      //nb: subtraction reversed since vertices are stored in reverse order ...
-      D2 := (Op.Pt.X + Op.Prev.Pt.X);
+      D2 := Op.Prev.Pt.X + Op.Pt.X;
       D := D + D2 * (Op.Prev.Pt.Y - Op.Pt.Y);
       Op := Op.Next;
     until Op = OutRec.Pts;
@@ -3970,7 +3969,7 @@ end;
 
 function IntersectListSort(Node1, Node2: Pointer): Integer;
 begin
-  Result := PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y;
+  Result := Integer(PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y);
 end;
 //------------------------------------------------------------------------------
 

@@ -448,14 +448,16 @@ bool Orientation(const Path &poly)
 
 double Area(const Path &poly)
 {
-  int highI = (int)poly.size() -1;
-  if (highI < 2) return 0;
+  int size = (int)poly.size();
+  if (size < 3) return 0;
 
-  double a;
-  a = ((double)poly[highI].X + poly[0].X) * ((double)poly[0].Y - poly[highI].Y);
-  for (int i = 1; i <= highI; ++i)
-    a += ((double)poly[i - 1].X + poly[i].X) * ((double)poly[i].Y - poly[i - 1].Y);
-  return a / 2;
+  double a = 0;
+  for (int i = 0, j = size -1; i < size; ++i)
+  {
+    a += ((double)poly[j].X + poly[i].X) * ((double)poly[j].Y - poly[i].Y);
+    j = i;
+  }
+  return -a * 0.5;
 }
 //------------------------------------------------------------------------------
 
@@ -465,10 +467,10 @@ double Area(const OutRec &outRec)
   if (!op) return 0;
   double a = 0;
   do {
-    a = a + (double)(op->Pt.X + op->Prev->Pt.X) * (double)(op->Prev->Pt.Y - op->Pt.Y);
+    a +=  (double)(op->Prev->Pt.X + op->Pt.X) * (double)(op->Prev->Pt.Y - op->Pt.Y);
     op = op->Next;
   } while (op != outRec.Pts);
-  return a / 2;
+  return a * 0.5;
 }
 //------------------------------------------------------------------------------
 

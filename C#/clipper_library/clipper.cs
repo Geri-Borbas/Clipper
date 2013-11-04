@@ -43,10 +43,10 @@
 //#define use_int32
 
 //use_xyz: adds a Z member to IntPoint. Adds a minor cost to performance.
-#define use_xyz
+//#define use_xyz
 
 //UseLines: Enables line clipping. Adds a very minor cost to performance.
-#define use_lines
+//#define use_lines
 
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -4142,12 +4142,15 @@ namespace ClipperLib
 
       public static double Area(Path poly)
       {
-        int highI = poly.Count - 1;
-        if (highI < 2) return 0;
-        double area = ((double)poly[highI].X + poly[0].X) * ((double)poly[0].Y - poly[highI].Y);
-        for (int i = 1; i <= highI; ++i)
-            area += ((double)poly[i - 1].X + poly[i].X) * ((double)poly[i].Y - poly[i -1].Y);
-        return area / 2;
+        int cnt = (int)poly.Count;
+        if (cnt < 3) return 0;
+        double a = 0;
+        for (int i = 0, j = cnt - 1; i < cnt; ++i)
+        {
+          a += ((double)poly[j].X + poly[i].X) * ((double)poly[j].Y - poly[i].Y);
+          j = i;
+        }
+        return -a * 0.5;
       }
       //------------------------------------------------------------------------------
 
@@ -4157,10 +4160,10 @@ namespace ClipperLib
         if (op == null) return 0;
         double a = 0;
         do {
-          a = a + (double)(op.Pt.X + op.Prev.Pt.X) * (double)(op.Prev.Pt.Y - op.Pt.Y);
+          a = a + (double)(op.Prev.Pt.X + op.Pt.X) * (double)(op.Prev.Pt.Y - op.Pt.Y);
           op = op.Next;
         } while (op != outRec.Pts);
-        return a/2;
+        return a * 0.5;
       }
 
       //------------------------------------------------------------------------------
