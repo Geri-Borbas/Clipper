@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.1                                                           *
-* Date      :  3 November 2013                                                 *
+* Version   :  6.0.2                                                           *
+* Date      :  8 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -569,6 +569,7 @@ namespace ClipperLib
   internal class OutRec
   {
     internal int Idx;
+    internal OutRec SplitRec;  //see comments in clipper.pas
     internal bool IsHole;
     internal bool IsOpen;
     internal OutRec FirstLeft; //see comments in clipper.pas
@@ -1622,7 +1623,8 @@ namespace ClipperLib
 
           OutRec orfl = outRec.FirstLeft;
           while (orfl != null && ((orfl.IsHole == outRec.IsHole) || orfl.Pts == null))
-              orfl = orfl.FirstLeft;
+            if (orfl.SplitRec != null) orfl = orfl.SplitRec;
+            else orfl = orfl.FirstLeft;
           outRec.FirstLeft = orfl;
       }
       //------------------------------------------------------------------------------
@@ -2307,6 +2309,7 @@ namespace ClipperLib
         result.PolyNode = null;
         m_PolyOuts.Add(result);
         result.Idx = m_PolyOuts.Count - 1;
+        result.SplitRec = null;
         return result;
       }
       //------------------------------------------------------------------------------
@@ -4009,6 +4012,8 @@ namespace ClipperLib
             outRec1.BottomPt = null;
             outRec2 = CreateOutRec();
             outRec2.Pts = p2;
+            outRec2.SplitRec = outRec1;
+            outRec1.SplitRec = outRec2;
 
             //update all OutRec2.Pts Idx's ...
             UpdateOutPtIdxs(outRec2);

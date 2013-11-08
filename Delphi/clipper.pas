@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.1                                                           *
-* Date      :  3 November 2013                                                 *
+* Version   :  6.0.2                                                           *
+* Date      :  8 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -212,6 +212,7 @@ type
   POutRec = ^TOutRec;
   TOutRec = record
     Idx         : Integer;
+    SplitRec    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
     BottomPt    : POutPt;
     IsHole      : Boolean;
     IsOpen      : Boolean;
@@ -2043,7 +2044,8 @@ begin
   orfl := OutRec.FirstLeft;
   while Assigned(orfl) and
     ((orfl.IsHole = OutRec.IsHole) or not Assigned(orfl.Pts)) do
-      orfl := orfl.FirstLeft;
+      if Assigned(orfl.SplitRec) then orfl := orfl.SplitRec
+      else orfl := orfl.FirstLeft;
   OutRec.FirstLeft := orfl;
 end;
 //------------------------------------------------------------------------------
@@ -3121,6 +3123,7 @@ begin
   Result.BottomPt := nil;
   Result.PolyNode := nil;
   Result.Idx := FPolyOutList.Add(Result);
+  Result.SplitRec := nil;
 end;
 //------------------------------------------------------------------------------
 
@@ -4365,6 +4368,8 @@ begin
       OutRec1.BottomPt := nil;
       OutRec2 := CreateOutRec;
       OutRec2.Pts := P2;
+      OutRec2.SplitRec := OutRec1;
+      OutRec1.SplitRec := OutRec2;
 
       //update all OutRec2.Pts idx's ...
       UpdateOutPtIdxs(OutRec2);

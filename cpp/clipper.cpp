@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.1                                                           *
-* Date      :  3 November 2013                                                 *
+* Version   :  6.0.2                                                           *
+* Date      :  8 November 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -107,6 +107,7 @@ struct OutPt;
 
 struct OutRec {
   int       Idx;
+  OutRec   *SplitRec;  //see comments in clipper.pas
   bool      IsHole;
   bool      IsOpen;
   OutRec   *FirstLeft;  //see comments in clipper.pas
@@ -1665,7 +1666,8 @@ void Clipper::FixHoleLinkage(OutRec &outrec)
 
   OutRec* orfl = outrec.FirstLeft;
   while (orfl && ((orfl->IsHole == outrec.IsHole) || !orfl->Pts))
-      orfl = orfl->FirstLeft;
+    if (orfl->SplitRec != 0) orfl = orfl->SplitRec;
+    else orfl = orfl->FirstLeft;
   outrec.FirstLeft = orfl;
 }
 //------------------------------------------------------------------------------
@@ -2605,6 +2607,7 @@ OutRec* Clipper::CreateOutRec()
   result->PolyNd = 0;
   m_PolyOuts.push_back(result);
   result->Idx = (int)m_PolyOuts.size()-1;
+  result->SplitRec = 0;
   return result;
 }
 //------------------------------------------------------------------------------
@@ -3835,6 +3838,8 @@ void Clipper::JoinCommonEdges()
       outRec1->BottomPt = 0;
       outRec2 = CreateOutRec();
       outRec2->Pts = p2;
+      outRec2->SplitRec = outRec1;
+      outRec1->SplitRec = outRec2;
 
       //update all OutRec2.Pts Idx's ...
       UpdateOutPtIdxs(*outRec2);

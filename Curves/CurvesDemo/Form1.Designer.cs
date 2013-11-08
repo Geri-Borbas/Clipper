@@ -70,12 +70,13 @@
       this.cbReconstCurve = new System.Windows.Forms.CheckBox();
       this.bNewPath = new System.Windows.Forms.Button();
       this.groupBox1 = new System.Windows.Forms.GroupBox();
-      this.DisplayPanel = new Clipper_Lines_Demo.MainForm.MyDisplayPanel();
       this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
       this.saveFileDialog1 = new System.Windows.Forms.SaveFileDialog();
+      this.displayPanel = new System.Windows.Forms.PictureBox();
       this.statusStrip1.SuspendLayout();
       this.menuStrip1.SuspendLayout();
       this.panel1.SuspendLayout();
+      ((System.ComponentModel.ISupportInitialize)(this.displayPanel)).BeginInit();
       this.SuspendLayout();
       // 
       // statusStrip1
@@ -504,20 +505,6 @@
       this.groupBox1.TabStop = false;
       this.groupBox1.Text = " Subject Paths ";
       // 
-      // DisplayPanel
-      // 
-      this.DisplayPanel.BackColor = System.Drawing.SystemColors.Window;
-      this.DisplayPanel.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
-      this.DisplayPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-      this.DisplayPanel.Location = new System.Drawing.Point(159, 24);
-      this.DisplayPanel.Name = "DisplayPanel";
-      this.DisplayPanel.Size = new System.Drawing.Size(464, 419);
-      this.DisplayPanel.TabIndex = 3;
-      this.DisplayPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.DisplayPanel_Paint);
-      this.DisplayPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseDown);
-      this.DisplayPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseMove);
-      this.DisplayPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseUp);
-      // 
       // openFileDialog1
       // 
       this.openFileDialog1.DefaultExt = "txt";
@@ -530,12 +517,27 @@
       this.saveFileDialog1.Filter = "Text Files | *.txt";
       this.saveFileDialog1.Title = "Save Custom Data ...";
       // 
+      // displayPanel
+      // 
+      this.displayPanel.BackColor = System.Drawing.SystemColors.Window;
+      this.displayPanel.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
+      this.displayPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+      this.displayPanel.Location = new System.Drawing.Point(159, 24);
+      this.displayPanel.Name = "displayPanel";
+      this.displayPanel.Size = new System.Drawing.Size(464, 419);
+      this.displayPanel.TabIndex = 5;
+      this.displayPanel.TabStop = false;
+      this.displayPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.DisplayPanel_Paint);
+      this.displayPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseDown);
+      this.displayPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseMove);
+      this.displayPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.DisplayPanel_MouseUp);
+      // 
       // MainForm
       // 
       this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
       this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
       this.ClientSize = new System.Drawing.Size(623, 465);
-      this.Controls.Add(this.DisplayPanel);
+      this.Controls.Add(this.displayPanel);
       this.Controls.Add(this.panel1);
       this.Controls.Add(this.menuStrip1);
       this.Controls.Add(this.statusStrip1);
@@ -552,6 +554,7 @@
       this.menuStrip1.PerformLayout();
       this.panel1.ResumeLayout(false);
       this.panel1.PerformLayout();
+      ((System.ComponentModel.ISupportInitialize)(this.displayPanel)).EndInit();
       this.ResumeLayout(false);
       this.PerformLayout();
 
@@ -587,8 +590,7 @@
     private System.Windows.Forms.ToolStripMenuItem mSaveAs;
     private System.Windows.Forms.ToolStripMenuItem mLoad;
     private System.Windows.Forms.ToolStripSeparator toolStripMenuItem3;
-    private MainForm.MyDisplayPanel DisplayPanel;
-    private System.Windows.Forms.RadioButton rbSubjEllipses;
+    private System.Windows.Forms.RadioButton rbSubjEllipses; 
     private System.Windows.Forms.RadioButton rbSubjArc;
     private System.Windows.Forms.RadioButton rbSubjQBezier;
     private System.Windows.Forms.RadioButton rbSubjCBezier;
@@ -604,6 +606,7 @@
     private System.Windows.Forms.SaveFileDialog saveFileDialog1;
     private System.Windows.Forms.CheckBox cbShowCoords;
     private System.Windows.Forms.ToolStripMenuItem mSave;
+    private System.Windows.Forms.PictureBox displayPanel;
   }
 }
 

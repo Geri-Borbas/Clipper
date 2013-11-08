@@ -34,21 +34,6 @@ namespace Clipper_Lines_Demo
     }
     //------------------------------------------------------------------------------
 
-    //subclass Panel to stop redraw flicker ...
-    //http://stackoverflow.com/questions/8046560/how-to-stop-flickering-c-sharp-winforms
-    public class MyDisplayPanel : System.Windows.Forms.Panel
-    {
-      public MyDisplayPanel()
-      {
-        this.SetStyle(
-            System.Windows.Forms.ControlStyles.UserPaint |
-            System.Windows.Forms.ControlStyles.AllPaintingInWmPaint |
-            System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer,
-            true);
-      }
-    }
-    //------------------------------------------------------------------------------
-
     private CurveType GetRadiobuttonPathType()
     {
       if (rbSubjArc.Checked) return CurveType.Arc;
@@ -234,7 +219,7 @@ namespace Clipper_Lines_Demo
       if (mEvenOdd.Checked) s += "EVENODD fill.";
       else s += "NONZERO fill.";
       toolStripStatusLabel2.Text = s;
-      DisplayPanel.Invalidate();
+      displayPanel.Invalidate();
     }
     //------------------------------------------------------------------------------
 
@@ -489,7 +474,7 @@ namespace Clipper_Lines_Demo
         mNewPath_Click(sender, e);
         MovingButtonIdx = -1;
       }
-      else if (DisplayPanel.Cursor == Cursors.Hand)
+      else if (displayPanel.Cursor == Cursors.Hand)
       {
         MovingButtonIdx = GetButtonIndex(new IntPoint(e.X * scale, e.Y * scale), out MovingButtonSeg);
         BmpUpdateNeeded();
@@ -543,7 +528,7 @@ namespace Clipper_Lines_Demo
       else
       {
         int i = GetButtonIndex(new IntPoint(e.X * scale, e.Y * scale), out MovingButtonSeg);
-        DisplayPanel.Cursor = (i >= 0 ? Cursors.Hand : Cursors.Default);
+        displayPanel.Cursor = (i >= 0 ? Cursors.Hand : Cursors.Default);
       }
     }
     //------------------------------------------------------------------------------
@@ -655,7 +640,7 @@ namespace Clipper_Lines_Demo
     {
       if (bmp != null) bmp.Dispose();
       if (bmpGraphics != null) bmpGraphics.Dispose();
-      Rectangle r = DisplayPanel.ClientRectangle;
+      Rectangle r = displayPanel.ClientRectangle;
       bmp = new Bitmap(r.Right, r.Height);
       bmpGraphics = Graphics.FromImage(bmp);
       bmpGraphics.SmoothingMode = SmoothingMode.AntiAlias;
