@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.2                                                           *
-* Date      :  8 November 2013                                                 *
+* Version   :  6.0.3                                                           *
+* Date      :  10 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -212,7 +212,8 @@ type
   POutRec = ^TOutRec;
   TOutRec = record
     Idx         : Integer;
-    SplitRec    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
+    SplitRec1    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
+    SplitRec2    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
     BottomPt    : POutPt;
     IsHole      : Boolean;
     IsOpen      : Boolean;
@@ -342,6 +343,8 @@ type
     procedure DoSimplePolygons;
     procedure JoinCommonEdges;
     procedure FixHoleLinkage(OutRec: POutRec);
+    function FindOwnerFromSplitRecs(OutRec: POutRec;
+      var CurrOrfl: POutRec): boolean;
   protected
     procedure Reset; override;
     function ExecuteInternal: Boolean; virtual;
@@ -994,6 +997,30 @@ begin
         (pp2.Prev.Pt.Y - pp2.Pt.Y))) then Result := not Result;
       Pp2 := Pp2.Next;
     until Pp2 = PP;
+end;
+//------------------------------------------------------------------------------
+
+function Poly2ContainsPoly1(OutPt1, OutPt2: POutPt;
+  UseFullInt64Range: Boolean): Boolean;
+var
+  Pt: POutPt;
+begin
+  Pt := OutPt1;
+  //Because the polygons may be touching, we need to find a vertex that
+  //isn't touching the other polygon ...
+  if PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) then
+  begin
+    Pt := Pt.Next;
+    while (Pt <> OutPt1) and
+      PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) do
+        Pt := Pt.Next;
+    if (Pt = OutPt1) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+  Result := PointInPolygon(Pt.Pt, OutPt2, UseFullInt64Range);
 end;
 //------------------------------------------------------------------------------
 
@@ -2032,6 +2059,28 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function TClipper.FindOwnerFromSplitRecs(OutRec: POutRec;
+  var CurrOrfl: POutRec): boolean;
+var
+  orfl: POutRec;
+begin
+  Result := false;
+  if not assigned(CurrOrfl.SplitRec1) and not assigned(CurrOrfl.SplitRec2) then
+    Exit;
+  orfl := CurrOrfl;
+  while assigned(orfl.SplitRec1) do
+    orfl := orfl.SplitRec1; //ie back to the beginning of the chain
+  if not assigned(orfl) then
+    orfl := orfl.SplitRec2;
+  while assigned(orfl) do
+    if assigned(orfl.Pts) and
+      Poly2ContainsPoly1(OutRec.Pts, orfl.Pts, FUse64BitRange) then break
+    else orfl := orfl.SplitRec2;
+  Result := assigned(orfl);
+  if Result then CurrOrfl := orfl;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.FixHoleLinkage(OutRec: POutRec);
 var
   orfl: POutRec;
@@ -2044,7 +2093,7 @@ begin
   orfl := OutRec.FirstLeft;
   while Assigned(orfl) and
     ((orfl.IsHole = OutRec.IsHole) or not Assigned(orfl.Pts)) do
-      if Assigned(orfl.SplitRec) then orfl := orfl.SplitRec
+      if FindOwnerFromSplitRecs(OutRec, orfl) then break
       else orfl := orfl.FirstLeft;
   OutRec.FirstLeft := orfl;
 end;
@@ -3123,7 +3172,8 @@ begin
   Result.BottomPt := nil;
   Result.PolyNode := nil;
   Result.Idx := FPolyOutList.Add(Result);
-  Result.SplitRec := nil;
+  Result.SplitRec1 := nil;
+  Result.SplitRec2 := nil;
 end;
 //------------------------------------------------------------------------------
 
@@ -4283,30 +4333,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Poly2ContainsPoly1(OutPt1, OutPt2: POutPt;
-  UseFullInt64Range: Boolean): Boolean;
-var
-  Pt: POutPt;
-begin
-  Pt := OutPt1;
-  //Because the polygons may be touching, we need to find a vertex that
-  //isn't touching the other polygon ...
-  if PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) then
-  begin
-    Pt := Pt.Next;
-    while (Pt <> OutPt1) and
-      PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) do
-        Pt := Pt.Next;
-    if (Pt = OutPt1) then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
-  Result := PointInPolygon(Pt.Pt, OutPt2, UseFullInt64Range);
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.FixupFirstLefts1(OldOutRec, NewOutRec: POutRec);
 var
   I: Integer;
@@ -4368,8 +4394,8 @@ begin
       OutRec1.BottomPt := nil;
       OutRec2 := CreateOutRec;
       OutRec2.Pts := P2;
-      OutRec2.SplitRec := OutRec1;
-      OutRec1.SplitRec := OutRec2;
+      OutRec2.SplitRec1 := OutRec1; //old
+      OutRec1.SplitRec2 := OutRec2; //new
 
       //update all OutRec2.Pts idx's ...
       UpdateOutPtIdxs(OutRec2);

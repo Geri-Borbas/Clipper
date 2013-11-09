@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.2                                                           *
-* Date      :  8 November 2013                                                 *
+* Version   :  6.0.3                                                           *
+* Date      :  10 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -107,7 +107,8 @@ struct OutPt;
 
 struct OutRec {
   int       Idx;
-  OutRec   *SplitRec;  //see comments in clipper.pas
+  OutRec   *SplitRec1;  //see comments in clipper.pas
+  OutRec   *SplitRec2;  //see comments in clipper.pas
   bool      IsHole;
   bool      IsOpen;
   OutRec   *FirstLeft;  //see comments in clipper.pas
@@ -554,6 +555,22 @@ bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
   return result;
 }
 //------------------------------------------------------------------------------
+
+bool Poly2ContainsPoly1(OutPt* OutPt1, OutPt* OutPt2, bool UseFullInt64Range)
+{
+  OutPt* Pt = OutPt1;
+  //Because the polygons may be touching, we need to find a vertex that
+  //isn't touching the other polygon ...
+  if (PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
+  {
+    Pt = Pt->Next;
+    while (Pt != OutPt1 && PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
+        Pt = Pt->Next;
+    if (Pt == OutPt1) return true;
+  }
+  return PointInPolygon(Pt->Pt, OutPt2, UseFullInt64Range);
+}
+//----------------------------------------------------------------------
 
 bool SlopesEqual(const TEdge &e1, const TEdge &e2, bool UseFullInt64Range)
 {
@@ -1656,6 +1673,22 @@ bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
 }
 //------------------------------------------------------------------------------
 
+bool Clipper::FindOwnerFromSplitRecs(OutRec &outRec, OutRec *&currOrfl)
+{
+  if (!currOrfl->SplitRec1 && !currOrfl->SplitRec2) return false;
+  OutRec* orfl = currOrfl;
+  while (orfl->SplitRec1) orfl = orfl->SplitRec1;
+  if (!orfl) orfl = orfl->SplitRec2;
+  while (orfl)
+    if (orfl->Pts &&
+      Poly2ContainsPoly1(outRec.Pts, orfl->Pts, m_UseFullRange)) break;
+    else orfl = orfl->SplitRec2;
+  if (!orfl) return false;
+  currOrfl = orfl;
+  return true;
+}
+//------------------------------------------------------------------------------
+
 void Clipper::FixHoleLinkage(OutRec &outrec)
 {
   //skip OutRecs that (a) contain outermost polygons or
@@ -1666,7 +1699,7 @@ void Clipper::FixHoleLinkage(OutRec &outrec)
 
   OutRec* orfl = outrec.FirstLeft;
   while (orfl && ((orfl->IsHole == outrec.IsHole) || !orfl->Pts))
-    if (orfl->SplitRec != 0) orfl = orfl->SplitRec;
+    if (FindOwnerFromSplitRecs(outrec, orfl)) break;
     else orfl = orfl->FirstLeft;
   outrec.FirstLeft = orfl;
 }
@@ -2607,7 +2640,8 @@ OutRec* Clipper::CreateOutRec()
   result->PolyNd = 0;
   m_PolyOuts.push_back(result);
   result->Idx = (int)m_PolyOuts.size()-1;
-  result->SplitRec = 0;
+  result->SplitRec1 = 0;
+  result->SplitRec2 = 0;
   return result;
 }
 //------------------------------------------------------------------------------
@@ -3767,22 +3801,6 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
 }
 //----------------------------------------------------------------------
 
-bool Poly2ContainsPoly1(OutPt* OutPt1, OutPt* OutPt2, bool UseFullInt64Range)
-{
-  OutPt* Pt = OutPt1;
-  //Because the polygons may be touching, we need to find a vertex that
-  //isn't touching the other polygon ...
-  if (PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
-  {
-    Pt = Pt->Next;
-    while (Pt != OutPt1 && PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
-        Pt = Pt->Next;
-    if (Pt == OutPt1) return true;
-  }
-  return PointInPolygon(Pt->Pt, OutPt2, UseFullInt64Range);
-}
-//----------------------------------------------------------------------
-
 void Clipper::FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec)
 { 
   
@@ -3838,8 +3856,8 @@ void Clipper::JoinCommonEdges()
       outRec1->BottomPt = 0;
       outRec2 = CreateOutRec();
       outRec2->Pts = p2;
-      outRec2->SplitRec = outRec1;
-      outRec1->SplitRec = outRec2;
+      outRec2->SplitRec1 = outRec1; //old
+      outRec1->SplitRec2 = outRec2; //new
 
       //update all OutRec2.Pts Idx's ...
       UpdateOutPtIdxs(*outRec2);

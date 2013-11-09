@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.2                                                           *
-* Date      :  8 November 2013                                                 *
+* Version   :  6.0.3                                                           *
+* Date      :  10 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -569,7 +569,8 @@ namespace ClipperLib
   internal class OutRec
   {
     internal int Idx;
-    internal OutRec SplitRec;  //see comments in clipper.pas
+    internal OutRec SplitRec1;  //see comments in clipper.pas
+    internal OutRec SplitRec2;  //see comments in clipper.pas
     internal bool IsHole;
     internal bool IsOpen;
     internal OutRec FirstLeft; //see comments in clipper.pas
@@ -1613,19 +1614,35 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal void FixHoleLinkage(OutRec outRec)
+      internal bool FindOwnerFromSplitRecs(OutRec outRec, ref OutRec currOrfl)
       {
-          //skip if an outermost polygon or
-          //already already points to the correct FirstLeft ...
-          if (outRec.FirstLeft == null ||                
-                (outRec.IsHole != outRec.FirstLeft.IsHole &&
-                outRec.FirstLeft.Pts != null)) return;
+        if (currOrfl.SplitRec1 == null && currOrfl.SplitRec2 == null) return false;
+        OutRec orfl = currOrfl;
+        while (orfl.SplitRec1 != null) orfl = orfl.SplitRec1;
+        if (orfl == null) orfl = orfl.SplitRec2;
+        while (orfl != null)
+          if (orfl.Pts != null &&
+            Poly2ContainsPoly1(outRec.Pts, orfl.Pts, m_UseFullRange)) break;
+          else orfl = orfl.SplitRec2;
+        if (orfl == null) return false;
+        currOrfl = orfl;
+        return true;
+      }
+      //------------------------------------------------------------------------------
 
-          OutRec orfl = outRec.FirstLeft;
-          while (orfl != null && ((orfl.IsHole == outRec.IsHole) || orfl.Pts == null))
-            if (orfl.SplitRec != null) orfl = orfl.SplitRec;
-            else orfl = orfl.FirstLeft;
-          outRec.FirstLeft = orfl;
+    internal void FixHoleLinkage(OutRec outRec)
+      {
+        //skip if an outermost polygon or
+        //already already points to the correct FirstLeft ...
+        if (outRec.FirstLeft == null ||                
+              (outRec.IsHole != outRec.FirstLeft.IsHole &&
+              outRec.FirstLeft.Pts != null)) return;
+
+        OutRec orfl = outRec.FirstLeft;
+        while (orfl != null && ((orfl.IsHole == outRec.IsHole) || orfl.Pts == null))
+          if (FindOwnerFromSplitRecs(outRec, ref orfl)) break;
+          else orfl = orfl.FirstLeft;
+        outRec.FirstLeft = orfl;
       }
       //------------------------------------------------------------------------------
 
@@ -2309,7 +2326,8 @@ namespace ClipperLib
         result.PolyNode = null;
         m_PolyOuts.Add(result);
         result.Idx = m_PolyOuts.Count - 1;
-        result.SplitRec = null;
+        result.SplitRec1 = null;
+        result.SplitRec2 = null;
         return result;
       }
       //------------------------------------------------------------------------------
@@ -4012,8 +4030,8 @@ namespace ClipperLib
             outRec1.BottomPt = null;
             outRec2 = CreateOutRec();
             outRec2.Pts = p2;
-            outRec2.SplitRec = outRec1;
-            outRec1.SplitRec = outRec2;
+            outRec2.SplitRec1 = outRec1; //old
+            outRec1.SplitRec2 = outRec2; //new
 
             //update all OutRec2.Pts Idx's ...
             UpdateOutPtIdxs(outRec2);
