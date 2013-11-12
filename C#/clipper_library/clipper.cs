@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.3                                                           *
-* Date      :  10 November 2013                                                *
+* Date      :  13 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -399,10 +399,11 @@ namespace ClipperLib
       const double shift64 = 18446744073709551616.0; //2^64
       if (hi < 0)
       {
-        if (lo == 0)
+        UInt64 lo_ = (~lo + 1);
+        if (lo_ == 0)
           return (double)hi * shift64;
         else
-          return -(double)(~lo + ~hi * shift64);
+          return -(double)(lo_ + ~hi * shift64);
       }
       else
         return (double)(lo + hi * shift64);
@@ -4729,7 +4730,7 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal static Paths Minkowki(Path poly, Path path, bool IsSum, bool IsClosed)
+      internal static Paths Minkowski(Path poly, Path path, bool IsSum, bool IsClosed)
       {
         int delta = (IsClosed ? 1 : 0);
         int polyCnt = poly.Count;
@@ -4772,15 +4773,15 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public static Paths MinkowkiSum(Path poly, Path path, bool IsClosed)
+      public static Paths MinkowskiSum(Path poly, Path path, bool IsClosed)
       {
-        return Minkowki(poly, path, true, IsClosed);
+        return Minkowski(poly, path, true, IsClosed);
       }
       //------------------------------------------------------------------------------
 
-      public static Paths MinkowkiDiff(Path poly, Path path, bool IsClosed)
+      public static Paths MinkowskiDiff(Path poly, Path path, bool IsClosed)
       {
-        return Minkowki(poly, path, false, IsClosed);
+        return Minkowski(poly, path, false, IsClosed);
       }
       //------------------------------------------------------------------------------
 

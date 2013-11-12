@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.3                                                           *
-* Date      :  10 November 2013                                                *
+* Date      :  13 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -401,8 +401,9 @@ class Int128
       const double shift64 = 18446744073709551616.0; //2^64
       if (hi < 0)
       {
-        if (lo == 0) return (double)hi * shift64;
-        else return -(double)(~lo + ~hi * shift64);
+        cUInt lo_ = ~lo + 1;
+        if (lo_ == 0) return (double)hi * shift64;
+        else return -(double)(lo_ + ~hi * shift64);
       }
       else
         return (double)(lo + hi * shift64);
@@ -4490,7 +4491,7 @@ void CleanPolygons(Paths& polys, double distance)
 }
 //------------------------------------------------------------------------------
 
-void Minkowki(const Path& poly, const Path& path, 
+void Minkowski(const Path& poly, const Path& path, 
   Paths& solution, bool isSum, bool isClosed)
 {
   int delta = (isClosed ? 1 : 0);
@@ -4538,15 +4539,15 @@ void Minkowki(const Path& poly, const Path& path,
 }
 //------------------------------------------------------------------------------
 
-void MinkowkiSum(const Path& poly, const Path& path, Paths& solution, bool isClosed)
+void MinkowskiSum(const Path& poly, const Path& path, Paths& solution, bool isClosed)
 {
-  Minkowki(poly, path, solution, true, isClosed);
+  Minkowski(poly, path, solution, true, isClosed);
 }
 //------------------------------------------------------------------------------
 
-void MinkowkiDiff(const Path& poly, const Path& path, Paths& solution, bool isClosed)
+void MinkowskiDiff(const Path& poly, const Path& path, Paths& solution, bool isClosed)
 {
-  Minkowki(poly, path, solution, false, isClosed);
+  Minkowski(poly, path, solution, false, isClosed);
 }
 //------------------------------------------------------------------------------
 

@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.0.3                                                           *
-* Date      :  10 November 2013                                                *
+* Date      :  13 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -407,8 +407,8 @@ function SimplifyPolygons(const Polys: TPaths; FillType: TPolyFillType = pftEven
 function CleanPolygon(const Poly: TPath; Distance: double = 1.415): TPath;
 function CleanPolygons(const Polys: TPaths; Distance: double = 1.415): TPaths;
 
-function MinkowkiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
-function MinkowkiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
 
 function PolyTreeToPaths(PolyTree: TPolyTree): TPaths;
 function ClosedPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
@@ -765,21 +765,21 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-//function Int128AsDouble(val: TInt128): Double;
-//const
-//  shift64: Double = 18446744073709551616.0;
-//var
-//  lo: Int64;
-//begin
-//  if (val.Hi < 0) then
-//  begin
-//    lo := -val.Lo;
-//    if lo = 0 then
-//      Result := val.Hi * shift64 else
-//      Result := -(not val.Hi * shift64 + UInt64(lo));
-//  end else
-//    Result := val.Hi * shift64 + UInt64(val.Lo);
-//end;
+function Int128AsDouble(val: TInt128): Double;
+const
+  shift64: Double = 18446744073709551616.0;
+var
+  lo: Int64;
+begin
+  if (val.Hi < 0) then
+  begin
+    lo := -val.Lo;
+    if lo = 0 then
+      Result := val.Hi * shift64 else
+      Result := -(not val.Hi * shift64 + UInt64(lo));
+  end else
+    Result := val.Hi * shift64 + UInt64(val.Lo);
+end;
 //------------------------------------------------------------------------------
 
 {$OVERFLOWCHECKS ON}
@@ -5091,7 +5091,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function Minkowki(const Base, Path: TPath;
+function Minkowski(const Base, Path: TPath;
   IsSum: Boolean; IsClosed: Boolean): TPaths;
 var
   i, j, delta, baseLen, pathLen: integer;
@@ -5149,15 +5149,15 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function MinkowkiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
 begin
-  Result := Minkowki(Base, Path, true, IsClosed);
+  Result := Minkowski(Base, Path, true, IsClosed);
 end;
 //------------------------------------------------------------------------------
 
-function MinkowkiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
 begin
-  Result := Minkowki(Base, Path, false, IsClosed);
+  Result := Minkowski(Base, Path, false, IsClosed);
 end;
 //------------------------------------------------------------------------------
 
