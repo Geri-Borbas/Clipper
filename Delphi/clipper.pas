@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.3                                                           *
-* Date      :  13 November 2013                                                *
+* Version   :  6.1.0                                                           *
+* Date      :  16 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -251,6 +251,8 @@ type
     FHasOpenPaths     : Boolean;
     procedure DisposeLocalMinimaList;
     procedure DisposePolyPts(PP: POutPt);
+    procedure InsertLocalMinima(Lm: PLocalMinima);
+    function ProcessBound(E: PEdge; IsClockwise: Boolean): PEdge;
   protected
     FPreserveCollinear : Boolean;
     procedure Reset; virtual;
@@ -1324,136 +1326,28 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function SharedVertWithPrevAtTop(Edge: PEdge): Boolean;
+function FindNextLocMin(E: PEdge): PEdge; //inline;
 var
-  E: PEdge;
+  E2: PEdge;
 begin
-  Result := True;
-  E := Edge;
-  while E.Prev <> Edge do
+  while True do
   begin
-    if PointsEqual(E.Top, E.Prev.Top) then
+    while not PointsEqual(E.Bot, E.Prev.Bot) do E := E.Next;
+    //Check that these aren't just perfectly overlapping edges ...
+    if PointsEqual(E.Next.Top, E.Bot) then
     begin
-      if PointsEqual(E.Bot, E.Prev.Bot) then
-      begin E := E.Prev; Continue; end
-      else Result := True;
-    end else
-      Result := False;
-     Break;
-  end;
-  while E <> Edge do
-  begin
-    Result := not Result;
-    E := E.Next;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function SharedVertWithNextIsBot(Edge: PEdge): Boolean;
-var
-  E: PEdge;
-  A,B: Boolean;
-begin
-  Result := True;
-  E := Edge;
-  while E.Prev <> Edge do
-  begin
-    A := PointsEqual(E.Next.Bot, E.Bot);
-    B := PointsEqual(E.Prev.Bot, E.Bot);
-    if A <> B then
-    begin
-      Result := A;
-      Break;
-    end;
-    A := PointsEqual(E.Next.Top, E.Top);
-    B := PointsEqual(E.Prev.Top, E.Top);
-    if A <> B then
-    begin
-      Result := B;
-      Break;
-    end;
-    E := E.Prev;
-  end;
-  while E <> Edge do
-  begin
-    Result := not Result;
-    E := E.Next;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function GetLastHorz(Edge: PEdge): PEdge; {$IFDEF INLINING} inline; {$ENDIF}
-begin
-  Result := Edge;
-  while (Result.OutIdx <> Skip) and
-    (Result.Next <> Edge) and (Result.Next.Dx = Horizontal) do
-      Result := Result.Next;
-end;
-//------------------------------------------------------------------------------
-
-function MoreBelow(Edge: PEdge): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
-var
-  E: PEdge;
-begin
-  //Edge is Skip heading down.
-  E := Edge;
-  if E.Dx = Horizontal then
-  begin
-    while E.Next.Dx = Horizontal do E := E.Next;
-    Result := E.Next.Bot.Y > E.Bot.Y;
-  end else if E.Next.Dx = Horizontal then
-  begin
-    while E.Next.Dx = Horizontal do E := E.Next;
-    Result := E.Next.Bot.Y > E.Bot.Y;
-  end else
-    Result := PointsEqual(E.Bot, E.Next.Top);
-end;
-//------------------------------------------------------------------------------
-
-function JustBeforeLocMin(Edge: PEdge): Boolean;
-var
-  E: PEdge;
-begin
-  //Edge is Skip and was heading down.
-  E := Edge;
-  if E.Dx = Horizontal then
-  begin
-    while E.Next.Dx = Horizontal do E := E.Next;
-    Result := E.Next.Top.Y < E.Bot.Y;
-  end else
-    result := SharedVertWithNextIsBot(E);
-end;
-//------------------------------------------------------------------------------
-
-function MoreAbove(Edge: PEdge): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
-begin
-  if (Edge.Dx = Horizontal)  then
-  begin
-    Edge := GetLastHorz(Edge);
-    Result := (Edge.Next.Top.Y < Edge.Top.Y);
-  end else if (Edge.Next.Dx = Horizontal) then
-  begin
-    Edge := GetLastHorz(Edge.Next);
-    Result := (Edge.Next.Top.Y < Edge.Top.Y);
-  end else
-    Result := (Edge.Next.Top.Y < Edge.Top.Y);
-end;
-//------------------------------------------------------------------------------
-
-function AllHorizontal(Edge: PEdge): Boolean;
-var
-  E: PEdge;
-begin
-  Result := Edge.Dx = Horizontal;
-  if not Result then Exit;
-  E := Edge.Next;
-  while (E <> Edge) do
-    if E.Dx <> Horizontal then
-    begin
-      Result := False;
-      Exit;
-    end else
       E := E.Next;
+      Continue;
+    end;
+    if (E.Dx <> Horizontal) and (E.Prev.Dx <> Horizontal) then break;
+    while (E.Prev.Dx = Horizontal) do E := E.Prev;
+    E2 := E;
+    while (E.Dx = Horizontal) do E := E.Next;
+    if (E.Top.Y = E.Prev.Bot.Y) then Continue; //ie just an intermediate horz.
+    if E2.Prev.Bot.X < E.Bot.X then E := E2;
+    break;
+  end;
+  Result := E;
 end;
 
 //------------------------------------------------------------------------------
@@ -1477,234 +1371,145 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipperBase.InsertLocalMinima(Lm: PLocalMinima);
+var
+  TmpLm: PLocalMinima;
+begin
+  if not Assigned(FLmList) then
+  begin
+    FLmList := Lm;
+  end
+  else if (Lm.Y >= FLmList.Y) then
+  begin
+    Lm.Next := FLmList;
+    FLmList := Lm;
+  end else
+  begin
+    TmpLm := FLmList;
+    while Assigned(TmpLm.Next) and (Lm.Y < TmpLm.Next.Y) do
+        TmpLm := TmpLm.Next;
+    Lm.Next := TmpLm.Next;
+    TmpLm.Next := Lm;
+  end;
+end;
+//----------------------------------------------------------------------
+
+function TClipperBase.ProcessBound(E: PEdge; IsClockwise: Boolean): PEdge;
+var
+  EStart, Horz: PEdge;
+  locMin: PLocalMinima;
+  StartX: cInt;
+begin
+  EStart := E;
+  Result := E;
+  //if (E.Dx = Horizontal) and (E.Bot.X > E.Top.X) then ReverseHorizontal(E);
+  if (E.Dx = Horizontal) then
+  begin
+    //it's possible for adjacent overlapping horz edges to start heading left
+    //before finishing right, so ...
+    if IsClockwise then StartX := E.Prev.Bot.X
+    else StartX := E.Next.Bot.X;
+    if E.Bot.X <> StartX then ReverseHorizontal(E);
+  end;
+  if Result.OutIdx = Skip then
+    //do nothing here
+  else if IsClockwise then
+  begin
+    while (Result.Top.Y = Result.Next.Bot.Y) and (Result.Next.OutIdx <> Skip) do
+      Result := Result.Next;
+    if (Result.Dx = Horizontal) and (Result.Next.OutIdx <> Skip) then
+    begin
+      //nb: at the top of a bound, horizontals are added to the bound
+      //only when the preceding edge attaches to the horizontal's left vertex
+      //unless a Skip edge is encountered when that becomes the top divide
+      Horz := Result;
+      while (Horz.Prev.Dx = Horizontal) do Horz := Horz.Prev;
+      if (Horz.Prev.Top.X = Result.Next.Top.X) then
+      begin
+        if not IsClockwise then Result := Horz.Prev;
+      end
+      else if (Horz.Prev.Top.X > Result.Next.Top.X) then Result := Horz.Prev;
+    end;
+    while (E <> Result) do
+    begin
+      e.NextInLML := e.Next;
+      if (E.Dx = Horizontal) and not (e = EStart) and
+        (E.Bot.X <> E.Prev.Top.X) then ReverseHorizontal(E);
+      E := E.Next;
+    end;
+    if (E.Dx = Horizontal) and (E.Bot.X <> E.Prev.Top.X) then ReverseHorizontal(E);
+    Result := Result.Next; //move to the edge just beyond current bound
+  end else
+  begin
+    while (Result.Top.Y = Result.Prev.Bot.Y) and (Result.Prev.OutIdx <> Skip) do
+      Result := Result.Prev;
+    if (Result.Dx = Horizontal) and (Result.Prev.OutIdx <> Skip) then
+    begin
+      Horz := Result;
+      while (Horz.Next.Dx = Horizontal) do Horz := Horz.Next;
+      if (Horz.Next.Top.X = Result.Prev.Top.X) then
+      begin
+        if not IsClockwise then Result := Horz.Next;
+      end
+      else if (Horz.Next.Top.X > Result.Prev.Top.X) then Result := Horz.Next;
+    end;
+    while (E <> Result) do
+    begin
+      e.NextInLML := e.Prev;
+      if (e.Dx = Horizontal) and not (e = EStart) and
+        (E.Bot.X <> E.Next.Top.X) then ReverseHorizontal(E);
+      E := E.Prev;
+    end;
+    if (E.Dx = Horizontal) and (E.Bot.X <> E.Next.Top.X) then ReverseHorizontal(E);
+    Result := Result.Prev; //move to the edge just beyond current bound
+  end;
+  if (Result.OutIdx = Skip) then
+  begin
+    //if edges still remain in the current bound beyond the skip edge then
+    //create another LocMin and call ProcessBound once more
+    E := Result;
+    if IsClockwise then
+    begin
+      while (E.Top.Y = E.Next.Bot.Y) do E := E.Next;
+      //don't include top horizontals when parsing a bound a second time,
+      //they will be contained in the opposite bound ...
+      while (E <> Result) and (E.Dx = Horizontal) do E := E.Prev;
+    end else
+    begin
+      while (E.Top.Y = E.Prev.Bot.Y) do E := E.Prev;
+      while (E <> Result) and (E.Dx = Horizontal) do E := E.Next;
+    end;
+    if E = Result then
+    begin
+      if IsClockwise then Result := E.Next
+      else Result := E.Prev;
+    end else
+    begin
+      //there are more edges in the bound beyond result starting with E
+      if IsClockwise then
+        E := Result.Next else
+        E := Result.Prev;
+      new(locMin);
+      locMin.Next := nil;
+      locMin.Y := E.Bot.Y;
+      locMin.LeftBound := nil;
+      locMin.RightBound := E;
+      locMin.RightBound.WindDelta := 0;
+      Result := ProcessBound(locMin.RightBound, isClockwise);
+      InsertLocalMinima(locMin);
+    end;
+  end;
+end;
+//------------------------------------------------------------------------------
+
 function TClipperBase.AddPath(const Path: TPath;
   PolyType: TPolyType; Closed: Boolean): Boolean;
-
-  //----------------------------------------------------------------------
-
-  procedure InsertLocalMinima(Lm: PLocalMinima);
-  var
-    TmpLm: PLocalMinima;
-  begin
-    if not Assigned(FLmList) then
-    begin
-      FLmList := Lm;
-    end
-    else if (Lm.Y >= FLmList.Y) then
-    begin
-      Lm.Next := FLmList;
-      FLmList := Lm;
-    end else
-    begin
-      TmpLm := FLmList;
-      while Assigned(TmpLm.Next) and (Lm.Y < TmpLm.Next.Y) do
-          TmpLm := TmpLm.Next;
-      Lm.Next := TmpLm.Next;
-      TmpLm.Next := Lm;
-    end;
-  end;
-  //----------------------------------------------------------------------
-
-  procedure DoMinimaLML(E1, E2: PEdge);
-  var
-    NewLm: PLocalMinima;
-  begin
-    if not assigned(E1) then
-    begin
-      if not assigned(E2) then Exit;
-      new(NewLm);
-      NewLm.Next := nil;
-      NewLm.Y := E2.Bot.Y;
-      NewLm.LeftBound := nil;
-      E2.WindDelta := 0;
-      NewLm.RightBound := E2;
-      InsertLocalMinima(NewLm);
-    end else
-    begin
-      //E and E.Prev are now at a local minima ...
-      new(NewLm);
-      NewLm.Y := E1.Bot.Y;
-      NewLm.Next := nil;
-      if E2.Dx = Horizontal then //Horz. edges never start a left bound
-      begin
-        if (E2.Bot.X <> E1.Bot.X) then ReverseHorizontal(E2);
-        NewLm.LeftBound := E1;
-        NewLm.RightBound := E2;
-      end else if (E2.Dx < E1.Dx) then
-      begin
-        NewLm.LeftBound := E1;
-        NewLm.RightBound := E2;
-      end else
-      begin
-        NewLm.LeftBound := E2;
-        NewLm.RightBound := E1;
-      end;
-      NewLm.LeftBound.Side := esLeft;
-      NewLm.RightBound.Side := esRight;
-      //set the winding state of the first edge in each bound
-      //(it'll be copied to subsequent edges in the bound) ...
-      with NewLm^ do
-      begin
-        if not Closed then LeftBound.WindDelta := 0
-        else if (LeftBound.Next = RightBound) then LeftBound.WindDelta := -1
-        else LeftBound.WindDelta := 1;
-        RightBound.WindDelta := -LeftBound.WindDelta;
-      end;
-      InsertLocalMinima(NewLm);
-    end;
-  end;
-  //----------------------------------------------------------------------
-
-  function DescendToMin(var E: PEdge): PEdge;
-  var
-    EHorz: PEdge;
-  begin
-    //PRECONDITION: STARTING EDGE IS A VALID DESCENDING EDGE.
-    //Starting at the top of one bound we progress to the bottom where there's
-    //A local minima. We then go to the top of the Next bound. These two bounds
-    //form the left and right (or right and left) bounds of the local minima.
-    E.NextInLML := nil;
-    if (E.Dx = Horizontal) then
-    begin
-      EHorz := E;
-      while (EHorz.Next.Dx = Horizontal) do EHorz := EHorz.Next;
-      if not PointsEqual(EHorz.Bot, EHorz.Next.Top) then
-        ReverseHorizontal(E);
-    end;
-    while true do
-    begin
-      E := E.Next;
-      if (E.OutIdx = Skip) then Break
-      else if E.Dx = Horizontal then
-      begin
-        //nb: proceed through horizontals when approaching from their right,
-        //    but break on horizontal minima if approaching from their left.
-        //    This ensures 'local minima' are always on the left of horizontals.
-
-        //look ahead is required in case of multiple consec. horizontals
-        EHorz := GetLastHorz(E);
-        if (EHorz = E.Prev) or                    //horizontal polyline OR
-          ((EHorz.Next.Top.Y < E.Top.Y) and       //bottom horizontal
-          (EHorz.Next.Bot.X > E.Prev.Bot.X)) then //approaching from the left
-            Break;
-        if (E.Top.X <> E.Prev.Bot.X) then ReverseHorizontal(E);
-        if EHorz.OutIdx = Skip then EHorz := EHorz.Prev;
-        while E <> EHorz do
-        begin
-          E.NextInLML := E.Prev;
-          E := E.Next;
-          if (E.Top.X <> E.Prev.Bot.X) then ReverseHorizontal(E);
-        end;
-      end
-      else if (E.Bot.Y = E.Prev.Bot.Y) then Break;
-      E.NextInLML := E.Prev;
-    end;
-    Result := E.Prev;
-  end;
-  //----------------------------------------------------------------------
-
-  procedure AscendToMax(var E: PEdge; Appending: Boolean);
-  var
-    EStart: PEdge;
-  begin
-    if (E.OutIdx = Skip) then
-    begin
-      E := E.Next;
-      if not MoreAbove(E.Prev) then Exit;
-    end;
-
-    if (E.Dx = Horizontal) and Appending and
-      not PointsEqual(E.Bot, E.Prev.Bot) then
-        ReverseHorizontal(E);
-    //now process the ascending bound ....
-    EStart := E;
-    while True do
-    begin
-      if (E.Next.OutIdx = Skip) or
-        ((E.Next.Top.Y = E.Top.Y) and (E.Next.Dx <> Horizontal)) then Break;
-      E.NextInLML := E.Next;
-      E := E.Next;
-      if (E.Dx = Horizontal) and (E.Bot.X <> E.Prev.Top.X) then
-        ReverseHorizontal(E);
-    end;
-
-    if not Appending then
-    begin
-      if EStart.OutIdx = Skip then EStart := EStart.Next;
-      if (EStart <> E.Next) then
-        DoMinimaLML(nil, EStart);
-    end;
-    E := E.Next;
-  end;
-  //----------------------------------------------------------------------
-
-  function AddBoundsToLML(E: PEdge): PEdge;
-  var
-    AppendMaxima: Boolean;
-    B: PEdge;
-  begin
-    //Starting at the top of one bound we progress to the bottom where there's
-    //A local minima. We then go to the top of the Next bound. These two bounds
-    //form the left and right (or right and left) bounds of the local minima.
-
-    //do minima ...
-    if E.OutIdx = Skip then
-    begin
-      if MoreBelow(E) then
-      begin
-        E := E.Next;
-        B := DescendToMin(E);
-      end else
-        B := nil;
-    end else
-      B := DescendToMin(E);
-
-    if (E.OutIdx = Skip) then    //nb: may be BEFORE, AT or just THRU LM
-    begin
-      //do minima before Skip...
-      DoMinimaLML(nil, B);      //store what we've got so far (if anything)
-      AppendMaxima := False;
-      //finish off any minima ...
-      if not PointsEqual(E.Bot,E.Prev.Bot) and MoreBelow(E) then
-      begin
-        E := E.Next;
-        B := DescendToMin(E);
-        DoMinimaLML(B, E);
-        AppendMaxima := True;
-      end
-      else if JustBeforeLocMin(E) then
-        E := E.Next;
-    end else
-    begin
-      DoMinimaLML(B, E);
-      AppendMaxima := True;
-    end;
-
-    //now do maxima ...
-    AscendToMax(E, AppendMaxima);
-
-    if (E.OutIdx = Skip) and not PointsEqual(E.Top, E.Prev.Top) then
-    begin
-      //may be BEFORE, AT or just AFTER maxima
-      //finish off any maxima ...
-      if MoreAbove(E) then
-      begin
-        E := E.Next;
-        AscendToMax(E, false);
-      end
-      else if PointsEqual(E.Top, E.Next.Top) or
-       ((E.Next.Dx = Horizontal) and PointsEqual(E.Top, E.Next.Bot)) then
-        E := E.Next; //ie just before Maxima
-    end;
-    Result := E;
-  end;
-  //----------------------------------------------------------------------
-
 var
   I, HighI: Integer;
   Edges: PEdgeArray;
-  E, EStart, ELoopStop, EHighest: PEdge;
-  ClosedOrSemiClosed: Boolean;
+  E, E2, EMin, EStart, ELoopStop, EHighest: PEdge;
+  IsFlat, clockwise, ClosedOrSemiClosed: Boolean;
+  locMin: PLocalMinima;
 begin
 {$IFDEF use_lines}
   if not Closed and (polyType = ptClip) then
@@ -1713,26 +1518,25 @@ begin
   if not Closed then raise exception.Create(rsOpenPath2);
 {$ENDIF}
 
-  Result := False; //ie assume nothing added
+  Result := false;
+  IsFlat := true;
+
+  //1. Basic (first) edge initialization ...
   HighI := High(Path);
-  ClosedOrSemiClosed :=
-    (HighI > 0) and (Closed or PointsEqual(Path[0],Path[HighI]));
+  ClosedOrSemiClosed := Closed or
+    ((HighI > 0) and (PointsEqual(Path[0],Path[HighI])));
   while (HighI > 0) and PointsEqual(Path[HighI],Path[0]) do Dec(HighI);
   while (HighI > 0) and PointsEqual(Path[HighI],Path[HighI -1]) do Dec(HighI);
   if (Closed and (HighI < 2)) or (not Closed and (HighI < 1)) then Exit;
 
-  //1. Basic initialization of Edges ...
   GetMem(Edges, sizeof(TEdge)*(HighI +1));
   try
     FillChar(Edges^, sizeof(TEdge)*(HighI +1), 0);
     Edges[1].Curr := Path[1];
-    RangeTest(Path[0], FUse64BitRange);
-    RangeTest(Path[HighI], FUse64BitRange);
     InitEdge(@Edges[0], @Edges[1], @Edges[HighI], Path[0]);
     InitEdge(@Edges[HighI], @Edges[0], @Edges[HighI-1], Path[HighI]);
     for I := HighI - 1 downto 1 do
     begin
-      RangeTest(Path[I], FUse64BitRange);
       InitEdge(@Edges[I], @Edges[I+1], @Edges[I-1], Path[I]);
     end;
   except
@@ -1743,7 +1547,7 @@ begin
   EStart := @Edges[0];
   if not ClosedOrSemiClosed then EStart.Prev.OutIdx := Skip;
 
-  //2. Remove duplicate vertices, and collinear edges (when closed) ...
+  //2. Remove duplicate vertices, and (when closed) collinear edges ...
   E := EStart;
   ELoopStop := EStart;
   while (E <> E.Next) do //ie in case loop reduces to a single vertex
@@ -1787,68 +1591,86 @@ begin
     Exit;
   end;
 
-  if not Closed then
-    FHasOpenPaths := True;
-
-  //3. Do the final Init and also find the 'highest' Edge.
-  //(nb: since I'm much more familiar with positive downwards Y axes,
-  //'highest' here is the Edge with the *smallest* Top.Y.)
+  //3. Do second stage of edge initialization ...
   E := EStart;
-  EHighest := E;
   repeat
-    InitEdge2(E, PolyType);
-    if E.Top.Y < EHighest.Top.Y then EHighest := E;
+    InitEdge2(E, polyType);
     E := E.Next;
+	  if IsFlat and (E.Curr.Y <> EStart.Curr.Y) then IsFlat := false;
   until E = EStart;
 
-  Result := True;
-  FEdgeList.Add(Edges);
+  //4. Finally, add edge bounds to LocalMinima list ...
 
-  //4. build the local minima list ...
-  if AllHorizontal(E) then
-  begin
-    if ClosedOrSemiClosed then
-      E.Prev.OutIdx := Skip;
-    AscendToMax(E, false);
-    Exit;
-  end;
+  //todo - ?? manage 2 vertex open paths as if IsFlat???
 
-  //if eHighest is also the Skip then it's a natural break, otherwise
-  //make sure eHighest is positioned so we're either at a top horizontal or
-  //just starting to head down one edge of the polygon
-  E := EStart.Prev; //EStart.Prev == Skip edge
-  if (E.Prev = E.Next) then
-    EHighest := E.Next
-  else if not ClosedOrSemiClosed and (E.Top.Y = EHighest.Top.Y) then
+  //Totally flat paths must be handled differently when adding them
+  //to LocalMinima list to avoid endless loops etc ...
+  if (IsFlat) then
   begin
-    if ((E.Dx = Horizontal) or (E.Next.Dx = Horizontal)) and
-      (E.Next.Bot.Y = eHighest.Top.Y) then
-        EHighest := E.Next
-    else if SharedVertWithPrevAtTop(E) then EHighest := E
-    else if PointsEqual(E.Top, E.Prev.Top) then EHighest := E.Prev
-    else EHighest := E.Next;
-  end else
-  begin
-    E := EHighest;
-    while (EHighest.Dx = Horizontal) or
-      (PointsEqual(EHighest.top, EHighest.next.top) or
-      PointsEqual(EHighest.top, EHighest.next.bot)) do {next is high horizontal}
+    if Closed then Exit;
+    //todo = needs testing ....
+    E.Prev.OutIdx := Skip;
+    if E.Prev.Bot.X < E.Prev.Top.X then ReverseHorizontal(E.Prev);
+    new(locMin);
+    locMin.Next := nil;
+    locMin.Y := E.Bot.Y;
+    locMin.LeftBound := nil;
+    locMin.RightBound := E;
+    locMin.RightBound.Side := esRight;
+    locMin.RightBound.WindDelta := 0;
+    while E.OutIdx <> Skip do
     begin
-      EHighest := EHighest.Next;
-      if EHighest = E then
-      begin
-        while (EHighest.Dx = Horizontal) or
-          not SharedVertWithPrevAtTop(EHighest) do
-            EHighest := EHighest.Next;
-        Break; //ie avoids potential endless loop
-      end;
+      E.NextInLML := E.Next;
+      if E.Bot.X <> E.Prev.Top.X then ReverseHorizontal(E);
+      E := E.Next;
     end;
+    InsertLocalMinima(locMin);
+	  Exit;
   end;
 
-  E := EHighest;
-  repeat
-    E := AddBoundsToLML(E);
-  until (E = EHighest);
+  EMin := nil;
+  while true do
+  begin
+    E := FindNextLocMin(E);
+    if (E = EMin) then break
+    else if (EMin = nil) then EMin := E;
+
+    //E and E.Prev now share a local minima (left aligned if horizontal).
+    //Compare their slopes to find which starts which bound ...
+    new(locMin);
+    locMin.Next := nil;
+    locMin.Y := E.Bot.Y;
+    if (E.Dx < E.Prev.Dx) then
+    begin
+      locMin.LeftBound := E.Prev;
+      locMin.RightBound := E;
+      clockwise := false; //Q.nextInLML = Q.prev
+    end else
+    begin
+      locMin.LeftBound := E;
+      locMin.RightBound := E.Prev;
+      clockwise := true; //Q.nextInLML = Q.next
+    end;
+    locMin.LeftBound.Side := esLeft;
+    locMin.RightBound.Side := esRight;
+
+    if not Closed then locMin.LeftBound.WindDelta := 0
+    else if (locMin.LeftBound.Next = locMin.RightBound) then
+      locMin.LeftBound.WindDelta := -1
+    else locMin.LeftBound.WindDelta := 1;
+    locMin.RightBound.WindDelta := -locMin.LeftBound.WindDelta;
+
+    E := ProcessBound(locMin.LeftBound, clockwise);
+    E2 := ProcessBound(locMin.RightBound, not clockwise);
+
+    if (locMin.LeftBound.OutIdx = Skip) then
+      locMin.LeftBound := nil
+    else if (locMin.RightBound.OutIdx = Skip) then
+      locMin.RightBound := nil;
+    InsertLocalMinima(locMin);
+    if not clockwise then E := E2;
+  end;
+  Result := True;
 end;
 //------------------------------------------------------------------------------
 
@@ -1894,16 +1716,15 @@ begin
       begin
         Curr := Bot;
         Side := esLeft;
-        if OutIdx <> Skip then
-          OutIdx := Unassigned;
-      end;
-    with Lm.RightBound^ do
-    begin
-      Curr := Bot;
-      Side := esRight;
-      if OutIdx <> Skip then
         OutIdx := Unassigned;
-    end;
+      end;
+    if assigned(Lm.RightBound) then
+      with Lm.RightBound^ do
+      begin
+        Curr := Bot;
+        Side := esRight;
+        OutIdx := Unassigned;
+      end;
     Lm := Lm.Next;
   end;
 end;
@@ -2608,13 +2429,21 @@ begin
     PopLocalMinima;
 
     Op1 := nil;
+
     if not assigned(Lb) then
     begin
-      //nb: don't insert LB into either AEL or SEL
       InsertEdgeIntoAEL(Rb, nil);
       SetWindingCount(Rb);
       if IsContributing(Rb) then
         Op1 := AddOutPt(Rb, Rb.Bot);
+    end
+    else if not assigned(Rb) then
+    begin
+      InsertEdgeIntoAEL(Lb, nil);
+      SetWindingCount(Lb);
+      if IsContributing(Lb) then
+        Op1 := AddOutPt(Lb, Lb.Bot);
+      InsertScanbeam(Lb.Top.Y);
     end else
     begin
       InsertEdgeIntoAEL(Lb, nil);
@@ -2627,11 +2456,14 @@ begin
       InsertScanbeam(Lb.Top.Y);
     end;
 
-    if Rb.Dx = Horizontal then
-      AddEdgeToSEL(Rb) else
-      InsertScanbeam(Rb.Top.Y);
+    if Assigned(Rb) then
+    begin
+      if (Rb.Dx = Horizontal) then
+        AddEdgeToSEL(Rb) else
+        InsertScanbeam(Rb.Top.Y);
+    end;
 
-    if not assigned(Lb) then Continue;
+    if not assigned(Lb) or not assigned(Rb) then Continue;
 
     //if output polygons share an Edge with rb, they'll need joining later ...
     if assigned(Op1) and (Rb.Dx = Horizontal) and
