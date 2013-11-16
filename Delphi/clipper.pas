@@ -1326,19 +1326,14 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function FindNextLocMin(E: PEdge): PEdge; //inline;
+function FindNextLocMin(E: PEdge): PEdge; {$IFDEF INLINING} inline; {$ENDIF}
 var
   E2: PEdge;
 begin
   while True do
   begin
-    while not PointsEqual(E.Bot, E.Prev.Bot) do E := E.Next;
-    //Check that these aren't just perfectly overlapping edges ...
-    if PointsEqual(E.Next.Top, E.Bot) then
-    begin
-      E := E.Next;
-      Continue;
-    end;
+    while not PointsEqual(E.Bot, E.Prev.Bot) or
+      PointsEqual(E.Curr, E.Top) do E := E.Next;
     if (E.Dx <> Horizontal) and (E.Prev.Dx <> Horizontal) then break;
     while (E.Prev.Dx = Horizontal) do E := E.Prev;
     E2 := E;
