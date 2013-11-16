@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.0.3                                                           *
-* Date      :  13 November 2013                                                *
+* Version   :  6.1.0                                                           *
+* Date      :  16 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -820,6 +820,134 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
+      private TEdge FindNextLocMin(TEdge E)
+      {
+        TEdge E2;
+        for (;;)
+        {
+          while (E.Bot != E.Prev.Bot || E.Curr == E.Top) E = E.Next;
+          if (E.Dx != horizontal && E.Prev.Dx != horizontal) break;
+          while (E.Prev.Dx == horizontal) E = E.Prev;
+          E2 = E;
+          while (E.Dx == horizontal) E = E.Next;
+          if (E.Top.Y == E.Prev.Bot.Y) continue; //ie just an intermediate horz.
+          if (E2.Prev.Bot.X < E.Bot.X) E = E2;
+          break;
+        }
+        return E;
+      }
+      //------------------------------------------------------------------------------
+
+      private TEdge ProcessBound(TEdge E, bool IsClockwise)
+      {
+        TEdge EStart = E;
+        TEdge Result = E;
+        TEdge Horz;
+        cInt StartX;
+        //if (E.Dx = Horizontal) and (E.Bot.X > E.Top.X) then ReverseHorizontal(E);
+        if (E.Dx == horizontal)
+        {
+          //it's possible for adjacent overlapping horz edges to start heading left
+          //before finishing right, so ...
+          if (IsClockwise) StartX = E.Prev.Bot.X;
+          else StartX = E.Next.Bot.X;
+          if (E.Bot.X != StartX) ReverseHorizontal(E);
+        }
+        if (Result.OutIdx == Skip)
+          ;//do nothing here
+        else if (IsClockwise)
+        {
+          while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
+            Result = Result.Next;
+          if (Result.Dx == horizontal && Result.Next.OutIdx != Skip)
+          {
+            //nb: at the top of a bound, horizontals are added to the bound
+            //only when the preceding edge attaches to the horizontal's left vertex
+            //unless a Skip edge is encountered when that becomes the top divide
+            Horz = Result;
+            while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
+            if (Horz.Prev.Top.X == Result.Next.Top.X) 
+            {
+              if (!IsClockwise) Result = Horz.Prev;
+            }
+            else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
+          }
+          while (E != Result) 
+          {
+            E.NextInLML = E.Next;
+            if (E.Dx == horizontal && E != EStart &&
+              E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+            E = E.Next;
+          }
+          if (E.Dx == horizontal && E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+          Result = Result.Next; //move to the edge just beyond current bound
+        } else
+        {
+          while (Result.Top.Y == Result.Prev.Bot.Y && Result.Prev.OutIdx != Skip) 
+            Result = Result.Prev;
+          if (Result.Dx == horizontal && Result.Prev.OutIdx != Skip)
+          {
+            Horz = Result;
+            while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
+            if (Horz.Next.Top.X == Result.Prev.Top.X) 
+            {
+              if (!IsClockwise) Result = Horz.Next;
+            }
+            else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+          }
+
+          while (E != Result)
+          {
+            E.NextInLML = E.Prev;
+            if (E.Dx == horizontal && E != EStart &&
+              E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+            E = E.Prev;
+          }
+          if (E.Dx == horizontal && E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+          Result = Result.Prev; //move to the edge just beyond current bound
+        }
+        if (Result.OutIdx == Skip) 
+        {
+          //if edges still remain in the current bound beyond the skip edge then
+          //create another LocMin and call ProcessBound once more
+          E = Result;
+          if (IsClockwise)
+          {
+            while (E.Top.Y == E.Next.Bot.Y) E = E.Next;
+            //don't include top horizontals when parsing a bound a second time,
+            //they will be contained in the opposite bound ...
+            while (E != Result && E.Dx == horizontal) E = E.Prev;
+          } else
+          {
+            while (E.Top.Y == E.Prev.Bot.Y) E = E.Prev;
+            while (E != Result && E.Dx == horizontal) E = E.Next;
+          }
+          if (E == Result)
+          {
+            if (IsClockwise) Result = E.Next;
+            else Result = E.Prev;
+          } else
+          {
+            //there are more edges in the bound beyond result starting with E
+            if (IsClockwise)
+              E = Result.Next; 
+            else
+              E = Result.Prev;
+            LocalMinima locMin = new LocalMinima();
+            locMin.Next = null;
+            locMin.Y = E.Bot.Y;
+            locMin.LeftBound = null;
+            locMin.RightBound = E;
+            locMin.RightBound.WindDelta = 0;
+            Result = ProcessBound(locMin.RightBound, IsClockwise);
+            InsertLocalMinima(locMin);
+          }
+        }
+        return Result;
+      }
+      //------------------------------------------------------------------------------
+
+
       public bool AddPath(Path pg, PolyType polyType, bool Closed)
       {
 #if use_lines
@@ -836,133 +964,159 @@ namespace ClipperLib
         while (highI > 0 && (pg[highI] == pg[highI - 1])) --highI;
         if ((Closed && highI < 2) || (!Closed && highI < 1)) return false;
 
-          //create a new edge array ...
-          List<TEdge> edges = new List<TEdge>(highI+1);
-          for (int i = 0; i <= highI; i++) edges.Add(new TEdge());
+        //create a new edge array ...
+        List<TEdge> edges = new List<TEdge>(highI+1);
+        for (int i = 0; i <= highI; i++) edges.Add(new TEdge());
           
-          //1. Basic initialization of Edges ...
-          try
+        bool IsFlat = true;
+
+        //1. Basic (first) edge initialization ...
+        try
+        {
+          edges[1].Curr = pg[1];
+          RangeTest(pg[0], ref m_UseFullRange);
+          RangeTest(pg[highI], ref m_UseFullRange);
+          InitEdge(edges[0], edges[1], edges[highI], pg[0]);
+          InitEdge(edges[highI], edges[0], edges[highI - 1], pg[highI]);
+          for (int i = highI - 1; i >= 1; --i)
           {
-            edges[1].Curr = pg[1];
-            RangeTest(pg[0], ref m_UseFullRange);
-            RangeTest(pg[highI], ref m_UseFullRange);
-            InitEdge(edges[0], edges[1], edges[highI], pg[0]);
-            InitEdge(edges[highI], edges[0], edges[highI - 1], pg[highI]);
-            for (int i = highI - 1; i >= 1; --i)
-            {
-              RangeTest(pg[i], ref m_UseFullRange);
-              InitEdge(edges[i], edges[i + 1], edges[i - 1], pg[i]);
-            }
+            RangeTest(pg[i], ref m_UseFullRange);
+            InitEdge(edges[i], edges[i + 1], edges[i - 1], pg[i]);
           }
-          catch 
-          {
-            return false; //almost certainly a vertex has exceeded range
-          };
+        }
+        catch 
+        {
+          return false; //almost certainly a vertex has exceeded range
+        };
 
-          TEdge eStart = edges[0];
-          if (!ClosedOrSemiClosed) eStart.Prev.OutIdx = Skip;
+        TEdge eStart = edges[0];
+        if (!ClosedOrSemiClosed) eStart.Prev.OutIdx = Skip;
 
-          //2. Remove duplicate vertices, and collinear edges (when closed) ...
-          TEdge E = eStart, eLoopStop = eStart;
-          for (;;)
+        //2. Remove duplicate vertices, and (when closed) collinear edges ...
+        TEdge E = eStart, eLoopStop = eStart;
+        for (;;)
+        {
+          if (E.Curr == E.Next.Curr)
           {
-            if (E.Curr == E.Next.Curr)
+            //nb if E.OutIdx == Skip, it would have been semiOpen
+            if (E == eStart) eStart = E.Next;
+            E = RemoveEdge(E);
+            eLoopStop = E;
+            continue;
+          }
+          if (E.Prev == E.Next) 
+            break; //only two vertices
+          else if ((ClosedOrSemiClosed ||
+            (E.Prev.OutIdx != Skip && E.OutIdx != Skip &&
+            E.Next.OutIdx != Skip)) &&
+            SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, m_UseFullRange)) 
+          {
+            //All collinear edges are allowed for open paths but in closed paths
+            //inner vertices of adjacent collinear edges are removed. However if the
+            //PreserveCollinear property has been enabled, only overlapping collinear
+            //edges (ie spikes) are removed from closed paths.
+            if (Closed && (!PreserveCollinear ||
+              !Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr))) 
             {
-              //nb if E.OutIdx == Skip, it would have been semiOpen
               if (E == eStart) eStart = E.Next;
               E = RemoveEdge(E);
+              E = E.Prev;
               eLoopStop = E;
               continue;
             }
-            if (E.Prev == E.Next) 
-              break; //only two vertices
-            else if ((ClosedOrSemiClosed ||
-              (E.Prev.OutIdx != Skip && E.OutIdx != Skip &&
-              E.Next.OutIdx != Skip)) &&
-              SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, m_UseFullRange)) 
-            {
-              //All collinear edges are allowed for open paths but in closed paths
-              //inner vertices of adjacent collinear edges are removed. However if the
-              //PreserveCollinear property has been enabled, only overlapping collinear
-              //edges (ie spikes) are removed from closed paths.
-              if (Closed && (!PreserveCollinear ||
-                !Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr))) 
-              {
-                if (E == eStart) eStart = E.Next;
-                E = RemoveEdge(E);
-                E = E.Prev;
-                eLoopStop = E;
-                continue;
-              }
-            }
+          }
+          E = E.Next;
+          if (E == eLoopStop) break;
+        }
+
+        if ((!Closed && (E == E.Next)) || (Closed && (E.Prev == E.Next)))
+          return false;
+        m_edges.Add(edges);
+
+        if (!Closed) m_HasOpenPaths = true;
+
+        //3. Do second stage of edge initialization ...
+        TEdge eHighest = eStart;
+        E = eStart;
+        do
+        {
+          InitEdge2(E, polyType);
+          E = E.Next;
+          if (IsFlat && E.Curr.Y != eStart.Curr.Y) IsFlat = false;
+        }
+        while (E != eStart);
+
+        //4. Finally, add edge bounds to LocalMinima list ...
+
+        //Totally flat paths must be handled differently when adding them
+        //to LocalMinima list to avoid endless loops etc ...
+        if (IsFlat) 
+        {
+          if (Closed) return false;
+          E.Prev.OutIdx = Skip;
+          if (E.Prev.Bot.X < E.Prev.Top.X) ReverseHorizontal(E.Prev);
+          LocalMinima locMin = new LocalMinima();
+          locMin.Next = null;
+          locMin.Y = E.Bot.Y;
+          locMin.LeftBound = null;
+          locMin.RightBound = E;
+          locMin.RightBound.Side = EdgeSide.esRight;
+          locMin.RightBound.WindDelta = 0;
+          while (E.OutIdx != Skip)
+          {
+            E.NextInLML = E.Next;
+            if (E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
             E = E.Next;
-            if (E == eLoopStop) break;
           }
+          InsertLocalMinima(locMin);
+	        return false;
+        }
 
-          if ((!Closed && (E == E.Next)) || (Closed && (E.Prev == E.Next)))
-            return false;
-          m_edges.Add(edges);
+        bool clockwise;
+        TEdge EMin = null;
+        for (;;)
+        {
+          E = FindNextLocMin(E);
+          if (E == EMin) break;
+          else if (EMin == null) EMin = E;
 
-          if (!Closed)
-            m_HasOpenPaths = true;
-
-          //3. Do final Init and also find the 'highest' Edge. (nb: since I'm much
-          //more familiar with positive downwards Y axes, 'highest' here will be
-          //the Edge with the *smallest* Top.Y.)
-          TEdge eHighest = eStart;
-          E = eStart;
-          do
+          //E and E.Prev now share a local minima (left aligned if horizontal).
+          //Compare their slopes to find which starts which bound ...
+          LocalMinima locMin = new LocalMinima();
+          locMin.Next = null;
+          locMin.Y = E.Bot.Y;
+          if (E.Dx < E.Prev.Dx) 
           {
-            InitEdge2(E, polyType);
-            if (E.Top.Y < eHighest.Top.Y) eHighest = E;
-            E = E.Next;
-          }
-          while (E != eStart);
-
-          //4. build the local minima list ...
-          if (AllHorizontal(E))
-          {
-            if (ClosedOrSemiClosed)
-              E.Prev.OutIdx = Skip;
-            AscendToMax(ref E, false, false);
-            return true;
-          }
-
-          //if eHighest is also the Skip then it's a natural break, otherwise
-          //make sure eHighest is positioned so we're either at a top horizontal or
-          //just starting to head down one edge of the polygon
-          E = eStart.Prev; //EStart.Prev == Skip edge
-          if (E.Prev == E.Next)
-            eHighest = E.Next;
-          else if (!ClosedOrSemiClosed && E.Top.Y == eHighest.Top.Y)
-          {
-            if ((IsHorizontal(E) || IsHorizontal(E.Next)) && 
-              E.Next.Bot.Y == eHighest.Top.Y)
-                eHighest = E.Next;
-            else if (SharedVertWithPrevAtTop(E)) eHighest = E;
-            else if (E.Top == E.Prev.Top) eHighest = E.Prev;
-            else eHighest = E.Next;
+            locMin.LeftBound = E.Prev;
+            locMin.RightBound = E;
+            clockwise = false; //Q.nextInLML = Q.prev
           } else
           {
-            E = eHighest;
-            while (IsHorizontal(eHighest) ||
-              (eHighest.Top == eHighest.Next.Top) ||
-              (eHighest.Top == eHighest.Next.Bot)) //next is high horizontal
-            {
-              eHighest = eHighest.Next;
-              if (eHighest == E) 
-              {
-                while (IsHorizontal(eHighest) || !SharedVertWithPrevAtTop(eHighest))
-                    eHighest = eHighest.Next;
-                break; //avoids potential endless loop
-              }
-            }
+            locMin.LeftBound = E;
+            locMin.RightBound = E.Prev;
+            clockwise = true; //Q.nextInLML = Q.next
           }
-          E = eHighest;
-          do
-            E = AddBoundsToLML(E, Closed);
-          while (E != eHighest);
-          return true;
+          locMin.LeftBound.Side = EdgeSide.esLeft;
+          locMin.RightBound.Side = EdgeSide.esRight;
+
+          if (!Closed) locMin.LeftBound.WindDelta = 0;
+          else if (locMin.LeftBound.Next == locMin.RightBound)
+            locMin.LeftBound.WindDelta = -1;
+          else locMin.LeftBound.WindDelta = 1;
+          locMin.RightBound.WindDelta = -locMin.LeftBound.WindDelta;
+
+          E = ProcessBound(locMin.LeftBound, clockwise);
+          TEdge E2 = ProcessBound(locMin.RightBound, !clockwise);
+
+          if (locMin.LeftBound.OutIdx == Skip)
+            locMin.LeftBound = null;
+          else if (locMin.RightBound.OutIdx == Skip)
+            locMin.RightBound = null;
+          InsertLocalMinima(locMin);
+          if (!clockwise) E = E2;
+        }
+        return true;
+
       }
       //------------------------------------------------------------------------------
 
@@ -1011,131 +1165,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      TEdge GetLastHorz(TEdge Edge)
-      {
-        TEdge result = Edge;
-        while (result.OutIdx != Skip && result.Next != Edge && IsHorizontal(result.Next))
-          result = result.Next;
-        return result;
-      }
-      //------------------------------------------------------------------------------
-
-      bool SharedVertWithPrevAtTop(TEdge Edge)
-      {
-        TEdge E = Edge;
-        bool result = true;
-        while (E.Prev != Edge)
-        {
-          if (E.Top == E.Prev.Top)
-          {
-            if (E.Bot == E.Prev.Bot)
-            {E = E.Prev; continue;}
-            else result = true;
-          }
-          else result = false;
-          break;
-        }
-        while (E != Edge)
-        {
-          result = !result;
-          E = E.Next;
-        }
-        return result;
-      }
-      //------------------------------------------------------------------------------
-
-      bool SharedVertWithNextIsBot(TEdge Edge)
-      {
-        bool result = true;
-        TEdge E = Edge;
-        while (E.Prev != Edge)
-        {
-          bool A = (E.Next.Bot == E.Bot);
-          bool B = (E.Prev.Bot == E.Bot);
-          if (A != B)
-          {
-            result = A;
-            break;
-          }
-          A = (E.Next.Top == E.Top);
-          B = (E.Prev.Top == E.Top);
-          if (A != B)
-          {
-            result = B;
-            break;
-          }
-          E = E.Prev;
-        }
-        while (E != Edge)
-        {
-          result = !result;
-          E = E.Next;
-        }
-        return result;
-      }
-      //------------------------------------------------------------------------------
-
-      bool MoreBelow(TEdge Edge)
-      {
-        //Edge is Skip heading down.
-        TEdge E = Edge;
-        if (IsHorizontal(E))
-        {
-          while (IsHorizontal(E.Next)) E = E.Next;
-          return E.Next.Bot.Y > E.Bot.Y;
-        }
-        else if (IsHorizontal(E.Next))
-        {
-          while (IsHorizontal(E.Next)) E = E.Next;
-          return E.Next.Bot.Y > E.Bot.Y;
-        }
-        else return (E.Bot == E.Next.Top);
-      }
-      //------------------------------------------------------------------------------
-
-      bool JustBeforeLocMin(TEdge Edge)
-      {
-        //Edge is Skip and was heading down.
-        TEdge E = Edge;
-        if (IsHorizontal(E))
-        {
-          while (IsHorizontal(E.Next)) E = E.Next;
-          return E.Next.Top.Y < E.Bot.Y;
-        }
-        else return SharedVertWithNextIsBot(E);
-      }
-      //------------------------------------------------------------------------------
-
-      bool MoreAbove(TEdge Edge)
-      {
-        if (IsHorizontal(Edge))
-        {
-          Edge = GetLastHorz(Edge);
-          return (Edge.Next.Top.Y < Edge.Top.Y);
-        }
-        else if (IsHorizontal(Edge.Next))
-        {
-          Edge = GetLastHorz(Edge.Next);
-          return (Edge.Next.Top.Y < Edge.Top.Y);
-        }
-        else
-          return (Edge.Next.Top.Y < Edge.Top.Y);
-      }
-      //------------------------------------------------------------------------------
-
-      bool AllHorizontal(TEdge Edge)
-      {
-        if (!IsHorizontal(Edge)) return false;
-        TEdge E = Edge.Next;
-        while (E != Edge)
-        {
-          if (!IsHorizontal(E)) return false;
-          else E = E.Next;
-        }
-        return true;
-      }
-      //------------------------------------------------------------------------------
-
       private void SetDx(TEdge e)
       {
         e.Delta.X = (e.Top.X - e.Bot.X);
@@ -1144,193 +1173,6 @@ namespace ClipperLib
         else e.Dx = (double)(e.Delta.X) / (e.Delta.Y);
       }
       //---------------------------------------------------------------------------
-
-      void DoMinimaLML(TEdge E1, TEdge E2, bool IsClosed)
-      {
-        if (E1 == null)
-        {
-          if (E2 == null) return;
-          LocalMinima NewLm = new LocalMinima();
-          NewLm.Next = null;
-          NewLm.Y = E2.Bot.Y;
-          NewLm.LeftBound = null;
-          E2.WindDelta = 0;
-          NewLm.RightBound = E2;
-          InsertLocalMinima(NewLm);
-        } else
-        {
-          //E and E.Prev are now at a local minima ...
-          LocalMinima NewLm = new LocalMinima();
-          NewLm.Y = E1.Bot.Y;
-          NewLm.Next = null;
-          if (IsHorizontal(E2)) //Horz. edges never start a Left bound
-          {
-            if (E2.Bot.X != E1.Bot.X) ReverseHorizontal(E2);
-            NewLm.LeftBound = E1;
-            NewLm.RightBound = E2;
-          } else if (E2.Dx < E1.Dx)
-          {
-            NewLm.LeftBound = E1;
-            NewLm.RightBound = E2;
-          } else
-          {
-            NewLm.LeftBound = E2;
-            NewLm.RightBound = E1;
-          }
-          NewLm.LeftBound.Side = EdgeSide.esLeft;
-          NewLm.RightBound.Side = EdgeSide.esRight;
-          //set the winding state of the first edge in each bound
-          //(it'll be copied to subsequent edges in the bound) ...
-          if (!IsClosed) NewLm.LeftBound.WindDelta = 0;
-          else if (NewLm.LeftBound.Next == NewLm.RightBound) NewLm.LeftBound.WindDelta = -1;
-          else NewLm.LeftBound.WindDelta = 1;
-          NewLm.RightBound.WindDelta = -NewLm.LeftBound.WindDelta;
-          InsertLocalMinima(NewLm);
-        }
-      }
-      //----------------------------------------------------------------------
-
-      TEdge DescendToMin(ref TEdge E)
-      {
-        //PRECONDITION: STARTING EDGE IS A VALID DESCENDING EDGE.
-        //Starting at the top of one bound we progress to the bottom where there's
-        //A local minima. We  go to the top of the Next bound. These two bounds
-        //form the left and right (or right and left) bounds of the local minima.
-        TEdge EHorz;
-        E.NextInLML = null;
-        if (IsHorizontal(E)) 
-        {
-          EHorz = E;
-          while (IsHorizontal(EHorz.Next)) EHorz = EHorz.Next;
-          if (EHorz.Bot!= EHorz.Next.Top)
-            ReverseHorizontal(E);
-        }
-        for (;;)
-        {
-          E = E.Next;
-          if (E.OutIdx == Skip) break;
-          else if (IsHorizontal(E))
-          {
-            //nb: proceed through horizontals when approaching from their right,
-            //    but break on horizontal minima if approaching from their left.
-            //    This ensures 'local minima' are always on the left of horizontals.
-
-            //look ahead is required in case of multiple consec. horizontals
-            EHorz = GetLastHorz(E);
-            if(EHorz == E.Prev ||                    //horizontal line
-              (EHorz.Next.Top.Y < E.Top.Y &&      //bottom horizontal
-              EHorz.Next.Bot.X > E.Prev.Bot.X))  //approaching from the left
-                break;
-            if (E.Top.X != E.Prev.Bot.X)  ReverseHorizontal(E);
-            if (EHorz.OutIdx == Skip) EHorz = EHorz.Prev;
-            while (E != EHorz)
-            {
-              E.NextInLML = E.Prev;
-              E = E.Next;
-              if (E.Top.X != E.Prev.Bot.X) ReverseHorizontal(E);
-            }
-          }
-          else if (E.Bot.Y == E.Prev.Bot.Y)  break;
-          E.NextInLML = E.Prev;
-        }
-        return E.Prev;
-      }
-      //----------------------------------------------------------------------
-
-      void AscendToMax(ref TEdge E, bool Appending, bool IsClosed)
-      {
-        if (E.OutIdx == Skip)
-        {
-          E = E.Next;
-          if (!MoreAbove(E.Prev)) return;
-        }
-
-        if (IsHorizontal(E) && Appending &&
-          (E.Bot != E.Prev.Bot))
-            ReverseHorizontal(E);
-        //now process the ascending bound ....
-        TEdge EStart = E;
-        for (;;)
-        {
-          if (E.Next.OutIdx == Skip ||
-            ((E.Next.Top.Y == E.Top.Y) && !IsHorizontal(E.Next))) break;
-          E.NextInLML = E.Next;
-          E = E.Next;
-          if (IsHorizontal(E) && (E.Bot.X != E.Prev.Top.X))
-            ReverseHorizontal(E);
-        }
-
-        if (!Appending)
-        {
-          if (EStart.OutIdx == Skip) EStart = EStart.Next;
-          if (EStart != E.Next)
-            DoMinimaLML(null, EStart, IsClosed);
-        }
-        E = E.Next;
-      }
-      //----------------------------------------------------------------------
-
-      TEdge AddBoundsToLML(TEdge E, bool Closed)
-      {
-        //Starting at the top of one bound we progress to the bottom where there's
-        //A local minima. We then go to the top of the Next bound. These two bounds
-        //form the left and right (or right and left) bounds of the local minima.
-
-        TEdge B;
-        bool AppendMaxima;
-        //do minima ...
-        if (E.OutIdx == Skip)
-        {
-          if (MoreBelow(E))
-          {
-            E = E.Next;
-            B = DescendToMin(ref E);
-          }
-          else
-            B = null;
-        }
-        else
-          B = DescendToMin(ref E);
-
-        if (E.OutIdx == Skip)    //nb: may be BEFORE, AT or just THRU LM
-        {
-          //do minima before Skip...
-          DoMinimaLML(null, B, Closed);      //store what we've got so far (if anything)
-          AppendMaxima = false;
-          //finish off any minima ...
-          if (E.Bot != E.Prev.Bot && MoreBelow(E))
-          {
-            E = E.Next;
-            B = DescendToMin(ref E);
-            DoMinimaLML(B, E, Closed);
-            AppendMaxima = true;
-          }
-          else if (JustBeforeLocMin(E))
-            E = E.Next;
-        }
-        else
-        {
-          DoMinimaLML(B, E, Closed);
-          AppendMaxima = true;
-        }
-
-        //now do maxima ...
-        AscendToMax(ref E, AppendMaxima, Closed);
-
-        if (E.OutIdx == Skip && (E.Top != E.Prev.Top)) //may be BEFORE, AT or just AFTER maxima
-        {
-          //finish off any maxima ...
-          if (MoreAbove(E))
-          {
-            E = E.Next;
-            AscendToMax(ref E, false, Closed);
-          }
-          else if (E.Top == E.Next.Top || (IsHorizontal(E.Next) && (E.Top == E.Next.Bot)))
-            E = E.Next; //ie just before Maxima
-        }
-        return E;
-      }
-      //------------------------------------------------------------------------------
 
       private void InsertLocalMinima(LocalMinima newLm)
       {
@@ -1390,15 +1232,15 @@ namespace ClipperLib
           {
             e.Curr = e.Bot;
             e.Side = EdgeSide.esLeft;
-            if (e.OutIdx != Skip)
-              e.OutIdx = Unassigned;
+            e.OutIdx = Unassigned;
           }
           e = lm.RightBound;
-          e.Curr = e.Bot;
-          e.Side = EdgeSide.esRight;
-          if (e.OutIdx != Skip)
+          if (e != null)
+          {
+            e.Curr = e.Bot;
+            e.Side = EdgeSide.esRight;
             e.OutIdx = Unassigned;
-
+          }
           lm = lm.Next;
         }
       }
@@ -1787,6 +1629,14 @@ namespace ClipperLib
             if (IsContributing(rb))
               Op1 = AddOutPt(rb, rb.Bot);
           }
+          else if (rb == null)
+          {
+            InsertEdgeIntoAEL(lb, null);
+            SetWindingCount(lb);
+            if (IsContributing(lb))
+              Op1 = AddOutPt(lb, lb.Bot);
+            InsertScanbeam(lb.Top.Y);
+          }
           else
           {
             InsertEdgeIntoAEL(lb, null);
@@ -1796,16 +1646,18 @@ namespace ClipperLib
             rb.WindCnt2 = lb.WindCnt2;
             if (IsContributing(lb))
               Op1 = AddLocalMinPoly(lb, rb, lb.Bot);
-
             InsertScanbeam(lb.Top.Y);
           }
 
-          if (IsHorizontal(rb))
-            AddEdgeToSEL(rb);
-          else
-            InsertScanbeam( rb.Top.Y );
+          if (rb != null)
+          {
+            if (IsHorizontal(rb))
+              AddEdgeToSEL(rb);
+            else
+              InsertScanbeam(rb.Top.Y);
+          }
 
-          if (lb == null) continue;
+          if (lb == null || rb == null) continue;
 
           //if output polygons share an Edge with a horizontal rb, they'll need joining later ...
           if (Op1 != null && IsHorizontal(rb) && 

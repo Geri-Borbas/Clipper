@@ -1528,10 +1528,13 @@ begin
   try
     FillChar(Edges^, sizeof(TEdge)*(HighI +1), 0);
     Edges[1].Curr := Path[1];
+    RangeTest(Path[0], FUse64BitRange);
+    RangeTest(Path[HighI], FUse64BitRange);
     InitEdge(@Edges[0], @Edges[1], @Edges[HighI], Path[0]);
     InitEdge(@Edges[HighI], @Edges[0], @Edges[HighI-1], Path[HighI]);
     for I := HighI - 1 downto 1 do
     begin
+      RangeTest(Path[I], FUse64BitRange);
       InitEdge(@Edges[I], @Edges[I+1], @Edges[I-1], Path[I]);
     end;
   except
@@ -1585,6 +1588,7 @@ begin
     FreeMem(Edges);
     Exit;
   end;
+  if not Closed then FHasOpenPaths := true;
 
   //3. Do second stage of edge initialization ...
   E := EStart;
@@ -1596,14 +1600,11 @@ begin
 
   //4. Finally, add edge bounds to LocalMinima list ...
 
-  //todo - ?? manage 2 vertex open paths as if IsFlat???
-
   //Totally flat paths must be handled differently when adding them
   //to LocalMinima list to avoid endless loops etc ...
   if (IsFlat) then
   begin
     if Closed then Exit;
-    //todo = needs testing ....
     E.Prev.OutIdx := Skip;
     if E.Prev.Bot.X < E.Prev.Top.X then ReverseHorizontal(E.Prev);
     new(locMin);
