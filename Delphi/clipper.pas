@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  17 November 2013                                                *
+* Date      :  18 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1583,6 +1583,7 @@ begin
     Exit;
   end;
   if not Closed then FHasOpenPaths := true;
+  FEdgeList.Add(Edges);
 
   //3. Do second stage of edge initialization ...
   E := EStart;
