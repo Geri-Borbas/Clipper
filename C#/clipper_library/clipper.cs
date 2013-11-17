@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  16 November 2013                                                *
+* Date      :  17 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -840,11 +840,9 @@ namespace ClipperLib
 
       private TEdge ProcessBound(TEdge E, bool IsClockwise)
       {
-        TEdge EStart = E;
-        TEdge Result = E;
+        TEdge EStart = E, Result = E;
         TEdge Horz;
         cInt StartX;
-        //if (E.Dx = Horizontal) and (E.Bot.X > E.Top.X) then ReverseHorizontal(E);
         if (E.Dx == horizontal)
         {
           //it's possible for adjacent overlapping horz edges to start heading left
@@ -853,59 +851,62 @@ namespace ClipperLib
           else StartX = E.Next.Bot.X;
           if (E.Bot.X != StartX) ReverseHorizontal(E);
         }
-        if (Result.OutIdx == Skip)
-          ;//do nothing here
-        else if (IsClockwise)
+        if (Result.OutIdx != Skip)
         {
-          while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
-            Result = Result.Next;
-          if (Result.Dx == horizontal && Result.Next.OutIdx != Skip)
+          if (IsClockwise)
           {
-            //nb: at the top of a bound, horizontals are added to the bound
-            //only when the preceding edge attaches to the horizontal's left vertex
-            //unless a Skip edge is encountered when that becomes the top divide
-            Horz = Result;
-            while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
-            if (Horz.Prev.Top.X == Result.Next.Top.X) 
+            while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
+              Result = Result.Next;
+            if (Result.Dx == horizontal && Result.Next.OutIdx != Skip)
             {
-              if (!IsClockwise) Result = Horz.Prev;
+              //nb: at the top of a bound, horizontals are added to the bound
+              //only when the preceding edge attaches to the horizontal's left vertex
+              //unless a Skip edge is encountered when that becomes the top divide
+              Horz = Result;
+              while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
+              if (Horz.Prev.Top.X == Result.Next.Top.X)
+              {
+                if (!IsClockwise) Result = Horz.Prev;
+              }
+              else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
             }
-            else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
-          }
-          while (E != Result) 
-          {
-            E.NextInLML = E.Next;
-            if (E.Dx == horizontal && E != EStart &&
-              E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
-            E = E.Next;
-          }
-          if (E.Dx == horizontal && E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
-          Result = Result.Next; //move to the edge just beyond current bound
-        } else
-        {
-          while (Result.Top.Y == Result.Prev.Bot.Y && Result.Prev.OutIdx != Skip) 
-            Result = Result.Prev;
-          if (Result.Dx == horizontal && Result.Prev.OutIdx != Skip)
-          {
-            Horz = Result;
-            while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
-            if (Horz.Next.Top.X == Result.Prev.Top.X) 
+            while (E != Result)
             {
-              if (!IsClockwise) Result = Horz.Next;
+              E.NextInLML = E.Next;
+              if (E.Dx == horizontal && E != EStart &&
+                E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+              E = E.Next;
             }
-            else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+            if (E.Dx == horizontal && E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+            Result = Result.Next; //move to the edge just beyond current bound
           }
+          else
+          {
+            while (Result.Top.Y == Result.Prev.Bot.Y && Result.Prev.OutIdx != Skip)
+              Result = Result.Prev;
+            if (Result.Dx == horizontal && Result.Prev.OutIdx != Skip)
+            {
+              Horz = Result;
+              while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
+              if (Horz.Next.Top.X == Result.Prev.Top.X)
+              {
+                if (!IsClockwise) Result = Horz.Next;
+              }
+              else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+            }
 
-          while (E != Result)
-          {
-            E.NextInLML = E.Prev;
-            if (E.Dx == horizontal && E != EStart &&
-              E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
-            E = E.Prev;
+            while (E != Result)
+            {
+              E.NextInLML = E.Prev;
+              if (E.Dx == horizontal && E != EStart &&
+                E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+              E = E.Prev;
+            }
+            if (E.Dx == horizontal && E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+            Result = Result.Prev; //move to the edge just beyond current bound
           }
-          if (E.Dx == horizontal && E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
-          Result = Result.Prev; //move to the edge just beyond current bound
         }
+        
         if (Result.OutIdx == Skip) 
         {
           //if edges still remain in the current bound beyond the skip edge then
@@ -959,8 +960,7 @@ namespace ClipperLib
 #endif
 
         int highI = (int)pg.Count - 1;
-        bool ClosedOrSemiClosed = (highI > 0) && (Closed || (pg[0] == pg[highI]));
-        while (highI > 0 && (pg[highI] == pg[0])) --highI;
+        if (Closed) while (highI > 0 && (pg[highI] == pg[0])) --highI;
         while (highI > 0 && (pg[highI] == pg[highI - 1])) --highI;
         if ((Closed && highI < 2) || (!Closed && highI < 1)) return false;
 
@@ -990,7 +990,7 @@ namespace ClipperLib
         };
 
         TEdge eStart = edges[0];
-        if (!ClosedOrSemiClosed) eStart.Prev.OutIdx = Skip;
+        if (!Closed) eStart.Prev.OutIdx = Skip;
 
         //2. Remove duplicate vertices, and (when closed) collinear edges ...
         TEdge E = eStart, eLoopStop = eStart;
@@ -1006,24 +1006,20 @@ namespace ClipperLib
           }
           if (E.Prev == E.Next) 
             break; //only two vertices
-          else if ((ClosedOrSemiClosed ||
-            (E.Prev.OutIdx != Skip && E.OutIdx != Skip &&
-            E.Next.OutIdx != Skip)) &&
-            SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, m_UseFullRange)) 
+          else if (Closed &&
+            SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, m_UseFullRange) && 
+            (!PreserveCollinear ||
+            !Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr))) 
           {
-            //All collinear edges are allowed for open paths but in closed paths
-            //inner vertices of adjacent collinear edges are removed. However if the
-            //PreserveCollinear property has been enabled, only overlapping collinear
-            //edges (ie spikes) are removed from closed paths.
-            if (Closed && (!PreserveCollinear ||
-              !Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr))) 
-            {
-              if (E == eStart) eStart = E.Next;
-              E = RemoveEdge(E);
-              E = E.Prev;
-              eLoopStop = E;
-              continue;
-            }
+            //Collinear edges are allowed for open paths but in closed paths
+            //the default is to merge adjacent collinear edges into a single edge.
+            //However, if the PreserveCollinear property is enabled, only overlapping
+            //collinear edges (ie spikes) will be removed from closed paths.
+            if (E == eStart) eStart = E.Next;
+            E = RemoveEdge(E);
+            E = E.Prev;
+            eLoopStop = E;
+            continue;
           }
           E = E.Next;
           if (E == eLoopStop) break;
@@ -2114,6 +2110,7 @@ namespace ClipperLib
       private void AddLocalMaxPoly(TEdge e1, TEdge e2, IntPoint pt)
       {
           AddOutPt(e1, pt);
+          if (e2.WindDelta == 0) AddOutPt(e2, pt);
           if (e1.OutIdx == e2.OutIdx)
           {
               e1.OutIdx = Unassigned;

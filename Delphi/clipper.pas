@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  16 November 2013                                                *
+* Date      :  17 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1397,7 +1397,6 @@ var
 begin
   EStart := E;
   Result := E;
-  //if (E.Dx = Horizontal) and (E.Bot.X > E.Top.X) then ReverseHorizontal(E);
   if (E.Dx = Horizontal) then
   begin
     //it's possible for adjacent overlapping horz edges to start heading left
@@ -1503,7 +1502,7 @@ var
   I, HighI: Integer;
   Edges: PEdgeArray;
   E, E2, EMin, EStart, ELoopStop, EHighest: PEdge;
-  IsFlat, clockwise, ClosedOrSemiClosed: Boolean;
+  IsFlat, clockwise: Boolean;
   locMin: PLocalMinima;
 begin
 {$IFDEF use_lines}
@@ -1518,9 +1517,8 @@ begin
 
   //1. Basic (first) edge initialization ...
   HighI := High(Path);
-  ClosedOrSemiClosed := Closed or
-    ((HighI > 0) and (PointsEqual(Path[0],Path[HighI])));
-  while (HighI > 0) and PointsEqual(Path[HighI],Path[0]) do Dec(HighI);
+  if Closed then
+    while (HighI > 0) and PointsEqual(Path[HighI],Path[0]) do Dec(HighI);
   while (HighI > 0) and PointsEqual(Path[HighI],Path[HighI -1]) do Dec(HighI);
   if (Closed and (HighI < 2)) or (not Closed and (HighI < 1)) then Exit;
 
@@ -1543,7 +1541,7 @@ begin
   end;
 
   EStart := @Edges[0];
-  if not ClosedOrSemiClosed then EStart.Prev.OutIdx := Skip;
+  if not Closed then EStart.Prev.OutIdx := Skip;
 
   //2. Remove duplicate vertices, and (when closed) collinear edges ...
   E := EStart;
@@ -1560,24 +1558,20 @@ begin
     end;
     if (E.Prev = E.Next) then
       Break //only two vertices
-    else if (ClosedOrSemiClosed or
-      ((E.Prev.OutIdx <> Skip) and (E.OutIdx <> Skip) and
-      (E.Next.OutIdx <> Skip))) and
-      SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, FUse64BitRange) then
+    else if Closed and
+      SlopesEqual(E.Prev.Curr, E.Curr, E.Next.Curr, FUse64BitRange) and
+      (not FPreserveCollinear or
+      not Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr)) then
     begin
-      //All collinear edges are allowed for open paths but in closed paths
-      //inner vertices of adjacent collinear edges are removed. However if the
-      //PreserveCollinear property has been enabled, only overlapping collinear
-      //edges (ie spikes) are removed from closed paths.
-      if Closed and (not FPreserveCollinear or
-        not Pt2IsBetweenPt1AndPt3(E.Prev.Curr, E.Curr, E.Next.Curr)) then
-      begin
-        if E = EStart then EStart := E.Next;
-        E := RemoveEdge(E);
-        E := E.Prev;
-        ELoopStop := E;
-        Continue;
-      end;
+      //Collinear edges are allowed for open paths but in closed paths
+      //the default is to merge adjacent collinear edges into a single edge.
+      //However, if the PreserveCollinear property is enabled, only overlapping
+      //collinear edges (ie spikes) will be removed from closed paths.
+      if E = EStart then EStart := E.Next;
+      E := RemoveEdge(E);
+      E := E.Prev;
+      ELoopStop := E;
+      Continue;
     end;
     E := E.Next;
     if E = ELoopStop then Break;
@@ -2253,6 +2247,7 @@ end;
 procedure TClipper.AddLocalMaxPoly(E1, E2: PEdge; const Pt: TIntPoint);
 begin
   AddOutPt(E1, Pt);
+  if E2.WindDelta = 0 then AddOutPt(E2, Pt);
   if (E1.OutIdx = E2.OutIdx) then
   begin
     E1.OutIdx := Unassigned;
