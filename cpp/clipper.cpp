@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  17 November 2013                                                *
+* Date      :  19 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -107,8 +107,6 @@ struct OutPt;
 
 struct OutRec {
   int       Idx;
-  OutRec   *SplitRec1;  //see comments in clipper.pas
-  OutRec   *SplitRec2;  //see comments in clipper.pas
   bool      IsHole;
   bool      IsOpen;
   OutRec   *FirstLeft;  //see comments in clipper.pas
@@ -1512,22 +1510,6 @@ bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::FindOwnerFromSplitRecs(OutRec &outRec, OutRec *&currOrfl)
-{
-  if (!currOrfl->SplitRec1 && !currOrfl->SplitRec2) return false;
-  OutRec* orfl = currOrfl;
-  while (orfl->SplitRec1) orfl = orfl->SplitRec1;
-  if (!orfl) orfl = orfl->SplitRec2;
-  while (orfl)
-    if (orfl->Pts &&
-      Poly2ContainsPoly1(outRec.Pts, orfl->Pts, m_UseFullRange)) break;
-    else orfl = orfl->SplitRec2;
-  if (!orfl) return false;
-  currOrfl = orfl;
-  return true;
-}
-//------------------------------------------------------------------------------
-
 void Clipper::FixHoleLinkage(OutRec &outrec)
 {
   //skip OutRecs that (a) contain outermost polygons or
@@ -1538,8 +1520,7 @@ void Clipper::FixHoleLinkage(OutRec &outrec)
 
   OutRec* orfl = outrec.FirstLeft;
   while (orfl && ((orfl->IsHole == outrec.IsHole) || !orfl->Pts))
-    if (FindOwnerFromSplitRecs(outrec, orfl)) break;
-    else orfl = orfl->FirstLeft;
+      orfl = orfl->FirstLeft;
   outrec.FirstLeft = orfl;
 }
 //------------------------------------------------------------------------------
@@ -2489,8 +2470,6 @@ OutRec* Clipper::CreateOutRec()
   result->PolyNd = 0;
   m_PolyOuts.push_back(result);
   result->Idx = (int)m_PolyOuts.size()-1;
-  result->SplitRec1 = 0;
-  result->SplitRec2 = 0;
   return result;
 }
 //------------------------------------------------------------------------------
@@ -3675,14 +3654,22 @@ void Clipper::FixupFirstLefts2(OutRec* OldOutRec, OutRec* NewOutRec)
 }
 //----------------------------------------------------------------------
 
+static OutRec* ParseFirstLeft(OutRec* FirstLeft)
+{
+  while (FirstLeft && !FirstLeft->Pts) 
+    FirstLeft = FirstLeft->FirstLeft;
+  return FirstLeft;
+}
+//------------------------------------------------------------------------------
+
 void Clipper::JoinCommonEdges()
 {
   for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
   {
-    Join* j = m_Joins[i];
+    Join* join = m_Joins[i];
 
-    OutRec *outRec1 = GetOutRec(j->OutPt1->Idx);
-    OutRec *outRec2 = GetOutRec(j->OutPt2->Idx);
+    OutRec *outRec1 = GetOutRec(join->OutPt1->Idx);
+    OutRec *outRec2 = GetOutRec(join->OutPt2->Idx);
 
     if (!outRec1->Pts || !outRec2->Pts) continue;
 
@@ -3695,7 +3682,7 @@ void Clipper::JoinCommonEdges()
     else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
     OutPt *p1, *p2;
-    if (!JoinPoints(j, p1, p2)) continue;
+    if (!JoinPoints(join, p1, p2)) continue;
 
     if (outRec1 == outRec2)
     {
@@ -3705,11 +3692,21 @@ void Clipper::JoinCommonEdges()
       outRec1->BottomPt = 0;
       outRec2 = CreateOutRec();
       outRec2->Pts = p2;
-      outRec2->SplitRec1 = outRec1; //old
-      outRec1->SplitRec2 = outRec2; //new
 
       //update all OutRec2.Pts Idx's ...
       UpdateOutPtIdxs(*outRec2);
+
+      //We now need to check every OutRec.FirstLeft pointer. If it points
+      //to OutRec1 it may need to point to OutRec2 instead ...
+      if (m_UsingPolyTree)
+        for (PolyOutList::size_type j = outRec1->Idx + 1; j < m_PolyOuts.size() - 1; j++)
+        {
+          OutRec* oRec = m_PolyOuts[j];
+          if (!oRec->Pts || ParseFirstLeft(oRec->FirstLeft) != outRec1 ||
+            oRec->IsHole == outRec1->IsHole) continue;
+          if (Poly2ContainsPoly1(oRec->Pts, p2, m_UseFullRange))
+            oRec->FirstLeft = outRec2;
+        }
 
       if (Poly2ContainsPoly1(outRec2->Pts, outRec1->Pts, m_UseFullRange))
       {

@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  17 November 2013                                                *
+* Date      :  19 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -570,8 +570,6 @@ namespace ClipperLib
   internal class OutRec
   {
     internal int Idx;
-    internal OutRec SplitRec1;  //see comments in clipper.pas
-    internal OutRec SplitRec2;  //see comments in clipper.pas
     internal bool IsHole;
     internal bool IsOpen;
     internal OutRec FirstLeft; //see comments in clipper.pas
@@ -1453,34 +1451,17 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal bool FindOwnerFromSplitRecs(OutRec outRec, ref OutRec currOrfl)
-      {
-        if (currOrfl.SplitRec1 == null && currOrfl.SplitRec2 == null) return false;
-        OutRec orfl = currOrfl;
-        while (orfl.SplitRec1 != null) orfl = orfl.SplitRec1;
-        if (orfl == null) orfl = orfl.SplitRec2;
-        while (orfl != null)
-          if (orfl.Pts != null &&
-            Poly2ContainsPoly1(outRec.Pts, orfl.Pts, m_UseFullRange)) break;
-          else orfl = orfl.SplitRec2;
-        if (orfl == null) return false;
-        currOrfl = orfl;
-        return true;
-      }
-      //------------------------------------------------------------------------------
-
-    internal void FixHoleLinkage(OutRec outRec)
+      internal void FixHoleLinkage(OutRec outRec)
       {
         //skip if an outermost polygon or
         //already already points to the correct FirstLeft ...
-        if (outRec.FirstLeft == null ||                
+        if (outRec.FirstLeft == null ||
               (outRec.IsHole != outRec.FirstLeft.IsHole &&
               outRec.FirstLeft.Pts != null)) return;
 
         OutRec orfl = outRec.FirstLeft;
         while (orfl != null && ((orfl.IsHole == outRec.IsHole) || orfl.Pts == null))
-          if (FindOwnerFromSplitRecs(outRec, ref orfl)) break;
-          else orfl = orfl.FirstLeft;
+          orfl = orfl.FirstLeft;
         outRec.FirstLeft = orfl;
       }
       //------------------------------------------------------------------------------
@@ -2176,8 +2157,6 @@ namespace ClipperLib
         result.PolyNode = null;
         m_PolyOuts.Add(result);
         result.Idx = m_PolyOuts.Count - 1;
-        result.SplitRec1 = null;
-        result.SplitRec2 = null;
         return result;
       }
       //------------------------------------------------------------------------------
@@ -3850,14 +3829,22 @@ namespace ClipperLib
       }
       //----------------------------------------------------------------------
 
-      private void JoinCommonEdges()
+      private static OutRec ParseFirstLeft(OutRec FirstLeft)
+      {
+        while (FirstLeft != null && FirstLeft.Pts == null) 
+          FirstLeft = FirstLeft.FirstLeft;
+        return FirstLeft;
+      }
+      //------------------------------------------------------------------------------
+
+    private void JoinCommonEdges()
       {
         for (int i = 0; i < m_Joins.Count; i++)
         {
-          Join j = m_Joins[i];
+          Join join = m_Joins[i];
 
-          OutRec outRec1 = GetOutRec(j.OutPt1.Idx);
-          OutRec outRec2 = GetOutRec(j.OutPt2.Idx);
+          OutRec outRec1 = GetOutRec(join.OutPt1.Idx);
+          OutRec outRec2 = GetOutRec(join.OutPt2.Idx);
 
           if (outRec1.Pts == null || outRec2.Pts == null) continue;
 
@@ -3870,7 +3857,7 @@ namespace ClipperLib
           else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
           OutPt p1, p2;
-          if (!JoinPoints(j, out p1, out p2)) continue;
+          if (!JoinPoints(join, out p1, out p2)) continue;
 
           if (outRec1 == outRec2)
           {
@@ -3880,11 +3867,21 @@ namespace ClipperLib
             outRec1.BottomPt = null;
             outRec2 = CreateOutRec();
             outRec2.Pts = p2;
-            outRec2.SplitRec1 = outRec1; //old
-            outRec1.SplitRec2 = outRec2; //new
 
             //update all OutRec2.Pts Idx's ...
             UpdateOutPtIdxs(outRec2);
+
+            //We now need to check every OutRec.FirstLeft pointer. If it points
+            //to OutRec1 it may need to point to OutRec2 instead ...
+            if (m_UsingPolyTree)
+              for (int j = outRec1.Idx + 1; j < m_PolyOuts.Count - 1; j++)
+              {
+                OutRec oRec = m_PolyOuts[j];
+                if (oRec.Pts == null || ParseFirstLeft(oRec.FirstLeft) != outRec1 ||
+                  oRec.IsHole == outRec1.IsHole) continue;
+                if (Poly2ContainsPoly1(oRec.Pts, p2, m_UseFullRange))
+                  oRec.FirstLeft = outRec2;
+              }
 
             if (Poly2ContainsPoly1(outRec2.Pts, outRec1.Pts, m_UseFullRange))
             {

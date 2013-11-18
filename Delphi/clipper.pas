@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  18 November 2013                                                *
+* Date      :  19 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -212,8 +212,6 @@ type
   POutRec = ^TOutRec;
   TOutRec = record
     Idx         : Integer;
-    SplitRec1    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
-    SplitRec2    : POutRec; //set when a poly splits into 2 in JoinCommonEdges
     BottomPt    : POutPt;
     IsHole      : Boolean;
     IsOpen      : Boolean;
@@ -345,8 +343,6 @@ type
     procedure DoSimplePolygons;
     procedure JoinCommonEdges;
     procedure FixHoleLinkage(OutRec: POutRec);
-    function FindOwnerFromSplitRecs(OutRec: POutRec;
-      var CurrOrfl: POutRec): boolean;
   protected
     procedure Reset; override;
     function ExecuteInternal: Boolean; virtual;
@@ -1501,7 +1497,7 @@ function TClipperBase.AddPath(const Path: TPath;
 var
   I, HighI: Integer;
   Edges: PEdgeArray;
-  E, E2, EMin, EStart, ELoopStop, EHighest: PEdge;
+  E, E2, EMin, EStart, ELoopStop: PEdge;
   IsFlat, clockwise: Boolean;
   locMin: PLocalMinima;
 begin
@@ -1871,28 +1867,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.FindOwnerFromSplitRecs(OutRec: POutRec;
-  var CurrOrfl: POutRec): boolean;
-var
-  orfl: POutRec;
-begin
-  Result := false;
-  if not assigned(CurrOrfl.SplitRec1) and not assigned(CurrOrfl.SplitRec2) then
-    Exit;
-  orfl := CurrOrfl;
-  while assigned(orfl.SplitRec1) do
-    orfl := orfl.SplitRec1; //ie back to the beginning of the chain
-  if not assigned(orfl) then
-    orfl := orfl.SplitRec2;
-  while assigned(orfl) do
-    if assigned(orfl.Pts) and
-      Poly2ContainsPoly1(OutRec.Pts, orfl.Pts, FUse64BitRange) then break
-    else orfl := orfl.SplitRec2;
-  Result := assigned(orfl);
-  if Result then CurrOrfl := orfl;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.FixHoleLinkage(OutRec: POutRec);
 var
   orfl: POutRec;
@@ -1905,8 +1879,7 @@ begin
   orfl := OutRec.FirstLeft;
   while Assigned(orfl) and
     ((orfl.IsHole = OutRec.IsHole) or not Assigned(orfl.Pts)) do
-      if FindOwnerFromSplitRecs(OutRec, orfl) then break
-      else orfl := orfl.FirstLeft;
+      orfl := orfl.FirstLeft;
   OutRec.FirstLeft := orfl;
 end;
 //------------------------------------------------------------------------------
@@ -2996,8 +2969,6 @@ begin
   Result.BottomPt := nil;
   Result.PolyNode := nil;
   Result.Idx := FPolyOutList.Add(Result);
-  Result.SplitRec1 := nil;
-  Result.SplitRec2 := nil;
 end;
 //------------------------------------------------------------------------------
 
@@ -3777,6 +3748,7 @@ begin
     begin
       OutRec := fPolyOutList[I];
       if Assigned(OutRec.PolyNode) then
+      begin
         if OutRec.IsOpen then
         begin
           OutRec.PolyNode.FIsOpen := true;
@@ -3786,6 +3758,7 @@ begin
           OutRec.FirstLeft.PolyNode.AddChild(OutRec.PolyNode)
         else
           PolyTree.AddChild(OutRec.PolyNode);
+      end;
     end;
     SetLength(PolyTree.FChilds, PolyTree.FCount);
     Result := True;
@@ -4184,11 +4157,19 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function ParseFirstLeft(FirstLeft: POutRec): POutRec;
+begin
+  while Assigned(FirstLeft) and not Assigned(FirstLeft.Pts) do
+    FirstLeft := FirstLeft.FirstLeft;
+  Result := FirstLeft;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.JoinCommonEdges;
 var
-  I: Integer;
+  I, J: Integer;
   Jr: PJoin;
-  OutRec1, OutRec2, HoleStateRec: POutRec;
+  OutRec1, OutRec2, HoleStateRec, oRec: POutRec;
   P1, P2: POutPt;
 begin
   for I := 0 to FJoinList.count -1 do
@@ -4218,11 +4199,22 @@ begin
       OutRec1.BottomPt := nil;
       OutRec2 := CreateOutRec;
       OutRec2.Pts := P2;
-      OutRec2.SplitRec1 := OutRec1; //old
-      OutRec1.SplitRec2 := OutRec2; //new
 
       //update all OutRec2.Pts idx's ...
       UpdateOutPtIdxs(OutRec2);
+
+      //We now need to check every OutRec.FirstLeft pointer. If it points
+      //to OutRec1 it may need to point to OutRec2 instead ...
+      if FUsingPolyTree then
+        for J := OutRec1.Idx + 1 to FPolyOutList.Count - 2 do
+        begin
+          oRec := POutRec(FPolyOutList[J]);
+          if not Assigned(oRec.Pts) or
+            (ParseFirstLeft(oRec.FirstLeft) <> OutRec1) or
+            (oRec.IsHole = OutRec1.IsHole) then Continue;
+          if Poly2ContainsPoly1(oRec.Pts, P2, FUse64BitRange) then
+              oRec.FirstLeft := OutRec2;
+        end;
 
       //sort out the hole states of both polygon ...
       if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts, FUse64BitRange) then
