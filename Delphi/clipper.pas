@@ -4206,7 +4206,7 @@ begin
       //We now need to check every OutRec.FirstLeft pointer. If it points
       //to OutRec1 it may need to point to OutRec2 instead ...
       if FUsingPolyTree then
-        for J := OutRec1.Idx + 1 to FPolyOutList.Count - 2 do
+        for J := 0 to FPolyOutList.Count - 2 do
         begin
           oRec := POutRec(FPolyOutList[J]);
           if not Assigned(oRec.Pts) or

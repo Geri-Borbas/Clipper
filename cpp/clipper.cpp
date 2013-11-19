@@ -1164,6 +1164,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   {
     if ((E->Curr == E->Next->Curr))
     {
+      if (E == E->Next) break;
       if (E == eStart) eStart = E->Next;
       E = RemoveEdge(E);
       eLoopStop = E;
@@ -3699,7 +3700,7 @@ void Clipper::JoinCommonEdges()
       //We now need to check every OutRec.FirstLeft pointer. If it points
       //to OutRec1 it may need to point to OutRec2 instead ...
       if (m_UsingPolyTree)
-        for (PolyOutList::size_type j = outRec1->Idx + 1; j < m_PolyOuts.size() - 1; j++)
+        for (PolyOutList::size_type j = 0; j < m_PolyOuts.size() - 1; j++)
         {
           OutRec* oRec = m_PolyOuts[j];
           if (!oRec->Pts || ParseFirstLeft(oRec->FirstLeft) != outRec1 ||

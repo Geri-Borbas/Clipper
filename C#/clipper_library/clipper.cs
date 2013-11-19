@@ -996,7 +996,7 @@ namespace ClipperLib
         {
           if (E.Curr == E.Next.Curr)
           {
-            //nb if E.OutIdx == Skip, it would have been semiOpen
+            if (E == E.Next) break;
             if (E == eStart) eStart = E.Next;
             E = RemoveEdge(E);
             eLoopStop = E;
@@ -3874,7 +3874,7 @@ namespace ClipperLib
             //We now need to check every OutRec.FirstLeft pointer. If it points
             //to OutRec1 it may need to point to OutRec2 instead ...
             if (m_UsingPolyTree)
-              for (int j = outRec1.Idx + 1; j < m_PolyOuts.Count - 1; j++)
+              for (int j = 0; j < m_PolyOuts.Count - 1; j++)
               {
                 OutRec oRec = m_PolyOuts[j];
                 if (oRec.Pts == null || ParseFirstLeft(oRec.FirstLeft) != outRec1 ||
