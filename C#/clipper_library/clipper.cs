@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  19 November 2013                                                *
+* Date      :  20 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -3790,21 +3790,39 @@ namespace ClipperLib
       }
       //----------------------------------------------------------------------
 
-
-      private bool Poly2ContainsPoly1(OutPt outPt1, OutPt outPt2, bool UseFullRange)
+      IntRect GetBounds(OutPt ops)
       {
-          OutPt pt = outPt1;
+        OutPt opStart = ops;
+        IntRect result;
+        result.left = ops.Pt.X;
+        result.right = ops.Pt.X;
+        result.top = ops.Pt.Y;
+        result.bottom = ops.Pt.Y;
+        ops = ops.Next;
+        while (ops != opStart)
+        {
+          if (ops.Pt.X < result.left) result.left = ops.Pt.X;
+          if (ops.Pt.X > result.right) result.right = ops.Pt.X;
+          if (ops.Pt.Y < result.top) result.top = ops.Pt.Y;
+          if (ops.Pt.Y > result.bottom) result.bottom = ops.Pt.Y;
+          ops = ops.Next;
+        }
+        return result;
+      }
+      //------------------------------------------------------------------------------
 
-          //Because the polygons may be touching, we need to find a vertex that
-          //isn't touching the other polygon ...
-          if (PointOnPolygon(pt.Pt, outPt2, UseFullRange))
-          {
-              pt = pt.Next;
-              while (pt != outPt1 && PointOnPolygon(pt.Pt, outPt2, UseFullRange))
-                  pt = pt.Next;
-              if (pt == outPt1) return true;
-          }
-          return PointInPolygon(pt.Pt, outPt2, UseFullRange);
+      private bool Poly2ContainsPoly1(OutPt outPt1, OutPt outPt2)
+      {
+        //A CONVEX polygon will contain another polygon if its bounds contains the
+        //other's bounds. However, this isn't a reliable algorithm for CONCAVE
+        //polygons since it's possible to get false positives.
+        IntRect bounds1 = GetBounds(outPt1);
+        IntRect bounds2 = GetBounds(outPt2);
+        return (bounds1.left >= bounds2.left) &&
+          (bounds1.right <= bounds2.right) &&
+          (bounds1.top >= bounds2.top) &&
+          (bounds1.bottom <= bounds2.bottom);
+        //?? use PointInPolygon() above to exclude false positives ...
       }
       //----------------------------------------------------------------------
 
@@ -3815,7 +3833,7 @@ namespace ClipperLib
               OutRec outRec = m_PolyOuts[i];
               if (outRec.Pts != null && outRec.FirstLeft == OldOutRec) 
               {
-                  if (Poly2ContainsPoly1(outRec.Pts, NewOutRec.Pts, m_UseFullRange))
+                  if (Poly2ContainsPoly1(outRec.Pts, NewOutRec.Pts))
                       outRec.FirstLeft = NewOutRec;
               }
           }
@@ -3879,11 +3897,11 @@ namespace ClipperLib
                 OutRec oRec = m_PolyOuts[j];
                 if (oRec.Pts == null || ParseFirstLeft(oRec.FirstLeft) != outRec1 ||
                   oRec.IsHole == outRec1.IsHole) continue;
-                if (Poly2ContainsPoly1(oRec.Pts, p2, m_UseFullRange))
+                if (Poly2ContainsPoly1(oRec.Pts, p2))
                   oRec.FirstLeft = outRec2;
               }
 
-            if (Poly2ContainsPoly1(outRec2.Pts, outRec1.Pts, m_UseFullRange))
+            if (Poly2ContainsPoly1(outRec2.Pts, outRec1.Pts))
             {
               //outRec2 is contained by outRec1 ...
               outRec2.IsHole = !outRec1.IsHole;
@@ -3896,7 +3914,7 @@ namespace ClipperLib
                 ReversePolyPtLinks(outRec2.Pts);
 
             }
-            else if (Poly2ContainsPoly1(outRec1.Pts, outRec2.Pts, m_UseFullRange))
+            else if (Poly2ContainsPoly1(outRec1.Pts, outRec2.Pts))
             {
               //outRec1 is contained by outRec2 ...
               outRec2.IsHole = outRec1.IsHole;
@@ -3979,14 +3997,14 @@ namespace ClipperLib
                 OutRec outrec2 = CreateOutRec();
                 outrec2.Pts = op2;
                 UpdateOutPtIdxs(outrec2);
-                if (Poly2ContainsPoly1(outrec2.Pts, outrec.Pts, m_UseFullRange))
+                if (Poly2ContainsPoly1(outrec2.Pts, outrec.Pts))
                 {
                   //OutRec2 is contained by OutRec1 ...
                   outrec2.IsHole = !outrec.IsHole;
                   outrec2.FirstLeft = outrec;
                 }
                 else
-                  if (Poly2ContainsPoly1(outrec.Pts, outrec2.Pts, m_UseFullRange))
+                  if (Poly2ContainsPoly1(outrec.Pts, outrec2.Pts))
                 {
                   //OutRec1 is contained by OutRec2 ...
                   outrec2.IsHole = outrec.IsHole;

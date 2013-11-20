@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  19 November 2013                                                *
+* Date      :  20 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -927,100 +927,127 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointOnLineSegment(const Pt, LinePt1, LinePt2: TIntPoint;
-  UseFullInt64Range: Boolean): Boolean;
-begin
-{$IFNDEF use_int32}
-  if UseFullInt64Range then
-    Result :=
-      ((Pt.X = LinePt1.X) and (Pt.Y = LinePt1.Y)) or
-      ((Pt.X = LinePt2.X) and (Pt.Y = LinePt2.Y)) or
-      (((Pt.X > LinePt1.X) = (Pt.X < LinePt2.X)) and
-      ((Pt.Y > LinePt1.Y) = (Pt.Y < LinePt2.Y)) and
-      Int128Equal(Int128Mul((Pt.X - LinePt1.X), (LinePt2.Y - LinePt1.Y)),
-      Int128Mul((LinePt2.X - LinePt1.X), (Pt.Y - LinePt1.Y))))
-  else
-{$ENDIF}
-    Result :=
-      ((Pt.X = LinePt1.X) and (Pt.Y = LinePt1.Y)) or
-      ((Pt.X = LinePt2.X) and (Pt.Y = LinePt2.Y)) or
-      (((Pt.X > LinePt1.X) = (Pt.X < LinePt2.X)) and
-      ((Pt.Y > LinePt1.Y) = (Pt.Y < LinePt2.Y)) and
-      ((Pt.X - LinePt1.X) * (LinePt2.Y - LinePt1.Y) =
-        (LinePt2.X - LinePt1.X) * (Pt.Y - LinePt1.Y)));
-end;
-//------------------------------------------------------------------------------
-
-function PointOnPolygon(const Pt: TIntPoint;
-  PP: POutPt; UseFullInt64Range: Boolean): Boolean;
+function GetBounds(const polys: TPaths): TIntRect; overload;
 var
-  Pp2: POutPt;
+  I,J,Len: Integer;
 begin
-  Pp2 := PP;
-  repeat
-    if PointOnLineSegment(Pt, Pp2.Pt, Pp2.Next.Pt, UseFullInt64Range) then
-    begin
-      Result := True;
-      Exit;
-    end;
-    Pp2 := Pp2.Next;
-  until (Pp2 = PP);
-  Result := False;
-end;
-//------------------------------------------------------------------------------
-
-function PointInPolygon(const Pt: TIntPoint;
-  PP: POutPt; UseFullInt64Range: Boolean): Boolean;
-var
-  Pp2: POutPt;
-begin
-  Result := False;
-  Pp2 := PP;
-{$IFNDEF use_int32}
-  if UseFullInt64Range then
+  Len := Length(polys);
+  I := 0;
+  while (I < Len) and (Length(polys[I]) = 0) do inc(I);
+  if (I = Len) then
   begin
-    repeat
-      if ((pp2.Pt.Y > pt.Y) <> (pp2.Prev.Pt.Y > pt.Y)) and
-        Int128LessThan( Int128(pt.X - pp2.Pt.X),
-          Int128Div( Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y),
-            Int128(pp2.Prev.Pt.Y - pp2.Pt.Y)) ) then Result := not Result;
-      Pp2 := Pp2.Next;
-    until Pp2 = PP;
-  end else
-{$ENDIF}
-    repeat
-      //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
-      if (((pp2.Pt.Y > pt.Y) <> (pp2.Prev.Pt.Y > pt.Y)) and
-        ((pt.X - pp2.Pt.X) < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) /
-        (pp2.Prev.Pt.Y - pp2.Pt.Y))) then Result := not Result;
-      Pp2 := Pp2.Next;
-    until Pp2 = PP;
-end;
-//------------------------------------------------------------------------------
-
-function Poly2ContainsPoly1(OutPt1, OutPt2: POutPt;
-  UseFullInt64Range: Boolean): Boolean;
-var
-  Pt: POutPt;
-begin
-  Pt := OutPt1;
-  //Because the polygons may be touching, we need to find a vertex that
-  //isn't touching the other polygon ...
-  if PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) then
-  begin
-    Pt := Pt.Next;
-    while (Pt <> OutPt1) and
-      PointOnPolygon(Pt.Pt, OutPt2, UseFullInt64Range) do
-        Pt := Pt.Next;
-    if (Pt = OutPt1) then
-    begin
-      Result := True;
-      Exit;
-    end;
+    with Result do begin Left := 0; Top := 0; Right := 0; Bottom := 0; end;
+    Exit;
   end;
-  Result := PointInPolygon(Pt.Pt, OutPt2, UseFullInt64Range);
+  Result.Left := polys[I][0].X;
+  Result.Right := Result.Left;
+  Result.Top := polys[I][0].Y;
+  Result.Bottom := Result.Top;
+  for I := I to Len -1 do
+    for J := 0 to High(polys[I]) do
+    begin
+      if polys[I][J].X < Result.Left then Result.Left := polys[I][J].X
+      else if polys[I][J].X > Result.Right then Result.Right := polys[I][J].X;
+      if polys[I][J].Y < Result.Top then Result.Top := polys[I][J].Y
+      else if polys[I][J].Y > Result.Bottom then Result.Bottom := polys[I][J].Y;
+    end;
 end;
 //------------------------------------------------------------------------------
+
+function GetBounds(ops: POutPt): TIntRect; overload;
+var
+  opStart: POutPt;
+begin
+  opStart := ops;
+  result.Left := ops.Pt.X;
+  result.Right := ops.Pt.X;
+  result.Top := ops.Pt.Y;
+  result.Bottom := ops.Pt.Y;
+  ops := ops.Next;
+  while ops <> opStart do
+  begin
+    if ops.Pt.X < result.Left then result.Left := ops.Pt.X;
+    if ops.Pt.X > result.Right then result.Right := ops.Pt.X;
+    if ops.Pt.Y < result.Top then result.Top := ops.Pt.Y;
+    if ops.Pt.Y > result.Bottom then result.Bottom := ops.Pt.Y;
+    ops := ops.Next;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function PointInPolygon (const pt: TIntPoint; const poly: TPath): Integer;
+var
+  I, ip1, Len: Integer;
+  d, d2,d3: Double;
+  poly0x, poly0y, poly1x, poly1y: cInt;
+begin
+	//returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+	//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+  //nb: if poly bounds are known, test them first before calling this function.
+	result := 0;
+  Len := Length(poly);
+	for I := 0 to Len -1 do
+	begin
+		ip1 := (i + 1) mod Len;
+    poly0x := poly[i].X; poly0y := poly[i].Y;
+    poly1x := poly[ip1].X; poly1y := poly[ip1].Y;
+
+		if (poly1Y = pt.Y) then
+		begin
+			if (poly1X = pt.X) or ((poly0Y = pt.Y) and
+        ((poly1X > pt.X) = (poly0X < pt.X))) then
+      begin
+        result := -1;
+        Exit;
+      end;
+		end;
+
+		if ((poly0Y < pt.Y) <> (poly1Y < pt.Y)) then
+		begin
+			if (poly0X >= pt.X) then
+			begin
+				if (poly1X > pt.X) then
+          result := 1 - result
+				else
+				begin
+          d2 := (poly0X - pt.X);
+          d3 := (poly1X - pt.X);
+					d := d2 * (poly1Y - pt.Y) - d3 * (poly0Y - pt.Y);
+					if (d = 0) then begin result := -1; Exit; end;
+					if ((d > 0) = (poly1Y > poly0Y)) then result := 1 - result;
+				end;
+			end else
+			begin
+				if (poly1X > pt.X) then
+				begin
+          d2 := (poly0X - pt.X);
+          d3 := (poly1X - pt.X);
+					d := d2 * (poly1Y - pt.Y) - d3 * (poly0Y - pt.Y);
+					if (d = 0) then begin result := -1; Exit; end;
+					if ((d > 0) = (poly1Y > poly0Y)) then result := 1 - result;
+				end;
+			end;
+		end;
+	end;
+end;
+//---------------------------------------------------------------------------
+
+function Poly2ContainsPoly1(OutPt1, OutPt2: POutPt): Boolean;
+var
+  bounds1, bounds2: TIntRect;
+begin
+  //A CONVEX polygon will contain another polygon if its bounds contains the
+  //other's bounds. However, this isn't a reliable algorithm for CONCAVE
+  //polygons since it's possible to get false positives.
+  bounds1 := GetBounds(OutPt1);
+  bounds2 := GetBounds(OutPt2);
+  Result := (bounds1.Left >= bounds2.Left) and
+    (bounds1.Right <= bounds2.Right) and
+    (bounds1.Top >= bounds2.Top) and
+    (bounds1.Bottom <= bounds2.Bottom);
+  //?? use PointInPolygon() above to exclude false positives ...
+end;
+//---------------------------------------------------------------------------
 
 function SlopesEqual(E1, E2: PEdge;
   UseFullInt64Range: Boolean): Boolean; overload;
@@ -3989,7 +4016,7 @@ begin
   //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
   //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
   //location at the bottom of the overlapping segment (& Join.OffPt is above).
-  //3. StrictSimple joins where edges touch but are not collinear and where
+  //3. StrictlySimple joins where edges touch but are not collinear and where
   //Join.OutPt1, Join.OutPt2 & Join.OffPt all share the same point.
   IsHorizontal := (Jr.OutPt1.Pt.Y = Jr.OffPt.Y);
 
@@ -4140,7 +4167,7 @@ begin
     OutRec := fPolyOutList[I];
     if Assigned(OutRec.Pts) and (OutRec.FirstLeft = OldOutRec) then
     begin
-      if Poly2ContainsPoly1(OutRec.Pts, NewOutRec.Pts, FUse64BitRange) then
+      if Poly2ContainsPoly1(OutRec.Pts, NewOutRec.Pts) then
         OutRec.FirstLeft := NewOutRec;
     end;
   end;
@@ -4212,12 +4239,12 @@ begin
           if not Assigned(oRec.Pts) or
             (ParseFirstLeft(oRec.FirstLeft) <> OutRec1) or
             (oRec.IsHole = OutRec1.IsHole) then Continue;
-          if Poly2ContainsPoly1(oRec.Pts, P2, FUse64BitRange) then
+          if Poly2ContainsPoly1(oRec.Pts, P2) then
               oRec.FirstLeft := OutRec2;
         end;
 
       //sort out the hole states of both polygon ...
-      if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts, FUse64BitRange) then
+      if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts) then
       begin
         //OutRec2 is contained by OutRec1 ...
         OutRec2.IsHole := not OutRec1.IsHole;
@@ -4228,7 +4255,7 @@ begin
 
         if (OutRec2.IsHole xor FReverseOutput) = (Area(OutRec2) > 0) then
             ReversePolyPtLinks(OutRec2.Pts);
-      end else if Poly2ContainsPoly1(OutRec1.Pts, OutRec2.Pts, FUse64BitRange) then
+      end else if Poly2ContainsPoly1(OutRec1.Pts, OutRec2.Pts) then
       begin
         //OutRec1 is contained by OutRec2 ...
         OutRec2.IsHole := OutRec1.IsHole;
@@ -4305,14 +4332,14 @@ begin
           OutRec2.Pts := Op2;
           UpdateOutPtIdxs(OutRec2);
 
-          if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts, FUse64BitRange) then
+          if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts) then
           begin
             //OutRec2 is contained by OutRec1 ...
             OutRec2.IsHole := not OutRec1.IsHole;
             OutRec2.FirstLeft := OutRec1;
           end
           else
-          if Poly2ContainsPoly1(OutRec1.Pts, OutRec2.Pts, FUse64BitRange) then
+          if Poly2ContainsPoly1(OutRec1.Pts, OutRec2.Pts) then
           begin
             //OutRec1 is contained by OutRec2 ...
             OutRec2.IsHole := OutRec1.IsHole;
@@ -4356,28 +4383,6 @@ begin
   Dy := Dy * F;
   Result.X := Dy;
   Result.Y := -Dx
-end;
-//------------------------------------------------------------------------------
-
-function GetBounds(const Pts: TPaths): TIntRect;
-var
-  I,J: Integer;
-begin
-  with Result do
-  begin
-    Left := HiRange; Top := HiRange;
-    Right := -HiRange; Bottom := -HiRange;
-  end;
-  for I := 0 to high(Pts) do
-    for J := 0 to high(Pts[I]) do
-    begin
-      if Pts[I][J].X < Result.Left then Result.Left := Pts[I][J].X;
-      if Pts[I][J].X > Result.Right then Result.Right := Pts[I][J].X;
-      if Pts[I][J].Y < Result.Top then Result.Top := Pts[I][J].Y;
-      if Pts[I][J].Y > Result.Bottom then Result.Bottom := Pts[I][J].Y;
-    end;
-  if Result.left = HiRange then
-    with Result do begin Left := 0; Top := 0; Right := 0; Bottom := 0; end;
 end;
 
 //------------------------------------------------------------------------------

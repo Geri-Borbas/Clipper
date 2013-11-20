@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  19 November 2013                                                *
+* Date      :  20 November 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -488,86 +488,84 @@ bool PointIsVertex(const IntPoint &Pt, OutPt *pp)
 }
 //------------------------------------------------------------------------------
 
-bool PointOnLineSegment(const IntPoint Pt, 
-  const IntPoint linePt1, const IntPoint linePt2, bool UseFullInt64Range)
+int PointInPolygon (const IntPoint& pt, const Path& poly)
 {
-#ifndef use_int32
-  if (UseFullInt64Range)
-    return ((Pt.X == linePt1.X) && (Pt.Y == linePt1.Y)) ||
-      ((Pt.X == linePt2.X) && (Pt.Y == linePt2.Y)) ||
-      (((Pt.X > linePt1.X) == (Pt.X < linePt2.X)) &&
-      ((Pt.Y > linePt1.Y) == (Pt.Y < linePt2.Y)) &&
-      ((Int128Mul((Pt.X - linePt1.X), (linePt2.Y - linePt1.Y)) ==
-      Int128Mul((linePt2.X - linePt1.X), (Pt.Y - linePt1.Y)))));
-  else
-#endif
-    return ((Pt.X == linePt1.X) && (Pt.Y == linePt1.Y)) ||
-      ((Pt.X == linePt2.X) && (Pt.Y == linePt2.Y)) ||
-      (((Pt.X > linePt1.X) == (Pt.X < linePt2.X)) &&
-      ((Pt.Y > linePt1.Y) == (Pt.Y < linePt2.Y)) &&
-      ((Pt.X - linePt1.X) * (linePt2.Y - linePt1.Y) ==
-        (linePt2.X - linePt1.X) * (Pt.Y - linePt1.Y)));
-}
-//------------------------------------------------------------------------------
-
-bool PointOnPolygon(const IntPoint Pt, OutPt *pp, bool UseFullInt64Range)
-{
-  OutPt *pp2 = pp;
-  while (true)
+  //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+  int result = 0;
+  Path::size_type size = poly.size();
+  for (Path::size_type i = 0; i < size; ++i)
   {
-    if (PointOnLineSegment(Pt, pp2->Pt, pp2->Next->Pt, UseFullInt64Range))
-      return true;
-    pp2 = pp2->Next;
-    if (pp2 == pp) break;
-  } 
-  return false;
-}
-//------------------------------------------------------------------------------
+    Path::size_type ip1 = (i + 1) % size;
+    cInt poly0x = poly[i].X, poly0y = poly[i].Y;
+    cInt poly1x = poly[ip1].X, poly1y = poly[ip1].Y;
 
-bool PointInPolygon(const IntPoint &Pt, OutPt *pp, bool UseFullInt64Range)
-{
-  OutPt *pp2 = pp;
-  bool result = false;
-#ifndef use_int32
-  if (UseFullInt64Range) {
-    do
+    if (poly1y == pt.Y)
     {
-      if (((pp2->Pt.Y > Pt.Y) != (pp2->Prev->Pt.Y > Pt.Y)) &&                     
-        (Int128(Pt.X - pp2->Pt.X) < 
-        Int128Mul(pp2->Prev->Pt.X - pp2->Pt.X, Pt.Y - pp2->Pt.Y) / 
-        Int128(pp2->Prev->Pt.Y - pp2->Pt.Y))) result = !result;
-      pp2 = pp2->Next;
+        if ((poly1x == pt.X) || (poly0y == pt.Y && 
+          ((poly1x > pt.X) == (poly0x < pt.X)))) return -1;
     }
-    while (pp2 != pp);
-    return result;
-  }
-#endif
-  do
-  {
-    //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
-    if (((pp2->Pt.Y > Pt.Y) != (pp2->Prev->Pt.Y > Pt.Y)) &&                     
-      ((Pt.X - pp2->Pt.X) < (pp2->Prev->Pt.X - pp2->Pt.X) * (Pt.Y - pp2->Pt.Y) / 
-      (pp2->Prev->Pt.Y - pp2->Pt.Y))) result = !result;
-    pp2 = pp2->Next;
-  }
-  while (pp2 != pp);
+    if ((poly0y < pt.Y) != (poly1y < pt.Y))
+    {
+      if (poly0x >= pt.X)
+      {
+        if (poly1x > pt.X) result = 1 - result;
+        else
+        {
+          double d = (double)(poly0x - pt.X) * (poly1y - pt.Y) - 
+            (double)(poly1x - pt.X) * (poly0y - pt.Y);
+          if (!d) return -1;
+          if ((d > 0) == (poly1y > poly0y)) result = 1 - result;
+        }
+      } else
+      {
+        if (poly1x > pt.X)
+        {
+          double d = (double)(poly0x - pt.X) * (poly1y - pt.Y) - 
+            (double)(poly1x - pt.X) * (poly0y - pt.Y);
+          if (!d) return -1;
+          if ((d > 0) == (poly1y > poly0y)) result = 1 - result;
+        }
+      }
+    } 
+  } 
   return result;
 }
 //------------------------------------------------------------------------------
 
-bool Poly2ContainsPoly1(OutPt* OutPt1, OutPt* OutPt2, bool UseFullInt64Range)
-{
-  OutPt* Pt = OutPt1;
-  //Because the polygons may be touching, we need to find a vertex that
-  //isn't touching the other polygon ...
-  if (PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
+IntRect GetBounds(OutPt* ops)
+{  
+  OutPt* opStart = ops;
+  IntRect result;
+  result.left = ops->Pt.X;
+  result.right = ops->Pt.X;
+  result.top = ops->Pt.Y;
+  result.bottom = ops->Pt.Y;
+  ops = ops->Next;
+  while (ops != opStart) 
   {
-    Pt = Pt->Next;
-    while (Pt != OutPt1 && PointOnPolygon(Pt->Pt, OutPt2, UseFullInt64Range))
-        Pt = Pt->Next;
-    if (Pt == OutPt1) return true;
+    if (ops->Pt.X < result.left) result.left = ops->Pt.X;
+    if (ops->Pt.X > result.right) result.right = ops->Pt.X;
+    if (ops->Pt.Y < result.top) result.top = ops->Pt.Y;
+    if (ops->Pt.Y > result.bottom) result.bottom = ops->Pt.Y;
+    ops = ops->Next;
   }
-  return PointInPolygon(Pt->Pt, OutPt2, UseFullInt64Range);
+  return result;
+}
+//------------------------------------------------------------------------------
+
+bool Poly2ContainsPoly1(OutPt* OutPt1, OutPt* OutPt2)
+{
+  //A CONVEX polygon will contain another polygon if its bounds contains the
+  //other's bounds. However, this isn't a reliable algorithm for CONCAVE
+  //polygons since it's possible to get false positives.
+  IntRect bounds1 = GetBounds(OutPt1);
+  IntRect bounds2 = GetBounds(OutPt2);
+  return (bounds1.left >= bounds2.left) &&
+    (bounds1.right <= bounds2.right) &&
+    (bounds1.top >= bounds2.top) &&
+    (bounds1.bottom <= bounds2.bottom);
+  //?? use PointInPolygon() above to exclude false positives ...
 }
 //----------------------------------------------------------------------
 
@@ -3638,7 +3636,7 @@ void Clipper::FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec)
     OutRec* outRec = m_PolyOuts[i];
     if (outRec->Pts && outRec->FirstLeft == OldOutRec) 
     {
-      if (Poly2ContainsPoly1(outRec->Pts, NewOutRec->Pts, m_UseFullRange))
+      if (Poly2ContainsPoly1(outRec->Pts, NewOutRec->Pts))
         outRec->FirstLeft = NewOutRec;
     }
   }
@@ -3705,11 +3703,11 @@ void Clipper::JoinCommonEdges()
           OutRec* oRec = m_PolyOuts[j];
           if (!oRec->Pts || ParseFirstLeft(oRec->FirstLeft) != outRec1 ||
             oRec->IsHole == outRec1->IsHole) continue;
-          if (Poly2ContainsPoly1(oRec->Pts, p2, m_UseFullRange))
+          if (Poly2ContainsPoly1(oRec->Pts, p2))
             oRec->FirstLeft = outRec2;
         }
 
-      if (Poly2ContainsPoly1(outRec2->Pts, outRec1->Pts, m_UseFullRange))
+      if (Poly2ContainsPoly1(outRec2->Pts, outRec1->Pts))
       {
         //outRec2 is contained by outRec1 ...
         outRec2->IsHole = !outRec1->IsHole;
@@ -3721,7 +3719,7 @@ void Clipper::JoinCommonEdges()
         if ((outRec2->IsHole ^ m_ReverseOutput) == (Area(*outRec2) > 0))
           ReversePolyPtLinks(outRec2->Pts);
             
-      } else if (Poly2ContainsPoly1(outRec1->Pts, outRec2->Pts, m_UseFullRange))
+      } else if (Poly2ContainsPoly1(outRec1->Pts, outRec2->Pts))
       {
         //outRec1 is contained by outRec2 ...
         outRec2->IsHole = outRec1->IsHole;
@@ -3792,14 +3790,14 @@ void Clipper::DoSimplePolygons()
           OutRec* outrec2 = CreateOutRec();
           outrec2->Pts = op2;
           UpdateOutPtIdxs(*outrec2);
-          if (Poly2ContainsPoly1(outrec2->Pts, outrec->Pts, m_UseFullRange))
+          if (Poly2ContainsPoly1(outrec2->Pts, outrec->Pts))
           {
             //OutRec2 is contained by OutRec1 ...
             outrec2->IsHole = !outrec->IsHole;
             outrec2->FirstLeft = outrec;
           }
           else
-            if (Poly2ContainsPoly1(outrec->Pts, outrec2->Pts, m_UseFullRange))
+            if (Poly2ContainsPoly1(outrec->Pts, outrec2->Pts))
           {
             //OutRec1 is contained by OutRec2 ...
             outrec2->IsHole = outrec->IsHole;
