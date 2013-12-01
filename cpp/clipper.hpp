@@ -44,7 +44,7 @@
 //#define use_xyz
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-#define use_lines
+//#define use_lines
   
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -147,6 +147,7 @@ private:
     PolyNode* GetNextSiblingUp() const;
     void AddChild(PolyNode& child);
     friend class Clipper; //to access Index
+    friend class ClipperOffset; 
 };
 
 class PolyTree: public PolyNode
@@ -163,21 +164,24 @@ private:
 
 enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
 enum JoinType {jtSquare, jtRound, jtMiter};
-enum EndType {etClosed, etButt, etSquare, etRound};
+#ifdef use_deprecated
+  enum EndType {etClosed, etButt, etSquare, etRound};
+#else
+  enum EndType {etButt, etSquare, etRound};
+#endif
 
 bool Orientation(const Path &poly);
 double Area(const Path &poly);
 
 #ifdef use_deprecated
+  void OffsetPaths(const Paths &in_polys, Paths &out_polys,
+    double delta, JoinType jointype, EndType endtype, double limit = 0);
   void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
     double delta, JoinType jointype = jtSquare, double limit = 0, bool autoFix = true);
   void PolyTreeToPolygons(const PolyTree& polytree, Paths& paths);
   void ReversePolygon(Path& p);
   void ReversePolygons(Paths& p);
 #endif
-
-void OffsetPaths(const Paths &in_polys, Paths &out_polys,
-  double delta, JoinType jointype, EndType endtype, double limit = 0);
 
 void SimplifyPolygon(const Path &in_poly, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
 void SimplifyPolygons(const Paths &in_polys, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
@@ -357,6 +361,41 @@ private:
 #ifdef use_xyz
   void SetZ(IntPoint& pt, TEdge& e);
 #endif
+};
+//------------------------------------------------------------------------------
+
+class ClipperOffset 
+{
+public:
+  ClipperOffset(
+    JoinType joinType = jtSquare, EndType endType = etSquare,
+    double miterLimit = 2.0, double roundPrecision = 0.25);
+  ~ClipperOffset();
+  void AddPath(const Path& path, bool closed);
+  void AddPaths(const Paths& paths, bool closed);
+  void Execute(Paths& solution, double delta);
+  void Execute(PolyTree& polytree, double delta);
+  void Clear();
+  JoinType joinType;
+  EndType endType;
+  double MiterLimit;
+  double ArcTolerance;
+private:
+  Paths m_destPolys;
+  Path m_srcPoly;
+  Path m_destPoly;
+  std::vector<DoublePoint> m_normals;
+  double m_delta, m_sinA, m_sin, m_cos;
+  double m_miterLim, m_Steps360;
+  IntPoint m_lowest;
+  PolyNode m_polyNodes;
+
+  void FixOrientations();
+  void DoOffset(double delta);
+  void OffsetPoint(int j, int& k);
+  void DoSquare(int j, int k);
+  void DoMiter(int j, int k, double r);
+  void DoRound(int j, int k);
 };
 //------------------------------------------------------------------------------
 
