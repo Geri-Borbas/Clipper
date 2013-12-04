@@ -3167,9 +3167,9 @@ namespace ClipperLib
         if (SlopesEqual(edge1, edge2, m_UseFullRange) || edge1.Dx == edge2.Dx)
         {
             if (edge2.Bot.Y > edge1.Bot.Y)
-              ip.Y = edge2.Bot.Y;
+              ip = edge2.Bot;
             else
-              ip.Y = edge1.Bot.Y;
+              ip = edge1.Bot;
             return false;
         }
         else if (edge1.Delta.X == 0)
@@ -3212,21 +3212,16 @@ namespace ClipperLib
 
         if (ip.Y < edge1.Top.Y || ip.Y < edge2.Top.Y)
         {
-            if (edge1.Top.Y > edge2.Top.Y)
-            {
-                ip.Y = edge1.Top.Y;
-                ip.X = TopX(edge2, edge1.Top.Y);
-                return ip.X < edge1.Top.X;
-            }
-            else
-            {
-                ip.Y = edge2.Top.Y;
-                ip.X = TopX(edge1, edge2.Top.Y);
-                return ip.X > edge2.Top.X;
-            }
+          if (edge1.Top.Y > edge2.Top.Y)
+            ip.Y = edge1.Top.Y;
+          else
+            ip.Y = edge2.Top.Y;
+          if (Math.Abs(edge1.Dx) < Math.Abs(edge2.Dx))
+            ip.X = TopX(edge1, ip.Y);
+          else
+            ip.X = TopX(edge2, ip.Y);
         }
-        else
-            return true;
+        return true;
       }
       //------------------------------------------------------------------------------
 

@@ -401,7 +401,7 @@ type
   public
     constructor Create(JoinType: TJoinType = jtSquare;
       EndType: TEndType = etSquare;
-      MiterLimit: Double = 2; RoundPrecision: Double = 0.25);
+      MiterLimit: Double = 2; ArcTolerance: Double = 0.25);
     destructor Destroy; override;
     procedure AddPath(const Path: TPath; Closed: Boolean);
     procedure AddPaths(const Paths: TPaths; Closed: Boolean);
@@ -1185,8 +1185,8 @@ begin
     //parallel edges, but nevertheless prepare to force the intersection
     //since Edge2.Curr.X < Edge1.Curr.X ...
     if Edge2.Bot.Y > Edge1.Bot.Y then
-      ip.Y := Edge2.Bot.Y else
-      ip.Y := Edge1.Bot.Y;
+      ip := Edge2.Bot else
+      ip := Edge1.Bot;
     Result := False;
     Exit;
   end;
@@ -1228,25 +1228,20 @@ begin
   //when edges are almost parallel, rounding errors may cause False positives -
   //indicating intersections when there really aren't any. Also, floating point
   //imprecision can incorrectly place an intersect point beyond/above an Edge.
-  //Therfore, further validation of the IP is warranted ...
+  //Therfore, further adjustment to IP is warranted ...
   if (ip.Y < Edge1.Top.Y) or (ip.Y < Edge2.Top.Y) then
   begin
     //Find the lower top of the two edges and compare X's at this Y.
     //If Edge1's X is greater than Edge2's X then it's fair to assume an
     //intersection really has occurred...
     if (Edge1.Top.Y > Edge2.Top.Y) then
-    begin
-      ip.Y := edge1.Top.Y;
-      ip.X := TopX(edge2, edge1.Top.Y);
-      Result := ip.X < edge1.Top.X;
-    end else
-    begin
+      ip.Y := edge1.Top.Y else
       ip.Y := edge2.Top.Y;
-      ip.X := TopX(edge1, edge2.Top.Y);
-      Result := ip.X > edge2.Top.X;
-    end;
-  end else
-    Result := True;
+    if Abs(Edge1.Dx) < Abs(Edge2.Dx) then
+      ip.X := TopX(Edge1, ip.Y) else
+      ip.X := TopX(Edge2, ip.Y);
+  end;
+  Result := True;
 end;
 //------------------------------------------------------------------------------
 
