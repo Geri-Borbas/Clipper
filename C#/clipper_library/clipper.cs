@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  30 November 2013                                                *
+* Date      :  9 December 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -138,6 +138,8 @@ namespace ClipperLib
       internal PolyNode m_Parent;
       internal Path m_polygon = new Path();
       internal int m_Index;
+      internal JoinType m_jointype;
+      internal EndType m_endtype;
       internal List<PolyNode> m_Childs = new List<PolyNode>();
 
       private bool IsHoleNode()
@@ -389,7 +391,7 @@ namespace ClipperLib
         return negate ? -result : result;
       }
       else if (rhs == lhs)
-        return new Int128(1);
+        return new Int128(negate ? -1 : 1);
       else
         return new Int128(0);
     }
@@ -511,11 +513,11 @@ namespace ClipperLib
   //Others rules include Positive, Negative and ABS_GTR_EQ_TWO (only in OpenGL)
   //see http://glprogramming.com/red/chapter11.html
   public enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
+  
   public enum JoinType { jtSquare, jtRound, jtMiter };
+  public enum EndType { etClosedLine, etClosedPolygon, etOpenButt, etOpenSquare, etOpenRound };
 #if use_deprecated
-  public enum EndType { etClosed, etButt, etSquare, etRound };
-#else
-  public enum EndType { etButt, etSquare, etRound };
+  public enum EndType_ { etClosed, etButt, etSquare, etRound };
 #endif
 
   internal enum EdgeSide {esLeft, esRight};
@@ -3373,7 +3375,7 @@ namespace ClipperLib
 
       public static void ReversePaths(Paths polys)
       {
-        polys.ForEach(delegate(Path poly) { poly.Reverse(); });
+        foreach (var poly in polys) { poly.Reverse(); }
       }
       //------------------------------------------------------------------------------
 
@@ -4082,11 +4084,11 @@ namespace ClipperLib
 #if use_deprecated
 
       public static Paths OffsetPaths(Paths polys, double delta,
-          JoinType jointype, EndType endtype, double MiterLimit)
+          JoinType jointype, EndType_ endtype, double MiterLimit)
       {
         Paths result = new Paths();
-        ClipperOffset co = new ClipperOffset(jointype, endtype);
-        co.AddPaths(polys, endtype == EndType.etClosed);
+        ClipperOffset co = new ClipperOffset(MiterLimit, MiterLimit);
+        co.AddPaths(polys, jointype, (EndType)endtype);
         co.Execute(ref result, delta);
         return result;
       }
@@ -4095,20 +4097,20 @@ namespace ClipperLib
       public static Paths OffsetPolygons(Paths poly, double delta,
           JoinType jointype, double MiterLimit, bool AutoFix)
       {
-        return OffsetPaths(poly, delta, jointype, EndType.etClosed, MiterLimit);
+        return OffsetPaths(poly, delta, jointype, EndType_.etClosed, MiterLimit);
       }
       //------------------------------------------------------------------------------
 
       public static Paths OffsetPolygons(Paths poly, double delta,
           JoinType jointype, double MiterLimit)
       {
-        return OffsetPaths(poly, delta, jointype, EndType.etClosed, MiterLimit);
+        return OffsetPaths(poly, delta, jointype, EndType_.etClosed, MiterLimit);
       }
       //------------------------------------------------------------------------------
 
       public static Paths OffsetPolygons(Polygons polys, double delta, JoinType jointype)
       {
-        return OffsetPaths(polys, delta, jointype, EndType.etClosed, 0);
+        return OffsetPaths(polys, delta, jointype, EndType_.etClosed, 0);
       }
       //------------------------------------------------------------------------------
 
@@ -4120,7 +4122,7 @@ namespace ClipperLib
 
       public static void ReversePolygons(Polygons polys)
       {
-        polys.ForEach(delegate(Path poly) { poly.Reverse(); });
+        foreach (var poly in polys) { poly.Reverse(); } 
       }
       //------------------------------------------------------------------------------
 
@@ -4190,7 +4192,7 @@ namespace ClipperLib
           IntPoint pt2, IntPoint pt3, double distSqrd)
       {
         if (DistanceSqrd(pt1, pt2) > DistanceSqrd(pt1, pt3)) return false;
-        return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+        else return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
       }
       //------------------------------------------------------------------------------
 
@@ -4359,8 +4361,8 @@ namespace ClipperLib
           default: break;
         }
 
-        if (polynode.Contour.Count > 0 && match) 
-          paths.Add(polynode.Contour);
+        if (polynode.m_polygon.Count > 0 && match)
+          paths.Add(polynode.m_polygon);
         foreach (PolyNode pn in polynode.Childs)
           AddPolyNodeToPaths(pn, nt, paths);
       }
@@ -4372,7 +4374,7 @@ namespace ClipperLib
         result.Capacity = polytree.ChildCount;
         for (int i = 0; i < polytree.ChildCount; i++)
           if (polytree.Childs[i].IsOpen)
-            result.Add(polytree.Childs[i].Contour);
+            result.Add(polytree.Childs[i].m_polygon);
         return result;
       }
       //------------------------------------------------------------------------------
@@ -4395,24 +4397,20 @@ namespace ClipperLib
     private Path m_destPoly;
     private List<DoublePoint> m_normals = new List<DoublePoint>();
     private double m_delta, m_sinA, m_sin, m_cos;
-    private double m_miterLim, m_Steps360;
+    private double m_miterLim, m_StepsPerRad;
 
     private IntPoint m_lowest;
     private PolyNode m_polyNodes = new PolyNode();
 
     public double ArcTolerance { get; set; }
     public double MiterLimit { get; set; }
-    public EndType EndType { get; set; }
-    public JoinType JoinType { get; set; }
 
     private const double two_pi = Math.PI * 2;
+    private const double def_arc_tolerance = 0.25;
 
     public ClipperOffset(
-      JoinType joinType = JoinType.jtSquare, EndType endType = EndType.etSquare,
-      double miterLimit = 2.0, double arcTolerance = 0.25)
+      double miterLimit = 2.0, double arcTolerance = def_arc_tolerance)
     {
-      JoinType = joinType;
-      EndType = endType;
       MiterLimit = miterLimit;
       ArcTolerance = arcTolerance;
       m_lowest.X = -1;
@@ -4432,15 +4430,16 @@ namespace ClipperLib
     }
     //------------------------------------------------------------------------------
 
-    public void AddPath(Path path, bool closed)
+    public void AddPath(Path path, JoinType joinType, EndType endType)
     {
       int highI = path.Count - 1;
       if (highI < 0) return;
       PolyNode newNode = new PolyNode();
-      newNode.IsOpen = !closed;
+      newNode.m_jointype = joinType;
+      newNode.m_endtype = endType;
 
       //strip duplicate points from path and also get index to the lowest point ...
-      if (closed)
+      if (endType == EndType.etClosedLine || endType == EndType.etClosedPolygon)
         while (highI > 0 && path[0] == path[highI]) highI--;
       newNode.m_polygon.Capacity = highI + 1;
       newNode.m_polygon.Add(path[0]);
@@ -4454,11 +4453,13 @@ namespace ClipperLib
             (path[i].Y == newNode.m_polygon[k].Y &&
             path[i].X < newNode.m_polygon[k].X)) k = j;
         }
-      if ((closed && j < 2) || (!closed && j < 0)) return;
+      if ((endType == EndType.etClosedPolygon && j < 2) ||
+        (endType != EndType.etClosedPolygon && j < 0)) return;
+
       m_polyNodes.AddChild(newNode);
 
       //if this path's lowest pt is lower than all the others then update m_lowest
-      if (!closed) return;
+      if (endType != EndType.etClosedPolygon) return;
       if (m_lowest.X < 0)
         m_lowest = new IntPoint(0, k);
       else
@@ -4472,10 +4473,10 @@ namespace ClipperLib
     }
     //------------------------------------------------------------------------------
 
-    public void AddPaths(Paths paths, bool closed)
+    public void AddPaths(Paths paths, JoinType joinType, EndType endType)
     {
       foreach (Path p in paths)
-        AddPath(p, closed);
+        AddPath(p, joinType, endType);
     }
     //------------------------------------------------------------------------------
 
@@ -4487,8 +4488,23 @@ namespace ClipperLib
         !Clipper.Orientation(m_polyNodes.Childs[(int)m_lowest.X].m_polygon))
       {
         for (int i = 0; i < m_polyNodes.ChildCount; i++)
-          if (!m_polyNodes.Childs[i].IsOpen)
-            m_polyNodes.Childs[i].m_polygon.Reverse();
+        {
+          PolyNode node = m_polyNodes.Childs[i];
+          if (node.m_endtype == EndType.etClosedPolygon ||
+            (node.m_endtype == EndType.etClosedLine && 
+            Clipper.Orientation(node.m_polygon)))
+            node.m_polygon.Reverse();
+        }
+      }
+      else
+      {
+        for (int i = 0; i < m_polyNodes.ChildCount; i++)
+        {
+          PolyNode node = m_polyNodes.Childs[i];
+          if (node.m_endtype == EndType.etClosedLine &&
+            !Clipper.Orientation(node.m_polygon))
+            node.m_polygon.Reverse();
+        }
       }
     }
     //------------------------------------------------------------------------------
@@ -4517,50 +4533,51 @@ namespace ClipperLib
       {
         m_destPolys.Capacity = m_polyNodes.ChildCount;
         for (int i = 0; i < m_polyNodes.ChildCount; i++)
-          if (!m_polyNodes.Childs[i].IsOpen)
-            m_destPolys.Add(m_polyNodes.Childs[i].m_polygon);
+        {
+          PolyNode node = m_polyNodes.Childs[i];
+          if (node.m_endtype == EndType.etClosedPolygon)
+            m_destPolys.Add(node.m_polygon);
+        }
         return;
       }
 
-      if (JoinType == JoinType.jtMiter)
-      {
-        //see offset_triginometry3.svg in the documentation folder ...
-        if (MiterLimit > 2) m_miterLim = 2 / (MiterLimit * MiterLimit);
-        else m_miterLim = 0.5;
-      }
+      //see offset_triginometry3.svg in the documentation folder ...
+      if (MiterLimit > 2) m_miterLim = 2 / (MiterLimit * MiterLimit);
+      else m_miterLim = 0.5;
 
-      if (JoinType == JoinType.jtRound || EndType == EndType.etRound) 
-      {
-        double y;
-        if (ArcTolerance <= 0.0) y = 0.25;
-        else if (ArcTolerance > Math.Abs(delta) * 0.25) y = Math.Abs(delta) * 0.25;
-        else y = ArcTolerance;
-        //see offset_triginometry2.svg in the documentation folder ...
-        m_Steps360 = Math.PI / Math.Acos(1 - y / Math.Abs(delta));
-        m_sin = Math.Sin(two_pi / m_Steps360);
-        m_cos = Math.Cos(two_pi / m_Steps360);
-        m_Steps360 = m_Steps360 / two_pi;
-        if (delta < 0.0) m_sin = -m_sin;
-      }
+      double y;
+      if (ArcTolerance <= 0.0) 
+        y = def_arc_tolerance;
+      else if (ArcTolerance > Math.Abs(delta) * def_arc_tolerance)
+        y = Math.Abs(delta) * def_arc_tolerance;
+      else 
+        y = ArcTolerance;
+      //see offset_triginometry2.svg in the documentation folder ...
+      double steps = Math.PI / Math.Acos(1 - y / Math.Abs(delta));
+      m_sin = Math.Sin(two_pi / steps);
+      m_cos = Math.Cos(two_pi / steps);
+      m_StepsPerRad = steps / two_pi;
+      if (delta < 0.0) m_sin = -m_sin;
 
-      for (int m_i = 0; m_i < m_polyNodes.ChildCount; m_i++)
+      m_destPolys.Capacity = m_polyNodes.ChildCount * 2;
+      for (int i = 0; i < m_polyNodes.ChildCount; i++)
       {
-        m_srcPoly = m_polyNodes.Childs[m_i].m_polygon;
-        bool isClosed = !m_polyNodes.Childs[m_i].IsOpen;
+        PolyNode node = m_polyNodes.Childs[i];
+        m_srcPoly = node.m_polygon;
 
         int len = m_srcPoly.Count;
 
-        if (len == 0 || (delta <= 0 && (len < 3 || m_polyNodes.Childs[m_i].IsOpen)))
+        if (len == 0 || (delta <= 0 && (len < 3 || 
+          node.m_endtype != EndType.etClosedPolygon)))
             continue;
 
         m_destPoly = new Path();
 
         if (len == 1)
         {
-          if (EndType == EndType.etRound)
+          if (node.m_jointype == JoinType.jtRound)
           {
             double X = 1.0, Y = 0.0;
-            int steps = (int)Math.Round(m_Steps360 * two_pi);
             for (int j = 1; j <= steps; j++)
             {
               m_destPoly.Add(new IntPoint(
@@ -4591,28 +4608,46 @@ namespace ClipperLib
         //build m_normals ...
         m_normals.Clear();
         m_normals.Capacity = len;
-        for (int j = 0; j < len - 1; ++j)
+        for (int j = 0; j < len - 1; j++)
           m_normals.Add(GetUnitNormal(m_srcPoly[j], m_srcPoly[j + 1]));
-        if (isClosed)
+        if (node.m_endtype == EndType.etClosedLine || 
+          node.m_endtype == EndType.etClosedPolygon)
           m_normals.Add(GetUnitNormal(m_srcPoly[len - 1], m_srcPoly[0]));
         else
           m_normals.Add(new DoublePoint(m_normals[len - 2]));
 
-        if (isClosed)
+        if (node.m_endtype == EndType.etClosedPolygon)
         {
           int k = len - 1;
-          for (int j = 0; j < len; ++j)
-            OffsetPoint(j, ref k);
+          for (int j = 0; j < len; j++)
+            OffsetPoint(j, ref k, node.m_jointype);
+          m_destPolys.Add(m_destPoly);
+        }
+        else if (node.m_endtype == EndType.etClosedLine)
+        {
+          int k = len - 1;
+          for (int j = 0; j < len; j++)
+            OffsetPoint(j, ref k, node.m_jointype);
+          m_destPolys.Add(m_destPoly);
+          m_destPoly = new Path();
+          //re-build m_normals ...
+          DoublePoint n = m_normals[len - 1];
+          for (int j = len - 1; j > 0; j--)
+            m_normals[j] = new DoublePoint(-m_normals[j - 1].X, -m_normals[j - 1].Y);
+          m_normals[0] = new DoublePoint(-n.X, -n.Y);
+          k = 0;
+          for (int j = len - 1; j >= 0; j--)
+            OffsetPoint(j, ref k, node.m_jointype);
           m_destPolys.Add(m_destPoly);
         }
         else
         {
           int k = 0;
           for (int j = 1; j < len - 1; ++j)
-            OffsetPoint(j, ref k);
+            OffsetPoint(j, ref k, node.m_jointype);
 
           IntPoint pt1;
-          if (EndType == EndType.etButt)
+          if (node.m_endtype == EndType.etOpenButt)
           {
             int j = len - 1;
             pt1 = new IntPoint((cInt)Round(m_srcPoly[j].X + m_normals[j].X *
@@ -4628,7 +4663,7 @@ namespace ClipperLib
             k = len - 2;
             m_sinA = 0;
             m_normals[j] = new DoublePoint(-m_normals[j].X, -m_normals[j].Y);
-            if (EndType == EndType.etSquare)
+            if (node.m_endtype == EndType.etOpenSquare)
               DoSquare(j, k);
             else
               DoRound(j, k);
@@ -4642,9 +4677,9 @@ namespace ClipperLib
 
           k = len - 1;
           for (int j = k - 1; j > 0; --j)
-            OffsetPoint(j, ref k);
+            OffsetPoint(j, ref k, node.m_jointype);
 
-          if (EndType == EndType.etButt)
+          if (node.m_endtype == EndType.etOpenButt)
           {
             pt1 = new IntPoint((cInt)Round(m_srcPoly[0].X - m_normals[0].X * delta),
               (cInt)Round(m_srcPoly[0].Y - m_normals[0].Y * delta));
@@ -4657,7 +4692,7 @@ namespace ClipperLib
           {
             k = 1;
             m_sinA = 0;
-            if (EndType == EndType.etSquare)
+            if (node.m_endtype == EndType.etOpenSquare)
               DoSquare(0, 1);
             else
               DoRound(0, 1);
@@ -4699,9 +4734,9 @@ namespace ClipperLib
     }
     //------------------------------------------------------------------------------
 
-    public void Execute(ref PolyTree polytree, double delta)
+    public void Execute(ref PolyTree solution, double delta)
     {
-      polytree.Clear();
+      solution.Clear();
       FixOrientations();
       DoOffset(delta);
 
@@ -4710,7 +4745,7 @@ namespace ClipperLib
       clpr.AddPaths(m_destPolys, PolyType.ptSubject, true);
       if (delta > 0)
       {
-        clpr.Execute(ClipType.ctUnion, polytree,
+        clpr.Execute(ClipType.ctUnion, solution,
           PolyFillType.pftPositive, PolyFillType.pftPositive);
       }
       else
@@ -4725,23 +4760,23 @@ namespace ClipperLib
 
         clpr.AddPath(outer, PolyType.ptSubject, true);
         clpr.ReverseSolution = true;
-        clpr.Execute(ClipType.ctUnion, polytree, PolyFillType.pftNegative, PolyFillType.pftNegative);
+        clpr.Execute(ClipType.ctUnion, solution, PolyFillType.pftNegative, PolyFillType.pftNegative);
         //remove the outer PolyNode rectangle ...
-        if (polytree.ChildCount == 1 && polytree.Childs[0].ChildCount > 0)
+        if (solution.ChildCount == 1 && solution.Childs[0].ChildCount > 0)
         {
-          PolyNode outerNode = polytree.Childs[0];
-          polytree.Childs.Capacity = outerNode.ChildCount;
-          polytree.Childs[0] = outerNode.Childs[0];
+          PolyNode outerNode = solution.Childs[0];
+          solution.Childs.Capacity = outerNode.ChildCount;
+          solution.Childs[0] = outerNode.Childs[0];
           for (int i = 1; i < outerNode.ChildCount; i++)
-            polytree.AddChild(outerNode.Childs[i]);
+            solution.AddChild(outerNode.Childs[i]);
         }
         else
-          polytree.Clear();
+          solution.Clear();
       }
     }
     //------------------------------------------------------------------------------
 
-    void OffsetPoint(int j, ref int k)
+    void OffsetPoint(int j, ref int k, JoinType jointype)
     {
       m_sinA = (m_normals[k].X * m_normals[j].Y - m_normals[j].X * m_normals[k].Y);
       if (m_sinA < 0.00005 && m_sinA > -0.00005) return;
@@ -4757,7 +4792,7 @@ namespace ClipperLib
           Round(m_srcPoly[j].Y + m_normals[j].Y * m_delta)));
       }
       else
-        switch (JoinType)
+        switch (jointype)
         {
           case JoinType.jtMiter:
             {
@@ -4798,7 +4833,7 @@ namespace ClipperLib
     {
       double a = Math.Atan2(m_sinA,
       m_normals[k].X * m_normals[j].X + m_normals[k].Y * m_normals[j].Y);
-      int steps = (int)Round(m_Steps360 * Math.Abs(a));
+      int steps = (int)Round(m_StepsPerRad * Math.Abs(a));
 
       double X = m_normals[k].X, Y = m_normals[k].Y, X2;
       for (int i = 0; i < steps; ++i)

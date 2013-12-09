@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  20 November 2013                                                *
+* Date      :  9 December 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -44,7 +44,7 @@
 //#define use_xyz
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-//#define use_lines
+#define use_lines
   
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -127,6 +127,13 @@ struct DoublePoint
 typedef void (*TZFillCallback)(IntPoint& z1, IntPoint& z2, IntPoint& pt);
 #endif
 
+enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
+enum JoinType {jtSquare, jtRound, jtMiter};
+enum EndType {etClosedLine, etClosedPolygon, etOpenButt, etOpenSquare, etOpenRound};
+#ifdef use_deprecated
+  enum EndType_ {etClosed, etButt = 2, etSquare, etRound};
+#endif
+
 class PolyNode;
 typedef std::vector< PolyNode* > PolyNodes;
 
@@ -144,6 +151,8 @@ public:
 private:
     unsigned Index; //node index in Parent.Childs
     bool m_IsOpen;
+    JoinType m_jointype;
+    EndType m_endtype;
     PolyNode* GetNextSiblingUp() const;
     void AddChild(PolyNode& child);
     friend class Clipper; //to access Index
@@ -162,20 +171,12 @@ private:
     friend class Clipper; //to access AllNodes
 };
 
-enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
-enum JoinType {jtSquare, jtRound, jtMiter};
-#ifdef use_deprecated
-  enum EndType {etClosed, etButt, etSquare, etRound};
-#else
-  enum EndType {etButt, etSquare, etRound};
-#endif
-
 bool Orientation(const Path &poly);
 double Area(const Path &poly);
 
 #ifdef use_deprecated
   void OffsetPaths(const Paths &in_polys, Paths &out_polys,
-    double delta, JoinType jointype, EndType endtype, double limit = 0);
+    double delta, JoinType jointype, EndType_ endtype, double limit = 0);
   void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
     double delta, JoinType jointype = jtSquare, double limit = 0, bool autoFix = true);
   void PolyTreeToPolygons(const PolyTree& polytree, Paths& paths);
@@ -367,17 +368,13 @@ private:
 class ClipperOffset 
 {
 public:
-  ClipperOffset(
-    JoinType joinType = jtSquare, EndType endType = etSquare,
-    double miterLimit = 2.0, double roundPrecision = 0.25);
+  ClipperOffset(double miterLimit = 2.0, double roundPrecision = 0.25);
   ~ClipperOffset();
-  void AddPath(const Path& path, bool closed);
-  void AddPaths(const Paths& paths, bool closed);
+  void AddPath(const Path& path, JoinType joinType, EndType endType);
+  void AddPaths(const Paths& paths, JoinType joinType, EndType endType);
   void Execute(Paths& solution, double delta);
-  void Execute(PolyTree& polytree, double delta);
+  void Execute(PolyTree& solution, double delta);
   void Clear();
-  JoinType joinType;
-  EndType endType;
   double MiterLimit;
   double ArcTolerance;
 private:
@@ -386,13 +383,13 @@ private:
   Path m_destPoly;
   std::vector<DoublePoint> m_normals;
   double m_delta, m_sinA, m_sin, m_cos;
-  double m_miterLim, m_Steps360;
+  double m_miterLim, m_StepsPerRad;
   IntPoint m_lowest;
   PolyNode m_polyNodes;
 
   void FixOrientations();
   void DoOffset(double delta);
-  void OffsetPoint(int j, int& k);
+  void OffsetPoint(int j, int& k, JoinType jointype);
   void DoSquare(int j, int k);
   void DoMiter(int j, int k, double r);
   void DoRound(int j, int k);

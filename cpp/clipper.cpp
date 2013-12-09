@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  20 November 2013                                                *
+* Date      :  9 December 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -61,6 +61,8 @@ namespace ClipperLib {
 
 static double const pi = 3.141592653589793238;
 static double const two_pi = pi *2;
+static double const def_arc_tolerance = 0.25;
+
 enum Direction { dRightToLeft, dLeftToRight };
 
 static int const Unassigned = -1;  //edge not currently 'owning' a solution
@@ -390,7 +392,7 @@ class Int128
           return result;
       }
       else if (rhs.hi == this->hi && rhs.lo == this->lo)
-          return Int128(1);
+          return Int128(negate ? -1: 1);
       else
           return Int128(0);
     }
@@ -3755,11 +3757,8 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 // ClipperOffset class
 //------------------------------------------------------------------------------
 
-ClipperOffset::ClipperOffset(JoinType joinType, EndType endType, 
-  double miterLimit, double arcTolerance)
+ClipperOffset::ClipperOffset(double miterLimit, double arcTolerance)
 {
-  this->joinType = joinType;
-  this->endType = endType;
   this->MiterLimit = miterLimit;
   this->ArcTolerance = arcTolerance;
   m_lowest.X = -1;
@@ -3781,15 +3780,16 @@ void ClipperOffset::Clear()
 }
 //------------------------------------------------------------------------------
 
-void ClipperOffset::AddPath(const Path& path, bool closed)
+void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType)
 {
   int highI = (int)path.size() - 1;
   if (highI < 0) return;
   PolyNode* newNode = new PolyNode();
-  newNode->m_IsOpen = !closed;
+  newNode->m_jointype = joinType;
+  newNode->m_endtype = endType;
 
   //strip duplicate points from path and also get index to the lowest point ...
-  if (closed)
+  if (endType == etClosedLine || endType == etClosedPolygon)
     while (highI > 0 && path[0] == path[highI]) highI--;
   newNode->Contour.reserve(highI + 1);
   newNode->Contour.push_back(path[0]);
@@ -3803,11 +3803,16 @@ void ClipperOffset::AddPath(const Path& path, bool closed)
         (path[i].Y == newNode->Contour[k].Y &&
         path[i].X < newNode->Contour[k].X)) k = j;
     }
-  if ((closed && j < 2) || (!closed && j < 0)) return;
+  if ((endType == etClosedPolygon && j < 2) || 
+    (endType != etClosedPolygon && j < 0))
+  {
+    delete newNode;
+    return;
+  }
   m_polyNodes.AddChild(*newNode);
 
   //if this path's lowest pt is lower than all the others then update m_lowest
-  if (!closed) return;
+  if (endType != etClosedPolygon) return;
   if (m_lowest.X < 0)
     m_lowest = IntPoint(0, k);
   else
@@ -3821,10 +3826,10 @@ void ClipperOffset::AddPath(const Path& path, bool closed)
 }
 //------------------------------------------------------------------------------
 
-void ClipperOffset::AddPaths(const Paths& paths, bool closed)
+void ClipperOffset::AddPaths(const Paths& paths, JoinType joinType, EndType endType)
 {
   for (Paths::size_type i = 0; i < paths.size(); ++i)
-    AddPath(paths[i], closed);
+    AddPath(paths[i], joinType, endType);
 }
 //------------------------------------------------------------------------------
 
@@ -3836,8 +3841,20 @@ void ClipperOffset::FixOrientations()
     !Orientation(m_polyNodes.Childs[(int)m_lowest.X]->Contour))
   {
     for (int i = 0; i < m_polyNodes.ChildCount(); ++i)
-      if (!m_polyNodes.Childs[i]->IsOpen())
-        ReversePath(m_polyNodes.Childs[i]->Contour);
+    {
+      PolyNode& node = *m_polyNodes.Childs[i];
+      if (node.m_endtype == etClosedPolygon ||
+        (node.m_endtype == etClosedLine && Orientation(node.Contour)))
+          ReversePath(node.Contour);
+    }
+  } else
+  {
+    for (int i = 0; i < m_polyNodes.ChildCount(); ++i)
+    {
+      PolyNode& node = *m_polyNodes.Childs[i];
+      if (node.m_endtype == etClosedLine && !Orientation(node.Contour))
+        ReversePath(node.Contour);
+    }
   }
 }
 //------------------------------------------------------------------------------
@@ -3872,9 +3889,9 @@ void ClipperOffset::Execute(Paths& solution, double delta)
 }
 //------------------------------------------------------------------------------
 
-void ClipperOffset::Execute(PolyTree& polytree, double delta)
+void ClipperOffset::Execute(PolyTree& solution, double delta)
 {
-  polytree.Clear();
+  solution.Clear();
   FixOrientations();
   DoOffset(delta);
 
@@ -3883,7 +3900,7 @@ void ClipperOffset::Execute(PolyTree& polytree, double delta)
   clpr.AddPaths(m_destPolys, ptSubject, true);
   if (delta > 0)
   {
-    clpr.Execute(ctUnion, polytree, pftPositive, pftPositive);
+    clpr.Execute(ctUnion, solution, pftPositive, pftPositive);
   }
   else
   {
@@ -3896,18 +3913,18 @@ void ClipperOffset::Execute(PolyTree& polytree, double delta)
 
     clpr.AddPath(outer, ptSubject, true);
     clpr.ReverseSolution(true);
-    clpr.Execute(ctUnion, polytree, pftNegative, pftNegative);
+    clpr.Execute(ctUnion, solution, pftNegative, pftNegative);
     //remove the outer PolyNode rectangle ...
-    if (polytree.ChildCount() == 1 && polytree.Childs[0]->ChildCount() > 0)
+    if (solution.ChildCount() == 1 && solution.Childs[0]->ChildCount() > 0)
     {
-      PolyNode* outerNode = polytree.Childs[0];
-      polytree.Childs.reserve(outerNode->ChildCount());
-      polytree.Childs[0] = outerNode->Childs[0];
+      PolyNode* outerNode = solution.Childs[0];
+      solution.Childs.reserve(outerNode->ChildCount());
+      solution.Childs[0] = outerNode->Childs[0];
       for (int i = 1; i < outerNode->ChildCount(); ++i)
-        polytree.AddChild(*outerNode->Childs[i]);
+        solution.AddChild(*outerNode->Childs[i]);
     }
     else
-      polytree.Clear();
+      solution.Clear();
   }
 }
 //------------------------------------------------------------------------------
@@ -3922,48 +3939,49 @@ void ClipperOffset::DoOffset(double delta)
   {
     m_destPolys.reserve(m_polyNodes.ChildCount());
     for (int i = 0; i < m_polyNodes.ChildCount(); i++)
-      if (!m_polyNodes.Childs[i]->IsOpen())
-        m_destPolys.push_back(m_polyNodes.Childs[i]->Contour);
+    {
+      PolyNode& node = *m_polyNodes.Childs[i];
+      if (node.m_endtype == etClosedPolygon)
+        m_destPolys.push_back(node.Contour);
+    }
     return;
   }
 
-  if (joinType == jtMiter)
-  {
-    //see offset_triginometry3.svg in the documentation folder ...
-    if (MiterLimit > 2) m_miterLim = 2/(MiterLimit * MiterLimit);
-    else m_miterLim = 0.5;
-  }
+  //see offset_triginometry3.svg in the documentation folder ...
+  if (MiterLimit > 2) m_miterLim = 2/(MiterLimit * MiterLimit);
+  else m_miterLim = 0.5;
 
-  if (joinType == jtRound || endType == etRound) 
-  {
-    double y;
-    if (ArcTolerance <= 0.0) y = 0.25;
-    else if (ArcTolerance > std::fabs(delta) * 0.25) y = std::fabs(delta) * 0.25;
-    else y = ArcTolerance;
-    //see offset_triginometry2.svg in the documentation folder ...
-    m_Steps360 = pi / std::acos(1 - y / std::fabs(delta));
-    m_sin = std::sin(two_pi / m_Steps360);
-    m_cos = std::cos(two_pi / m_Steps360);
-    m_Steps360 = m_Steps360 / two_pi;
-    if (delta < 0.0) m_sin = -m_sin;
-  }
+  double y;
+  if (ArcTolerance <= 0.0) y = def_arc_tolerance;
+  else if (ArcTolerance > std::fabs(delta) * def_arc_tolerance) 
+    y = std::fabs(delta) * def_arc_tolerance;
+  else y = ArcTolerance;
+  //see offset_triginometry2.svg in the documentation folder ...
+  double steps = pi / std::acos(1 - y / std::fabs(delta));
+  if (steps > std::fabs(delta) * pi) 
+    steps = std::fabs(delta) * pi;  //ie excessive precision check
+  m_sin = std::sin(two_pi / steps);
+  m_cos = std::cos(two_pi / steps);
+  m_StepsPerRad = steps / two_pi;
+  if (delta < 0.0) m_sin = -m_sin;
 
-  for (int m_i = 0; m_i < m_polyNodes.ChildCount(); m_i++)
+  m_destPolys.reserve(m_polyNodes.ChildCount() * 2);
+  for (int i = 0; i < m_polyNodes.ChildCount(); i++)
   {
-    m_srcPoly = m_polyNodes.Childs[m_i]->Contour;
-    bool isClosed = !m_polyNodes.Childs[m_i]->IsOpen();
+    PolyNode& node = *m_polyNodes.Childs[i];
+    m_srcPoly = node.Contour;
 
     int len = m_srcPoly.size();
-    if (len == 0 || (delta <= 0 && (len < 3 || m_polyNodes.Childs[m_i]->IsOpen())))
+    if (len == 0 || (delta <= 0 && (len < 3 || node.m_endtype != etClosedPolygon)))
         continue;
 
     m_destPoly.clear();
     if (len == 1)
     {
-      if (endType == etRound)
+      if (node.m_jointype == jtRound)
       {
         double X = 1.0, Y = 0.0;
-        for (cInt j = 1; j <= Round(m_Steps360 * two_pi); j++)
+        for (cInt j = 1; j <= steps; j++)
         {
           m_destPoly.push_back(IntPoint(
             Round(m_srcPoly[0].X + X * delta),
@@ -3994,26 +4012,43 @@ void ClipperOffset::DoOffset(double delta)
     m_normals.reserve(len);
     for (int j = 0; j < len - 1; ++j)
       m_normals.push_back(GetUnitNormal(m_srcPoly[j], m_srcPoly[j + 1]));
-    if (isClosed)
+    if (node.m_endtype == etClosedLine || node.m_endtype == etClosedPolygon)
       m_normals.push_back(GetUnitNormal(m_srcPoly[len - 1], m_srcPoly[0]));
     else
       m_normals.push_back(DoublePoint(m_normals[len - 2]));
 
-    if (isClosed)
+    if (node.m_endtype == etClosedPolygon)
     {
       int k = len - 1;
       for (int j = 0; j < len; ++j)
-        OffsetPoint(j, k);
+        OffsetPoint(j, k, node.m_jointype);
+      m_destPolys.push_back(m_destPoly);
+    }
+    else if (node.m_endtype == etClosedLine)
+    {
+      int k = len - 1;
+      for (int j = 0; j < len; ++j)
+        OffsetPoint(j, k, node.m_jointype);
+      m_destPolys.push_back(m_destPoly);
+      m_destPoly.clear();
+      //re-build m_normals ...
+      DoublePoint n = m_normals[len -1];
+      for (int j = len - 1; j > 0; j--)
+        m_normals[j] = DoublePoint(-m_normals[j - 1].X, -m_normals[j - 1].Y);
+      m_normals[0] = DoublePoint(-n.X, -n.Y);
+      k = 0;
+      for (int j = len - 1; j >= 0; j--)
+        OffsetPoint(j, k, node.m_jointype);
       m_destPolys.push_back(m_destPoly);
     }
     else
     {
       int k = 0;
       for (int j = 1; j < len - 1; ++j)
-        OffsetPoint(j, k);
+        OffsetPoint(j, k, node.m_jointype);
 
       IntPoint pt1;
-      if (endType == etButt)
+      if (node.m_endtype == etOpenButt)
       {
         int j = len - 1;
         pt1 = IntPoint((cInt)Round(m_srcPoly[j].X + m_normals[j].X *
@@ -4029,7 +4064,7 @@ void ClipperOffset::DoOffset(double delta)
         k = len - 2;
         m_sinA = 0;
         m_normals[j] = DoublePoint(-m_normals[j].X, -m_normals[j].Y);
-        if (endType == etSquare)
+        if (node.m_endtype == etOpenSquare)
           DoSquare(j, k);
         else
           DoRound(j, k);
@@ -4038,13 +4073,12 @@ void ClipperOffset::DoOffset(double delta)
       //re-build m_normals ...
       for (int j = len - 1; j > 0; j--)
         m_normals[j] = DoublePoint(-m_normals[j - 1].X, -m_normals[j - 1].Y);
-
       m_normals[0] = DoublePoint(-m_normals[1].X, -m_normals[1].Y);
 
       k = len - 1;
-      for (int j = k - 1; j > 0; --j) OffsetPoint(j, k);
+      for (int j = k - 1; j > 0; --j) OffsetPoint(j, k, node.m_jointype);
 
-      if (endType == etButt)
+      if (node.m_endtype == etOpenButt)
       {
         pt1 = IntPoint((cInt)Round(m_srcPoly[0].X - m_normals[0].X * delta),
           (cInt)Round(m_srcPoly[0].Y - m_normals[0].Y * delta));
@@ -4057,7 +4091,7 @@ void ClipperOffset::DoOffset(double delta)
       {
         k = 1;
         m_sinA = 0;
-        if (endType == etSquare)
+        if (node.m_endtype == etOpenSquare)
           DoSquare(0, 1);
         else
           DoRound(0, 1);
@@ -4068,7 +4102,7 @@ void ClipperOffset::DoOffset(double delta)
 }
 //------------------------------------------------------------------------------
 
-void ClipperOffset::OffsetPoint(int j, int& k)
+void ClipperOffset::OffsetPoint(int j, int& k, JoinType jointype)
 {
   m_sinA = (m_normals[k].X * m_normals[j].Y - m_normals[j].X * m_normals[k].Y);
   if (m_sinA < 0.00005 && m_sinA > -0.00005) return;
@@ -4084,7 +4118,7 @@ void ClipperOffset::OffsetPoint(int j, int& k)
       Round(m_srcPoly[j].Y + m_normals[j].Y * m_delta)));
   }
   else
-    switch (joinType)
+    switch (jointype)
     {
       case jtMiter:
         {
@@ -4125,7 +4159,7 @@ void ClipperOffset::DoRound(int j, int k)
 {
   double a = std::atan2(m_sinA,
   m_normals[k].X * m_normals[j].X + m_normals[k].Y * m_normals[j].Y);
-  int steps = (int)Round(m_Steps360 * std::fabs(a));
+  int steps = (int)Round(m_StepsPerRad * std::fabs(a));
 
   double X = m_normals[k].X, Y = m_normals[k].Y, X2;
   for (int i = 0; i < steps; ++i)
@@ -4493,15 +4527,6 @@ std::ostream& operator <<(std::ostream &s, const Paths &p)
 
 #ifdef use_deprecated
 
-void OffsetPaths(const Paths &in_polys, Paths &out_polys,
-  double delta, JoinType jointype, EndType endtype, double limit)
-{
-  ClipperOffset co(jointype,endtype, limit, limit);
-  co.AddPaths(in_polys, endtype == etClosed);
-  co.Execute(out_polys, delta);
-}
-//------------------------------------------------------------------------------
-
 bool ClipperBase::AddPolygon(const Path &pg, PolyType PolyTyp)
 {
   return AddPath(pg, PolyTyp, true);
@@ -4514,6 +4539,15 @@ bool ClipperBase::AddPolygons(const Paths &ppg, PolyType PolyTyp)
   for (Paths::size_type i = 0; i < ppg.size(); ++i)
     if (AddPath(ppg[i], PolyTyp, true)) result = true;
   return result;
+}
+//------------------------------------------------------------------------------
+
+void OffsetPaths(const Paths &in_polys, Paths &out_polys,
+  double delta, JoinType jointype, EndType_ endtype, double limit)
+{
+  ClipperOffset co(limit, limit);
+  co.AddPaths(in_polys, jointype, (EndType)endtype); 
+  co.Execute(out_polys, delta);
 }
 //------------------------------------------------------------------------------
 
