@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  9 December 2013                                                 *
+* Date      :  11 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -44,7 +44,7 @@
 //#define use_xyz
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-#define use_lines
+//#define use_lines
   
 //When enabled, code developed with earlier versions of Clipper 
 //(ie prior to ver 6) should compile without changes. 
@@ -129,7 +129,7 @@ typedef void (*TZFillCallback)(IntPoint& z1, IntPoint& z2, IntPoint& pt);
 
 enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveCollinear = 4};
 enum JoinType {jtSquare, jtRound, jtMiter};
-enum EndType {etClosedLine, etClosedPolygon, etOpenButt, etOpenSquare, etOpenRound};
+enum EndType {etClosedPolygon, etClosedLine, etOpenButt, etOpenSquare, etOpenRound};
 #ifdef use_deprecated
   enum EndType_ {etClosed, etButt = 2, etSquare, etRound};
 #endif
@@ -177,11 +177,6 @@ double Area(const Path &poly);
 #ifdef use_deprecated
   void OffsetPaths(const Paths &in_polys, Paths &out_polys,
     double delta, JoinType jointype, EndType_ endtype, double limit = 0);
-  void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-    double delta, JoinType jointype = jtSquare, double limit = 0, bool autoFix = true);
-  void PolyTreeToPolygons(const PolyTree& polytree, Paths& paths);
-  void ReversePolygon(Path& p);
-  void ReversePolygons(Paths& p);
 #endif
 
 void SimplifyPolygon(const Path &in_poly, Paths &out_polys, PolyFillType fillType = pftEvenOdd);

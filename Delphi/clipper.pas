@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  9 December 2013                                                 *
+* Date      :  11 December 2013                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -119,8 +119,6 @@ type
   TPaths = array of TPath;
 
 {$IFDEF use_deprecated}
-  TPolygon = TPath;
-  TPolygons = TPaths;
   TEndType_ = (etClosed, etButt = 2, etSquare, etRound);
 {$ENDIF}
 
@@ -270,12 +268,6 @@ type
 
     function AddPath(const Path: TPath; PolyType: TPolyType; Closed: Boolean): Boolean;
     function AddPaths(const Paths: TPaths; PolyType: TPolyType; Closed: Boolean): Boolean;
-
-{$IFDEF use_deprecated}
-    function AddPolygon(const Path: TPath; PolyType: TPolyType): Boolean;
-    function AddPolygons(const Paths: TPaths; PolyType: TPolyType): Boolean;
-{$ENDIF}
-
     //PreserveCollinear: Prevents removal of 'inner' vertices when three or
     //more vertices are collinear in solution polygons.
     property PreserveCollinear: Boolean
@@ -413,6 +405,7 @@ type
 
 function Orientation(const Pts: TPath): Boolean; overload;
 function Area(const Pts: TPath): Double; overload;
+function GetBounds(const polys: TPaths): TIntRect;
 
 {$IFDEF use_xyz}
 function IntPoint(const X, Y: Int64; Z: Int64 = 0): TIntPoint; overload;
@@ -432,13 +425,6 @@ function ReversePaths(const Pts: TPaths): TPaths;
 function OffsetPaths(const Polys: TPaths; const Delta: Double;
   JoinType: TJoinType = jtSquare; EndType: TEndType_ = etClosed;
   Limit: Double = 0): TPaths;
-function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; Limit: Double = 0;
-  AutoFix: Boolean = True): TPolygons;
-
-function ReversePolygon(const Pts: TPolygon): TPolygon;
-function ReversePolygons(const Pts: TPolygons): TPolygons;
-function PolyTreeToPolygons(PolyTree: TPolyTree): TPolygons;
 {$ENDIF}
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
@@ -974,7 +960,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetBounds(const polys: TPaths): TIntRect; overload;
+function GetBounds(const polys: TPaths): TIntRect;
 var
   I,J,Len: Integer;
 begin
@@ -4967,8 +4953,6 @@ end;
 function SlopesNearCollinear(const Pt1, Pt2, Pt3: TIntPoint;
   DistSqrd: Double): Boolean;
 begin
-  Result := false;
-  if DistanceSqrd(Pt1, Pt2) > DistanceSqrd(Pt1, Pt3) then exit;
   result := DistanceFromLineSqrd(Pt2, Pt1, Pt3) < DistSqrd;
 end;
 //------------------------------------------------------------------------------
@@ -5200,50 +5184,6 @@ begin
   finally
     Free;
   end;
-end;
-//------------------------------------------------------------------------------
-
-function OffsetPolygons(const Polys: TPolygons; const Delta: Double;
-  JoinType: TJoinType = jtSquare; Limit: Double = 0;
-  AutoFix: Boolean = True): TPolygons;
-begin
-  with TClipperOffset.Create(Limit, Limit) do
-  try
-    AddPaths(Polys, JoinType, etClosedPolygon);
-    Execute(Result, Delta);
-  finally
-    Free;
-  end;
-end;
-//------------------------------------------------------------------------------
-
-function TClipperBase.AddPolygons(const Paths: TPaths; PolyType: TPolyType): Boolean;
-begin
-  Result := AddPaths(Paths, PolyType, True);
-end;
-//------------------------------------------------------------------------------
-
-function TClipperBase.AddPolygon(const Path: TPath; PolyType: TPolyType): Boolean;
-begin
-  Result := AddPath(Path, PolyType, True);
-end;
-//------------------------------------------------------------------------------
-
-function PolyTreeToPolygons(PolyTree: TPolyTree): TPolygons;
-begin
-  result := PolyTreeToPaths(PolyTree);
-end;
-//------------------------------------------------------------------------------
-
-function ReversePolygon(const Pts: TPolygon): TPolygon;
-begin
-  result := ReversePath(Pts);
-end;
-//------------------------------------------------------------------------------
-
-function ReversePolygons(const Pts: TPolygons): TPolygons;
-begin
-  result := ReversePaths(Pts);
 end;
 //------------------------------------------------------------------------------
 {$ENDIF}

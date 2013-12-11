@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.0                                                           *
-* Date      :  9 December 2013                                                 *
+* Date      :  11 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -4294,8 +4294,7 @@ double DistanceFromLineSqrd(
 bool SlopesNearCollinear(const IntPoint& pt1, 
     const IntPoint& pt2, const IntPoint& pt3, double distSqrd)
 {
-  if (DistanceSqrd(pt1, pt2) > DistanceSqrd(pt1, pt3)) return false;
-  else return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+  return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
 }
 //------------------------------------------------------------------------------
 
@@ -4527,21 +4526,6 @@ std::ostream& operator <<(std::ostream &s, const Paths &p)
 
 #ifdef use_deprecated
 
-bool ClipperBase::AddPolygon(const Path &pg, PolyType PolyTyp)
-{
-  return AddPath(pg, PolyTyp, true);
-}
-//------------------------------------------------------------------------------
-
-bool ClipperBase::AddPolygons(const Paths &ppg, PolyType PolyTyp)
-{
-  bool result = false;
-  for (Paths::size_type i = 0; i < ppg.size(); ++i)
-    if (AddPath(ppg[i], PolyTyp, true)) result = true;
-  return result;
-}
-//------------------------------------------------------------------------------
-
 void OffsetPaths(const Paths &in_polys, Paths &out_polys,
   double delta, JoinType jointype, EndType_ endtype, double limit)
 {
@@ -4551,31 +4535,6 @@ void OffsetPaths(const Paths &in_polys, Paths &out_polys,
 }
 //------------------------------------------------------------------------------
 
-void OffsetPolygons(const Polygons &in_polys, Polygons &out_polys,
-  double delta, JoinType jointype, double limit, bool)
-{
-  //nb: autoFix parameter is now unused - but preserved here for compatibility
-  OffsetPaths(in_polys, out_polys, delta, jointype, etClosed, limit);
-}
-//------------------------------------------------------------------------------
-
-void PolyTreeToPolygons(const PolyTree& polytree, Paths& paths)
-{
-  PolyTreeToPaths(polytree, paths);
-}
-//------------------------------------------------------------------------------
-
-void ReversePolygon(Path& p)
-{
-  std::reverse(p.begin(), p.end());
-}
-//------------------------------------------------------------------------------
-
-void ReversePolygons(Paths& p)
-{
-  for (Paths::size_type i = 0; i < p.size(); ++i)
-    ReversePolygon(p[i]);
-}
 #endif
 
 

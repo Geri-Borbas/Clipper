@@ -72,11 +72,6 @@ namespace ClipperLib
   using Path = List<IntPoint>;
   using Paths = List<List<IntPoint>>;
 
-#if use_deprecated
-  using Polygon = List<IntPoint>;
-  using Polygons = List<List<IntPoint>>;
-#endif
-
   public struct DoublePoint
   {
     public double X;
@@ -515,7 +510,7 @@ namespace ClipperLib
   public enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
   
   public enum JoinType { jtSquare, jtRound, jtMiter };
-  public enum EndType { etClosedLine, etClosedPolygon, etOpenButt, etOpenSquare, etOpenRound };
+  public enum EndType { etClosedPolygon, etClosedLine, etOpenButt, etOpenSquare, etOpenRound };
 #if use_deprecated
   public enum EndType_ { etClosed, etButt, etSquare, etRound };
 #endif
@@ -1129,23 +1124,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-#if use_deprecated
-      public bool AddPolygon(Path pg, PolyType polyType)
-      {
-        return AddPath(pg, polyType, true);
-      }
-      //------------------------------------------------------------------------------
-
-      public bool AddPolygons(Paths ppg, PolyType polyType)
-      {
-        bool result = false;
-        for (int i = 0; i < ppg.Count; ++i)
-          if (AddPath(ppg[i], polyType, true)) result = true;
-        return result;
-      }
-      //------------------------------------------------------------------------------
-#endif
-
       internal bool Pt2IsBetweenPt1AndPt3(IntPoint pt1, IntPoint pt2, IntPoint pt3)
       {
         if ((pt1 == pt3) || (pt1 == pt2) || (pt3 == pt2)) return false;
@@ -1246,41 +1224,25 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public IntRect GetBounds()
+      public static IntRect GetBounds(Paths paths)
       {
-          IntRect result = new IntRect();
-          LocalMinima lm = m_MinimaList;
-          if (lm == null) return result;
-          result.left = lm.LeftBound.Bot.X;
-          result.top = lm.LeftBound.Bot.Y;
-          result.right = lm.LeftBound.Bot.X;
-          result.bottom = lm.LeftBound.Bot.Y;
-          while (lm != null)
+        int i = 0, cnt = paths.Count;
+        while (i < cnt && paths[i].Count == 0) i++;
+        if (i == cnt) return new IntRect(0,0,0,0);
+        IntRect result = new IntRect();
+        result.left = paths[i][0].X;
+        result.right = result.left;
+        result.top = paths[i][0].Y;
+        result.bottom = result.top;
+        for (; i < cnt; i++)
+          for (int j = 0; j < paths[i].Count; j++)
           {
-              if (lm.LeftBound.Bot.Y > result.bottom)
-                  result.bottom = lm.LeftBound.Bot.Y;
-              TEdge e = lm.LeftBound;
-              for (; ; )
-              {
-                  TEdge bottomE = e;
-                  while (e.NextInLML != null)
-                  {
-                      if (e.Bot.X < result.left) result.left = e.Bot.X;
-                      if (e.Bot.X > result.right) result.right = e.Bot.X;
-                      e = e.NextInLML;
-                  }
-                  if (e.Bot.X < result.left) result.left = e.Bot.X;
-                  if (e.Bot.X > result.right) result.right = e.Bot.X;
-                  if (e.Top.X < result.left) result.left = e.Top.X;
-                  if (e.Top.X > result.right) result.right = e.Top.X;
-                  if (e.Top.Y < result.top) result.top = e.Top.Y;
-
-                  if (bottomE == lm.LeftBound) e = lm.RightBound;
-                  else break;
-              }
-              lm = lm.Next;
+            if (paths[i][j].X < result.left) result.left = paths[i][j].X;
+            else if (paths[i][j].X > result.right) result.right = paths[i][j].X;
+            if (paths[i][j].Y < result.top) result.top = paths[i][j].Y;
+            else if (paths[i][j].Y > result.bottom) result.bottom = paths[i][j].Y;
           }
-          return result;
+        return result;
       }
 
   } //end ClipperBase
@@ -4093,46 +4055,6 @@ namespace ClipperLib
         return result;
       }
       //------------------------------------------------------------------------------
-
-      public static Paths OffsetPolygons(Paths poly, double delta,
-          JoinType jointype, double MiterLimit, bool AutoFix)
-      {
-        return OffsetPaths(poly, delta, jointype, EndType_.etClosed, MiterLimit);
-      }
-      //------------------------------------------------------------------------------
-
-      public static Paths OffsetPolygons(Paths poly, double delta,
-          JoinType jointype, double MiterLimit)
-      {
-        return OffsetPaths(poly, delta, jointype, EndType_.etClosed, MiterLimit);
-      }
-      //------------------------------------------------------------------------------
-
-      public static Paths OffsetPolygons(Polygons polys, double delta, JoinType jointype)
-      {
-        return OffsetPaths(polys, delta, jointype, EndType_.etClosed, 0);
-      }
-      //------------------------------------------------------------------------------
-
-      public static Paths OffsetPolygons(Polygons polys, double delta)
-      {
-        return OffsetPolygons(polys, delta, JoinType.jtSquare, 0, true);
-      }
-      //------------------------------------------------------------------------------
-
-      public static void ReversePolygons(Polygons polys)
-      {
-        foreach (var poly in polys) { poly.Reverse(); } 
-      }
-      //------------------------------------------------------------------------------
-
-      public static void PolyTreeToPolygons(PolyTree polytree, Polygons polys)
-      {
-        polys.Clear();
-        polys.Capacity = polytree.Total;
-        AddPolyNodeToPaths(polytree, NodeType.ntAny, polys);
-      }
-      //------------------------------------------------------------------------------
 #endif
 
     //------------------------------------------------------------------------------
@@ -4188,11 +4110,10 @@ namespace ClipperLib
       }
       //---------------------------------------------------------------------------
 
-    private static bool SlopesNearCollinear(IntPoint pt1, 
+      private static bool SlopesNearCollinear(IntPoint pt1, 
           IntPoint pt2, IntPoint pt3, double distSqrd)
       {
-        if (DistanceSqrd(pt1, pt2) > DistanceSqrd(pt1, pt3)) return false;
-        else return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+        return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
       }
       //------------------------------------------------------------------------------
 
@@ -4503,7 +4424,7 @@ namespace ClipperLib
           PolyNode node = m_polyNodes.Childs[i];
           if (node.m_endtype == EndType.etClosedLine &&
             !Clipper.Orientation(node.m_polygon))
-            node.m_polygon.Reverse();
+          node.m_polygon.Reverse();
         }
       }
     }
@@ -4718,7 +4639,7 @@ namespace ClipperLib
       }
       else
       {
-        IntRect r = clpr.GetBounds();
+        IntRect r = Clipper.GetBounds(m_destPolys);
         Path outer = new Path(4);
 
         outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
@@ -4750,7 +4671,7 @@ namespace ClipperLib
       }
       else
       {
-        IntRect r = clpr.GetBounds();
+        IntRect r = Clipper.GetBounds(m_destPolys);
         Path outer = new Path(4);
 
         outer.Add(new IntPoint(r.left - 10, r.bottom + 10));
