@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.0                                                           *
-* Date      :  9 December 2013                                                 *
+* Version   :  6.1.1                                                           *
+* Date      :  13 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -872,11 +872,12 @@ namespace ClipperLib
             while (E != Result)
             {
               E.NextInLML = E.Next;
-              if (E.Dx == horizontal && E != EStart &&
-                E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+              if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Prev.Top.X) 
+                ReverseHorizontal(E);
               E = E.Next;
             }
-            if (E.Dx == horizontal && E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+            if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Prev.Top.X) 
+              ReverseHorizontal(E);
             Result = Result.Next; //move to the edge just beyond current bound
           }
           else
@@ -897,11 +898,12 @@ namespace ClipperLib
             while (E != Result)
             {
               E.NextInLML = E.Prev;
-              if (E.Dx == horizontal && E != EStart &&
-                E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+              if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Next.Top.X) 
+                ReverseHorizontal(E);
               E = E.Prev;
             }
-            if (E.Dx == horizontal && E.Bot.X != E.Next.Top.X) ReverseHorizontal(E);
+            if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Next.Top.X) 
+              ReverseHorizontal(E);
             Result = Result.Prev; //move to the edge just beyond current bound
           }
         }
@@ -1026,7 +1028,6 @@ namespace ClipperLib
 
         if ((!Closed && (E == E.Next)) || (Closed && (E.Prev == E.Next)))
           return false;
-        m_edges.Add(edges);
 
         if (!Closed) m_HasOpenPaths = true;
 
@@ -1057,16 +1058,18 @@ namespace ClipperLib
           locMin.RightBound = E;
           locMin.RightBound.Side = EdgeSide.esRight;
           locMin.RightBound.WindDelta = 0;
-          while (E.OutIdx != Skip)
+          while (E.Next.OutIdx != Skip)
           {
             E.NextInLML = E.Next;
             if (E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
             E = E.Next;
           }
           InsertLocalMinima(locMin);
-	        return false;
+          m_edges.Add(edges);
+          return true;
         }
 
+        m_edges.Add(edges);
         bool clockwise;
         TEdge EMin = null;
         for (;;)
@@ -3420,8 +3423,9 @@ namespace ClipperLib
                 outRec.PolyNode.IsOpen = true;
                 polytree.AddChild(outRec.PolyNode);
               }
-              else if (outRec.FirstLeft != null)
-                outRec.FirstLeft.PolyNode.AddChild(outRec.PolyNode);
+              else if (outRec.FirstLeft != null && 
+                outRec.FirstLeft.PolyNode != null)
+                  outRec.FirstLeft.PolyNode.AddChild(outRec.PolyNode);
               else
                 polytree.AddChild(outRec.PolyNode);
           }

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.0                                                           *
-* Date      :  11 December 2013                                                *
+* Version   :  6.1.1                                                           *
+* Date      :  13 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -170,7 +170,7 @@ PolyNode* PolyTree::GetFirst() const
 
 int PolyTree::Total() const
 {
-  return AllNodes.size();
+  return (int)AllNodes.size();
 }
 
 //------------------------------------------------------------------------------
@@ -184,13 +184,13 @@ PolyNode::PolyNode(): Childs(), Parent(0), Index(0), m_IsOpen(false)
 
 int PolyNode::ChildCount() const
 {
-  return Childs.size();
+  return (int)Childs.size();
 }
 //------------------------------------------------------------------------------
 
 void PolyNode::AddChild(PolyNode& child)
 {
-  unsigned cnt = Childs.size();
+  unsigned cnt = (unsigned)Childs.size();
   Childs.push_back(&child);
   child.Parent = this;
   child.Index = cnt;
@@ -1018,7 +1018,8 @@ TEdge* ClipperBase::ProcessBound(TEdge* E, bool IsClockwise)
           E->Bot.X != E->Prev->Top.X) ReverseHorizontal(*E);
         E = E->Next;
       }
-      if (IsHorizontal(*E) && E->Bot.X != E->Prev->Top.X) ReverseHorizontal(*E);
+      if (IsHorizontal(*E) && E != EStart && E->Bot.X != E->Prev->Top.X) 
+        ReverseHorizontal(*E);
       Result = Result->Next; //move to the edge just beyond current bound
     } else
     {
@@ -1038,11 +1039,12 @@ TEdge* ClipperBase::ProcessBound(TEdge* E, bool IsClockwise)
       while (E != Result)
       {
         E->NextInLML = E->Prev;
-        if (IsHorizontal(*E) && (E != EStart) &&
-          E->Bot.X != E->Next->Top.X) ReverseHorizontal(*E);
+        if (IsHorizontal(*E) && E != EStart && E->Bot.X != E->Next->Top.X) 
+          ReverseHorizontal(*E);
         E = E->Prev;
       }
-      if (IsHorizontal(*E) && E->Bot.X != E->Next->Top.X) ReverseHorizontal(*E);
+      if (IsHorizontal(*E) && E != EStart && E->Bot.X != E->Next->Top.X) 
+        ReverseHorizontal(*E);
       Result = Result->Prev; //move to the edge just beyond current bound
     }
   }
@@ -1168,7 +1170,6 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     delete [] edges;
     return false;
   }
-  m_edges.push_back(edges);
 
   if (!Closed) m_HasOpenPaths = true;
 
@@ -1188,7 +1189,11 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   //to LocalMinima list to avoid endless loops etc ...
   if (IsFlat) 
   {
-    if (Closed) return false;
+    if (Closed) 
+    {
+      delete [] edges;
+      return false;
+    }
     E->Prev->OutIdx = Skip;
     if (E->Prev->Bot.X < E->Prev->Top.X) ReverseHorizontal(*E->Prev);
     LocalMinima* locMin = new LocalMinima();
@@ -1198,16 +1203,18 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     locMin->RightBound = E;
     locMin->RightBound->Side = esRight;
     locMin->RightBound->WindDelta = 0;
-    while (E->OutIdx != Skip)
+    while (E->Next->OutIdx != Skip)
     {
       E->NextInLML = E->Next;
       if (E->Bot.X != E->Prev->Top.X) ReverseHorizontal(*E);
       E = E->Next;
     }
     InsertLocalMinima(locMin);
-	  return false;
+    m_edges.push_back(edges);
+	  return true;
   }
 
+  m_edges.push_back(edges);
   bool clockwise;
   TEdge* EMin = 0;
   for (;;)
@@ -3241,7 +3248,7 @@ void Clipper::BuildResult2(PolyTree& polytree)
           outRec->PolyNd->m_IsOpen = true;
           polytree.AddChild(*outRec->PolyNd);
         }
-        else if (outRec->FirstLeft) 
+        else if (outRec->FirstLeft && outRec->FirstLeft->PolyNd) 
           outRec->FirstLeft->PolyNd->AddChild(*outRec->PolyNd);
         else
           polytree.AddChild(*outRec->PolyNd);
@@ -3971,7 +3978,7 @@ void ClipperOffset::DoOffset(double delta)
     PolyNode& node = *m_polyNodes.Childs[i];
     m_srcPoly = node.Contour;
 
-    int len = m_srcPoly.size();
+    int len = (int)m_srcPoly.size();
     if (len == 0 || (delta <= 0 && (len < 3 || node.m_endtype != etClosedPolygon)))
         continue;
 

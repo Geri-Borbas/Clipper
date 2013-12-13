@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.0                                                           *
-* Date      :  11 December 2013                                                 *
+* Version   :  6.1.1                                                           *
+* Date      :  13 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1432,7 +1432,7 @@ begin
     //before finishing right, so ...
     if IsClockwise then StartX := E.Prev.Bot.X
     else StartX := E.Next.Bot.X;
-    if E.Bot.X <> StartX then ReverseHorizontal(E);
+    if (E.Bot.X <> StartX) then ReverseHorizontal(E);
   end;
   if Result.OutIdx = Skip then
     //do nothing here
@@ -1456,11 +1456,12 @@ begin
     while (E <> Result) do
     begin
       e.NextInLML := e.Next;
-      if (E.Dx = Horizontal) and not (e = EStart) and
+      if (E.Dx = Horizontal) and (e <> EStart) and
         (E.Bot.X <> E.Prev.Top.X) then ReverseHorizontal(E);
       E := E.Next;
     end;
-    if (E.Dx = Horizontal) and (E.Bot.X <> E.Prev.Top.X) then ReverseHorizontal(E);
+    if (e <> EStart) and (E.Dx = Horizontal) and (E.Bot.X <> E.Prev.Top.X) then
+      ReverseHorizontal(E);
     Result := Result.Next; //move to the edge just beyond current bound
   end else
   begin
@@ -1479,11 +1480,12 @@ begin
     while (E <> Result) do
     begin
       e.NextInLML := e.Prev;
-      if (e.Dx = Horizontal) and not (e = EStart) and
+      if (e.Dx = Horizontal) and (e <> EStart) and
         (E.Bot.X <> E.Next.Top.X) then ReverseHorizontal(E);
       E := E.Prev;
     end;
-    if (E.Dx = Horizontal) and (E.Bot.X <> E.Next.Top.X) then ReverseHorizontal(E);
+    if (e <> EStart) and (E.Dx = Horizontal) and (E.Bot.X <> E.Next.Top.X) then
+      ReverseHorizontal(E);
     Result := Result.Prev; //move to the edge just beyond current bound
   end;
   if (Result.OutIdx = Skip) then
@@ -1612,7 +1614,6 @@ begin
     Exit;
   end;
   if not Closed then FHasOpenPaths := true;
-  FEdgeList.Add(Edges);
 
   //3. Do second stage of edge initialization ...
   E := EStart;
@@ -1621,15 +1622,17 @@ begin
     E := E.Next;
 	  if IsFlat and (E.Curr.Y <> EStart.Curr.Y) then IsFlat := false;
   until E = EStart;
-
   //4. Finally, add edge bounds to LocalMinima list ...
 
   //Totally flat paths must be handled differently when adding them
   //to LocalMinima list to avoid endless loops etc ...
   if (IsFlat) then
   begin
-    if Closed then Exit;
-    E.Prev.OutIdx := Skip;
+    if Closed then
+    begin
+      FreeMem(Edges);
+      Exit;
+    end;
     if E.Prev.Bot.X < E.Prev.Top.X then ReverseHorizontal(E.Prev);
     new(locMin);
     locMin.Next := nil;
@@ -1638,16 +1641,20 @@ begin
     locMin.RightBound := E;
     locMin.RightBound.Side := esRight;
     locMin.RightBound.WindDelta := 0;
-    while E.OutIdx <> Skip do
+    while E.Next.OutIdx <> Skip do
     begin
       E.NextInLML := E.Next;
       if E.Bot.X <> E.Prev.Top.X then ReverseHorizontal(E);
       E := E.Next;
     end;
     InsertLocalMinima(locMin);
-	  Exit;
+    Result := true;
+    FEdgeList.Add(Edges);
+    Exit;
   end;
 
+  Result := true;
+  FEdgeList.Add(Edges);
   EMin := nil;
   while true do
   begin
@@ -1690,7 +1697,6 @@ begin
     InsertLocalMinima(locMin);
     if not clockwise then E := E2;
   end;
-  Result := True;
 end;
 //------------------------------------------------------------------------------
 
@@ -2612,6 +2618,7 @@ begin
 
     if E1stops then
       if (E1.OutIdx < 0) then deleteFromAEL(E1)
+
       else raise Exception.Create(rsPolylines);
     if E2stops then
       if (E2.OutIdx < 0) then deleteFromAEL(E2)
@@ -3288,7 +3295,8 @@ begin
 
   eLastHorz := HorzEdge;
   while Assigned(eLastHorz.NextInLML) and
-    (eLastHorz.NextInLML.Dx = Horizontal) do eLastHorz := eLastHorz.NextInLML;
+    (eLastHorz.NextInLML.Dx = Horizontal) do
+      eLastHorz := eLastHorz.NextInLML;
   if Assigned(eLastHorz.NextInLML) then
     eMaxPair := nil else
     eMaxPair := GetMaximaPair(eLastHorz);
@@ -3787,7 +3795,8 @@ begin
           OutRec.PolyNode.FIsOpen := true;
           PolyTree.AddChild(OutRec.PolyNode);
         end
-        else if Assigned(OutRec.FirstLeft) then
+        else if Assigned(OutRec.FirstLeft) and
+          assigned(OutRec.FirstLeft.PolyNode)then
           OutRec.FirstLeft.PolyNode.AddChild(OutRec.PolyNode)
         else
           PolyTree.AddChild(OutRec.PolyNode);
