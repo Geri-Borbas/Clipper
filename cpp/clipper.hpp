@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.1                                                           *
-* Date      :  13 December 2013                                                *
+* Version   :  6.1.2                                                           *
+* Date      :  15 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -34,7 +34,7 @@
 #ifndef clipper_hpp
 #define clipper_hpp
 
-#define CLIPPER_VERSION "6.1.1"
+#define CLIPPER_VERSION "6.1.2"
 
 //use_int32: When enabled 32bit ints are used instead of 64bit ints. This
 //improve performance but coordinate values are limited to the range +/- 46340
@@ -46,9 +46,8 @@
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
 //#define use_lines
   
-//When enabled, code developed with earlier versions of Clipper 
-//(ie prior to ver 6) should compile without changes. 
-//In a future update, this compatability code will be removed.
+//use_deprecated: Enables support for the obsolete OffsetPaths() function
+//which has been replace with the ClipperOffset class.
 #define use_deprecated  
 
 #include <vector>
@@ -107,12 +106,6 @@ inline Paths& operator <<(Paths& polys, const Path& p) {polys.push_back(p); retu
 std::ostream& operator <<(std::ostream &s, const IntPoint &p);
 std::ostream& operator <<(std::ostream &s, const Path &p);
 std::ostream& operator <<(std::ostream &s, const Paths &p);
-
-#ifdef use_deprecated
-typedef signed long long long64; //backward compatibility only
-typedef Path Polygon;
-typedef Paths Polygons;
-#endif
 
 struct DoublePoint
 {
@@ -230,12 +223,6 @@ public:
   virtual ~ClipperBase();
   bool AddPath(const Path &pg, PolyType PolyTyp, bool Closed);
   bool AddPaths(const Paths &ppg, PolyType PolyTyp, bool Closed);
-
-#ifdef use_deprecated
-  bool AddPolygon(const Path &pg, PolyType PolyTyp);
-  bool AddPolygons(const Paths &ppg, PolyType PolyTyp);
-#endif
-
   virtual void Clear();
   IntRect GetBounds();
   bool PreserveCollinear() {return m_PreserveCollinear;};
@@ -349,7 +336,7 @@ private:
   void ClearJoins();
   void ClearGhostJoins();
   void AddGhostJoin(OutPt *op, const IntPoint offPt);
-  bool JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2);
+  bool JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2);
   void JoinCommonEdges();
   void DoSimplePolygons();
   void FixupFirstLefts1(OutRec* OldOutRec, OutRec* NewOutRec);

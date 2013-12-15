@@ -2,6 +2,10 @@
 Clipper Change Log
 ============================================================
 
+v6.1.2 (15 December 2013)
+* Fixed broken C++ header file.
+* Minor improvement to joining polygons.
+
 v6.1.1 (13 December 2013)
 * Fixed a couple of bugs affecting open paths that could 
   raise unhandled exceptions.

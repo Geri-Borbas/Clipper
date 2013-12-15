@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.1                                                           *
-* Date      :  13 December 2013                                                *
+* Version   :  6.1.2                                                           *
+* Date      :  15 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -43,9 +43,8 @@ unit clipper;
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
 {.$DEFINE use_lines}
 
-//When enabled, code developed with earlier versions of Clipper
-//(ie prior to ver 6) should compile without changes.
-//In a future update, this compatibility code will be removed.
+//use_deprecated: Enables support for the obsolete OffsetPaths() function
+//which has been replace with the ClipperOffset class.
 {$DEFINE use_deprecated}
 
 {$IFDEF FPC}
@@ -335,7 +334,7 @@ type
     procedure ClearJoins;
     procedure AddGhostJoin(OutPt: POutPt; const OffPt: TIntPoint);
     procedure ClearGhostJoins;
-    function JoinPoints(Jr: PJoin; out P1, P2: POutPt): Boolean;
+    function JoinPoints(Jr: PJoin; OutRec1, OutRec2: POutRec): Boolean;
     procedure FixupFirstLefts1(OldOutRec, NewOutRec: POutRec);
     procedure FixupFirstLefts2(OldOutRec, NewOutRec: POutRec);
     procedure DoSimplePolygons;
@@ -3248,10 +3247,11 @@ procedure TClipper.ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
     //First, match up overlapping horizontal edges (eg when one polygon's
     //intermediate horz edge overlaps an intermediate horz edge of another, or
     //when one polygon sits on top of another) ...
-    for I := 0 to FGhostJoinList.Count -1 do
-      with PJoin(FGhostJoinList[I])^ do
-        if HorzSegmentsOverlap(OutPt1.Pt, OffPt, HorzEdge.Bot, HorzEdge.Top) then
-          AddJoin(OutPt1, OutPt, OffPt);
+      for I := 0 to FGhostJoinList.Count -1 do
+        with PJoin(FGhostJoinList[I])^ do
+          if HorzSegmentsOverlap(OutPt1.Pt, OffPt,
+            HorzEdge.Bot, HorzEdge.Top) then
+              AddJoin(OutPt1, OutPt, OffPt);
 
     //Also, since horizontal edges at the top of one SB are often removed from
     //the AEL before we process the horizontal edges at the bottom of the next,
@@ -3317,12 +3317,12 @@ begin
       if ((Direction = dLeftToRight) and (E.Curr.X <= HorzRight)) or
         ((Direction = dRightToLeft) and (E.Curr.X >= HorzLeft)) then
       begin
+        if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
+          PrepareHorzJoins;
         //so far we're still in range of the horizontal Edge  but make sure
         //we're at the last of consec. horizontals when matching with eMaxPair
         if (E = eMaxPair) and IsLastHorz then
         begin
-          if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
-            PrepareHorzJoins;
           if Direction = dLeftToRight then
             IntersectEdges(HorzEdge, E, E.Top) else
             IntersectEdges(E, HorzEdge, E.Top);
@@ -4010,9 +4010,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.JoinPoints(Jr: PJoin; out P1, P2: POutPt): Boolean;
+function TClipper.JoinPoints(Jr: PJoin; OutRec1, OutRec2: POutRec): Boolean;
 var
-  OutRec1, OutRec2: POutRec;
   Op1, Op1b, Op2, Op2b: POutPt;
   Pt: TIntPoint;
   Reverse1, Reverse2, DiscardLeftSide: Boolean;
@@ -4056,8 +4055,8 @@ begin
       Op2.Next := Op1;
       Op1b.Next := Op2b;
       Op2b.Prev := Op1b;
-      P1 := Op1;
-      P2 := Op1b;
+      Jr.OutPt1 := Op1;
+      Jr.OutPt2 := Op1b;
       Result := True;
     end else
     begin
@@ -4067,8 +4066,8 @@ begin
       Op2.Prev := Op1;
       Op1b.Prev := Op2b;
       Op2b.Next := Op1b;
-      P1 := Op1;
-      P2 := Op1b;
+      Jr.OutPt1 := Op1;
+      Jr.OutPt2 := Op1b;
       Result := True;
     end;
   end
@@ -4115,7 +4114,8 @@ begin
 
     Result := JoinHorz(Op1, Op1b, Op2, Op2b, Pt, DiscardLeftSide);
     if not Result then Exit;
-    P1 := Op1; P2 := Op2;
+    Jr.OutPt1 := Op1;
+    Jr.OutPt2 := Op2;
   end else
   begin
     //make sure the polygons are correctly oriented ...
@@ -4153,8 +4153,8 @@ begin
       Op2.Next := Op1;
       Op1b.Next := Op2b;
       Op2b.Prev := Op1b;
-      P1 := Op1;
-      P2 := Op1b;
+      Jr.OutPt1 := Op1;
+      Jr.OutPt2 := Op1b;
       Result := True;
     end else
     begin
@@ -4164,8 +4164,8 @@ begin
       Op2.Prev := Op1;
       Op1b.Prev := Op2b;
       Op2b.Next := Op1b;
-      P1 := Op1;
-      P2 := Op1b;
+      Jr.OutPt1 := Op1;
+      Jr.OutPt2 := Op1b;
       Result := True;
     end;
   end;
@@ -4212,7 +4212,6 @@ var
   I, J: Integer;
   Jr: PJoin;
   OutRec1, OutRec2, HoleStateRec, oRec: POutRec;
-  P1, P2: POutPt;
 begin
   for I := 0 to FJoinList.count -1 do
   begin
@@ -4231,16 +4230,16 @@ begin
     else if Param1RightOfParam2(OutRec2, OutRec1) then HoleStateRec := OutRec1
     else HoleStateRec := GetLowermostRec(OutRec1, OutRec2);
 
-    if not JoinPoints(Jr, P1, P2) then Continue;
+    if not JoinPoints(Jr, OutRec1, OutRec2) then Continue;
 
     if (OutRec1 = OutRec2) then
     begin
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      OutRec1.Pts := P1; //Jr.OutPt1
+      OutRec1.Pts := Jr.OutPt1;
       OutRec1.BottomPt := nil;
       OutRec2 := CreateOutRec;
-      OutRec2.Pts := P2;
+      OutRec2.Pts := Jr.OutPt2;
 
       //update all OutRec2.Pts idx's ...
       UpdateOutPtIdxs(OutRec2);
@@ -4254,7 +4253,7 @@ begin
           if not Assigned(oRec.Pts) or
             (ParseFirstLeft(oRec.FirstLeft) <> OutRec1) or
             (oRec.IsHole = OutRec1.IsHole) then Continue;
-          if Poly2ContainsPoly1(oRec.Pts, P2) then
+          if Poly2ContainsPoly1(oRec.Pts, Jr.OutPt2) then
               oRec.FirstLeft := OutRec2;
         end;
 

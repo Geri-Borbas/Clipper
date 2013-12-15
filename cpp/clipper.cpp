@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.1                                                           *
-* Date      :  13 December 2013                                                *
+* Version   :  6.1.2                                                           *
+* Date      :  15 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -2733,12 +2733,12 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge, bool isTopOfScanbeam)
       if ((dir == dLeftToRight && e->Curr.X <= horzRight) ||
         (dir == dRightToLeft && e->Curr.X >= horzLeft))
       {
+        if (horzEdge->OutIdx >= 0 && horzEdge->WindDelta != 0) 
+          PrepareHorzJoins(horzEdge, isTopOfScanbeam);
         //so far we're still in range of the horizontal Edge  but make sure
         //we're at the last of consec. horizontals when matching with eMaxPair
         if(e == eMaxPair && IsLastHorz)
         {
-          if (horzEdge->OutIdx >= 0 && horzEdge->WindDelta != 0) 
-            PrepareHorzJoins(horzEdge, isTopOfScanbeam);
           if (dir == dLeftToRight)
             IntersectEdges(horzEdge, e, e->Top);
           else
@@ -3449,10 +3449,8 @@ bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
+bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
 {
-  OutRec* outRec1 = GetOutRec(j->OutPt1->Idx);
-  OutRec* outRec2 = GetOutRec(j->OutPt2->Idx);
   OutPt *op1 = j->OutPt1, *op1b;
   OutPt *op2 = j->OutPt2, *op2b;
 
@@ -3486,8 +3484,8 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
       op2->Next = op1;
       op1b->Next = op2b;
       op2b->Prev = op1b;
-      p1 = op1;
-      p2 = op1b;
+      j->OutPt1 = op1;
+      j->OutPt2 = op1b;
       return true;
     } else
     {
@@ -3497,8 +3495,8 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
       op2->Prev = op1;
       op1b->Prev = op2b;
       op2b->Next = op1b;
-      p1 = op1;
-      p2 = op1b;
+      j->OutPt1 = op1;
+      j->OutPt2 = op1b;
       return true;
     }
   } 
@@ -3547,7 +3545,7 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
     {
       Pt = op2b->Pt; DiscardLeftSide = (op2b->Pt.X > op2->Pt.X);
     }
-    p1 = op1; p2 = op2;
+    j->OutPt1 = op1; j->OutPt2 = op2;
     return JoinHorz(op1, op1b, op2, op2b, Pt, DiscardLeftSide);
   } else
   {
@@ -3590,8 +3588,8 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
       op2->Next = op1;
       op1b->Next = op2b;
       op2b->Prev = op1b;
-      p1 = op1;
-      p2 = op1b;
+      j->OutPt1 = op1;
+      j->OutPt2 = op1b;
       return true;
     } else
     {
@@ -3601,8 +3599,8 @@ bool Clipper::JoinPoints(const Join *j, OutPt *&p1, OutPt *&p2)
       op2->Prev = op1;
       op1b->Prev = op2b;
       op2b->Next = op1b;
-      p1 = op1;
-      p2 = op1b;
+      j->OutPt1 = op1;
+      j->OutPt2 = op1b;
       return true;
     }
   }
@@ -3661,17 +3659,16 @@ void Clipper::JoinCommonEdges()
     else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
     else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
-    OutPt *p1, *p2;
-    if (!JoinPoints(join, p1, p2)) continue;
+    if (!JoinPoints(join, outRec1, outRec2)) continue;
 
     if (outRec1 == outRec2)
     {
       //instead of joining two polygons, we've just created a new one by
       //splitting one polygon into two.
-      outRec1->Pts = p1;
+      outRec1->Pts = join->OutPt1;
       outRec1->BottomPt = 0;
       outRec2 = CreateOutRec();
-      outRec2->Pts = p2;
+      outRec2->Pts = join->OutPt2;
 
       //update all OutRec2.Pts Idx's ...
       UpdateOutPtIdxs(*outRec2);
@@ -3684,7 +3681,7 @@ void Clipper::JoinCommonEdges()
           OutRec* oRec = m_PolyOuts[j];
           if (!oRec->Pts || ParseFirstLeft(oRec->FirstLeft) != outRec1 ||
             oRec->IsHole == outRec1->IsHole) continue;
-          if (Poly2ContainsPoly1(oRec->Pts, p2))
+          if (Poly2ContainsPoly1(oRec->Pts, join->OutPt2))
             oRec->FirstLeft = outRec2;
         }
 

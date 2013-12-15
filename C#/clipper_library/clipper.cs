@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.1                                                           *
-* Date      :  13 December 2013                                                *
+* Version   :  6.1.2                                                           *
+* Date      :  15 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -45,12 +45,11 @@
 //use_xyz: adds a Z member to IntPoint. Adds a minor cost to performance.
 //#define use_xyz
 
-//UseLines: Enables line clipping. Adds a very minor cost to performance.
+//use_lines: Enables line clipping. Adds a very minor cost to performance.
 //#define use_lines
 
-//When enabled, code developed with earlier versions of Clipper 
-//(ie prior to ver 6) should compile without changes. 
-//In a future update, this compatibility code will be removed.
+//use_deprecated: Enables support for the obsolete OffsetPaths() function
+//which has been replace with the ClipperOffset class.
 #define use_deprecated
 
 
@@ -2843,12 +2842,12 @@ namespace ClipperLib
             if ((dir == Direction.dLeftToRight && e.Curr.X <= horzRight) ||
               (dir == Direction.dRightToLeft && e.Curr.X >= horzLeft))
             {
+              if (horzEdge.OutIdx >= 0 && horzEdge.WindDelta != 0)
+                PrepareHorzJoins(horzEdge, isTopOfScanbeam);
               //so far we're still in range of the horizontal Edge  but make sure
               //we're at the last of consec. horizontals when matching with eMaxPair
               if(e == eMaxPair && IsLastHorz)
               {
-                if (horzEdge.OutIdx >= 0 && horzEdge.WindDelta != 0) 
-                  PrepareHorzJoins(horzEdge, isTopOfScanbeam);
                 if (dir == Direction.dLeftToRight)
                   IntersectEdges(horzEdge, e, e.Top);
                 else
@@ -3598,13 +3597,10 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private bool JoinPoints(Join j, out OutPt p1, out OutPt p2)
+      private bool JoinPoints(Join j, OutRec outRec1, OutRec outRec2)
       {
-        OutRec outRec1 = GetOutRec(j.OutPt1.Idx);
-        OutRec outRec2 = GetOutRec(j.OutPt2.Idx);
         OutPt op1 = j.OutPt1, op1b;
         OutPt op2 = j.OutPt2, op2b;
-        p1 = null; p2 = null;
 
         //There are 3 kinds of joins for output polygons ...
         //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are a vertices anywhere
@@ -3635,8 +3631,8 @@ namespace ClipperLib
             op2.Next = op1;
             op1b.Next = op2b;
             op2b.Prev = op1b;
-            p1 = op1;
-            p2 = op1b;
+            j.OutPt1 = op1;
+            j.OutPt2 = op1b;
             return true;
           } else
           {
@@ -3646,8 +3642,8 @@ namespace ClipperLib
             op2.Prev = op1;
             op1b.Prev = op2b;
             op2b.Next = op1b;
-            p1 = op1;
-            p2 = op1b;
+            j.OutPt1 = op1;
+            j.OutPt2 = op1b;
             return true;
           }
         } 
@@ -3696,7 +3692,8 @@ namespace ClipperLib
           {
             Pt = op2b.Pt; DiscardLeftSide = (op2b.Pt.X > op2.Pt.X);
           }
-          p1 = op1; p2 = op2;
+          j.OutPt1 = op1;
+          j.OutPt2 = op2;
           return JoinHorz(op1, op1b, op2, op2b, Pt, DiscardLeftSide);
         } else
         {
@@ -3739,8 +3736,8 @@ namespace ClipperLib
             op2.Next = op1;
             op1b.Next = op2b;
             op2b.Prev = op1b;
-            p1 = op1;
-            p2 = op1b;
+            j.OutPt1 = op1;
+            j.OutPt2 = op1b;
             return true;
           } else
           {
@@ -3750,8 +3747,8 @@ namespace ClipperLib
             op2.Prev = op1;
             op1b.Prev = op2b;
             op2b.Next = op1b;
-            p1 = op1;
-            p2 = op1b;
+            j.OutPt1 = op1;
+            j.OutPt2 = op1b;
             return true;
           }
         }
@@ -3867,17 +3864,16 @@ namespace ClipperLib
           else if (Param1RightOfParam2(outRec2, outRec1)) holeStateRec = outRec1;
           else holeStateRec = GetLowermostRec(outRec1, outRec2);
 
-          OutPt p1, p2;
-          if (!JoinPoints(join, out p1, out p2)) continue;
+          if (!JoinPoints(join, outRec1, outRec2)) continue;
 
           if (outRec1 == outRec2)
           {
             //instead of joining two polygons, we've just created a new one by
             //splitting one polygon into two.
-            outRec1.Pts = p1;
+            outRec1.Pts = join.OutPt1;
             outRec1.BottomPt = null;
             outRec2 = CreateOutRec();
-            outRec2.Pts = p2;
+            outRec2.Pts = join.OutPt2;
 
             //update all OutRec2.Pts Idx's ...
             UpdateOutPtIdxs(outRec2);
@@ -3890,7 +3886,7 @@ namespace ClipperLib
                 OutRec oRec = m_PolyOuts[j];
                 if (oRec.Pts == null || ParseFirstLeft(oRec.FirstLeft) != outRec1 ||
                   oRec.IsHole == outRec1.IsHole) continue;
-                if (Poly2ContainsPoly1(oRec.Pts, p2))
+                if (Poly2ContainsPoly1(oRec.Pts, join.OutPt2))
                   oRec.FirstLeft = outRec2;
               }
 
