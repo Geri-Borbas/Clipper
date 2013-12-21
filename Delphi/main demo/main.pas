@@ -18,7 +18,6 @@ uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls, Math,
   GR32, GR32_Image, GR32_Polygons, //http://sourceforge.net/projects/graphics32/
-  GR32_VPR,       //http://sourceforge.net/projects/vpr/
   GR32_Misc, clipper;
 
 type
@@ -113,7 +112,7 @@ type
     procedure FormKeyPress(Sender: TObject; var Key: Char);
     procedure bSaveSvgClick(Sender: TObject);
   private
-    offsetMul2: integer;
+    offsetMul2: integer; //accommodates 0.5 steps
     function GetFillTypeI: TPolyFillType;
     function GetOpTypeI: TClipType;
     procedure ShowStaticPolys;
@@ -478,10 +477,17 @@ begin
       sol := AAPoint2AAFloatPoint(solutionI, scale);
     end else
     begin
+      //do offsetting ...
       sol := AAPoint2AAFloatPoint(solutionI, scale);
       PolyPolylineFS(ImgView321.Bitmap, sol, clGray32, true);
       scaling := power(10, scale);
-      solI := OffsetPolygons(solutionI, offsetMul2/2 *scaling, jtRound);
+      with TClipperOffset.Create() do
+      try
+        AddPaths(solutionI, jtRound, etClosedPolygon);
+        Execute(solI, offsetMul2/2 *scaling);
+      finally
+        Free;
+      end;
       sol := AAPoint2AAFloatPoint(solI, scale);
     end;
     PolyPolygonFS(ImgView321.Bitmap, sol, solBrushColor);

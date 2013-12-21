@@ -459,8 +459,8 @@ namespace WindowsFormsApplication1
             {
                 Polygons solution2 = new Polygons();
                 Clipper c = new Clipper();
-                c.AddPolygons(subjects, PolyType.ptSubject);
-                c.AddPolygons(clips, PolyType.ptClip);
+                c.AddPaths(subjects, PolyType.ptSubject, true);
+                c.AddPaths(clips, PolyType.ptClip, true);
                 solution.Clear();
 #if UsePolyTree
                 bool succeeded = c.Execute(GetClipType(), solutionTree, GetPolyFillType(), GetPolyFillType());
@@ -486,7 +486,9 @@ namespace WindowsFormsApplication1
 
                     if (nudOffset.Value != 0)
                     {
-                        solution2 = Clipper.OffsetPolygons(solution, (double)nudOffset.Value * scale, JoinType.jtRound);
+                      ClipperOffset co = new ClipperOffset();
+                      co.AddPaths(solution, JoinType.jtRound, EndType.etClosedPolygon);
+                      co.Execute(ref solution2, (double)nudOffset.Value * scale);
                     }
                     else
                         solution2 = new Polygons(solution);
@@ -509,14 +511,14 @@ namespace WindowsFormsApplication1
                     SolidBrush b = new SolidBrush(Color.Navy);
                     double subj_area = 0, clip_area = 0, int_area = 0, union_area = 0;
                     c.Clear();
-                    c.AddPolygons(subjects, PolyType.ptSubject);
+                    c.AddPaths(subjects, PolyType.ptSubject, true);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
                     foreach (Polygon pg in solution2) subj_area += Clipper.Area(pg);
                     c.Clear();
-                    c.AddPolygons(clips, PolyType.ptClip);
+                    c.AddPaths(clips, PolyType.ptClip, true);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());
                     foreach (Polygon pg in solution2) clip_area += Clipper.Area(pg);
-                    c.AddPolygons(subjects, PolyType.ptSubject);
+                    c.AddPaths(subjects, PolyType.ptSubject, true);
                     c.Execute(ClipType.ctIntersection, solution2, GetPolyFillType(), GetPolyFillType());
                     foreach (Polygon pg in solution2) int_area += Clipper.Area(pg);
                     c.Execute(ClipType.ctUnion, solution2, GetPolyFillType(), GetPolyFillType());

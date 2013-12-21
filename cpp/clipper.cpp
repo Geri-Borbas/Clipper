@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.2                                                           *
-* Date      :  15 December 2013                                                *
+* Version   :  6.1.3                                                           *
+* Date      :  18 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -1128,9 +1128,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     delete [] edges;
     return false; //almost certainly a vertex has exceeded range
   }
-
   TEdge *eStart = &edges[0];
-  if (!Closed) eStart->Prev->OutIdx = Skip;
 
   //2. Remove duplicate vertices, and (when closed) collinear edges ...
   TEdge *E = eStart, *eLoopStop = eStart;
@@ -1171,7 +1169,11 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     return false;
   }
 
-  if (!Closed) m_HasOpenPaths = true;
+  if (!Closed)
+  { 
+    m_HasOpenPaths = true;
+    eStart->Prev->OutIdx = Skip;
+  }
 
   //3. Do second stage of edge initialization ...
   E = eStart;

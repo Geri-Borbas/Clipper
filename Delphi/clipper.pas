@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.2                                                           *
-* Date      :  15 December 2013                                                *
+* Version   :  6.1.3                                                           *
+* Date      :  18 December 2013                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2013                                         *
 *                                                                              *
@@ -460,7 +460,7 @@ const
   HiRange: cInt = 46340;
 {$ELSE}
   LoRange: cInt = $B504F333;          //3.0e+9
-  HiRange: cInt = $7FFFFFFFFFFFFFFF;  //9.2e+18
+  HiRange: cInt = $3FFFFFFFFFFFFFFF;  //9.2e+18
 {$ENDIF}
 
 resourcestring
@@ -1569,9 +1569,7 @@ begin
     FreeMem(Edges);
     raise; //Range test fails
   end;
-
   EStart := @Edges[0];
-  if not Closed then EStart.Prev.OutIdx := Skip;
 
   //2. Remove duplicate vertices, and (when closed) collinear edges ...
   E := EStart;
@@ -1612,7 +1610,12 @@ begin
     FreeMem(Edges);
     Exit;
   end;
-  if not Closed then FHasOpenPaths := true;
+
+  if not Closed then
+  begin
+    FHasOpenPaths := true;
+    EStart.Prev.OutIdx := Skip;
+  end;
 
   //3. Do second stage of edge initialization ...
   E := EStart;

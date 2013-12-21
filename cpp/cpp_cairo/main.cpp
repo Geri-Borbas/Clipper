@@ -16,7 +16,7 @@ int offsetVal;
 
 LRESULT CALLBACK WndProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-int APIENTRY main(HINSTANCE hInstance,
+int CALLBACK wWinMain(HINSTANCE hInstance,
   HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
 {
   WCHAR* ClsName = L"CairoApp";
@@ -83,7 +83,7 @@ void OnPaint(HWND hWnd, HDC dc)
   const int scaling = 2;
 
   Clipper clpr;    //clipper class
-  Polygons pg; //std::vector for polygon(s) storage
+  Paths pg; //std::vector for polygon(s) storage
 
   //create a circular pattern, add the path to clipper and then draw it ...
   cairo_arc(cr, 170,110,70,0,2*3.1415926);
