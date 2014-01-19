@@ -4,9 +4,9 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.3                                                           *
-* Date      :  18 December 2013                                                *
+* Date      :  19 January 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2013                                         *
+* Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -354,7 +354,6 @@ type
       clipFillType: TPolyFillType = pftEvenOdd): Boolean; overload;
     constructor Create(InitOptions: TInitOptions = []); reintroduce; overload;
     destructor Destroy; override;
-    procedure Clear; override;
     //ReverseSolution: reverses the default orientation
     property ReverseSolution: Boolean read FReverseOutput write FReverseOutput;
     //StrictlySimple: when false (the default) solutions are 'weakly' simple
@@ -404,6 +403,7 @@ type
 
 function Orientation(const Pts: TPath): Boolean; overload;
 function Area(const Pts: TPath): Double; overload;
+function PointInPolygon (const pt: TIntPoint; const poly: TPath): Integer; overload;
 function GetBounds(const polys: TPaths): TIntRect;
 
 {$IFDEF use_xyz}
@@ -434,8 +434,10 @@ function SimplifyPolygons(const Polys: TPaths; FillType: TPolyFillType = pftEven
 function CleanPolygon(const Poly: TPath; Distance: double = 1.415): TPath;
 function CleanPolygons(const Polys: TPaths; Distance: double = 1.415): TPaths;
 
-function MinkowskiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
-function MinkowskiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiSum(const Pattern, Path: TPath; PathIsClosed: Boolean): TPaths; overload;
+function MinkowskiSum(const Pattern: TPath; const Paths: TPaths;
+  PathFillType: TPolyFillType; PathIsClosed: Boolean): TPaths; overload;
+function MinkowskiDiff(const Poly1, Poly2: TPath): TPaths;
 
 function PolyTreeToPaths(PolyTree: TPolyTree): TPaths;
 function ClosedPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
@@ -986,9 +988,70 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointInPolygon (const pt: TIntPoint; ops: POutPt): Integer;
+function PointInPolygon (const pt: TIntPoint; const poly: TPath): Integer;
 var
-  d,d2,d3: Double;
+  i, cnt: Integer;
+  d, d2, d3: double; //use cInt ???
+  ip, ipNext: TIntPoint;
+begin
+	//returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+	//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+  //nb: if poly bounds are known, test them first before calling this function.
+	result := 0;
+  cnt := Length(poly);
+  if cnt < 3 then Exit;
+  ip := poly[0];
+  for i := 1 to cnt do
+  begin
+    if i < cnt then ipNext := poly[i]
+    else ipNext := poly[0];
+
+		if (ipNext.Y = pt.Y) then
+		begin
+			if (ipNext.X = pt.X) or ((ip.Y = pt.Y) and
+        ((ipNext.X > pt.X) = (ip.X < pt.X))) then
+      begin
+        result := -1;
+        Exit;
+      end;
+		end;
+
+		if ((ip.Y < pt.Y) <> (ipNext.Y < pt.Y)) then
+		begin
+			if (ip.X >= pt.X) then
+			begin
+				if (ipNext.X > pt.X) then
+          result := 1 - result
+				else
+				begin
+          d2 := (ip.X - pt.X);
+          d3 := (ipNext.X - pt.X);
+          d := d2 * (ipNext.Y - pt.Y) - d3 * (ip.Y - pt.Y);
+					if (d = 0) then begin result := -1; Exit; end;
+					if ((d > 0) = (ipNext.Y > ip.Y)) then
+            result := 1 - result;
+				end;
+			end else
+			begin
+				if (ipNext.X > pt.X) then
+				begin
+          d2 := (ip.X - pt.X);
+          d3 := (ipNext.X - pt.X);
+					d := d2 * (ipNext.Y - pt.Y) - d3 * (ip.Y - pt.Y);
+					if (d = 0) then begin result := -1; Exit; end;
+					if ((d > 0) = (ipNext.Y > ip.Y)) then
+            result := 1 - result;
+				end;
+			end;
+		end;
+    ip := ipNext;
+  end;
+end;
+//---------------------------------------------------------------------------
+
+function PointInPolygon (const pt: TIntPoint; ops: POutPt): Integer; overload;
+var
+  d, d2, d3: double; //Todo - use cInt and add UseFullInt64Range parameter
   opStart: POutPt;
 begin
 	//returns 0 if false, +1 if true, -1 if pt ON polygon boundary
@@ -1017,7 +1080,7 @@ begin
 				begin
           d2 := (ops.Pt.X - pt.X);
           d3 := (ops.Next.Pt.X - pt.X);
-					d := d2 * (ops.Next.Pt.Y - pt.Y) - d3 * (ops.Pt.Y - pt.Y);
+          d := d2 * (ops.Next.Pt.Y - pt.Y) - d3 * (ops.Pt.Y - pt.Y);
 					if (d = 0) then begin result := -1; Exit; end;
 					if ((d > 0) = (ops.Next.Pt.Y > ops.Pt.Y)) then
             result := 1 - result;
@@ -1821,13 +1884,6 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.Clear;
-begin
-  DisposeAllOutRecs;
-  inherited;
-end;
-//------------------------------------------------------------------------------
-
 procedure TClipper.DisposeScanbeamList;
 var
   SB: PScanbeam;
@@ -1847,7 +1903,6 @@ var
 begin
   inherited Reset;
   FScanbeam := nil;
-  DisposeAllOutRecs;
   Lm := FLmList;
   while Assigned(Lm) do
   begin
@@ -1880,6 +1935,7 @@ begin
     Result := False;
   end;
   finally
+    DisposeAllOutRecs;
     FExecuteLocked := False;
   end;
 end;
@@ -1903,6 +1959,7 @@ begin
     Result := False;
   end;
   finally
+    DisposeAllOutRecs;
     FExecuteLocked := False;
   end;
 end;
@@ -3239,7 +3296,7 @@ procedure TClipper.ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
 
   procedure PrepareHorzJoins;
   var
-    I: Integer;
+    //I: Integer;
     OutPt: POutPt;
   begin
     //get the last Op for this horizontal edge
@@ -3247,14 +3304,14 @@ procedure TClipper.ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
     OutPt := POutRec(FPolyOutList[HorzEdge.OutIdx]).Pts;
     if HorzEdge.Side <> esLeft then OutPt := OutPt.Prev;
 
-    //First, match up overlapping horizontal edges (eg when one polygon's
-    //intermediate horz edge overlaps an intermediate horz edge of another, or
-    //when one polygon sits on top of another) ...
-      for I := 0 to FGhostJoinList.Count -1 do
-        with PJoin(FGhostJoinList[I])^ do
-          if HorzSegmentsOverlap(OutPt1.Pt, OffPt,
-            HorzEdge.Bot, HorzEdge.Top) then
-              AddJoin(OutPt1, OutPt, OffPt);
+//    //First, match up overlapping horizontal edges (eg when one polygon's
+//    //intermediate horz edge overlaps an intermediate horz edge of another, or
+//    //when one polygon sits on top of another) ...
+//      for I := 0 to FGhostJoinList.Count -1 do
+//        with PJoin(FGhostJoinList[I])^ do
+//          if HorzSegmentsOverlap(OutPt1.Pt, OffPt,
+//            HorzEdge.Bot, HorzEdge.Top) then
+//              AddJoin(OutPt1, OutPt, OffPt);
 
     //Also, since horizontal edges at the top of one SB are often removed from
     //the AEL before we process the horizontal edges at the bottom of the next,
@@ -3310,6 +3367,9 @@ begin
     E := GetNextInAEL(HorzEdge, Direction);
     while Assigned(E) do
     begin
+//      if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
+//        PrepareHorzJoins; ToDo- move here eventually
+
       //Break if we've got to the end of an intermediate horizontal edge ...
       //nb: Smaller Dx's are to the right of larger Dx's ABOVE the horizontal.
       if (E.Curr.X = HorzEdge.Top.X) and
@@ -3321,7 +3381,7 @@ begin
         ((Direction = dRightToLeft) and (E.Curr.X >= HorzLeft)) then
       begin
         if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
-          PrepareHorzJoins;
+          PrepareHorzJoins; //ToDo - move above eventually
         //so far we're still in range of the horizontal Edge  but make sure
         //we're at the last of consec. horizontals when matching with eMaxPair
         if (E = eMaxPair) and IsLastHorz then
@@ -4022,9 +4082,6 @@ var
   Left, Right: cInt;
 begin
   Result := False;
-
-  OutRec1 := GetOutRec(Jr.OutPt1.Idx);
-  OutRec2 := GetOutRec(Jr.OutPt2.Idx);
   Op1 := Jr.OutPt1;
   Op2 := Jr.OutPt2;
 
@@ -5113,15 +5170,34 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function MinkowskiSum(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiSum(const Pattern, Path: TPath; PathIsClosed: Boolean): TPaths;
 begin
-  Result := Minkowski(Base, Path, true, IsClosed);
+  Result := Minkowski(Pattern, Path, true, PathIsClosed);
 end;
 //------------------------------------------------------------------------------
 
-function MinkowskiDiff(const Base, Path: TPath; IsClosed: Boolean = true): TPaths;
+function MinkowskiSum(const Pattern: TPath; const Paths: TPaths;
+  PathFillType: TPolyFillType; PathIsClosed: Boolean): TPaths;
+var
+  I, Cnt: Integer;
 begin
-  Result := Minkowski(Base, Path, false, IsClosed);
+  Cnt := Length(Paths);
+  with TClipper.Create() do
+  try
+    for I := 0 to Cnt -1 do
+      AddPaths( Minkowski(Pattern, Paths[I], true, PathIsClosed),
+        ptSubject, true);
+      if PathIsClosed then AddPaths(Paths, ptClip, true);
+    Execute(ctUnion, Result, PathFillType, PathFillType);
+  finally
+    Free;
+  end;
+end;
+//------------------------------------------------------------------------------
+
+function MinkowskiDiff(const Poly1, Poly2: TPath): TPaths;
+begin
+  Result := Minkowski(Poly1, Poly2, false, true);
 end;
 //------------------------------------------------------------------------------
 

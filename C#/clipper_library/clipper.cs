@@ -2,9 +2,9 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.3                                                           *
-* Date      :  21 December 2013                                                *
+* Date      :  19 January 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2013                                         *
+* Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -971,23 +971,16 @@ namespace ClipperLib
         bool IsFlat = true;
 
         //1. Basic (first) edge initialization ...
-        try
+        edges[1].Curr = pg[1];
+        RangeTest(pg[0], ref m_UseFullRange);
+        RangeTest(pg[highI], ref m_UseFullRange);
+        InitEdge(edges[0], edges[1], edges[highI], pg[0]);
+        InitEdge(edges[highI], edges[0], edges[highI - 1], pg[highI]);
+        for (int i = highI - 1; i >= 1; --i)
         {
-          edges[1].Curr = pg[1];
-          RangeTest(pg[0], ref m_UseFullRange);
-          RangeTest(pg[highI], ref m_UseFullRange);
-          InitEdge(edges[0], edges[1], edges[highI], pg[0]);
-          InitEdge(edges[highI], edges[0], edges[highI - 1], pg[highI]);
-          for (int i = highI - 1; i >= 1; --i)
-          {
-            RangeTest(pg[i], ref m_UseFullRange);
-            InitEdge(edges[i], edges[i + 1], edges[i - 1], pg[i]);
-          }
+          RangeTest(pg[i], ref m_UseFullRange);
+          InitEdge(edges[i], edges[i + 1], edges[i - 1], pg[i]);
         }
-        catch 
-        {
-          return false; //almost certainly a vertex has exceeded range
-        };
         TEdge eStart = edges[0];
 
         //2. Remove duplicate vertices, and (when closed) collinear edges ...
@@ -1296,14 +1289,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public override void Clear()
-      {
-          if (m_edges.Count == 0) return; //avoids problems with ClipperBase destructor
-          DisposeAllPolyPts();
-          base.Clear();
-      }
-      //------------------------------------------------------------------------------
-
       void DisposeScanbeamList()
       {
         while ( m_Scanbeam != null ) {
@@ -1320,7 +1305,6 @@ namespace ClipperLib
         m_Scanbeam = null;
         m_ActiveEdges = null;
         m_SortedEdges = null;
-        DisposeAllPolyPts();
         LocalMinima lm = m_MinimaList;
         while (lm != null)
         {
@@ -1378,16 +1362,24 @@ namespace ClipperLib
           if (m_HasOpenPaths) throw 
             new ClipperException("Error: PolyTree struct is need for open path clipping.");
 
-        m_ExecuteLocked = true;
+          m_ExecuteLocked = true;
           solution.Clear();
           m_SubjFillType = subjFillType;
           m_ClipFillType = clipFillType;
           m_ClipType = clipType;
           m_UsingPolyTree = false;
-          bool succeeded = ExecuteInternal();
-          //build the return polygons ...
-          if (succeeded) BuildResult(solution);
-          m_ExecuteLocked = false;
+          bool succeeded;
+          try
+          {
+            succeeded = ExecuteInternal();
+            //build the return polygons ...
+            if (succeeded) BuildResult(solution);
+          }
+          finally
+          {
+            DisposeAllPolyPts();
+            m_ExecuteLocked = false;
+          }
           return succeeded;
       }
       //------------------------------------------------------------------------------
@@ -1401,10 +1393,18 @@ namespace ClipperLib
           m_ClipFillType = clipFillType;
           m_ClipType = clipType;
           m_UsingPolyTree = true;
-          bool succeeded = ExecuteInternal();
-          //build the return polygons ...
-          if (succeeded) BuildResult2(polytree);
-          m_ExecuteLocked = false;
+          bool succeeded;
+          try
+          {
+            succeeded = ExecuteInternal();
+            //build the return polygons ...
+            if (succeeded) BuildResult2(polytree);
+          }
+          finally
+          {
+            DisposeAllPolyPts();
+            m_ExecuteLocked = false;
+          }
           return succeeded;
       }
       //------------------------------------------------------------------------------
@@ -2797,12 +2797,13 @@ namespace ClipperLib
         //First, match up overlapping horizontal edges (eg when one polygon's
         //intermediate horz edge overlaps an intermediate horz edge of another, or
         //when one polygon sits on top of another) ...
-        for (int i = 0; i < m_GhostJoins.Count; ++i)
-        {
-          Join j = m_GhostJoins[i];
-          if (HorzSegmentsOverlap(j.OutPt1.Pt, j.OffPt, horzEdge.Bot, horzEdge.Top))
-              AddJoin(j.OutPt1, outPt, j.OffPt);
-        }
+        //for (int i = 0; i < m_GhostJoins.Count; ++i)
+        //{
+        //  Join j = m_GhostJoins[i];
+        //  if (HorzSegmentsOverlap(j.OutPt1.Pt, j.OffPt, horzEdge.Bot, horzEdge.Top))
+        //      AddJoin(j.OutPt1, outPt, j.OffPt);
+        //}
+
         //Also, since horizontal edges at the top of one SB are often removed from
         //the AEL before we process the horizontal edges at the bottom of the next,
         //we need to create 'ghost' Join records of 'contrubuting' horizontals that
@@ -4207,17 +4208,17 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal static Paths Minkowski(Path poly, Path path, bool IsSum, bool IsClosed)
+      internal static Paths Minkowski(Path pattern, Path path, bool IsSum, bool IsClosed)
       {
         int delta = (IsClosed ? 1 : 0);
-        int polyCnt = poly.Count;
+        int polyCnt = pattern.Count;
         int pathCnt = path.Count;
         Paths result = new Paths(pathCnt);
         if (IsSum)
           for (int i = 0; i < pathCnt; i++)
           {
             Path p = new Path(polyCnt);
-            foreach (IntPoint ip in poly)
+            foreach (IntPoint ip in pattern)
               p.Add(new IntPoint(path[i].X + ip.X, path[i].Y + ip.Y));
             result.Add(p);
           }
@@ -4225,14 +4226,14 @@ namespace ClipperLib
           for (int i = 0; i < pathCnt; i++)
           {
             Path p = new Path(polyCnt);
-            foreach (IntPoint ip in poly)
+            foreach (IntPoint ip in pattern)
               p.Add(new IntPoint(path[i].X - ip.X, path[i].Y - ip.Y));
             result.Add(p);
           }
 
         Paths quads = new Paths((pathCnt + delta) * (polyCnt + 1));
-        for (int i = 0; i <= pathCnt - 2 + delta; i++)
-          for (int j = 0; j <= polyCnt - 1; j++)
+        for (int i = 0; i < pathCnt - 1 + delta; i++)
+          for (int j = 0; j < polyCnt; j++)
           {
             Path quad = new Path(4);
             quad.Add(result[i % pathCnt][j % polyCnt]);
@@ -4250,15 +4251,31 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public static Paths MinkowskiSum(Path poly, Path path, bool IsClosed)
+      public static Paths MinkowskiSum(Path pattern, Path path, bool pathIsClosed)
       {
-        return Minkowski(poly, path, true, IsClosed);
+        return Minkowski(pattern, path, true, pathIsClosed);
       }
       //------------------------------------------------------------------------------
 
-      public static Paths MinkowskiDiff(Path poly, Path path, bool IsClosed)
+      public static Paths MinkowskiSum(Path pattern, Paths paths, 
+          PolyFillType pathFillType, bool pathIsClosed)
       {
-        return Minkowski(poly, path, false, IsClosed);
+        Clipper c = new Clipper();
+        for (int i = 0; i < paths.Count; ++i)
+        {
+          Paths tmp = Minkowski(pattern, paths[i], true, pathIsClosed);
+          c.AddPaths(tmp, PolyType.ptSubject, true);
+        }
+        if (pathIsClosed) c.AddPaths(paths, PolyType.ptClip, true);
+        Paths solution = new Paths();
+        c.Execute(ClipType.ctUnion, solution, pathFillType, pathFillType);
+        return solution;
+      }
+      //------------------------------------------------------------------------------
+
+      public static Paths MinkowskiDiff(Path pattern, Path path, bool pathIsClosed)
+      {
+        return Minkowski(pattern, path, false, pathIsClosed);
       }
       //------------------------------------------------------------------------------
 
