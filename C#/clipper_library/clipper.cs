@@ -677,38 +677,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      internal bool PointInPolygon(IntPoint pt, OutPt pp, bool UseFullRange)
-      {
-        OutPt pp2 = pp;
-        bool result = false;
-        if (UseFullRange)
-        {
-            do
-            {
-              if (((pp2.Pt.Y > pt.Y) != (pp2.Prev.Pt.Y > pt.Y)) && 
-                (new Int128(pt.X - pp2.Pt.X) < 
-                Int128.Int128Mul(pp2.Prev.Pt.X - pp2.Pt.X, pt.Y - pp2.Pt.Y) /
-                new Int128(pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
-              pp2 = pp2.Next;
-            }
-            while (pp2 != pp);
-        }
-        else
-        {
-          do
-          {
-            //http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
-            if (((pp2.Pt.Y > pt.Y) != (pp2.Prev.Pt.Y > pt.Y)) &&                     
-              ((pt.X - pp2.Pt.X) < (pp2.Prev.Pt.X - pp2.Pt.X) * (pt.Y - pp2.Pt.Y) / 
-              (pp2.Prev.Pt.Y - pp2.Pt.Y))) result = !result;
-            pp2 = pp2.Next;
-          }
-          while (pp2 != pp);
-        }
-        return result;
-      }
-      //------------------------------------------------------------------------------
-
       internal static bool SlopesEqual(TEdge e1, TEdge e2, bool UseFullRange)
       {
           if (UseFullRange)
@@ -3758,6 +3726,50 @@ namespace ClipperLib
       }
       //----------------------------------------------------------------------
 
+      public static int PointInPolygon(IntPoint pt, Path path)
+      {
+        //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+        //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+        int result = 0, cnt = path.Count;
+        if (cnt < 3) return 0;
+        IntPoint ip = path[0];
+        for (int i = 1; i <= cnt; ++i)
+        {
+          IntPoint ipNext = (i == cnt ? path[0] : path[i]);
+          if (ipNext.Y == pt.Y)
+          {
+            if ((ipNext.X == pt.X) || (ip.Y == pt.Y &&
+              ((ipNext.X > pt.X) == (ip.X < pt.X)))) return -1;
+          }
+          if ((ip.Y < pt.Y) != (ipNext.Y < pt.Y))
+          {
+            if (ip.X >= pt.X)
+            {
+              if (ipNext.X > pt.X) result = 1 - result;
+              else
+              {
+                double d = (double)(ip.X - pt.X) * (ipNext.Y - pt.Y) -
+                  (double)(ipNext.X - pt.X) * (ip.Y - pt.Y);
+                if (d == 0) return -1;
+                else if ((d > 0) == (ipNext.Y > ip.Y)) result = 1 - result;
+              }
+            }
+            else
+            {
+              if (ipNext.X > pt.X)
+              {
+                double d = (double)(ip.X - pt.X) * (ipNext.Y - pt.Y) -
+                  (double)(ipNext.X - pt.X) * (ip.Y - pt.Y);
+                if (d == 0) return -1;
+                else if ((d > 0) == (ipNext.Y > ip.Y)) result = 1 - result;
+              }
+            }
+          }
+        }
+        return result;
+      }
+      //------------------------------------------------------------------------------
+
       private int PointInPolygon(IntPoint pt, OutPt op)
       {
         //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
@@ -4273,9 +4285,9 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      public static Paths MinkowskiDiff(Path pattern, Path path, bool pathIsClosed)
+      public static Paths MinkowskiDiff(Path poly1, Path poly2)
       {
-        return Minkowski(pattern, path, false, pathIsClosed);
+        return Minkowski(poly1, poly2, false, true);
       }
       //------------------------------------------------------------------------------
 
