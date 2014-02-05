@@ -10,4 +10,4 @@ Version: @VERSION@
 
 Requires:
 Libs: -L${libdir} -L${sharedlibdir} -lpolyclipping
-Cflags: -I${includedir}/polyclipping
+Cflags: -I${includedir}

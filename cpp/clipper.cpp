@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.3a                                                          *
-* Date      :  22 January 2014                                                 *
+* Version   :  6.1.4                                                           *
+* Date      :  6 February 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -49,15 +49,6 @@
 #include <functional>
 
 namespace ClipperLib {
-
-#ifdef use_int32
-  static cInt const loRange = 46340;
-  static cInt const hiRange = 46340;
-#else
-  static cInt const loRange = 0x3FFFFFFF;
-  static cInt const hiRange = 0x3FFFFFFFFFFFFFFFLL;
-  typedef unsigned long long ulong64;
-#endif
 
 static double const pi = 3.141592653589793238;
 static double const two_pi = pi *2;
@@ -240,8 +231,8 @@ bool PolyNode::IsOpen() const
 
 //------------------------------------------------------------------------------
 // Int128 class (enables safe math on signed 64bit integers)
-// eg Int128 val1((cInt)9223372036854775807); //ie 2^63 -1
-//    Int128 val2((cInt)9223372036854775807);
+// eg Int128 val1((long64)9223372036854775807); //ie 2^63 -1
+//    Int128 val2((long64)9223372036854775807);
 //    Int128 val3 = val1 * val2;
 //    val3.AsString => "85070591730234615847396907784232501249" (8.5e+37)
 //------------------------------------------------------------------------------
@@ -249,22 +240,21 @@ bool PolyNode::IsOpen() const
 class Int128
 {
   public:
+    ulong64 lo;
+    long64 hi;
 
-    cUInt lo;
-    cInt hi;
-
-    Int128(cInt _lo = 0)
+    Int128(long64 _lo = 0)
     {
-      lo = (cUInt)_lo;   
+      lo = (ulong64)_lo;   
       if (_lo < 0)  hi = -1; else hi = 0; 
     }
 
 
     Int128(const Int128 &val): lo(val.lo), hi(val.hi){}
 
-    Int128(const cInt& _hi, const ulong64& _lo): lo(_lo), hi(_hi){}
+    Int128(const long64& _hi, const ulong64& _lo): lo(_lo), hi(_hi){}
     
-    Int128& operator = (const cInt &val)
+    Int128& operator = (const long64 &val)
     {
       lo = (ulong64)val;
       if (val < 0) hi = -1; else hi = 0;
@@ -353,11 +343,11 @@ class Int128
           while (divisor.hi >= 0 && !(divisor > dividend))
           {
               divisor.hi <<= 1;
-              if ((cInt)divisor.lo < 0) divisor.hi++;
+              if ((long64)divisor.lo < 0) divisor.hi++;
               divisor.lo <<= 1;
 
               cntr.hi <<= 1;
-              if ((cInt)cntr.lo < 0) cntr.hi++;
+              if ((long64)cntr.lo < 0) cntr.hi++;
               cntr.lo <<= 1;
           }
           divisor.lo >>= 1;
@@ -402,7 +392,7 @@ class Int128
       const double shift64 = 18446744073709551616.0; //2^64
       if (hi < 0)
       {
-        cUInt lo_ = ~lo + 1;
+        ulong64 lo_ = ~lo + 1;
         if (lo_ == 0) return (double)hi * shift64;
         else return -(double)(lo_ + ~hi * shift64);
       }
@@ -413,7 +403,7 @@ class Int128
 };
 //------------------------------------------------------------------------------
 
-Int128 Int128Mul (cInt lhs, cInt rhs)
+Int128 Int128Mul (long64 lhs, long64 rhs)
 {
   bool negate = (lhs < 0) != (rhs < 0);
 
@@ -431,9 +421,9 @@ Int128 Int128Mul (cInt lhs, cInt rhs)
   ulong64 c = int1Hi * int2Lo + int1Lo * int2Hi;
 
   Int128 tmp;
-  tmp.hi = cInt(a + (c >> 32));
-  tmp.lo = cInt(c << 32);
-  tmp.lo += cInt(b);
+  tmp.hi = long64(a + (c >> 32));
+  tmp.lo = long64(c << 32);
+  tmp.lo += long64(b);
   if (tmp.lo < b) tmp.hi++;
   if (negate) tmp = -tmp;
   return tmp;
@@ -494,6 +484,7 @@ bool PointIsVertex(const IntPoint &Pt, OutPt *pp)
 int PointInPolygon (const IntPoint &pt, const Path &path)
 {
   //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+  //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
   //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
   int result = 0;
   size_t cnt = path.size();
@@ -539,7 +530,6 @@ int PointInPolygon (const IntPoint &pt, const Path &path)
 int PointInPolygon (const IntPoint &pt, OutPt *op)
 {
   //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
   int result = 0;
   OutPt* startOp = op;
   for(;;)
@@ -2088,24 +2078,15 @@ void Clipper::DeleteFromSEL(TEdge *e)
 //------------------------------------------------------------------------------
 
 #ifdef use_xyz
-
-void Clipper::SetZ(IntPoint& pt, TEdge& e)
+void Clipper::SetZ(IntPoint& pt, TEdge& e1, TEdge& e2)
 {
-  pt.Z = 0;
-  if (m_ZFill)
-  {
-    //put the 'preferred' point as first parameter ...
-    if (e.OutIdx < 0)
-      (*m_ZFill)(e.Bot, e.Top, pt); //outside a path so presume entering
-    else
-      (*m_ZFill)(e.Top, e.Bot, pt); //inside a path so presume exiting
-  }
+  if (m_ZFill) 
+    (*m_ZFill)(e1.Bot, e1.Top, e2.Bot, e2.Top, pt); 
 }
 //------------------------------------------------------------------------------
 #endif
 
-void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
-     const IntPoint &Pt, bool protect)
+void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
 {
   //e1 will be to the Left of e2 BELOW the intersection. Therefore e1 is before
   //e2 in AEL except when e1 is being inserted at the intersection point ...
@@ -2125,7 +2106,12 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     if (e1->WindDelta == 0 && e2->WindDelta == 0)
     {
       if ((e1stops || e2stops) && e1Contributing && e2Contributing)
+      {
+#ifdef use_xyz
+        SetZ(Pt, *e1, *e2);
+#endif
         AddLocalMaxPoly(e1, e2, Pt);
+      }
     }
 
     //if intersecting a subj line with a subj poly ...
@@ -2136,6 +2122,9 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
       {
         if (e2Contributing)
         {
+#ifdef use_xyz
+          SetZ(Pt, *e1, *e2);
+#endif
           AddOutPt(e1, Pt);
           if (e1Contributing) e1->OutIdx = Unassigned;
         }
@@ -2144,6 +2133,9 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
       {
         if (e1Contributing)
         {
+#ifdef use_xyz
+          SetZ(Pt, *e1, *e2);
+#endif
           AddOutPt(e2, Pt);
           if (e2Contributing) e2->OutIdx = Unassigned;
         }
@@ -2155,12 +2147,18 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
       if ((e1->WindDelta == 0) && abs(e2->WindCnt) == 1 && 
         (m_ClipType != ctUnion || e2->WindCnt2 == 0))
       {
+#ifdef use_xyz
+        SetZ(Pt, *e1, *e2);
+#endif
         AddOutPt(e1, Pt);
         if (e1Contributing) e1->OutIdx = Unassigned;
       }
       else if ((e2->WindDelta == 0) && (abs(e1->WindCnt) == 1) && 
         (m_ClipType != ctUnion || e1->WindCnt2 == 0))
       {
+#ifdef use_xyz
+        SetZ(Pt, *e1, *e2);
+#endif
         AddOutPt(e2, Pt);
         if (e2Contributing) e2->OutIdx = Unassigned;
       }
@@ -2239,9 +2237,17 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     if ( e1stops || e2stops || 
       (e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
       (e1->PolyTyp != e2->PolyTyp && m_ClipType != ctXor) )
-        AddLocalMaxPoly(e1, e2, Pt); 
+    {
+#ifdef use_xyz
+      SetZ(Pt, *e1, *e2);
+#endif
+      AddLocalMaxPoly(e1, e2, Pt); 
+    }
     else
     {
+#ifdef use_xyz
+      SetZ(Pt, *e1, *e2);
+#endif
       AddOutPt(e1, Pt);
       AddOutPt(e2, Pt);
       SwapSides( *e1 , *e2 );
@@ -2252,6 +2258,9 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   {
     if (e2Wc == 0 || e2Wc == 1) 
     {
+#ifdef use_xyz
+      SetZ(Pt, *e1, *e2);
+#endif
       AddOutPt(e1, Pt);
       SwapSides(*e1, *e2);
       SwapPolyIndexes(*e1, *e2);
@@ -2261,6 +2270,9 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
   {
     if (e1Wc == 0 || e1Wc == 1) 
     {
+#ifdef use_xyz
+      SetZ(Pt, *e1, *e2);
+#endif
       AddOutPt(e2, Pt);
       SwapSides(*e1, *e2);
       SwapPolyIndexes(*e1, *e2);
@@ -2286,24 +2298,49 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2,
     }
 
     if (e1->PolyTyp != e2->PolyTyp)
+    {
+#ifdef use_xyz
+        SetZ(Pt, *e1, *e2);
+#endif
         AddLocalMinPoly(e1, e2, Pt);
+    }
     else if (e1Wc == 1 && e2Wc == 1)
       switch( m_ClipType ) {
         case ctIntersection:
           if (e1Wc2 > 0 && e2Wc2 > 0)
+          {
+#ifdef use_xyz
+            SetZ(Pt, *e1, *e2);
+#endif
             AddLocalMinPoly(e1, e2, Pt);
+          }
           break;
         case ctUnion:
           if ( e1Wc2 <= 0 && e2Wc2 <= 0 )
+          {
+#ifdef use_xyz
+            SetZ(Pt, *e1, *e2);
+#endif
             AddLocalMinPoly(e1, e2, Pt);
+          }
           break;
         case ctDifference:
           if (((e1->PolyTyp == ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
               ((e1->PolyTyp == ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
-                AddLocalMinPoly(e1, e2, Pt);
+          {
+#ifdef use_xyz
+            SetZ(Pt, *e1, *e2);
+#endif
+            AddLocalMinPoly(e1, e2, Pt);
+          }
           break;
         case ctXor:
-          AddLocalMinPoly(e1, e2, Pt);
+          {
+#ifdef use_xyz
+            SetZ(Pt, *e1, *e2);
+#endif
+            AddLocalMinPoly(e1, e2, Pt);
+          }
       }
     else
       SwapSides( *e1, *e2 );
@@ -2509,12 +2546,7 @@ OutPt* Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
     newOp->Prev = newOp;
     if (!outRec->IsOpen)
       SetHoleState(e, outRec);
-#ifdef use_xyz
-    if (pt == e->Bot) newOp->Pt = e->Bot;
-    else if (pt == e->Top) newOp->Pt = e->Top;
-    else SetZ(newOp->Pt, *e);
-#endif
-    e->OutIdx = outRec->Idx; //nb: do this after SetZ !
+    e->OutIdx = outRec->Idx;
     return newOp;
   } else
   {
@@ -2533,11 +2565,6 @@ OutPt* Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
     newOp->Prev->Next = newOp;
     op->Prev = newOp;
     if (ToFront) outRec->Pts = newOp;
-#ifdef use_xyz
-    if (pt == e->Bot) newOp->Pt = e->Bot;
-    else if (pt == e->Top) newOp->Pt = e->Top;
-    else SetZ(newOp->Pt, *e);
-#endif
     return newOp;
   }
 }
@@ -3124,9 +3151,13 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
         if ((e->OutIdx >= 0) && (e->WindDelta != 0) && ePrev && (ePrev->OutIdx >= 0) &&
           (ePrev->Curr.X == e->Curr.X) && (ePrev->WindDelta != 0))
         {
-          OutPt* op = AddOutPt(ePrev, e->Curr);
-          OutPt* op2 = AddOutPt(e, e->Curr);
-          AddJoin(op, op2, e->Curr); //StrictlySimple (type-3) join
+          IntPoint pt = e->Curr;
+#ifdef use_xyz
+          SetZ(pt, *ePrev, *e);
+#endif
+          OutPt* op = AddOutPt(ePrev, pt);
+          OutPt* op2 = AddOutPt(e, pt);
+          AddJoin(op, op2, pt); //StrictlySimple (type-3) join
         }
       }
 
@@ -3508,6 +3539,7 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
   (j->OffPt == j->OutPt2->Pt))
   {
     //Strictly Simple join ...
+    if (outRec1 != outRec2) return false;
     op1b = j->OutPt1->Next;
     while (op1b != op1 && (op1b->Pt == j->OffPt)) 
       op1b = op1b->Next;
@@ -4150,7 +4182,7 @@ void ClipperOffset::DoOffset(double delta)
 void ClipperOffset::OffsetPoint(int j, int& k, JoinType jointype)
 {
   m_sinA = (m_normals[k].X * m_normals[j].Y - m_normals[j].X * m_normals[k].Y);
-  if (m_sinA < 0.00005 && m_sinA > -0.00005) return;
+  if (m_sinA < 0.0001 && m_sinA > -0.0001) return;
   else if (m_sinA > 1.0) m_sinA = 1.0;
   else if (m_sinA < -1.0) m_sinA = -1.0;
 
@@ -4476,8 +4508,8 @@ void Minkowski(const Path& poly, const Path& path,
       pp.push_back(p);
     }
 
-  Paths quads; 
-  quads.reserve((pathCnt + delta) * (polyCnt + 1));
+  solution.clear();
+  solution.reserve((pathCnt + delta) * (polyCnt + 1));
   for (size_t i = 0; i < pathCnt - 1 + delta; ++i)
     for (size_t j = 0; j < polyCnt; ++j)
     {
@@ -4488,23 +4520,30 @@ void Minkowski(const Path& poly, const Path& path,
       quad.push_back(pp[(i + 1) % pathCnt][(j + 1) % polyCnt]);
       quad.push_back(pp[i % pathCnt][(j + 1) % polyCnt]);
       if (!Orientation(quad)) ReversePath(quad);
-      quads.push_back(quad);
+      solution.push_back(quad);
     }
-
-  Clipper c;
-  c.AddPaths(quads, ptSubject, true);
-  c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }
 //------------------------------------------------------------------------------
 
 void MinkowskiSum(const Path& pattern, const Path& path, Paths& solution, bool pathIsClosed)
 {
   Minkowski(pattern, path, solution, true, pathIsClosed);
+  Clipper c;
+  c.AddPaths(solution, ptSubject, true);
+  c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }
 //------------------------------------------------------------------------------
 
-void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution, 
-    PolyFillType pathFillType, bool pathIsClosed)
+void TranslatePath(const Path& input, Path& output, IntPoint delta) 
+{
+  //precondition: input != output
+  output.resize(input.size());
+  for (size_t i = 0; i < input.size(); ++i)
+    output[i] = IntPoint(input[i].X + delta.X, input[i].Y + delta.Y);
+}
+//------------------------------------------------------------------------------
+
+void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution, bool pathIsClosed)
 {
   Clipper c;
   for (size_t i = 0; i < paths.size(); ++i)
@@ -4512,15 +4551,23 @@ void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution,
     Paths tmp;
     Minkowski(pattern, paths[i], tmp, true, pathIsClosed);
     c.AddPaths(tmp, ptSubject, true);
+    if (pathIsClosed)
+    {
+      Path tmp2;
+      TranslatePath(paths[i], tmp2, pattern[0]);
+      c.AddPath(tmp2, ptClip, true);
+    }
   }
-  if (pathIsClosed) c.AddPaths(paths, ptClip, true);
-  c.Execute(ctUnion, solution, pathFillType, pathFillType);
+    c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }
 //------------------------------------------------------------------------------
 
 void MinkowskiDiff(const Path& poly1, const Path& poly2, Paths& solution)
 {
   Minkowski(poly1, poly2, solution, false, true);
+  Clipper c;
+  c.AddPaths(solution, ptSubject, true);
+  c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }
 //------------------------------------------------------------------------------
 

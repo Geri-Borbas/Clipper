@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.3                                                           *
-* Date      :  19 January 2014                                                 *
+* Version   :  6.1.4                                                           *
+* Date      :  6 February 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -71,6 +71,7 @@ uses
 
 const
   def_arc_tolerance = 0.25;
+
 type
 {$IFDEF use_int32}
 {$IF CompilerVersion < 20} //Delphi 2009
@@ -95,7 +96,8 @@ type
   TArrayOfDoublePoint = array of TDoublePoint;
 
 {$IFDEF use_xyz}
-  TZFillCallback = procedure (const Pt1, Pt2: TIntPoint; var Pt: TIntPoint);
+  TZFillCallback =
+    procedure (const E1Bot, E1Top, E2Bot, E2Top: TIntPoint; var Pt: TIntPoint);
 {$ENDIF}
 
   TInitOption = (ioReverseSolution, ioStrictlySimple, ioPreserveCollinear);
@@ -443,16 +445,7 @@ function PolyTreeToPaths(PolyTree: TPolyTree): TPaths;
 function ClosedPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
 function OpenPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
 
-implementation
-
 const
-  Horizontal: Double = -3.4e+38;
-
-  Unassigned : Integer = -1;
-  Skip       : Integer = -2; //flag for the edge that closes an open path
-  Tolerance  : double = 1.0E-15;
-  Two_Pi     : double = 2 * PI;
-
   //The SlopesEqual function places the most limits on coordinate values
   //So, to avoid overflow errors, they must not exceed the following values...
   //Also, if all coordinates are within +/-LoRange, then calculations will be
@@ -464,6 +457,16 @@ const
   LoRange: cInt = $B504F333;          //3.0e+9
   HiRange: cInt = $3FFFFFFFFFFFFFFF;  //9.2e+18
 {$ENDIF}
+
+implementation
+
+const
+  Horizontal: Double = -3.4e+38;
+
+  Unassigned : Integer = -1;
+  Skip       : Integer = -2; //flag for the edge that closes an open path
+  Tolerance  : double = 1.0E-15;
+  Two_Pi     : double = 2 * PI;
 
 resourcestring
   rsDoMaxima = 'DoMaxima error';
@@ -994,10 +997,10 @@ var
   d, d2, d3: double; //use cInt ???
   ip, ipNext: TIntPoint;
 begin
-	//returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-	//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+  //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
   //nb: if poly bounds are known, test them first before calling this function.
-	result := 0;
+  result := 0;
   cnt := Length(poly);
   if cnt < 3 then Exit;
   ip := poly[0];
@@ -1006,44 +1009,44 @@ begin
     if i < cnt then ipNext := poly[i]
     else ipNext := poly[0];
 
-		if (ipNext.Y = pt.Y) then
-		begin
-			if (ipNext.X = pt.X) or ((ip.Y = pt.Y) and
+    if (ipNext.Y = pt.Y) then
+    begin
+      if (ipNext.X = pt.X) or ((ip.Y = pt.Y) and
         ((ipNext.X > pt.X) = (ip.X < pt.X))) then
       begin
         result := -1;
         Exit;
       end;
-		end;
+    end;
 
-		if ((ip.Y < pt.Y) <> (ipNext.Y < pt.Y)) then
-		begin
-			if (ip.X >= pt.X) then
-			begin
-				if (ipNext.X > pt.X) then
+    if ((ip.Y < pt.Y) <> (ipNext.Y < pt.Y)) then
+    begin
+      if (ip.X >= pt.X) then
+      begin
+        if (ipNext.X > pt.X) then
           result := 1 - result
-				else
-				begin
+        else
+        begin
           d2 := (ip.X - pt.X);
           d3 := (ipNext.X - pt.X);
           d := d2 * (ipNext.Y - pt.Y) - d3 * (ip.Y - pt.Y);
-					if (d = 0) then begin result := -1; Exit; end;
-					if ((d > 0) = (ipNext.Y > ip.Y)) then
+          if (d = 0) then begin result := -1; Exit; end;
+          if ((d > 0) = (ipNext.Y > ip.Y)) then
             result := 1 - result;
-				end;
-			end else
-			begin
-				if (ipNext.X > pt.X) then
-				begin
+        end;
+      end else
+      begin
+        if (ipNext.X > pt.X) then
+        begin
           d2 := (ip.X - pt.X);
           d3 := (ipNext.X - pt.X);
-					d := d2 * (ipNext.Y - pt.Y) - d3 * (ip.Y - pt.Y);
-					if (d = 0) then begin result := -1; Exit; end;
-					if ((d > 0) = (ipNext.Y > ip.Y)) then
+          d := d2 * (ipNext.Y - pt.Y) - d3 * (ip.Y - pt.Y);
+          if (d = 0) then begin result := -1; Exit; end;
+          if ((d > 0) = (ipNext.Y > ip.Y)) then
             result := 1 - result;
-				end;
-			end;
-		end;
+        end;
+      end;
+    end;
     ip := ipNext;
   end;
 end;
@@ -1051,55 +1054,60 @@ end;
 
 function PointInPolygon (const pt: TIntPoint; ops: POutPt): Integer; overload;
 var
-  d, d2, d3: double; //Todo - use cInt and add UseFullInt64Range parameter
+  d, d2, d3: double; //Todo - consider using cInt here
   opStart: POutPt;
+  pt1, ptN: TIntPoint;
 begin
-	//returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-	//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
-  //nb: if poly bounds are known, test them first before calling this function.
-	result := 0;
+  //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
+  //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
+  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+  result := 0;
   opStart := ops;
+  pt1.X := ops.Pt.X; pt1.Y := ops.Pt.Y;
   repeat
-		if (ops.Next.Pt.Y = pt.Y) then
-		begin
-			if (ops.Next.Pt.X = pt.X) or ((ops.Pt.Y = pt.Y) and
-        ((ops.Next.Pt.X > pt.X) = (ops.Pt.X < pt.X))) then
+    ops := ops.Next;
+    ptN.X := ops.Pt.X; ptN.Y := ops.Pt.Y;
+
+    if (ptN.Y = pt.Y) then
+    begin
+      if (ptN.X = pt.X) or ((pt1.Y = pt.Y) and
+        ((ptN.X > pt.X) = (pt1.X < pt.X))) then
       begin
         result := -1;
         Exit;
       end;
-		end;
+    end;
 
-		if ((ops.Pt.Y < pt.Y) <> (ops.Next.Pt.Y < pt.Y)) then
-		begin
-			if (ops.Pt.X >= pt.X) then
-			begin
-				if (ops.Next.Pt.X > pt.X) then
+    if ((pt1.Y < pt.Y) <> (ptN.Y < pt.Y)) then
+    begin
+      if (pt1.X >= pt.X) then
+      begin
+        if (ptN.X > pt.X) then
           result := 1 - result
-				else
-				begin
-          d2 := (ops.Pt.X - pt.X);
-          d3 := (ops.Next.Pt.X - pt.X);
-          d := d2 * (ops.Next.Pt.Y - pt.Y) - d3 * (ops.Pt.Y - pt.Y);
-					if (d = 0) then begin result := -1; Exit; end;
-					if ((d > 0) = (ops.Next.Pt.Y > ops.Pt.Y)) then
+        else
+        begin
+          d2 := (pt1.X - pt.X);
+          d3 := (ptN.X - pt.X);
+          d := d2 * (ptN.Y - pt.Y) - d3 * (pt1.Y - pt.Y);
+          if (d = 0) then begin result := -1; Exit; end;
+          if ((d > 0) = (ptN.Y > pt1.Y)) then
             result := 1 - result;
-				end;
-			end else
-			begin
-				if (ops.Next.Pt.X > pt.X) then
-				begin
-          d2 := (ops.Pt.X - pt.X);
-          d3 := (ops.Next.Pt.X - pt.X);
-					d := d2 * (ops.Next.Pt.Y - pt.Y) - d3 * (ops.Pt.Y - pt.Y);
-					if (d = 0) then begin result := -1; Exit; end;
-					if ((d > 0) = (ops.Next.Pt.Y > ops.Pt.Y)) then
+        end;
+      end else
+      begin
+        if (ptN.X > pt.X) then
+        begin
+          d2 := (pt1.X - pt.X);
+          d3 := (ptN.X - pt.X);
+          d := d2 * (ptN.Y - pt.Y) - d3 * (pt1.Y - pt.Y);
+          if (d = 0) then begin result := -1; Exit; end;
+          if ((d > 0) = (ptN.Y > pt1.Y)) then
             result := 1 - result;
-				end;
-			end;
-		end;
-    ops := ops.Next;
-	until ops = opStart;
+        end;
+      end;
+    end;
+    pt1 := ptN;
+  until ops = opStart;
 end;
 //---------------------------------------------------------------------------
 
@@ -1200,17 +1208,11 @@ end;
 //------------------------------------------------------------------------------
 
 {$IFDEF use_xyz}
-Procedure SetZ(var Pt: TIntPoint; E: PEdge; ZFillFunc: TZFillCallback);
+Procedure SetZ(var Pt: TIntPoint; E1, E2: PEdge; ZFillFunc: TZFillCallback);
 begin
   Pt.Z := 0;
   if assigned(ZFillFunc) then
-  begin
-    //put the 'preferred' point as first parameter ...
-    if E.OutIdx < 0 then
-      ZFillFunc(E.Bot, E.Top, Pt) //outside a path so presume entering ...
-    else
-      ZFillFunc(E.Top, E.Bot, Pt); //inside a path so presume exiting ...
-  end;
+    ZFillFunc(E1.Bot, E1.Top, E2.Bot, E2.Top, Pt);
 end;
 //------------------------------------------------------------------------------
 {$ENDIF}
@@ -1685,7 +1687,7 @@ begin
   repeat
     InitEdge2(E, polyType);
     E := E.Next;
-	  if IsFlat and (E.Curr.Y <> EStart.Curr.Y) then IsFlat := false;
+    if IsFlat and (E.Curr.Y <> EStart.Curr.Y) then IsFlat := false;
   until E = EStart;
   //4. Finally, add edge bounds to LocalMinima list ...
 
@@ -2636,7 +2638,12 @@ begin
     if (E1.WindDelta = 0) AND (E2.WindDelta = 0) then
     begin
       if (E1stops or E2stops) and E1Contributing and E2Contributing then
+      begin
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
         AddLocalMaxPoly(E1, E2, Pt);
+      end;
     end
     //if intersecting a subj line with a subj poly ...
     else if (E1.PolyType = E2.PolyType) and
@@ -2646,6 +2653,9 @@ begin
       begin
         if (E2Contributing) then
         begin
+{$IFDEF use_xyz}
+          SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
           AddOutPt(E1, pt);
           if (E1Contributing) then E1.OutIdx := Unassigned;
         end;
@@ -2653,6 +2663,9 @@ begin
       begin
         if (E1Contributing) then
         begin
+{$IFDEF use_xyz}
+          SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
           AddOutPt(E2, pt);
           if (E2Contributing) then E2.OutIdx := Unassigned;
         end;
@@ -2664,12 +2677,18 @@ begin
       if (E1.WindDelta = 0) and (Abs(E2.WindCnt) = 1) and
        ((FClipType <> ctUnion) or (E2.WindCnt2 = 0)) then
       begin
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
         AddOutPt(E1, Pt);
         if E1Contributing then E1.OutIdx := Unassigned;
       end
       else if (E2.WindDelta = 0) and (Abs(E1.WindCnt) = 1) and
        ((FClipType <> ctUnion) or (E1.WindCnt2 = 0)) then
       begin
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
         AddOutPt(E2, Pt);
         if E2Contributing then E2.OutIdx := Unassigned;
       end
@@ -2750,9 +2769,15 @@ begin
     if E1stops or E2stops or not (E1Wc in [0,1]) or not (E2Wc in [0,1]) or
       ((E1.PolyType <> E2.PolyType) and (fClipType <> ctXor)) then
     begin
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
         AddLocalMaxPoly(E1, E2, Pt);
     end else
     begin
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
       AddOutPt(E1, Pt);
       AddOutPt(E2, Pt);
       SwapSides(E1, E2);
@@ -2762,6 +2787,9 @@ begin
   begin
     if (E2Wc = 0) or (E2Wc = 1) then
     begin
+{$IFDEF use_xyz}
+      SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
       AddOutPt(E1, Pt);
       SwapSides(E1, E2);
       SwapPolyIndexes(E1, E2);
@@ -2771,6 +2799,9 @@ begin
   begin
     if (E1Wc = 0) or (E1Wc = 1) then
     begin
+{$IFDEF use_xyz}
+      SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
       AddOutPt(E2, Pt);
       SwapSides(E1, E2);
       SwapPolyIndexes(E1, E2);
@@ -2793,21 +2824,46 @@ begin
     end;
 
     if (E1.PolyType <> E2.PolyType) then
-      AddLocalMinPoly(E1, E2, Pt)
+    begin
+{$IFDEF use_xyz}
+      SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
+      AddLocalMinPoly(E1, E2, Pt);
+    end
     else if (E1Wc = 1) and (E2Wc = 1) then
       case FClipType of
         ctIntersection:
           if (E1Wc2 > 0) and (E2Wc2 > 0) then
+          begin
+{$IFDEF use_xyz}
+            SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
             AddLocalMinPoly(E1, E2, Pt);
+          end;
         ctUnion:
           if (E1Wc2 <= 0) and (E2Wc2 <= 0) then
+          begin
+{$IFDEF use_xyz}
+            SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
             AddLocalMinPoly(E1, E2, Pt);
+          end;
         ctDifference:
           if ((E1.PolyType = ptClip) and (E1Wc2 > 0) and (E2Wc2 > 0)) or
             ((E1.PolyType = ptSubject) and (E1Wc2 <= 0) and (E2Wc2 <= 0)) then
-              AddLocalMinPoly(E1, E2, Pt);
+          begin
+{$IFDEF use_xyz}
+            SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
+            AddLocalMinPoly(E1, E2, Pt);
+          end;
         ctXor:
-          AddLocalMinPoly(E1, E2, Pt);
+          begin
+{$IFDEF use_xyz}
+            SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
+            AddLocalMinPoly(E1, E2, Pt);
+          end;
       end
     else
       swapsides(E1,E2);
@@ -3090,15 +3146,7 @@ begin
     Result.Idx := OutRec.Idx;
     if not OutRec.IsOpen then
       SetHoleState(E, OutRec);
-{$IFDEF use_xyz}
-    if PointsEqual(E.Bot, Pt) then
-      Result.Pt.Z := E.Bot.Z
-    else if PointsEqual(E.Top, Pt) then
-      Result.Pt.Z := E.Top.Z
-    else
-      SetZ(Result.Pt, E, FZFillCallback);
-{$ENDIF}
-    E.OutIdx := OutRec.Idx; //nb: do this after SetZ !
+    E.OutIdx := OutRec.Idx;
   end else
   begin
     OutRec := FPolyOutList[E.OutIdx];
@@ -3118,14 +3166,6 @@ begin
     Op.Prev.Next := Result;
     Op.Prev := Result;
     if ToFront then OutRec.Pts := Result;
-{$IFDEF use_xyz}
-    if PointsEqual(E.Bot, Pt) then
-      Result.Pt.Z := E.Bot.Z
-    else if PointsEqual(E.Top, Pt) then
-      Result.Pt.Z := E.Top.Z
-    else
-      SetZ(Result.Pt, E, FZFillCallback);
-{$ENDIF}
   end;
 end;
 //------------------------------------------------------------------------------
@@ -3665,6 +3705,7 @@ var
   E, EMaxPair, ePrev, eNext: PEdge;
   Op, Op2: POutPt;
   IsMaximaEdge: Boolean;
+  Pt: TIntPoint;
 begin
 (*******************************************************************************
 * Notes: Processing edges at scanline intersections (ie at the top or bottom   *
@@ -3731,9 +3772,13 @@ begin
           Assigned(ePrev) and (ePrev.Curr.X = E.Curr.X) and
           (ePrev.OutIdx >= 0) and (ePrev.WindDelta <> 0) then
         begin
-          Op := AddOutPt(ePrev, E.Curr);
-          Op2 := AddOutPt(E, E.Curr);
-          AddJoin(Op, Op2, E.Curr); //strictly-simple (type-3) 'join'
+          Pt := E.Curr;
+{$IFDEF use_xyz}
+          SetZ(Pt, ePrev, E, FZFillCallback);
+{$ENDIF}
+          Op := AddOutPt(ePrev, Pt);
+          Op2 := AddOutPt(E, Pt);
+          AddJoin(Op, Op2, Pt); //strictly-simple (type-3) 'join'
         end;
       end;
 
@@ -4098,6 +4143,9 @@ begin
   PointsEqual(Jr.OffPt, Jr.OutPt2.Pt) then
   begin
     //Strictly Simple join ...
+    if (OutRec1 <> OutRec2) then 
+      Exit;
+
     Op1b := Jr.OutPt1.Next;
     while (Op1b <> Op1) and
       PointsEqual(Op1b.Pt, Jr.OffPt) do Op1b := Op1b.Next;
@@ -4107,6 +4155,7 @@ begin
       PointsEqual(Op2b.Pt, Jr.OffPt) do Op2b := Op2b.Next;
     Reverse2 := (Op2b.Pt.Y > Jr.OffPt.Y);
     if (Reverse1 = Reverse2) then Exit;
+
     if Reverse1 then
     begin
       Op1b := DupOutPt(Op1, False);
@@ -4405,7 +4454,6 @@ begin
           OutRec2 := CreateOutRec;
           OutRec2.Pts := Op2;
           UpdateOutPtIdxs(OutRec2);
-
           if Poly2ContainsPoly1(OutRec2.Pts, OutRec1.Pts) then
           begin
             //OutRec2 is contained by OutRec1 ...
@@ -4937,7 +4985,7 @@ var
   R: Double;
 begin
   FSinA := (FNorms[K].X * FNorms[J].Y - FNorms[J].X * FNorms[K].Y);
-  if (FSinA < 0.00005) and (FSinA > -0.00005) then Exit
+  if (FSinA < 0.0001) and (FSinA > -0.0001) then Exit
   else if (FSinA > 1.0) then FSinA := 1.0
   else if (FSinA < -1.0) then FSinA := -1.0;
 
@@ -5116,56 +5164,62 @@ function Minkowski(const Base, Path: TPath;
   IsSum: Boolean; IsClosed: Boolean): TPaths;
 var
   i, j, delta, baseLen, pathLen: integer;
-  quads: TPaths;
   quad: TPath;
+  tmp: TPaths;
 begin
   if IsClosed then delta := 1 else delta := 0;
 
   baseLen := Length(Base);
   pathLen := Length(Path);
-  setLength(Result, pathLen);
+  setLength(tmp, pathLen);
   if IsSum then
     for i := 0 to pathLen -1 do
     begin
-      setLength(Result[i], baseLen);
+      setLength(tmp[i], baseLen);
       for j := 0 to baseLen -1 do
       begin
-        Result[i][j].X := Path[i].X + Base[j].X;
-        Result[i][j].Y := Path[i].Y + Base[j].Y;
+        tmp[i][j].X := Path[i].X + Base[j].X;
+        tmp[i][j].Y := Path[i].Y + Base[j].Y;
       end;
     end
   else
     for i := 0 to pathLen -1 do
     begin
-      setLength(Result[i], baseLen);
+      setLength(tmp[i], baseLen);
       for j := 0 to baseLen -1 do
       begin
-        Result[i][j].X := Path[i].X - Base[j].X;
-        Result[i][j].Y := Path[i].Y - Base[j].Y;
+        tmp[i][j].X := Path[i].X - Base[j].X;
+        tmp[i][j].Y := Path[i].Y - Base[j].Y;
       end;
     end;
 
   SetLength(quad, 4);
-  SetLength(quads, (pathLen + delta) * (baseLen + 1));
+  SetLength(Result, (pathLen + delta) * (baseLen + 1));
   for i := 0 to pathLen - 2 + delta do
   begin
-    for j := 1 to baseLen - 1 do
+    for j := 0 to baseLen - 1 do
     begin
-      quad[0] := Result[i mod pathLen][j mod baseLen];
-      quad[1] := Result[(i+1) mod pathLen][j mod baseLen];
-      quad[2] := Result[(i+1) mod pathLen][(j+1) mod baseLen];
-      quad[3] := Result[i mod pathLen][(j+1) mod baseLen];
+      quad[0] := tmp[i mod pathLen][j mod baseLen];
+      quad[1] := tmp[(i+1) mod pathLen][j mod baseLen];
+      quad[2] := tmp[(i+1) mod pathLen][(j+1) mod baseLen];
+      quad[3] := tmp[i mod pathLen][(j+1) mod baseLen];
       if not Orientation(quad) then quad := ReversePath(quad);
-      quads[i*baseLen + j] := copy(quad, 0, 4);
+      Result[i*baseLen + j] := copy(quad, 0, 4);
     end;
   end;
+end;
+//------------------------------------------------------------------------------
 
-  with TClipper.Create() do
-  try
-    AddPaths(quads, ptSubject, True);
-    Execute(ctUnion, Result, pftNonZero);
-  finally
-    Free;
+function TranslatePath(const Path: TPath; Delta: TIntPoint): TPath;
+var
+  i, j, len: Integer;
+begin
+  len := Length(Path);
+  SetLength(Result, len);
+  for i := 0 to High(Path) do
+  begin
+    Result[i].X := Path[i].X + Delta.X;
+    Result[i].Y := Path[i].Y + Delta.Y;
   end;
 end;
 //------------------------------------------------------------------------------
@@ -5173,6 +5227,13 @@ end;
 function MinkowskiSum(const Pattern, Path: TPath; PathIsClosed: Boolean): TPaths;
 begin
   Result := Minkowski(Pattern, Path, true, PathIsClosed);
+  with TClipper.Create() do
+  try
+    AddPaths(Result, ptSubject, True);
+    Execute(ctUnion, Result, pftNonZero);
+  finally
+    Free;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -5180,14 +5241,24 @@ function MinkowskiSum(const Pattern: TPath; const Paths: TPaths;
   PathFillType: TPolyFillType; PathIsClosed: Boolean): TPaths;
 var
   I, Cnt: Integer;
+  Paths2: TPaths;
+  Path: TPath;
 begin
+  Result := nil;
+  if Length(Pattern) = 0 then Exit;
   Cnt := Length(Paths);
   with TClipper.Create() do
   try
     for I := 0 to Cnt -1 do
-      AddPaths( Minkowski(Pattern, Paths[I], true, PathIsClosed),
-        ptSubject, true);
-      if PathIsClosed then AddPaths(Paths, ptClip, true);
+    begin
+      Paths2 := Minkowski(Pattern, Paths[I], true, PathIsClosed);
+      AddPaths( Paths2, ptSubject, true);
+      if PathIsClosed then
+      begin
+        Path := TranslatePath(Paths[I], Pattern[0]);
+        AddPath(Path, ptClip, true);
+      end;
+    end;
     Execute(ctUnion, Result, PathFillType, PathFillType);
   finally
     Free;
@@ -5198,6 +5269,13 @@ end;
 function MinkowskiDiff(const Poly1, Poly2: TPath): TPaths;
 begin
   Result := Minkowski(Poly1, Poly2, false, true);
+  with TClipper.Create() do
+  try
+    AddPaths(Result, ptSubject, True);
+    Execute(ctUnion, Result, pftNonZero);
+  finally
+    Free;
+  end;
 end;
 //------------------------------------------------------------------------------
 
