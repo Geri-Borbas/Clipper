@@ -3818,8 +3818,6 @@ namespace ClipperLib
         //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
         int result = 0;
         OutPt startOp = op;
-        //divide all points by 4 to circumvent rounding issues. (Somewhat brutal but
-        //fairly safe given that this function is only called from Poly2ContainsPoly1.)
         cInt ptx = pt.X, pty = pt.Y;
         cInt poly0x = op.Pt.X, poly0y = op.Pt.Y;
         do
