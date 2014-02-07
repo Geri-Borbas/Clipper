@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.4                                                           *
-* Date      :  6 February 2014                                                 *
+* Date      :  7 February 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -670,6 +670,7 @@ bool IntersectPoint(TEdge &Edge1, TEdge &Edge2,
 #ifdef use_xyz  
   ip.Z = 0;
 #endif
+
   double b1, b2;
   //nb: with very large coordinate values, it's possible for SlopesEqual() to 
   //return false but for the edge.Dx value be equal due to double precision rounding.
@@ -2080,8 +2081,12 @@ void Clipper::DeleteFromSEL(TEdge *e)
 #ifdef use_xyz
 void Clipper::SetZ(IntPoint& pt, TEdge& e1, TEdge& e2)
 {
-  if (m_ZFill) 
-    (*m_ZFill)(e1.Bot, e1.Top, e2.Bot, e2.Top, pt); 
+  if (pt.Z != 0 || !m_ZFill) return;
+  else if (pt == e1.Bot) pt.Z = e1.Bot.Z;
+  else if (pt == e1.Top) pt.Z = e1.Top.Z;
+  else if (pt == e2.Bot) pt.Z = e2.Bot.Z;
+  else if (pt == e2.Top) pt.Z = e2.Top.Z;
+  else (*m_ZFill)(e1.Bot, e1.Top, e2.Bot, e2.Top, pt); 
 }
 //------------------------------------------------------------------------------
 #endif
@@ -2097,6 +2102,10 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
   bool e1Contributing = ( e1->OutIdx >= 0 );
   bool e2Contributing = ( e2->OutIdx >= 0 );
 
+#ifdef use_xyz
+        SetZ(Pt, *e1, *e2);
+#endif
+
 #ifdef use_lines
   //if either edge is on an OPEN path ...
   if (e1->WindDelta == 0 || e2->WindDelta == 0)
@@ -2106,12 +2115,7 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
     if (e1->WindDelta == 0 && e2->WindDelta == 0)
     {
       if ((e1stops || e2stops) && e1Contributing && e2Contributing)
-      {
-#ifdef use_xyz
-        SetZ(Pt, *e1, *e2);
-#endif
         AddLocalMaxPoly(e1, e2, Pt);
-      }
     }
 
     //if intersecting a subj line with a subj poly ...
@@ -2122,9 +2126,6 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
       {
         if (e2Contributing)
         {
-#ifdef use_xyz
-          SetZ(Pt, *e1, *e2);
-#endif
           AddOutPt(e1, Pt);
           if (e1Contributing) e1->OutIdx = Unassigned;
         }
@@ -2133,9 +2134,6 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
       {
         if (e1Contributing)
         {
-#ifdef use_xyz
-          SetZ(Pt, *e1, *e2);
-#endif
           AddOutPt(e2, Pt);
           if (e2Contributing) e2->OutIdx = Unassigned;
         }
@@ -2147,18 +2145,12 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
       if ((e1->WindDelta == 0) && abs(e2->WindCnt) == 1 && 
         (m_ClipType != ctUnion || e2->WindCnt2 == 0))
       {
-#ifdef use_xyz
-        SetZ(Pt, *e1, *e2);
-#endif
         AddOutPt(e1, Pt);
         if (e1Contributing) e1->OutIdx = Unassigned;
       }
       else if ((e2->WindDelta == 0) && (abs(e1->WindCnt) == 1) && 
         (m_ClipType != ctUnion || e1->WindCnt2 == 0))
       {
-#ifdef use_xyz
-        SetZ(Pt, *e1, *e2);
-#endif
         AddOutPt(e2, Pt);
         if (e2Contributing) e2->OutIdx = Unassigned;
       }
@@ -2238,16 +2230,10 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
       (e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
       (e1->PolyTyp != e2->PolyTyp && m_ClipType != ctXor) )
     {
-#ifdef use_xyz
-      SetZ(Pt, *e1, *e2);
-#endif
       AddLocalMaxPoly(e1, e2, Pt); 
     }
     else
     {
-#ifdef use_xyz
-      SetZ(Pt, *e1, *e2);
-#endif
       AddOutPt(e1, Pt);
       AddOutPt(e2, Pt);
       SwapSides( *e1 , *e2 );
@@ -2258,9 +2244,6 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
   {
     if (e2Wc == 0 || e2Wc == 1) 
     {
-#ifdef use_xyz
-      SetZ(Pt, *e1, *e2);
-#endif
       AddOutPt(e1, Pt);
       SwapSides(*e1, *e2);
       SwapPolyIndexes(*e1, *e2);
@@ -2270,9 +2253,6 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
   {
     if (e1Wc == 0 || e1Wc == 1) 
     {
-#ifdef use_xyz
-      SetZ(Pt, *e1, *e2);
-#endif
       AddOutPt(e2, Pt);
       SwapSides(*e1, *e2);
       SwapPolyIndexes(*e1, *e2);
@@ -2299,48 +2279,25 @@ void Clipper::IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &Pt, bool protect)
 
     if (e1->PolyTyp != e2->PolyTyp)
     {
-#ifdef use_xyz
-        SetZ(Pt, *e1, *e2);
-#endif
-        AddLocalMinPoly(e1, e2, Pt);
+      AddLocalMinPoly(e1, e2, Pt);
     }
     else if (e1Wc == 1 && e2Wc == 1)
       switch( m_ClipType ) {
         case ctIntersection:
           if (e1Wc2 > 0 && e2Wc2 > 0)
-          {
-#ifdef use_xyz
-            SetZ(Pt, *e1, *e2);
-#endif
             AddLocalMinPoly(e1, e2, Pt);
-          }
           break;
         case ctUnion:
           if ( e1Wc2 <= 0 && e2Wc2 <= 0 )
-          {
-#ifdef use_xyz
-            SetZ(Pt, *e1, *e2);
-#endif
             AddLocalMinPoly(e1, e2, Pt);
-          }
           break;
         case ctDifference:
           if (((e1->PolyTyp == ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
               ((e1->PolyTyp == ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
-          {
-#ifdef use_xyz
-            SetZ(Pt, *e1, *e2);
-#endif
-            AddLocalMinPoly(e1, e2, Pt);
-          }
+                AddLocalMinPoly(e1, e2, Pt);
           break;
         case ctXor:
-          {
-#ifdef use_xyz
-            SetZ(Pt, *e1, *e2);
-#endif
-            AddLocalMinPoly(e1, e2, Pt);
-          }
+          AddLocalMinPoly(e1, e2, Pt);
       }
     else
       SwapSides( *e1, *e2 );

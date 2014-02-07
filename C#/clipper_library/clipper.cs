@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.4                                                           *
-* Date      :  6 February 2014                                                 *
+* Date      :  7 February 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1519,9 +1519,12 @@ namespace ClipperLib
 #if use_xyz
       internal void SetZ(ref IntPoint pt, TEdge e1, TEdge e2)
       {
-        pt.Z = 0;
-        if (ZFillFunction != null)
-          ZFillFunction(e1.Bot, e1.Top, e2.Bot, e2.Top, ref pt);
+        if (pt.Z != 0 || ZFillFunction == null) return;
+        else if (pt == e1.Bot) pt.Z = e1.Bot.Z;
+        else if (pt == e1.Top) pt.Z = e1.Top.Z;
+        else if (pt == e2.Bot) pt.Z = e2.Bot.Z;
+        else if (pt == e2.Top) pt.Z = e2.Top.Z;
+        else ZFillFunction(e1.Bot, e1.Top, e2.Bot, e2.Top, ref pt);
       }
       //------------------------------------------------------------------------------
 #endif
@@ -2441,6 +2444,10 @@ namespace ClipperLib
           bool e1Contributing = (e1.OutIdx >= 0);
           bool e2Contributing = (e2.OutIdx >= 0);
 
+#if use_xyz
+          SetZ(ref pt, e1, e2);
+#endif
+
 #if use_lines
           //if either edge is on an OPEN path ...
           if (e1.WindDelta == 0 || e2.WindDelta == 0)
@@ -2450,12 +2457,7 @@ namespace ClipperLib
             if (e1.WindDelta == 0 && e2.WindDelta == 0)
             {
               if ((e1stops || e2stops) && e1Contributing && e2Contributing)
-              {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddLocalMaxPoly(e1, e2, pt);
-              }
             }
             //if intersecting a subj line with a subj poly ...
             else if (e1.PolyTyp == e2.PolyTyp && 
@@ -2465,9 +2467,6 @@ namespace ClipperLib
               {
                 if (e2Contributing)
                 {
-#if use_xyz
-                  SetZ(ref pt, e1, e2);
-#endif
                   AddOutPt(e1, pt);
                   if (e1Contributing) e1.OutIdx = Unassigned;
                 }
@@ -2476,9 +2475,6 @@ namespace ClipperLib
               {
                 if (e1Contributing)
                 {
-#if use_xyz
-                  SetZ(ref pt, e1, e2);
-#endif
                   AddOutPt(e2, pt);
                   if (e2Contributing) e2.OutIdx = Unassigned;
                 }
@@ -2489,18 +2485,12 @@ namespace ClipperLib
               if ((e1.WindDelta == 0) && Math.Abs(e2.WindCnt) == 1 && 
                 (m_ClipType != ClipType.ctUnion || e2.WindCnt2 == 0))
               {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddOutPt(e1, pt);
                 if (e1Contributing) e1.OutIdx = Unassigned;
               }
               else if ((e2.WindDelta == 0) && (Math.Abs(e1.WindCnt) == 1) && 
                 (m_ClipType != ClipType.ctUnion || e1.WindCnt2 == 0))
               {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddOutPt(e2, pt);
                 if (e2Contributing) e2.OutIdx = Unassigned;
               }
@@ -2584,16 +2574,10 @@ namespace ClipperLib
               (e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
               (e1.PolyTyp != e2.PolyTyp && m_ClipType != ClipType.ctXor))
             {
-#if use_xyz
-              SetZ(ref pt, e1, e2);
-#endif
               AddLocalMaxPoly(e1, e2, pt);
             }
             else
             {
-#if use_xyz
-              SetZ(ref pt, e1, e2);
-#endif
               AddOutPt(e1, pt);
               AddOutPt(e2, pt);
               SwapSides(e1, e2);
@@ -2604,9 +2588,6 @@ namespace ClipperLib
           {
               if (e2Wc == 0 || e2Wc == 1)
               {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddOutPt(e1, pt);
                 SwapSides(e1, e2);
                 SwapPolyIndexes(e1, e2);
@@ -2617,9 +2598,6 @@ namespace ClipperLib
           {
               if (e1Wc == 0 || e1Wc == 1)
               {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddOutPt(e2, pt);
                 SwapSides(e1, e2);
                 SwapPolyIndexes(e1, e2);
@@ -2645,9 +2623,6 @@ namespace ClipperLib
 
               if (e1.PolyTyp != e2.PolyTyp)
               {
-#if use_xyz
-                SetZ(ref pt, e1, e2);
-#endif
                 AddLocalMinPoly(e1, e2, pt);
               }
               else if (e1Wc == 1 && e2Wc == 1)
@@ -2655,36 +2630,18 @@ namespace ClipperLib
                 {
                   case ClipType.ctIntersection:
                     if (e1Wc2 > 0 && e2Wc2 > 0)
-                    {
-#if use_xyz
-                      SetZ(ref pt, e1, e2);
-#endif
                       AddLocalMinPoly(e1, e2, pt);
-                    }
                     break;
                   case ClipType.ctUnion:
                     if (e1Wc2 <= 0 && e2Wc2 <= 0)
-                    {
-#if use_xyz
-                      SetZ(ref pt, e1, e2);
-#endif
                       AddLocalMinPoly(e1, e2, pt);
-                    }
                     break;
                   case ClipType.ctDifference:
                     if (((e1.PolyTyp == PolyType.ptClip) && (e1Wc2 > 0) && (e2Wc2 > 0)) ||
                         ((e1.PolyTyp == PolyType.ptSubject) && (e1Wc2 <= 0) && (e2Wc2 <= 0)))
-                    {
-#if use_xyz
-                      SetZ(ref pt, e1, e2);
-#endif
-                      AddLocalMinPoly(e1, e2, pt);
-                    }
+                          AddLocalMinPoly(e1, e2, pt);
                     break;
                   case ClipType.ctXor:
-#if use_xyz
-                    SetZ(ref pt, e1, e2);
-#endif
                     AddLocalMinPoly(e1, e2, pt);
                     break;
                 }

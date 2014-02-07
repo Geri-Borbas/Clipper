@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.4                                                           *
-* Date      :  6 February 2014                                                 *
+* Date      :  7 February 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -38,7 +38,7 @@ unit clipper;
 {.$DEFINE use_int32}
 
 //use_xyz: adds a Z member to IntPoint (with only a minor cost to performance)
-{.$DEFINE use_xyz}
+//{$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
 {.$DEFINE use_lines}
@@ -313,7 +313,7 @@ type
     procedure DeleteFromAEL(E: PEdge);
     procedure DeleteFromSEL(E: PEdge);
     procedure IntersectEdges(E1,E2: PEdge;
-      const Pt: TIntPoint; Protect: Boolean = False);
+      Pt: TIntPoint; Protect: Boolean = False);
     procedure DoMaxima(E: PEdge);
     procedure UpdateEdgeIntoAEL(var E: PEdge);
     function FixupIntersectionOrder: Boolean;
@@ -1210,9 +1210,12 @@ end;
 {$IFDEF use_xyz}
 Procedure SetZ(var Pt: TIntPoint; E1, E2: PEdge; ZFillFunc: TZFillCallback);
 begin
-  Pt.Z := 0;
-  if assigned(ZFillFunc) then
-    ZFillFunc(E1.Bot, E1.Top, E2.Bot, E2.Top, Pt);
+  if (Pt.Z <> 0) or not assigned(ZFillFunc) then Exit
+  else if PointsEqual(Pt, E1.Bot) then Pt.Z := E1.Bot.Z
+  else if PointsEqual(Pt, E2.Bot) then Pt.Z := E2.Bot.Z
+  else if PointsEqual(Pt, E1.Top) then Pt.Z := E1.Top.Z
+  else if PointsEqual(Pt, E2.Top) then Pt.Z := E2.Top.Z
+  else ZFillFunc(E1.Bot, E1.Top, E2.Bot, E2.Top, Pt);
 end;
 //------------------------------------------------------------------------------
 {$ENDIF}
@@ -2611,7 +2614,7 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipper.IntersectEdges(E1,E2: PEdge;
-  const Pt: TIntPoint; Protect: Boolean = False);
+  Pt: TIntPoint; Protect: Boolean = False);
 var
   E1stops, E2stops: Boolean;
   E1Contributing, E2contributing: Boolean;
@@ -2629,6 +2632,10 @@ begin
   E1Contributing := (E1.OutIdx >= 0);
   E2contributing := (E2.OutIdx >= 0);
 
+{$IFDEF use_xyz}
+        SetZ(Pt, E1, E2, FZFillCallback);
+{$ENDIF}
+
 {$IFDEF use_lines}
   //if either edge is on an OPEN path ...
   if (E1.WindDelta = 0) or (E2.WindDelta = 0) then
@@ -2638,12 +2645,7 @@ begin
     if (E1.WindDelta = 0) AND (E2.WindDelta = 0) then
     begin
       if (E1stops or E2stops) and E1Contributing and E2Contributing then
-      begin
-{$IFDEF use_xyz}
-        SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
         AddLocalMaxPoly(E1, E2, Pt);
-      end;
     end
     //if intersecting a subj line with a subj poly ...
     else if (E1.PolyType = E2.PolyType) and
@@ -2653,9 +2655,6 @@ begin
       begin
         if (E2Contributing) then
         begin
-{$IFDEF use_xyz}
-          SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
           AddOutPt(E1, pt);
           if (E1Contributing) then E1.OutIdx := Unassigned;
         end;
@@ -2663,9 +2662,6 @@ begin
       begin
         if (E1Contributing) then
         begin
-{$IFDEF use_xyz}
-          SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
           AddOutPt(E2, pt);
           if (E2Contributing) then E2.OutIdx := Unassigned;
         end;
@@ -2677,18 +2673,12 @@ begin
       if (E1.WindDelta = 0) and (Abs(E2.WindCnt) = 1) and
        ((FClipType <> ctUnion) or (E2.WindCnt2 = 0)) then
       begin
-{$IFDEF use_xyz}
-        SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
         AddOutPt(E1, Pt);
         if E1Contributing then E1.OutIdx := Unassigned;
       end
       else if (E2.WindDelta = 0) and (Abs(E1.WindCnt) = 1) and
        ((FClipType <> ctUnion) or (E1.WindCnt2 = 0)) then
       begin
-{$IFDEF use_xyz}
-        SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
         AddOutPt(E2, Pt);
         if E2Contributing then E2.OutIdx := Unassigned;
       end
@@ -2769,15 +2759,9 @@ begin
     if E1stops or E2stops or not (E1Wc in [0,1]) or not (E2Wc in [0,1]) or
       ((E1.PolyType <> E2.PolyType) and (fClipType <> ctXor)) then
     begin
-{$IFDEF use_xyz}
-        SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
         AddLocalMaxPoly(E1, E2, Pt);
     end else
     begin
-{$IFDEF use_xyz}
-        SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
       AddOutPt(E1, Pt);
       AddOutPt(E2, Pt);
       SwapSides(E1, E2);
@@ -2787,9 +2771,6 @@ begin
   begin
     if (E2Wc = 0) or (E2Wc = 1) then
     begin
-{$IFDEF use_xyz}
-      SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
       AddOutPt(E1, Pt);
       SwapSides(E1, E2);
       SwapPolyIndexes(E1, E2);
@@ -2799,9 +2780,6 @@ begin
   begin
     if (E1Wc = 0) or (E1Wc = 1) then
     begin
-{$IFDEF use_xyz}
-      SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
       AddOutPt(E2, Pt);
       SwapSides(E1, E2);
       SwapPolyIndexes(E1, E2);
@@ -2825,45 +2803,22 @@ begin
 
     if (E1.PolyType <> E2.PolyType) then
     begin
-{$IFDEF use_xyz}
-      SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
       AddLocalMinPoly(E1, E2, Pt);
     end
     else if (E1Wc = 1) and (E2Wc = 1) then
       case FClipType of
         ctIntersection:
           if (E1Wc2 > 0) and (E2Wc2 > 0) then
-          begin
-{$IFDEF use_xyz}
-            SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
             AddLocalMinPoly(E1, E2, Pt);
-          end;
         ctUnion:
           if (E1Wc2 <= 0) and (E2Wc2 <= 0) then
-          begin
-{$IFDEF use_xyz}
-            SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
             AddLocalMinPoly(E1, E2, Pt);
-          end;
         ctDifference:
           if ((E1.PolyType = ptClip) and (E1Wc2 > 0) and (E2Wc2 > 0)) or
             ((E1.PolyType = ptSubject) and (E1Wc2 <= 0) and (E2Wc2 <= 0)) then
-          begin
-{$IFDEF use_xyz}
-            SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
-            AddLocalMinPoly(E1, E2, Pt);
-          end;
+              AddLocalMinPoly(E1, E2, Pt);
         ctXor:
-          begin
-{$IFDEF use_xyz}
-            SetZ(Pt, E1, E2, FZFillCallback);
-{$ENDIF}
-            AddLocalMinPoly(E1, E2, Pt);
-          end;
+          AddLocalMinPoly(E1, E2, Pt);
       end
     else
       swapsides(E1,E2);
@@ -5212,7 +5167,7 @@ end;
 
 function TranslatePath(const Path: TPath; Delta: TIntPoint): TPath;
 var
-  i, j, len: Integer;
+  i, len: Integer;
 begin
   len := Length(Path);
   SetLength(Result, len);
