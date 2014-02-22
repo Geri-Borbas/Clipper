@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.4                                                           *
-* Date      :  7 February 2014                                                 *
+* Version   :  6.1.5                                                           *
+* Date      :  22 February 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -331,80 +331,6 @@ namespace ClipperLib
       return negate ? -result : result;
     }
 
-    public static Int128 operator /(Int128 lhs, Int128 rhs)
-    {
-      if (rhs.lo == 0 && rhs.hi == 0)
-        throw new ClipperException("Int128: divide by zero");
-
-      bool negate = (rhs.hi < 0) != (lhs.hi < 0);
-      if (lhs.hi < 0) lhs = -lhs;
-      if (rhs.hi < 0) rhs = -rhs;
-
-      if (rhs < lhs)
-      {
-        Int128 result = new Int128(0);
-        Int128 cntr = new Int128(1);
-        while (rhs.hi >= 0 && !(rhs > lhs))
-        {
-          rhs.hi <<= 1;
-          if ((Int64)rhs.lo < 0) rhs.hi++;
-          rhs.lo <<= 1;
-
-          cntr.hi <<= 1;
-          if ((Int64)cntr.lo < 0) cntr.hi++;
-          cntr.lo <<= 1;
-        }
-        rhs.lo >>= 1;
-        if ((rhs.hi & 1) == 1)
-          rhs.lo |= 0x8000000000000000;
-        rhs.hi = (Int64)((UInt64)rhs.hi >> 1);
-
-        cntr.lo >>= 1;
-        if ((cntr.hi & 1) == 1)
-          cntr.lo |= 0x8000000000000000;
-        cntr.hi >>= 1;
-
-        while (cntr.hi != 0 || cntr.lo != 0)
-        {
-          if (!(lhs < rhs))
-          {
-            lhs -= rhs;
-            result.hi |= cntr.hi;
-            result.lo |= cntr.lo;
-          }
-          rhs.lo >>= 1;
-          if ((rhs.hi & 1) == 1)
-            rhs.lo |= 0x8000000000000000;
-          rhs.hi >>= 1;
-
-          cntr.lo >>= 1;
-          if ((cntr.hi & 1) == 1)
-            cntr.lo |= 0x8000000000000000;
-          cntr.hi >>= 1;
-        }
-        return negate ? -result : result;
-      }
-      else if (rhs == lhs)
-        return new Int128(negate ? -1 : 1);
-      else
-        return new Int128(0);
-    }
-
-    public double ToDouble()
-    {
-      const double shift64 = 18446744073709551616.0; //2^64
-      if (hi < 0)
-      {
-        UInt64 lo_ = (~lo + 1);
-        if (lo_ == 0)
-          return (double)hi * shift64;
-        else
-          return -(double)(lo_ + ~hi * shift64);
-      }
-      else
-        return (double)(lo + hi * shift64);
-    }
-
   };
 
   //------------------------------------------------------------------------------
@@ -622,6 +548,14 @@ namespace ClipperLib
     {
       get;
       set;
+    }
+    //------------------------------------------------------------------------------
+
+    public void Swap(ref cInt val1, ref cInt val2)
+    {
+      cInt tmp = val1;
+      val1 = val2;
+      val2 = tmp;
     }
     //------------------------------------------------------------------------------
 
@@ -995,7 +929,6 @@ namespace ClipperLib
       }
 
       //3. Do second stage of edge initialization ...
-      TEdge eHighest = eStart;
       E = eStart;
       do
       {
@@ -1151,13 +1084,9 @@ namespace ClipperLib
       //swap horizontal edges' top and bottom x's so they follow the natural
       //progression of the bounds - ie so their xbots will align with the
       //adjoining lower edge. [Helpful in the ProcessHorizontal() method.]
-      cInt tmp = e.Top.X;
-      e.Top.X = e.Bot.X;
-      e.Bot.X = tmp;
+      Swap(ref e.Top.X, ref e.Bot.X);
 #if use_xyz
-      tmp = e.Top.Z;
-      e.Top.Z = e.Bot.Z;
-      e.Bot.Z = tmp;
+      Swap(ref e.Top.Z, ref e.Bot.Z);
 #endif
     }
     //------------------------------------------------------------------------------
@@ -1461,9 +1390,7 @@ namespace ClipperLib
       private cInt PopScanbeam()
       {
         cInt Y = m_Scanbeam.Y;
-        Scanbeam sb2 = m_Scanbeam;
         m_Scanbeam = m_Scanbeam.Next;
-        sb2 = null;
         return Y;
       }
       //------------------------------------------------------------------------------
@@ -1477,23 +1404,9 @@ namespace ClipperLib
       void DisposeOutRec(int index)
       {
         OutRec outRec = m_PolyOuts[index];
-        if (outRec.Pts != null) DisposeOutPts(outRec.Pts);
+        outRec.Pts = null;
         outRec = null;
         m_PolyOuts[index] = null;
-      }
-      //------------------------------------------------------------------------------
-
-      private void DisposeOutPts(OutPt pp)
-      {
-          if (pp == null) return;
-          OutPt tmpPp = null;
-          pp.Prev.Next = null;
-          while (pp != null)
-          {
-              tmpPp = pp;
-              pp = pp.Next;
-              tmpPp = null;
-          }
       }
       //------------------------------------------------------------------------------
 
@@ -1584,7 +1497,7 @@ namespace ClipperLib
               //if the horizontal Rb and a 'ghost' horizontal overlap, then convert
               //the 'ghost' join to a real join ready for later ...
               Join j = m_GhostJoins[i];
-              if (HorzSegmentsOverlap(j.OutPt1.Pt, j.OffPt, rb.Bot, rb.Top))
+              if (HorzSegmentsOverlap(j.OutPt1.Pt.X, j.OffPt.X, rb.Bot.X, rb.Top.X))
                 AddJoin(j.OutPt1, Op1, j.OffPt);
             }
           }
@@ -2146,17 +2059,11 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private bool HorzSegmentsOverlap(
-        IntPoint Pt1a, IntPoint Pt1b, IntPoint Pt2a, IntPoint Pt2b)
+      private bool HorzSegmentsOverlap(cInt seg1a, cInt seg1b, cInt seg2a, cInt seg2b)
       {
-        //precondition: both segments are horizontal
-        if ((Pt1a.X > Pt2a.X) == (Pt1a.X < Pt2b.X)) return true;
-        else if ((Pt1b.X > Pt2a.X) == (Pt1b.X < Pt2b.X)) return true;
-        else if ((Pt2a.X > Pt1a.X) == (Pt2a.X < Pt1b.X)) return true;
-        else if ((Pt2b.X > Pt1a.X) == (Pt2b.X < Pt1b.X)) return true;
-        else if ((Pt1a.X == Pt2a.X) && (Pt1b.X == Pt2b.X)) return true;
-        else if ((Pt1a.X == Pt2b.X) && (Pt1b.X == Pt2a.X)) return true;
-        else return false;
+        if (seg1a > seg1b) Swap(ref seg1a, ref seg1b);
+        if (seg2a > seg2b) Swap(ref seg2a, ref seg2b);
+        return (seg1a < seg2b) && (seg2a < seg1b);
       }
       //------------------------------------------------------------------------------
   
@@ -2746,35 +2653,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------
 
-      void PrepareHorzJoins(TEdge horzEdge, bool isTopOfScanbeam)
-      {
-        //get the last Op for this horizontal edge
-        //the point may be anywhere along the horizontal ...
-        OutPt outPt = m_PolyOuts[horzEdge.OutIdx].Pts;
-        if (horzEdge.Side != EdgeSide.esLeft) outPt = outPt.Prev;
-
-        //First, match up overlapping horizontal edges (eg when one polygon's
-        //intermediate horz edge overlaps an intermediate horz edge of another, or
-        //when one polygon sits on top of another) ...
-        //for (int i = 0; i < m_GhostJoins.Count; ++i)
-        //{
-        //  Join j = m_GhostJoins[i];
-        //  if (HorzSegmentsOverlap(j.OutPt1.Pt, j.OffPt, horzEdge.Bot, horzEdge.Top))
-        //      AddJoin(j.OutPt1, outPt, j.OffPt);
-        //}
-
-        //Also, since horizontal edges at the top of one SB are often removed from
-        //the AEL before we process the horizontal edges at the bottom of the next,
-        //we need to create 'ghost' Join records of 'contrubuting' horizontals that
-        //we can compare with horizontals at the bottom of the next SB.
-        if (isTopOfScanbeam) 
-          if (outPt.Pt == horzEdge.Top)
-            AddGhostJoin(outPt, horzEdge.Bot); 
-          else
-            AddGhostJoin(outPt, horzEdge.Top);
-      }
-      //------------------------------------------------------------------------------
-
       private void ProcessHorizontal(TEdge horzEdge, bool isTopOfScanbeam)
       {
         Direction dir;
@@ -2804,18 +2682,30 @@ namespace ClipperLib
             if ((dir == Direction.dLeftToRight && e.Curr.X <= horzRight) ||
               (dir == Direction.dRightToLeft && e.Curr.X >= horzLeft))
             {
-              if (horzEdge.OutIdx >= 0 && horzEdge.WindDelta != 0)
-                PrepareHorzJoins(horzEdge, isTopOfScanbeam);
               //so far we're still in range of the horizontal Edge  but make sure
               //we're at the last of consec. horizontals when matching with eMaxPair
               if(e == eMaxPair && IsLastHorz)
               {
-                if (dir == Direction.dLeftToRight)
-                  IntersectEdges(horzEdge, e, e.Top);
-                else
-                  IntersectEdges(e, horzEdge, e.Top);
-                if (eMaxPair.OutIdx >= 0) throw 
-                  new ClipperException("ProcessHorizontal error");
+                if (horzEdge.OutIdx >= 0)
+                {
+                  OutPt op1 = AddOutPt(horzEdge, horzEdge.Top);
+                  TEdge eNextHorz = m_SortedEdges;
+                  while (eNextHorz != null)
+                  {
+                    if (eNextHorz.OutIdx >= 0 &&
+                      HorzSegmentsOverlap(horzEdge.Bot.X,
+                      horzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X))
+                    {
+                      OutPt op2 = AddOutPt(eNextHorz, eNextHorz.Bot);
+                      AddJoin(op2, op1, eNextHorz.Top);
+                    }
+                    eNextHorz = eNextHorz.NextInSEL;
+                  }
+                  AddGhostJoin(op1, horzEdge.Bot);
+                  AddLocalMaxPoly(horzEdge, eMaxPair, horzEdge.Top);
+                }
+                DeleteFromAEL(horzEdge);
+                DeleteFromAEL(eMaxPair);
                 return;
               }
               else if(dir == Direction.dLeftToRight)
@@ -2835,9 +2725,6 @@ namespace ClipperLib
             e = eNext;
           } //end while
 
-          if (horzEdge.OutIdx >= 0 && horzEdge.WindDelta != 0)
-            PrepareHorzJoins(horzEdge, isTopOfScanbeam);
-
           if (horzEdge.NextInLML != null && IsHorizontal(horzEdge.NextInLML))
           {
             UpdateEdgeIntoAEL(ref horzEdge);
@@ -2852,6 +2739,8 @@ namespace ClipperLib
           if(horzEdge.OutIdx >= 0)
           {
             OutPt op1 = AddOutPt( horzEdge, horzEdge.Top);
+            if (isTopOfScanbeam) AddGhostJoin(op1, horzEdge.Bot);
+
             UpdateEdgeIntoAEL(ref horzEdge);
             if (horzEdge.WindDelta == 0) return;
             //nb: HorzEdge is no longer horizontal here
@@ -2877,22 +2766,7 @@ namespace ClipperLib
           else
             UpdateEdgeIntoAEL(ref horzEdge); 
         }
-        else if (eMaxPair != null)
-        {
-          if (eMaxPair.OutIdx >= 0)
-          {
-            if (dir == Direction.dLeftToRight)
-              IntersectEdges(horzEdge, eMaxPair, horzEdge.Top); 
-            else
-              IntersectEdges(eMaxPair, horzEdge, horzEdge.Top);
-            if (eMaxPair.OutIdx >= 0) throw 
-              new ClipperException("ProcessHorizontal error");
-          } else
-          {
-            DeleteFromAEL(horzEdge);
-            DeleteFromAEL(eMaxPair);
-          }
-        } else
+        else
         {
           if (horzEdge.OutIdx >= 0) AddOutPt(horzEdge, horzEdge.Top);
           DeleteFromAEL(horzEdge);
@@ -3279,7 +3153,9 @@ namespace ClipperLib
         }
         else if( e.OutIdx >= 0 && eMaxPair.OutIdx >= 0 )
         {
-          IntersectEdges( e, eMaxPair, e.Top);
+          if (e.OutIdx >= 0) AddLocalMaxPoly(e, eMaxPair, e.Top);
+          DeleteFromAEL(e);
+          DeleteFromAEL(eMaxPair);
         }
 #if use_lines
         else if (e.WindDelta == 0)
@@ -3408,7 +3284,6 @@ namespace ClipperLib
           {
               if (pp.Prev == pp || pp.Prev == pp.Next)
               {
-                  DisposeOutPts(pp);
                   outRec.Pts = null;
                   return;
               }
@@ -3418,11 +3293,9 @@ namespace ClipperLib
                 (!PreserveCollinear || !Pt2IsBetweenPt1AndPt3(pp.Prev.Pt, pp.Pt, pp.Next.Pt))))
               {
                   lastOK = null;
-                  OutPt tmp = pp;
                   pp.Prev.Next = pp.Next;
                   pp.Next.Prev = pp.Prev;
                   pp = pp.Prev;
-                  tmp = null;
               }
               else if (pp == lastOK) break;
               else
@@ -4186,11 +4059,6 @@ namespace ClipperLib
             op = ExcludeOp(op);
             cnt -= 2;
           }
-          else if (SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, distSqrd))
-          {
-            op = ExcludeOp(op);
-            cnt--;
-          }
           else
           {
             op.Idx = 1;
@@ -4430,7 +4298,7 @@ namespace ClipperLib
       //if this path's lowest pt is lower than all the others then update m_lowest
       if (endType != EndType.etClosedPolygon) return;
       if (m_lowest.X < 0)
-        m_lowest = new IntPoint(0, k);
+        m_lowest = new IntPoint(m_polyNodes.ChildCount - 1, k);
       else
       {
         IntPoint ip = m_polyNodes.Childs[(int)m_lowest.X].m_polygon[(int)m_lowest.Y];

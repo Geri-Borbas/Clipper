@@ -3,6 +3,7 @@
 #endif
 
 #include <cmath>
+#include <algorithm>
 #include <ctime>
 #include <cstdlib>
 #include <cstdio>
@@ -14,28 +15,29 @@
 #include <string>
 #include "clipper.hpp"
 
-//---------------------------------------------------------------------------
-
 using namespace std;
 using namespace ClipperLib;
 
-static string ColorToHtml(unsigned clr)
-{
-  stringstream ss;
-  ss << '#' << hex << std::setfill('0') << setw(6) << (clr & 0xFFFFFF);
-  return ss.str();
-}
-//------------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// SVGBuilder class
+// a very simple class that creates an SVG image file
+//---------------------------------------------------------------------------
 
-static float GetAlphaAsFrac(unsigned clr)
-{
-  return ((float)(clr >> 24) / 255);
-}
-//------------------------------------------------------------------------------
-
-//a simple class that builds an SVG file with any number of paths
 class SVGBuilder
 {
+  static string ColorToHtml(unsigned clr)
+  {
+    stringstream ss;
+    ss << '#' << hex << std::setfill('0') << setw(6) << (clr & 0xFFFFFF);
+    return ss.str();
+  }
+  //------------------------------------------------------------------------------
+
+  static float GetAlphaAsFrac(unsigned clr)
+  {
+    return ((float)(clr >> 24) / 255);
+  }
+  //------------------------------------------------------------------------------
 
   class StyleInfo
   {
@@ -85,7 +87,7 @@ public:
     polyInfos.push_back(PolyInfo(poly, style));
   }
 
-  bool SaveToFile(char * filename, double scale = 1.0, int margin = 10)
+  bool SaveToFile(const string& filename, double scale = 1.0, int margin = 10)
   {
     //calculate the bounding rect ...
     PolyInfoList::size_type i = 0;
@@ -118,12 +120,12 @@ public:
 
     if (scale == 0) scale = 1.0;
     if (margin < 0) margin = 0;
-    rec.left = (long64)((double)rec.left * scale);
-    rec.top = (long64)((double)rec.top * scale);
-    rec.right = (long64)((double)rec.right * scale);
-    rec.bottom = (long64)((double)rec.bottom * scale);
-    long64 offsetX = -rec.left + margin;
-    long64 offsetY = -rec.top + margin;
+    rec.left = (cInt)((double)rec.left * scale);
+    rec.top = (cInt)((double)rec.top * scale);
+    rec.right = (cInt)((double)rec.right * scale);
+    rec.bottom = (cInt)((double)rec.bottom * scale);
+    cInt offsetX = -rec.left + margin;
+    cInt offsetY = -rec.top + margin;
 
     ofstream file;
     file.open(filename);
@@ -186,102 +188,87 @@ public:
     setlocale(LC_NUMERIC, "");
     return true;
   }
-};
+}; //SVGBuilder
 //------------------------------------------------------------------------------
 
 const std::string SVGBuilder::svg_xml_start [] =
   {"<?xml version=\"1.0\" standalone=\"no\"?>\n"
-   "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.0//EN\"\n"
-   "\"http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd\">\n\n"
-   "<svg width=\"",
-   "\" height=\"",
-   "\" viewBox=\"0 0 ",
-   "\" version=\"1.0\" xmlns=\"http://www.w3.org/2000/svg\">\n\n"
+    "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.0//EN\"\n"
+    "\"http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd\">\n\n"
+    "<svg width=\"",
+    "\" height=\"",
+    "\" viewBox=\"0 0 ",
+    "\" version=\"1.0\" xmlns=\"http://www.w3.org/2000/svg\">\n\n"
   };
 const std::string SVGBuilder::poly_end [] =
   {"\"\n style=\"fill:",
-   "; fill-opacity:",
-   "; fill-rule:",
-   "; stroke:",
-   "; stroke-opacity:",
-   "; stroke-width:",
-   ";\"/>\n\n"
+    "; fill-opacity:",
+    "; fill-rule:",
+    "; stroke:",
+    "; stroke-opacity:",
+    "; stroke-width:",
+    ";\"/>\n\n"
   };
 
 //------------------------------------------------------------------------------
+// Miscellaneous function ...
 //------------------------------------------------------------------------------
 
-inline long64 Round(double val)
+bool SaveToFile(const string& filename, Paths &ppg, double scale = 1.0, unsigned decimal_places = 0)
 {
-  if ((val < 0)) return (long64)(val - 0.5); else return (long64)(val + 0.5);
-}
-//------------------------------------------------------------------------------
+  ofstream ofs(filename);
+  if (!ofs) return false;
 
-bool LoadFromFile(Paths &ppg, char * filename, double scale= 1,
-  int xOffset = 0, int yOffset = 0)
-{
-  ppg.clear();
+  if (decimal_places > 8) decimal_places = 8;
+  ofs << setprecision(decimal_places) << std::fixed;
 
-  FILE *f = fopen(filename, "r");
-  if (!f) return false;
-  int polyCnt, vertCnt;
-  char junk [80];
-  double X, Y;
-  if (fscanf(f, "%d", &polyCnt) == 1 && polyCnt > 0)
+  Path pg;
+  for (size_t i = 0; i < ppg.size(); ++i)
   {
-    ppg.resize(polyCnt);
-    for (int i = 0; i < polyCnt; i++) {
-      if (fscanf(f, "%d", &vertCnt) != 1 || vertCnt <= 0) break;
-      ppg[i].resize(vertCnt);
-      for (int j = 0; j < vertCnt; j++) {
-        if (fscanf(f, "%lf%*[, ]%lf", &X, &Y) != 2) break;
-        ppg[i][j].X = Round((X + xOffset) * scale);
-        ppg[i][j].Y = Round((Y + yOffset) * scale);
-        fgets(junk, 80, f);
-      }
-    }
+    for (size_t j = 0; j < ppg[i].size(); ++j)
+      ofs << ppg[i][j].X / scale << ", " << ppg[i][j].Y / scale << "," << std::endl;
+    ofs << std::endl;
   }
-  fclose(f);
+  ofs.close();
   return true;
 }
 //------------------------------------------------------------------------------
 
-void SaveToConsole(const string name, const Paths &pp, double scale = 1.0)
+bool LoadFromFile(Paths &ppg, const string& filename, double scale)
 {
-  cout << '\n' << name << ":\n"
-    << pp.size() << '\n';
-  for (unsigned i = 0; i < pp.size(); ++i)
-  {
-    cout << pp[i].size() << '\n';
-    for (unsigned j = 0; j < pp[i].size(); ++j)
-      cout << pp[i][j].X /scale << ", " << pp[i][j].Y /scale << ",\n";
-  }
-  cout << "\n";
-}
-//---------------------------------------------------------------------------
+  //file format assumes: 
+  //  1. path coordinates (x,y) are comma separated (+/- spaces) and 
+  //  each coordinate is on a separate line
+  //  2. each path is separated by one or more blank lines
 
-void SaveToFile(char *filename, Paths &pp, double scale = 1)
-{
-  FILE *f = fopen(filename, "w");
-  if (!f) return;
-  fprintf(f, "%d\n", pp.size());
-  for (unsigned i = 0; i < pp.size(); ++i)
+  ppg.clear();
+  ifstream ifs(filename);
+  if (!ifs) return false;
+  string line;
+  Path pg;
+  while (std::getline(ifs, line))
   {
-    fprintf(f, "%d\n", pp[i].size());
-    if (scale > 1.01 || scale < 0.99) {
-      for (unsigned j = 0; j < pp[i].size(); ++j)
-        fprintf(f, "%.6lf, %.6lf,\n",
-          (double)pp[i][j].X /scale, (double)pp[i][j].Y /scale);
-    }
-    else
+    stringstream ss(line);
+    double X = 0.0, Y = 0.0;
+    if (!(ss >> X))
     {
-      for (unsigned j = 0; j < pp[i].size(); ++j)
-        fprintf(f, "%lld, %lld,\n", pp[i][j].X, pp[i][j].Y );
+      //ie blank lines => flag start of next polygon 
+      if (pg.size() > 0) ppg.push_back(pg);
+      pg.clear();
+      continue;
     }
+    char c = ss.peek();  
+    while (c == ' ') {ss.read(&c, 1); c = ss.peek();} //gobble spaces before comma
+    if (c == ',') {ss.read(&c, 1); c = ss.peek();} //gobble comma
+    while (c == ' ') {ss.read(&c, 1); c = ss.peek();} //gobble spaces after comma
+    if (!(ss >> Y)) break; //oops!
+    pg.push_back(IntPoint((cInt)(X * scale),(cInt)(Y * scale)));
   }
-  fclose(f);
+  if (pg.size() > 0) ppg.push_back(pg);
+  ifs.close();
+  return true;
 }
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 void MakeRandomPoly(int edgeCount, int width, int height, Paths & poly)
 {
@@ -294,48 +281,40 @@ void MakeRandomPoly(int edgeCount, int width, int height, Paths & poly)
 }
 //------------------------------------------------------------------------------
 
+bool ASCII_icompare(char* str1, char* str2)
+{
+  //case insensitive compare for ASCII chars only
+  while (*str1) 
+  {
+    if (toupper(*str1) != toupper(*str2)) return false;
+    str1++;
+    str2++;
+  }
+  return (!*str2);
+}
+
+//------------------------------------------------------------------------------
+// Main entry point ...
+//------------------------------------------------------------------------------
+
 int main(int argc, char* argv[])
 {
-  ////quick test with random paths ...
-  //Paths ss, cc, sss;
-  //PolyFillType pft = pftNonZero;//pftEvenOdd;//
-  //srand((int)time(0));
-  //MakeRandomPoly(100, 400, 400, ss);
-  //MakeRandomPoly(100, 400, 400, cc);
-  //Clipper cpr;
-  //cpr.AddPaths(ss, ptSubject, true);
-  //cpr.AddPaths(cc, ptClip, true);
-  //cpr.Execute(ctIntersection, sss, pft, pft);
-  ////sss = Clipper.OffsetPolygons(sss, -5.0 * scale, JoinType.jtMiter, 4);
-  //SVGBuilder svg1;
-  //svg1.style.pft = pft;
-  //svg1.style.brushClr = 0x2000009c;
-  //svg1.style.penClr = 0xFFd3d3da;
-  //svg1.AddPaths(ss);
-  //svg1.style.brushClr = 0x209c0000;
-  //svg1.style.penClr = 0xFFFFa07a;
-  //svg1.AddPaths(cc);
-  //svg1.style.brushClr = 0xAA80ff9c;
-  //svg1.style.penClr = 0xFF003300;
-  //svg1.AddPaths(sss);
-  //svg1.SaveToFile("solution.svg", 1.0);
-  //return 0;
-
   if (argc > 1 &&
     (strcmp(argv[1], "-b") == 0 || strcmp(argv[1], "--benchmark") == 0))
   {
     //do a benchmark test that creates a subject and a clip polygon both with
     //100 vertices randomly placed in a 400 * 400 space. Then perform an
     //intersection operation based on even-odd filling. Repeat all this X times.
-    int loop_cnt = 100;
+    int loop_cnt = 1000;
     char * dummy;
     if (argc > 2) loop_cnt = strtol(argv[2], &dummy, 10);
-    if (loop_cnt == 0) loop_cnt = 100;
+    if (loop_cnt == 0) loop_cnt = 1000;
     cout << "\nPerforming " << loop_cnt << " random intersection operations ... ";
     srand((int)time(0));
     int error_cnt = 0;
     Paths subject, clip, solution;
     Clipper clpr;
+
     time_t time_start = clock();
     for (int i = 0; i < loop_cnt; i++) {
       MakeRandomPoly(100, 400, 400, subject);
@@ -347,13 +326,15 @@ int main(int argc, char* argv[])
         error_cnt++;
     }
     double time_elapsed = double(clock() - time_start)/CLOCKS_PER_SEC;
+
     cout << "\nFinished in " << time_elapsed << " secs with ";
     cout << error_cnt << " errors.\n\n";
     //let's save the very last result ...
     SaveToFile("Subject.txt", subject);
     SaveToFile("Clip.txt", clip);
     SaveToFile("Solution.txt", solution);
-    //and see it as an image too ...
+
+    //and see the final clipping op as an image too ...
     SVGBuilder svg;
     svg.style.penWidth = 0.8;
     svg.style.pft = pftEvenOdd;
@@ -374,28 +355,31 @@ int main(int argc, char* argv[])
   if (argc < 3)
   {
     cout << "\nUSAGE:\n"
-      << "clipper --benchmark [LOOP_COUNT (default = 100)]\n"
+      << argv[0] << " sub_file clp_file CLIPTYPE [SUB_FILL CLP_FILL] [PRECISION] [SVG_SCALE]\n"
       << "or\n"
-      << "clipper sub_file clp_file CLIPTYPE [SUB_FILL CLP_FILL] [PRECISION] [SVG_SCALE]\n"
+      << argv[0] << " --benchmark [LOOP_COUNT (default = 1000)]\n"
       << "where ...\n"
       << "  CLIPTYPE  = INTERSECTION or UNION or DIFFERENCE or XOR, and\n"
       << "  ???_FILL  = EVENODD or NONZERO (default = NONZERO)\n"
       << "  PRECISION = in decimal places (default = 0)\n"
       << "  SVG_SCALE = SVG output scale (default = 1.0)\n\n";
-    cout << "\nINPUT AND OUTPUT FILE FORMAT ([optional] {comments}):\n"
-      << "Polygon Count\n"
-      << "Vertex Count {first polygon}\n"
-      << "X, Y[,] {first vertex}\n"
-      << "X, Y[,] {next vertex}\n"
+    cout << "\nFILE FORMAT FOR INPUT AND OUTPUT FILES ([optional] {comments}):\n"
+      << "X, Y[,] {first vertex of first path}\n"
+      << "X, Y[,] {next vertex of first path}\n"
       << "{etc.}\n"
-      << "Vertex Count {second polygon, if there is one}\n"
-      << "X, Y[,] {first vertex of second polygon}\n"
+      << "X, Y[,] {last vertex of first path}\n"
+      << "\n"
+      << "{blank line(s) between paths}\n"
+      << "X, Y[,] {first vertex of second path}\n"
+      << "X, Y[,] {next vertex of second path}\n"
       << "{etc.}\n\n";
+    cout << "Example: \n"
+      << argv[0] << "  \"subj.txt\" \"clip.txt\" INTERSECTION EVENODD EVENODD\n\n";
     return 1;
   }
 
   int scale_log10 = 0;
-  char * dummy;
+  char* dummy;
   if (argc > 6) scale_log10 = strtol(argv[6], &dummy, 10);
   double scale = std::pow(double(10), scale_log10);
 
@@ -423,17 +407,17 @@ int main(int argc, char* argv[])
 
   if (argc > 3)
   {
-    if (_stricmp(argv[3], "XOR") == 0) clipType = ctXor;
-    else if (_stricmp(argv[3], "UNION") == 0) clipType = ctUnion;
-    else if (_stricmp(argv[3], "DIFFERENCE") == 0) clipType = ctDifference;
+    if (ASCII_icompare(argv[3], "XOR")) clipType = ctXor;
+    else if (ASCII_icompare(argv[3], "UNION")) clipType = ctUnion;
+    else if (ASCII_icompare(argv[3], "DIFFERENCE")) clipType = ctDifference;
     else clipType = ctIntersection;
   }
 
   PolyFillType subj_pft = pftNonZero, clip_pft = pftNonZero;
   if (argc > 5)
   {
-    if (_stricmp(argv[4], "EVENODD") == 0) subj_pft = pftEvenOdd;
-    if (_stricmp(argv[5], "EVENODD") == 0) clip_pft = pftEvenOdd;
+    if (ASCII_icompare(argv[4], "EVENODD")) subj_pft = pftEvenOdd;
+    if (ASCII_icompare(argv[5], "EVENODD")) clip_pft = pftEvenOdd;
   }
 
   Clipper c;
@@ -441,44 +425,34 @@ int main(int argc, char* argv[])
   c.AddPaths(clip, ptClip, true);
   Paths solution;
 
-  bool succeeded = c.Execute(clipType, solution, subj_pft, clip_pft);
-  string s = "Subjects (";
-  s += (subj_pft == pftEvenOdd ? "EVENODD)" : "NONZERO)");
+  if (!c.Execute(clipType, solution, subj_pft, clip_pft)) 
+  {
+    cout << (sClipType[clipType] + " failed!\n\n");
+    return 1;
+  }
 
-  //ie don't change the paths back to the original size if we've
-  //just down-sized them to a manageable (all-in-one-screen) size ...
-  //if (scale < 1) scale = 1;
+  cout << "\nFinished!\n\n";
+  SaveToFile("solution.txt", solution, scale);
 
-  SaveToConsole(s, subject, scale);
-  s = "Clips (";
-  s += (clip_pft == pftEvenOdd ? "EVENODD)" : "NONZERO)");
-  SaveToConsole(s, clip, scale);
-  if (succeeded) {
-    s = "Solution (using " + sClipType[clipType] + ")";
-    //SaveToConsole(s, solution, scale);
-    SaveToFile("solution.txt", solution, scale);
+  //let's see the result too ...
+  SVGBuilder svg;
+  svg.style.penWidth = 0.8;
+  svg.style.brushClr = 0x1200009C;
+  svg.style.penClr = 0xCCD3D3DA;
+  svg.style.pft = subj_pft;
+  svg.AddPaths(subject);
+  svg.style.brushClr = 0x129C0000;
+  svg.style.penClr = 0xCCFFA07A;
+  svg.style.pft = clip_pft;
+  svg.AddPaths(clip);
+  svg.style.brushClr = 0x6080ff9C;
+  svg.style.penClr = 0xFF003300;
+  svg.style.pft = pftNonZero;
+  svg.AddPaths(solution);
+  svg.SaveToFile("solution.svg", svg_scale);
 
-    //OffsetPaths(solution, solution, -5.0 *scale, jtRound, etClosed);
-
-    //let's see the result too ...
-    SVGBuilder svg;
-    svg.style.penWidth = 0.8;
-    svg.style.brushClr = 0x1200009C;
-    svg.style.penClr = 0xCCD3D3DA;
-    svg.style.pft = subj_pft;
-    svg.AddPaths(subject);
-    svg.style.brushClr = 0x129C0000;
-    svg.style.penClr = 0xCCFFA07A;
-    svg.style.pft = clip_pft;
-    svg.AddPaths(clip);
-    svg.style.brushClr = 0x6080ff9C;
-    svg.style.penClr = 0xFF003300;
-    svg.style.pft = pftNonZero;
-    svg.AddPaths(solution);
-    svg.SaveToFile("solution.svg", svg_scale);
-  } else
-      cout << (sClipType[clipType] + " failed!\n\n");
-
+  //finally, show the svg image in the default viewing application
+  system("solution.svg"); 
   return 0;
 }
 //---------------------------------------------------------------------------

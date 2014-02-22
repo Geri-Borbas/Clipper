@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.4                                                           *
-* Date      :  7 February 2014                                                 *
+* Version   :  6.1.5                                                           *
+* Date      :  22 February 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -38,7 +38,7 @@ unit clipper;
 {.$DEFINE use_int32}
 
 //use_xyz: adds a Z member to IntPoint (with only a minor cost to performance)
-//{$DEFINE use_xyz}
+{.$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
 {.$DEFINE use_lines}
@@ -1179,6 +1179,16 @@ begin
 end;
 //---------------------------------------------------------------------------
 
+procedure Swap(var val1, val2: cInt); {$IFDEF INLINING} inline; {$ENDIF}
+var
+  tmp: cInt;
+begin
+  tmp := val1;
+  val1 := val2;
+  val2 := tmp;
+end;
+//---------------------------------------------------------------------------
+
 procedure SwapSides(Edge1, Edge2: PEdge);
 var
   Side: TEdgeSide;
@@ -1368,20 +1378,13 @@ end;
 //------------------------------------------------------------------------------
 
 procedure ReverseHorizontal(E: PEdge);
-var
-  tmp: cInt;
 begin
   //swap horizontal edges' top and bottom x's so they follow the natural
   //progression of the bounds - ie so their xbots will align with the
   //adjoining lower Edge. [Helpful in the ProcessHorizontal() method.]
-  tmp := E.Top.X;
-  E.Top.X := E.Bot.X;
-  E.Bot.X := tmp;
-
+  Swap(E.Top.X, E.Bot.X);
 {$IFDEF use_xyz}
-  tmp := E.Top.Z;
-  E.Top.Z := E.Bot.Z;
-  E.Bot.Z := tmp;
+  Swap(E.Top.Z, E.Bot.Z);
 {$ENDIF}
 end;
 //------------------------------------------------------------------------------
@@ -2424,17 +2427,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function HorzSegmentsOverlap(const Pt1a, Pt1b, Pt2a, Pt2b: TIntPoint): Boolean;
+function HorzSegmentsOverlap(seg1a, seg1b, seg2a, seg2b: cInt): Boolean;
 begin
-  //precondition: both segments are horizontal
-  Result := true;
-  if (Pt1a.X > Pt2a.X) = (Pt1a.X < Pt2b.X) then Exit
-  else if (Pt1b.X > Pt2a.X) = (Pt1b.X < Pt2b.X) then Exit
-  else if (Pt2a.X > Pt1a.X) = (Pt2a.X < Pt1b.X) then Exit
-  else if (Pt2b.X > Pt1a.X) = (Pt2b.X < Pt1b.X) then Exit
-  else if (Pt1a.X = Pt2a.X) and (Pt1b.X = Pt2b.X) then Exit
-  else if (Pt1a.X = Pt2b.X) and (Pt1b.X = Pt2a.X) then Exit
-  else Result := False;
+  if (seg1a > seg1b) then Swap(seg1a, seg1b);
+  if (seg2a > seg2b) then Swap(seg2a, seg2b);
+  Result := (seg1a < seg2b) and (seg2a < seg1b);
 end;
 //------------------------------------------------------------------------------
 
@@ -2542,8 +2539,9 @@ begin
         //if the horizontal Rb and a 'ghost' horizontal overlap, then convert
         //the 'ghost' join to a real join ready for later ...
         Jr := PJoin(FGhostJoinList[I]);
-        if HorzSegmentsOverlap(Jr.OutPt1.Pt, Jr.OffPt, Rb.Bot, Rb.Top) then
-          AddJoin(Jr.OutPt1, Op1, Jr.OffPt);
+        if HorzSegmentsOverlap(Jr.OutPt1.Pt.X, Jr.OffPt.X,
+          Rb.Bot.X, Rb.Top.X) then
+            AddJoin(Jr.OutPt1, Op1, Jr.OffPt);
       end;
     end;
 
@@ -3288,38 +3286,8 @@ end;
 //------------------------------------------------------------------------
 
 procedure TClipper.ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
-
-  procedure PrepareHorzJoins;
-  var
-    //I: Integer;
-    OutPt: POutPt;
-  begin
-    //get the last Op for this horizontal edge
-    //the point may be anywhere along the horizontal ...
-    OutPt := POutRec(FPolyOutList[HorzEdge.OutIdx]).Pts;
-    if HorzEdge.Side <> esLeft then OutPt := OutPt.Prev;
-
-//    //First, match up overlapping horizontal edges (eg when one polygon's
-//    //intermediate horz edge overlaps an intermediate horz edge of another, or
-//    //when one polygon sits on top of another) ...
-//      for I := 0 to FGhostJoinList.Count -1 do
-//        with PJoin(FGhostJoinList[I])^ do
-//          if HorzSegmentsOverlap(OutPt1.Pt, OffPt,
-//            HorzEdge.Bot, HorzEdge.Top) then
-//              AddJoin(OutPt1, OutPt, OffPt);
-
-    //Also, since horizontal edges at the top of one SB are often removed from
-    //the AEL before we process the horizontal edges at the bottom of the next,
-    //we need to create 'ghost' Join records of 'contrubuting' horizontals that
-    //we can compare with horizontals at the bottom of the next SB.
-    if IsTopOfScanbeam then
-      if PointsEqual(OutPt.Pt, HorzEdge.Top) then
-        AddGhostJoin(OutPt, HorzEdge.Bot) else
-        AddGhostJoin(OutPt, HorzEdge.Top);
-  end;
-
 var
-  E, eNext, ePrev, eMaxPair, eLastHorz: PEdge;
+  E, eNext, eNextHorz, ePrev, eMaxPair, eLastHorz: PEdge;
   HorzLeft, HorzRight: cInt;
   Direction: TDirection;
   Pt: TIntPoint;
@@ -3362,9 +3330,6 @@ begin
     E := GetNextInAEL(HorzEdge, Direction);
     while Assigned(E) do
     begin
-//      if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
-//        PrepareHorzJoins; ToDo- move here eventually
-
       //Break if we've got to the end of an intermediate horizontal edge ...
       //nb: Smaller Dx's are to the right of larger Dx's ABOVE the horizontal.
       if (E.Curr.X = HorzEdge.Top.X) and
@@ -3375,16 +3340,30 @@ begin
       if ((Direction = dLeftToRight) and (E.Curr.X <= HorzRight)) or
         ((Direction = dRightToLeft) and (E.Curr.X >= HorzLeft)) then
       begin
-        if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
-          PrepareHorzJoins; //ToDo - move above eventually
         //so far we're still in range of the horizontal Edge  but make sure
         //we're at the last of consec. horizontals when matching with eMaxPair
         if (E = eMaxPair) and IsLastHorz then
         begin
-          if Direction = dLeftToRight then
-            IntersectEdges(HorzEdge, E, E.Top) else
-            IntersectEdges(E, HorzEdge, E.Top);
-          if (eMaxPair.OutIdx >= 0) then raise exception.Create(rsHorizontal);
+          if HorzEdge.OutIdx >= 0 then
+          begin
+            Op1 := AddOutPt(HorzEdge, HorzEdge.Top);
+            eNextHorz := FSortedEdges;
+            while Assigned(eNextHorz) do
+            begin
+              if (eNextHorz.OutIdx >= 0) and
+                HorzSegmentsOverlap(HorzEdge.Bot.X,
+                HorzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X) then
+              begin
+                Op2 := AddOutPt(eNextHorz, eNextHorz.Bot);
+                AddJoin(Op2, Op1, eNextHorz.Top);
+              end;
+              eNextHorz := eNextHorz.NextInSEL;
+            end;
+            AddGhostJoin(Op1, HorzEdge.Bot);
+            AddLocalMaxPoly(HorzEdge, eMaxPair, HorzEdge.Top);
+          end;
+          deleteFromAEL(HorzEdge);
+          deleteFromAEL(eMaxPair);
           Exit;
         end
         else if (Direction = dLeftToRight) then
@@ -3404,9 +3383,6 @@ begin
       E := eNext;
     end;
 
-    if (HorzEdge.OutIdx >= 0) and (HorzEdge.WindDelta <> 0) then
-      PrepareHorzJoins;
-
     if Assigned(HorzEdge.NextInLML) and
       (HorzEdge.NextInLML.Dx = Horizontal) then
     begin
@@ -3422,6 +3398,8 @@ begin
     if (HorzEdge.OutIdx >= 0) then
     begin
       Op1 := AddOutPt(HorzEdge, HorzEdge.Top);
+      if IsTopOfScanbeam then AddGhostJoin(Op1, HorzEdge.Bot);
+
       UpdateEdgeIntoAEL(HorzEdge);
       if (HorzEdge.WindDelta = 0) then Exit;
       //nb: HorzEdge is no longer horizontal here
@@ -3445,21 +3423,6 @@ begin
       end;
     end else
       UpdateEdgeIntoAEL(HorzEdge);
-  end
-  else if assigned(eMaxPair) then
-  begin
-    if (eMaxPair.OutIdx >= 0) then
-    begin
-      if Direction = dLeftToRight then
-        IntersectEdges(HorzEdge, eMaxPair, HorzEdge.Top) else
-        IntersectEdges(eMaxPair, HorzEdge, HorzEdge.Top);
-      if (eMaxPair.OutIdx >= 0) then
-        raise exception.Create(rsHorizontal);
-    end else
-    begin
-      DeleteFromAEL(HorzEdge);
-      DeleteFromAEL(eMaxPair);
-    end;
   end else
   begin
     if (HorzEdge.OutIdx >= 0) then AddOutPt(HorzEdge, HorzEdge.Top);
@@ -3630,7 +3593,10 @@ begin
   end
   else if (E.OutIdx >= 0) and (EMaxPair.OutIdx >= 0) then
   begin
-    IntersectEdges(E, EMaxPair, E.Top);
+    if E.OutIdx >= 0 then
+      AddLocalMaxPoly(E, EMaxPair, E.Top);
+    deleteFromAEL(E);
+    deleteFromAEL(eMaxPair);
   end
 {$IFDEF use_lines}
   else if E.WindDelta = 0 then
@@ -4538,7 +4504,7 @@ begin
   //if this path's lowest pt is lower than all the others then update FLowest
   if (FLowest.X < 0) then
   begin
-    FLowest := IntPoint(0, K);
+    FLowest := IntPoint(FPolyNodes.ChildCount -1, K);
   end else
   begin
     ip := FPolyNodes.Childs[FLowest.X].FPath[FLowest.Y];
@@ -5081,11 +5047,6 @@ begin
       ExcludeOp(op.Next);
       op := ExcludeOp(op);
       Dec(Len, 2);
-    end
-    else if SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, DistSqrd) then
-    begin
-      op := ExcludeOp(op);
-      Dec(Len);
     end
     else
     begin
