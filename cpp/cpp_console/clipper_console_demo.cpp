@@ -281,7 +281,7 @@ void MakeRandomPoly(int edgeCount, int width, int height, Paths & poly)
 }
 //------------------------------------------------------------------------------
 
-bool ASCII_icompare(char* str1, char* str2)
+bool ASCII_icompare(const char* str1, const char* str2)
 {
   //case insensitive compare for ASCII chars only
   while (*str1) 
@@ -354,27 +354,30 @@ int main(int argc, char* argv[])
 
   if (argc < 3)
   {
-    cout << "\nUSAGE:\n"
-      << argv[0] << " sub_file clp_file CLIPTYPE [SUB_FILL CLP_FILL] [PRECISION] [SVG_SCALE]\n"
+    cout << "\nUsage:\n"
+      << "  clipper_console_demo S_FILE C_FILE CT [S_FILL C_FILL] [PRECISION] [SVG_SCALE]\n"
       << "or\n"
-      << argv[0] << " --benchmark [LOOP_COUNT (default = 1000)]\n"
-      << "where ...\n"
-      << "  CLIPTYPE  = INTERSECTION or UNION or DIFFERENCE or XOR, and\n"
-      << "  ???_FILL  = EVENODD or NONZERO (default = NONZERO)\n"
-      << "  PRECISION = in decimal places (default = 0)\n"
-      << "  SVG_SCALE = SVG output scale (default = 1.0)\n\n";
-    cout << "\nFILE FORMAT FOR INPUT AND OUTPUT FILES ([optional] {comments}):\n"
-      << "X, Y[,] {first vertex of first path}\n"
-      << "X, Y[,] {next vertex of first path}\n"
-      << "{etc.}\n"
-      << "X, Y[,] {last vertex of first path}\n"
-      << "\n"
-      << "{blank line(s) between paths}\n"
-      << "X, Y[,] {first vertex of second path}\n"
-      << "X, Y[,] {next vertex of second path}\n"
-      << "{etc.}\n\n";
-    cout << "Example: \n"
-      << argv[0] << "  \"subj.txt\" \"clip.txt\" INTERSECTION EVENODD EVENODD\n\n";
+      << "  clipper_console_demo --benchmark [LOOP_COUNT]\n\n"
+      << "Legend: [optional parameters in square braces]; {comments in curly braces}\n\n"
+      << "Parameters:\n"
+      << "  S_FILE & C_FILE are the subject and clip input files (see format below)\n"
+      << "  CT: cliptype, either INTERSECTION or UNION or DIFFERENCE or XOR\n"
+      << "  SUBJECT_FILL & CLIP_FILL: either EVENODD or NONZERO. Default: NONZERO\n"
+      << "  PRECISION (in decimal places) for input data. Default = 0\n"
+      << "  SVG_SCALE: scale of the output svg image. Default = 1.0\n"
+      << "  LOOP_COUNT is the number of random clipping operations. Default = 1000\n\n"
+      << "\nFile format for input and output files:\n"
+      << "  X, Y[,] {first vertex of first path}\n"
+      << "  X, Y[,] {next vertex of first path}\n"
+      << "  {etc.}\n"
+      << "  X, Y[,] {last vertex of first path}\n"
+      << "  {blank line(s) between paths}\n"
+      << "  X, Y[,] {first vertex of second path}\n"
+      << "  X, Y[,] {next vertex of second path}\n"
+      << "  {etc.}\n\n"
+      << "Examples:\n"
+      << "  clipper_console_demo \"subj.txt\" \"clip.txt\" INTERSECTION EVENODD EVENODD\n"
+      << "  clipper_console_demo --benchmark 1000\n";
     return 1;
   }
 

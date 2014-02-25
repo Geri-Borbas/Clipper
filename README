@@ -2,6 +2,13 @@
 Clipper Change Log
 =====================================================================
 
+v6.1.5 (26 February 2014)
+* Improved the joining of output polygons sharing a common edge 
+  when those common edges are horizontal.
+* Fixed a bug in ClipperOffset.AddPath() which would produce
+  incorrect solutions when open paths were added before closed paths.
+* Minor code tidy and performance improvement
+
 v6.1.4 (6 February 2014)
 * Fixed bugs in MinkowskiSum
 * Fixed minor bug when using Clipper.ForceSimplify.

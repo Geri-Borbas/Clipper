@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  22 February 2014                                                *
+* Date      :  25 February 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -596,21 +596,18 @@ inline cInt TopX(TEdge &edge, const cInt currentY)
 }
 //------------------------------------------------------------------------------
 
-bool IntersectPoint(TEdge &Edge1, TEdge &Edge2,
-  IntPoint &ip, bool UseFullInt64Range)
+void IntersectPoint(TEdge &Edge1, TEdge &Edge2, IntPoint &ip)
 {
 #ifdef use_xyz  
   ip.Z = 0;
 #endif
 
   double b1, b2;
-  //nb: with very large coordinate values, it's possible for SlopesEqual() to 
-  //return false but for the edge.Dx value be equal due to double precision rounding.
-  if (SlopesEqual(Edge1, Edge2, UseFullInt64Range) || Edge1.Dx == Edge2.Dx)
+  if (Edge1.Dx == Edge2.Dx)
   {
-    if (Edge2.Bot.Y > Edge1.Bot.Y) ip = Edge2.Bot;
-    else ip = Edge1.Bot;
-    return false;
+    ip.Y = Edge1.Curr.Y;
+    ip.X = TopX(Edge1, ip.Y);
+    return;
   }
   else if (Edge1.Delta.X == 0)
   {
@@ -657,7 +654,14 @@ bool IntersectPoint(TEdge &Edge1, TEdge &Edge2,
     else
       ip.X = TopX(Edge2, ip.Y);
   } 
-  return true;
+  //finally, don't allow 'ip' to be BELOW curr.Y (ie bottom of scanbeam) ...
+  if (ip.Y > Edge1.Curr.Y)
+  {
+    ip.Y = Edge1.Curr.Y;
+    if (Edge1.Dx > Edge2.Dx)
+      ip.X = TopX(Edge2, ip.Y); else
+      ip.X = TopX(Edge1, ip.Y);
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -2819,16 +2823,7 @@ void Clipper::BuildIntersectList(const cInt botY, const cInt topY)
       IntPoint Pt;
       if(e->Curr.X > eNext->Curr.X)
       {
-        if (!IntersectPoint(*e, *eNext, Pt, m_UseFullRange) && e->Curr.X > eNext->Curr.X +1)
-          throw clipperException("Intersection error");
-        if (Pt.Y > botY)
-        {
-            Pt.Y = botY;
-            if (std::fabs(e->Dx) > std::fabs(eNext->Dx))
-              Pt.X = TopX(*eNext, botY); else
-              Pt.X = TopX(*e, botY);
-        }
-
+        IntersectPoint(*e, *eNext, Pt);
         IntersectNode * newNode = new IntersectNode;
         newNode->Edge1 = e;
         newNode->Edge2 = eNext;
@@ -4284,6 +4279,11 @@ void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
       ExcludeOp(op->Next);
       op = ExcludeOp(op);
       size -= 2;
+    }
+    else if (SlopesNearCollinear(op->Prev->Pt, op->Pt, op->Next->Pt, distSqrd))
+    {
+      op = ExcludeOp(op);
+      size--;
     }
     else
     {

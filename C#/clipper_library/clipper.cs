@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  22 February 2014                                                *
+* Date      :  25 February 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -2860,16 +2860,7 @@ namespace ClipperLib
             IntPoint pt;
             if (e.Curr.X > eNext.Curr.X)
             {
-                if (!IntersectPoint(e, eNext, out pt) && e.Curr.X > eNext.Curr.X +1)
-                    throw new ClipperException("Intersection error");
-                if (pt.Y > botY)
-                {
-                    pt.Y = botY;
-                    if (Math.Abs(e.Dx) > Math.Abs(eNext.Dx))
-                      pt.X = TopX(eNext, botY); else
-                      pt.X = TopX(e, botY);
-                }
-
+                IntersectPoint(e, eNext, out pt);
                 IntersectNode newNode = new IntersectNode();
                 newNode.Edge1 = e;
                 newNode.Edge2 = eNext;
@@ -2960,21 +2951,20 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private bool IntersectPoint(TEdge edge1, TEdge edge2, out IntPoint ip)
+      private void IntersectPoint(TEdge edge1, TEdge edge2, out IntPoint ip)
       {
         ip = new IntPoint();
         double b1, b2;
         //nb: with very large coordinate values, it's possible for SlopesEqual() to 
         //return false but for the edge.Dx value be equal due to double precision rounding.
-        if (SlopesEqual(edge1, edge2, m_UseFullRange) || edge1.Dx == edge2.Dx)
+        if (edge1.Dx == edge2.Dx)
         {
-            if (edge2.Bot.Y > edge1.Bot.Y)
-              ip = edge2.Bot;
-            else
-              ip = edge1.Bot;
-            return false;
+          ip.Y = edge1.Curr.Y;
+          ip.X = TopX(edge1, ip.Y);
+          return;
         }
-        else if (edge1.Delta.X == 0)
+
+        if (edge1.Delta.X == 0)
         {
             ip.X = edge1.Bot.X;
             if (IsHorizontal(edge2))
@@ -3023,7 +3013,13 @@ namespace ClipperLib
           else
             ip.X = TopX(edge2, ip.Y);
         }
-        return true;
+        //finally, don't allow 'ip' to be BELOW curr.Y (ie bottom of scanbeam) ...
+        if (ip.Y > edge1.Curr.Y)
+        {
+          ip.Y = edge1.Curr.Y;
+          if (edge1.Dx > edge2.Dx) ip.X = TopX(edge2, ip.Y);
+          else ip.X = TopX(edge1, ip.Y);
+        }
       }
       //------------------------------------------------------------------------------
 
@@ -4058,6 +4054,11 @@ namespace ClipperLib
             ExcludeOp(op.Next);
             op = ExcludeOp(op);
             cnt -= 2;
+          }
+          else if (SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, distSqrd))
+          {
+            op = ExcludeOp(op);
+            cnt--;
           }
           else
           {

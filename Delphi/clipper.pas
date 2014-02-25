@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  22 February 2014                                                *
+* Date      :  25 February 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -459,6 +459,11 @@ const
 {$ENDIF}
 
 implementation
+
+//NOTE: The Clipper library has been developed with software that uses an
+//inverted Y axis display. Therefore 'above' and 'below' in the code's comments
+//will reflect this. For example: given coord A (0,20) and coord B (0,10),
+//A.Y would be considered BELOW B.Y to correctly understand the comments.
 
 const
   Horizontal: Double = -3.4e+38;
@@ -1230,25 +1235,17 @@ end;
 //------------------------------------------------------------------------------
 {$ENDIF}
 
-function IntersectPoint(Edge1, Edge2: PEdge;
-  out ip: TIntPoint; UseFullInt64Range: Boolean): Boolean; overload;
+procedure IntersectPoint(Edge1, Edge2: PEdge; out ip: TIntPoint);
 var
   B1,B2,M: Double;
 begin
 {$IFDEF use_xyz}
   ip.Z := 0;
 {$ENDIF}
-  //nb: with very large coordinate values, it's possible for SlopesEqual() to
-  //return false but for the edge.Dx value be equal due to double precision
-  //rounding ...
-  if SlopesEqual(Edge1, Edge2, UseFullInt64Range) or (edge1.Dx = edge2.Dx) then
+  if (edge1.Dx = edge2.Dx) then
   begin
-    //parallel edges, but nevertheless prepare to force the intersection
-    //since Edge2.Curr.X < Edge1.Curr.X ...
-    if Edge2.Bot.Y > Edge1.Bot.Y then
-      ip := Edge2.Bot else
-      ip := Edge1.Bot;
-    Result := False;
+    ip.Y := edge1.Curr.Y;
+    ip.X := TopX(edge1, ip.Y);
     Exit;
   end;
   if Edge1.Delta.X = 0 then
@@ -1302,7 +1299,14 @@ begin
       ip.X := TopX(Edge1, ip.Y) else
       ip.X := TopX(Edge2, ip.Y);
   end;
-  Result := True;
+  //finally, don't allow 'ip' to be BELOW curr.Y (ie bottom of scanbeam) ...
+  if (ip.Y > Edge1.Curr.Y) then
+  begin
+    ip.Y := Edge1.Curr.Y;
+    if (abs(Edge1.Dx) > abs(Edge2.Dx)) then
+      ip.X := TopX(Edge2, ip.Y) else
+      ip.X := TopX(Edge1, ip.Y);
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -3518,17 +3522,7 @@ begin
       eNext := E.NextInSEL;
       if (E.Curr.X > eNext.Curr.X) then
       begin
-        if not IntersectPoint(E, eNext, Pt, FUse64BitRange) and
-          (E.Curr.X > eNext.Curr.X +1) then
-            raise Exception.Create(rsIntersect);
-        if (Pt.Y > botY) then
-        begin
-          Pt.Y := botY;
-          if (abs(E.Dx) > abs(eNext.Dx)) then
-            Pt.X := TopX(eNext, botY) else
-            Pt.X := TopX(E, botY);
-        end;
-
+        IntersectPoint(E, eNext, Pt);
         new(NewNode);
         NewNode.Edge1 := E;
         NewNode.Edge2 := eNext;
@@ -5047,6 +5041,11 @@ begin
       ExcludeOp(op.Next);
       op := ExcludeOp(op);
       Dec(Len, 2);
+    end
+    else if SlopesNearCollinear(op.Prev.Pt, op.Pt, op.Next.Pt, DistSqrd) then
+    begin
+      op := ExcludeOp(op);
+      Dec(Len);
     end
     else
     begin
