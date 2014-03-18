@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  25 February 2014                                                *
+* Date      :  19 March 2014                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1248,6 +1248,7 @@ begin
     ip.X := TopX(edge1, ip.Y);
     Exit;
   end;
+
   if Edge1.Delta.X = 0 then
   begin
     ip.X := Edge1.Bot.X;
@@ -1303,7 +1304,7 @@ begin
   if (ip.Y > Edge1.Curr.Y) then
   begin
     ip.Y := Edge1.Curr.Y;
-    if (abs(Edge1.Dx) > abs(Edge2.Dx)) then
+    if (abs(Edge1.Dx) > abs(Edge2.Dx)) then //ie use more vertical edge
       ip.X := TopX(Edge2, ip.Y) else
       ip.X := TopX(Edge1, ip.Y);
   end;
@@ -1677,6 +1678,7 @@ begin
       Continue;
     end;
     E := E.Next;
+    if (E = eLoopStop) or (not Closed and (E.Next = EStart)) then Break;
     if E = ELoopStop then Break;
   end;
 
@@ -2575,7 +2577,7 @@ begin
         begin
           //nb: For calculating winding counts etc, IntersectEdges() assumes
           //that param1 will be to the right of param2 ABOVE the intersection ...
-          IntersectEdges(Rb, E, Lb.Curr);
+          IntersectEdges(Rb, E, Lb.Curr, true);
           E := E.NextInAEL;
         end;
     end;
@@ -3513,7 +3515,7 @@ begin
     E := E.NextInAEL;
   end;
 
-  //bubblesort ...
+  //bubblesort (because adjacent swaps are required) ...
   repeat
     IsModified := False;
     E := FSortedEdges;
@@ -4486,8 +4488,7 @@ begin
   inc(J);
   if J < HighI +1 then
     SetLength(NewNode.FPath, J);
-  if ((EndType = etClosedPolygon) and (J < 3)) or
-    ((EndType <> etClosedPolygon) and (J < 1)) then
+  if (EndType = etClosedPolygon) and (J < 3) then
   begin
     NewNode.free;
     Exit;
@@ -4897,10 +4898,25 @@ end;
 procedure TClipperOffset.OffsetPoint(J: Integer;
   var K: Integer; JoinType: TJoinType);
 var
-  R: Double;
+  R, cosA: Double;
 begin
+  //cross product ...
   FSinA := (FNorms[K].X * FNorms[J].Y - FNorms[J].X * FNorms[K].Y);
-  if (FSinA < 0.0001) and (FSinA > -0.0001) then Exit
+  if (Abs(FSinA * FDelta) < 1.0) then
+  begin
+    //very nearly collinear edges can occasionally cause tiny self-intersections
+    //due to rounding so offset with a single vertex here. (nb: The two offset
+    //vertices that would otherwise have been used would be < 1 unit apart.)
+    //dot product ...
+    cosA := (FNorms[K].X * FNorms[J].X + FNorms[J].Y * FNorms[K].Y );
+    if (cosA > 0) then // angle => 0 deg.
+    begin
+      AddPoint(IntPoint(round(FInP[J].X + FNorms[K].X * FDelta),
+        round(FInP[J].Y + FNorms[K].Y * FDelta)));
+      Exit;
+    end
+    //else angle => 180 deg.
+  end
   else if (FSinA > 1.0) then FSinA := 1.0
   else if (FSinA < -1.0) then FSinA := -1.0;
 

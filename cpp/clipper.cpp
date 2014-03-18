@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  25 February 2014                                                *
+* Date      :  19 March 2014                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -658,7 +658,8 @@ void IntersectPoint(TEdge &Edge1, TEdge &Edge2, IntPoint &ip)
   if (ip.Y > Edge1.Curr.Y)
   {
     ip.Y = Edge1.Curr.Y;
-    if (Edge1.Dx > Edge2.Dx)
+    //use the more vertical edge to derive X ...
+    if (std::fabs(Edge1.Dx) > std::fabs(Edge2.Dx))
       ip.X = TopX(Edge2, ip.Y); else
       ip.X = TopX(Edge1, ip.Y);
   }
@@ -828,26 +829,6 @@ OutPt* GetBottomPt(OutPt *pp)
 }
 //------------------------------------------------------------------------------
 
-bool FindSegment(OutPt* &pp, bool UseFullInt64Range, 
-  IntPoint &pt1, IntPoint &pt2)
-{
-  //OutPt1 & OutPt2 => the overlap segment (if the function returns true)
-  if (!pp) return false;
-  OutPt* pp2 = pp;
-  IntPoint pt1a = pt1, pt2a = pt2;
-  do
-  {
-    if (SlopesEqual(pt1a, pt2a, pp->Pt, pp->Prev->Pt, UseFullInt64Range) &&
-      SlopesEqual(pt1a, pt2a, pp->Pt, UseFullInt64Range) &&
-      GetOverlapSegment(pt1a, pt2a, pp->Pt, pp->Prev->Pt, pt1, pt2))
-        return true;
-    pp = pp->Next;
-  }
-  while (pp != pp2);
-  return false;
-}
-//------------------------------------------------------------------------------
-
 bool Pt2IsBetweenPt1AndPt3(const IntPoint pt1,
   const IntPoint pt2, const IntPoint pt3)
 {
@@ -857,28 +838,6 @@ bool Pt2IsBetweenPt1AndPt3(const IntPoint pt1,
     return (pt2.X > pt1.X) == (pt2.X < pt3.X);
   else
     return (pt2.Y > pt1.Y) == (pt2.Y < pt3.Y);
-}
-//------------------------------------------------------------------------------
-
-OutPt* InsertPolyPtBetween(OutPt* p1, OutPt* p2, const IntPoint Pt)
-{
-  if (p1 == p2) throw "JoinError";
-  OutPt* result = new OutPt;
-  result->Pt = Pt;
-  if (p2 == p1->Next)
-  {
-    p1->Next = result;
-    p2->Prev = result;
-    result->Next = p2;
-    result->Prev = p1;
-  } else
-  {
-    p2->Next = result;
-    p1->Prev = result;
-    result->Next = p1;
-    result->Prev = p2;
-  }
-  return result;
 }
 //------------------------------------------------------------------------------
 
@@ -1121,7 +1080,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
       continue;
     }
     E = E->Next;
-    if (E == eLoopStop) break;
+    if ((E == eLoopStop) || (!Closed && E->Next == eStart)) break;
   }
 
   if ((!Closed && (E == E->Next)) || (Closed && (E->Prev == E->Next)))
@@ -1967,7 +1926,7 @@ void Clipper::InsertLocalMinimaIntoAEL(const cInt botY)
         {
           //nb: For calculating winding counts etc, IntersectEdges() assumes
           //that param1 will be to the Right of param2 ABOVE the intersection ...
-          IntersectEdges(rb , e , lb->Curr); //order important here
+          IntersectEdges(rb , e , lb->Curr, true); //order important here
           e = e->NextInAEL;
         }
       }
@@ -3721,8 +3680,7 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
         (path[i].Y == newNode->Contour[k].Y &&
         path[i].X < newNode->Contour[k].X)) k = j;
     }
-  if ((endType == etClosedPolygon && j < 2) || 
-    (endType != etClosedPolygon && j < 0))
+  if (endType == etClosedPolygon && j < 2)
   {
     delete newNode;
     return;
@@ -4022,8 +3980,20 @@ void ClipperOffset::DoOffset(double delta)
 
 void ClipperOffset::OffsetPoint(int j, int& k, JoinType jointype)
 {
+  //cross product ...
   m_sinA = (m_normals[k].X * m_normals[j].Y - m_normals[j].X * m_normals[k].Y);
-  if (m_sinA < 0.0001 && m_sinA > -0.0001) return;
+  if (std::fabs(m_sinA * m_delta) < 1.0) 
+  {
+    //dot product ...
+    double cosA = (m_normals[k].X * m_normals[j].X + m_normals[j].Y * m_normals[k].Y ); 
+    if (cosA > 0) // angle => 0 degrees
+    {
+      m_destPoly.push_back(IntPoint(Round(m_srcPoly[j].X + m_normals[k].X * m_delta),
+        Round(m_srcPoly[j].Y + m_normals[k].Y * m_delta)));
+      return; 
+    }
+    //else angle => 180 degrees   
+  }
   else if (m_sinA > 1.0) m_sinA = 1.0;
   else if (m_sinA < -1.0) m_sinA = -1.0;
 

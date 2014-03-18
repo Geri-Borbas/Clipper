@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  25 February 2014                                                *
+* Date      :  19 March 2014                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -916,7 +916,7 @@ namespace ClipperLib
           continue;
         }
         E = E.Next;
-        if (E == eLoopStop) break;
+        if ((E == eLoopStop) || (!Closed && E.Next == eStart)) break;
       }
 
       if ((!Closed && (E == E.Next)) || (Closed && (E.Prev == E.Next)))
@@ -1529,7 +1529,7 @@ namespace ClipperLib
               {
                 //nb: For calculating winding counts etc, IntersectEdges() assumes
                 //that param1 will be to the right of param2 ABOVE the intersection ...
-                IntersectEdges(rb, e, lb.Curr); //order important here
+                IntersectEdges(rb, e, lb.Curr, true); //order important here
                 e = e.NextInAEL;
               }
           }
@@ -2067,27 +2067,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
   
-      private OutPt InsertPolyPtBetween(OutPt p1, OutPt p2, IntPoint pt)
-      {
-          OutPt result = new OutPt();
-          result.Pt = pt;
-          if (p2 == p1.Next)
-          {
-              p1.Next = result;
-              p2.Prev = result;
-              result.Next = p2;
-              result.Prev = p1;
-          } else
-          {
-              p2.Next = result;
-              p1.Prev = result;
-              result.Next = p1;
-              result.Prev = p2;
-          }
-          return result;
-      }
-      //------------------------------------------------------------------------------
-
       private void SetHoleState(TEdge e, OutRec outRec)
       {
           bool isHole = false;
@@ -3017,8 +2996,11 @@ namespace ClipperLib
         if (ip.Y > edge1.Curr.Y)
         {
           ip.Y = edge1.Curr.Y;
-          if (edge1.Dx > edge2.Dx) ip.X = TopX(edge2, ip.Y);
-          else ip.X = TopX(edge1, ip.Y);
+          //better to use the more vertical edge to derive X ...
+          if (Math.Abs(edge1.Dx) > Math.Abs(edge2.Dx)) 
+            ip.X = TopX(edge2, ip.Y);
+          else 
+            ip.X = TopX(edge1, ip.Y);
         }
       }
       //------------------------------------------------------------------------------
@@ -4291,8 +4273,7 @@ namespace ClipperLib
             (path[i].Y == newNode.m_polygon[k].Y &&
             path[i].X < newNode.m_polygon[k].X)) k = j;
         }
-      if ((endType == EndType.etClosedPolygon && j < 2) ||
-        (endType != EndType.etClosedPolygon && j < 0)) return;
+      if (endType == EndType.etClosedPolygon && j < 2) return;
 
       m_polyNodes.AddChild(newNode);
 
@@ -4616,11 +4597,24 @@ namespace ClipperLib
 
     void OffsetPoint(int j, ref int k, JoinType jointype)
     {
+      //cross product ...
       m_sinA = (m_normals[k].X * m_normals[j].Y - m_normals[j].X * m_normals[k].Y);
-      if (m_sinA < 0.0001 && m_sinA > -0.0001) return;
+
+      if (Math.Abs(m_sinA * m_delta) < 1.0) 
+      {
+        //dot product ...
+        double cosA = (m_normals[k].X * m_normals[j].X + m_normals[j].Y * m_normals[k].Y); 
+        if (cosA > 0) // angle ==> 0 degrees
+        {
+          m_destPoly.Add(new IntPoint(Round(m_srcPoly[j].X + m_normals[k].X * m_delta),
+            Round(m_srcPoly[j].Y + m_normals[k].Y * m_delta)));
+          return; 
+        }
+        //else angle ==> 180 degrees   
+      }
       else if (m_sinA > 1.0) m_sinA = 1.0;
       else if (m_sinA < -1.0) m_sinA = -1.0;
-
+      
       if (m_sinA * m_delta < 0)
       {
         m_destPoly.Add(new IntPoint(Round(m_srcPoly[j].X + m_normals[k].X * m_delta),
