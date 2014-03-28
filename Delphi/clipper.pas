@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  19 March 2014                                                   *
+* Date      :  28 March 2014                                                   *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1503,10 +1503,21 @@ begin
   Result := E;
   if (E.Dx = Horizontal) then
   begin
-    //it's possible for adjacent overlapping horz edges to start heading left
-    //before finishing right, so ...
-    if IsClockwise then StartX := E.Prev.Bot.X
-    else StartX := E.Next.Bot.X;
+    //first we need to be careful here with open paths because this
+    //may not be a true local minima (ie may be following a skip edge).
+    //also, watch for adjacent horz edges to start heading left
+    //before finishing right ...
+    if IsClockwise then
+    begin
+      if (E.Prev.Bot.Y = E.Bot.Y) then
+        StartX := E.Prev.Bot.X else
+        StartX := E.Prev.Top.X;
+    end else
+    begin
+      if (E.Next.Bot.Y = E.Bot.Y) then
+        StartX := E.Next.Bot.X else
+        StartX := E.Next.Top.X;
+    end;
     if (E.Bot.X <> StartX) then ReverseHorizontal(E);
   end;
   if Result.OutIdx = Skip then
@@ -1678,7 +1689,8 @@ begin
       Continue;
     end;
     E := E.Next;
-    if (E = eLoopStop) or (not Closed and (E.Next = EStart)) then Break;
+    //todo - manage open paths which start and end at same point
+    if (E = eLoopStop) then Break;
     if E = ELoopStop then Break;
   end;
 
