@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  28 March 2014                                                   *
+* Date      :  14 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -317,7 +317,7 @@ private:
   OutPt* AddLocalMinPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
   OutRec* GetOutRec(int idx);
   void AppendPolygon(TEdge *e1, TEdge *e2);
-  void IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &pt, bool protect = false);
+  void IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &pt);
   OutRec* CreateOutRec();
   OutPt* AddOutPt(TEdge *e, const IntPoint &pt);
   void DisposeAllOutRecs();

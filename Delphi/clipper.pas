@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  28 March 2014                                                   *
+* Date      :  14 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -41,7 +41,7 @@ unit clipper;
 {.$DEFINE use_xyz}
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-{.$DEFINE use_lines}
+{$DEFINE use_lines}
 
 //use_deprecated: Enables support for the obsolete OffsetPaths() function
 //which has been replace with the ClipperOffset class.
@@ -312,8 +312,7 @@ type
     procedure ProcessIntersectList;
     procedure DeleteFromAEL(E: PEdge);
     procedure DeleteFromSEL(E: PEdge);
-    procedure IntersectEdges(E1,E2: PEdge;
-      Pt: TIntPoint; Protect: Boolean = False);
+    procedure IntersectEdges(E1,E2: PEdge; Pt: TIntPoint);
     procedure DoMaxima(E: PEdge);
     procedure UpdateEdgeIntoAEL(var E: PEdge);
     function FixupIntersectionOrder: Boolean;
@@ -2589,7 +2588,7 @@ begin
         begin
           //nb: For calculating winding counts etc, IntersectEdges() assumes
           //that param1 will be to the right of param2 ABOVE the intersection ...
-          IntersectEdges(Rb, E, Lb.Curr, true);
+          IntersectEdges(Rb, E, Lb.Curr);
           E := E.NextInAEL;
         end;
     end;
@@ -2629,10 +2628,8 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.IntersectEdges(E1,E2: PEdge;
-  Pt: TIntPoint; Protect: Boolean = False);
+procedure TClipper.IntersectEdges(E1,E2: PEdge; Pt: TIntPoint);
 var
-  E1stops, E2stops: Boolean;
   E1Contributing, E2contributing: Boolean;
   E1FillType, E2FillType, E1FillType2, E2FillType2: TPolyFillType;
   E1Wc, E2Wc, E1Wc2, E2Wc2: Integer;
@@ -2641,10 +2638,6 @@ begin
   //E1 will be to the left of E2 BELOW the intersection. Therefore E1 is before
   //E2 in AEL except when E1 is being inserted at the intersection point ...
 
-  E1stops := not Protect and not Assigned(E1.NextInLML) and
-    (E1.Top.X = Pt.x) and (E1.Top.Y = Pt.Y);
-  E2stops := not Protect and not Assigned(E2.NextInLML) and
-    (E2.Top.X = Pt.x) and (E2.Top.Y = Pt.Y);
   E1Contributing := (E1.OutIdx >= 0);
   E2contributing := (E2.OutIdx >= 0);
 
@@ -2656,13 +2649,8 @@ begin
   //if either edge is on an OPEN path ...
   if (E1.WindDelta = 0) or (E2.WindDelta = 0) then
   begin
-    //ignore subject-subject open path intersections UNLESS they
-    //are both open paths, AND they are both 'contributing maximas' ...
-    if (E1.WindDelta = 0) AND (E2.WindDelta = 0) then
-    begin
-      if (E1stops or E2stops) and E1Contributing and E2Contributing then
-        AddLocalMaxPoly(E1, E2, Pt);
-    end
+    //ignore subject-subject open path intersections ...
+    if (E1.WindDelta = 0) AND (E2.WindDelta = 0) then Exit
     //if intersecting a subj line with a subj poly ...
     else if (E1.PolyType = E2.PolyType) and
       (E1.WindDelta <> E2.WindDelta) and (FClipType = ctUnion) then
@@ -2699,14 +2687,6 @@ begin
         if E2Contributing then E2.OutIdx := Unassigned;
       end
     end;
-
-    if E1stops then
-      if (E1.OutIdx < 0) then deleteFromAEL(E1)
-
-      else raise Exception.Create(rsPolylines);
-    if E2stops then
-      if (E2.OutIdx < 0) then deleteFromAEL(E2)
-      else raise Exception.Create(rsPolylines);
     Exit;
   end;
 {$ENDIF}
@@ -2772,7 +2752,7 @@ begin
 
   if E1Contributing and E2contributing then
   begin
-    if E1stops or E2stops or not (E1Wc in [0,1]) or not (E2Wc in [0,1]) or
+    if not (E1Wc in [0,1]) or not (E2Wc in [0,1]) or
       ((E1.PolyType <> E2.PolyType) and (fClipType <> ctXor)) then
     begin
         AddLocalMaxPoly(E1, E2, Pt);
@@ -2801,8 +2781,7 @@ begin
       SwapPolyIndexes(E1, E2);
     end;
   end
-  else if  ((E1Wc = 0) or (E1Wc = 1)) and ((E2Wc = 0) or (E2Wc = 1)) and
-    not E1stops and not E2stops then
+  else if  ((E1Wc = 0) or (E1Wc = 1)) and ((E2Wc = 0) or (E2Wc = 1)) then
   begin
     //neither Edge is currently contributing ...
 
@@ -2839,17 +2818,6 @@ begin
     else
       swapsides(E1,E2);
   end;
-
-  if (E1stops <> E2stops) and
-    ((E1stops and (E1.OutIdx >= 0)) or (E2stops and (E2.OutIdx >= 0))) then
-  begin
-    swapsides(E1,E2);
-    SwapPolyIndexes(E1, E2);
-  end;
-
-  //finally, delete any non-contributing maxima edges  ...
-  if E1stops then deleteFromAEL(E1);
-  if E2stops then deleteFromAEL(E2);
 end;
 //------------------------------------------------------------------------------
 
@@ -3387,11 +3355,11 @@ begin
         else if (Direction = dLeftToRight) then
         begin
           Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-          IntersectEdges(HorzEdge, E, Pt, True);
+          IntersectEdges(HorzEdge, E, Pt);
         end else
         begin
           Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-          IntersectEdges(E, HorzEdge, Pt, True);
+          IntersectEdges(E, HorzEdge, Pt);
         end;
         SwapPositionsInAEL(HorzEdge, E);
       end
@@ -3563,7 +3531,7 @@ begin
   begin
     with PIntersectNode(FIntersectList[I])^ do
     begin
-      IntersectEdges(Edge1, Edge2, Pt, True);
+      IntersectEdges(Edge1, Edge2, Pt);
       SwapPositionsInAEL(Edge1, Edge2);
     end;
     dispose(PIntersectNode(FIntersectList[I]));
@@ -3589,7 +3557,7 @@ begin
   //rarely, with overlapping collinear edges (in open paths) ENext can be nil
   while Assigned(ENext) and (ENext <> EMaxPair) do
   begin
-    IntersectEdges(E, ENext, E.Top, True);
+    IntersectEdges(E, ENext, E.Top);
     SwapPositionsInAEL(E, ENext);
     ENext := E.NextInAEL;
   end;
@@ -5012,7 +4980,26 @@ end;
 function SlopesNearCollinear(const Pt1, Pt2, Pt3: TIntPoint;
   DistSqrd: Double): Boolean;
 begin
-  result := DistanceFromLineSqrd(Pt2, Pt1, Pt3) < DistSqrd;
+  //this function is more accurate when the point that's geometrically
+  //between the other 2 points is the one that's tested for distance.
+  //ie makes it more likely to pick up 'spikes' ...
+  if Abs(Pt1.X - Pt2.X) > Abs(Pt1.Y - Pt2.Y) then
+  begin
+    if (Pt1.X > Pt2.X) = (Pt1.X < Pt3.X) then
+      result := DistanceFromLineSqrd(Pt1, Pt2, Pt3) < DistSqrd
+    else if (Pt2.X > Pt1.X) = (Pt2.X < Pt3.X) then
+      result := DistanceFromLineSqrd(Pt2, Pt1, Pt3) < DistSqrd
+    else
+      result := DistanceFromLineSqrd(Pt3, Pt1, Pt2) < DistSqrd;
+  end else
+  begin
+    if (Pt1.Y > Pt2.Y) = (Pt1.Y < Pt3.Y) then
+      result := DistanceFromLineSqrd(Pt1, Pt2, Pt3) < DistSqrd
+    else if (Pt2.Y > Pt1.Y) = (Pt2.Y < Pt3.Y) then
+      result := DistanceFromLineSqrd(Pt2, Pt1, Pt3) < DistSqrd
+    else
+      result := DistanceFromLineSqrd(Pt3, Pt1, Pt2) < DistSqrd;
+  end;
 end;
 //------------------------------------------------------------------------------
 

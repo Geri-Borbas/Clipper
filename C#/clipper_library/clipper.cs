@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  28 March 2014                                                   *
+* Date      :  14 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1539,7 +1539,7 @@ namespace ClipperLib
               {
                 //nb: For calculating winding counts etc, IntersectEdges() assumes
                 //that param1 will be to the right of param2 ABOVE the intersection ...
-                IntersectEdges(rb, e, lb.Curr, true); //order important here
+                IntersectEdges(rb, e, lb.Curr); //order important here
                 e = e.NextInAEL;
               }
           }
@@ -2328,17 +2328,13 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private void IntersectEdges(TEdge e1, TEdge e2, IntPoint pt, bool protect = false)
+      private void IntersectEdges(TEdge e1, TEdge e2, IntPoint pt)
       {
           //e1 will be to the left of e2 BELOW the intersection. Therefore e1 is before
           //e2 in AEL except when e1 is being inserted at the intersection point ...
 
-          bool e1stops = !protect && e1.NextInLML == null &&
-            e1.Top.X == pt.X && e1.Top.Y == pt.Y;
-          bool e2stops = !protect && e2.NextInLML == null &&
-            e2.Top.X == pt.X && e2.Top.Y == pt.Y;
-          bool e1Contributing = (e1.OutIdx >= 0);
-          bool e2Contributing = (e2.OutIdx >= 0);
+        bool e1Contributing = (e1.OutIdx >= 0);
+        bool e2Contributing = (e2.OutIdx >= 0);
 
 #if use_xyz
           SetZ(ref pt, e1, e2);
@@ -2350,11 +2346,7 @@ namespace ClipperLib
           {
             //ignore subject-subject open path intersections UNLESS they
             //are both open paths, AND they are both 'contributing maximas' ...
-            if (e1.WindDelta == 0 && e2.WindDelta == 0)
-            {
-              if ((e1stops || e2stops) && e1Contributing && e2Contributing)
-                AddLocalMaxPoly(e1, e2, pt);
-            }
+            if (e1.WindDelta == 0 && e2.WindDelta == 0) return;
             //if intersecting a subj line with a subj poly ...
             else if (e1.PolyTyp == e2.PolyTyp && 
               e1.WindDelta != e2.WindDelta && m_ClipType == ClipType.ctUnion)
@@ -2391,13 +2383,6 @@ namespace ClipperLib
                 if (e2Contributing) e2.OutIdx = Unassigned;
               }
             }
-
-            if (e1stops)
-              if (e1.OutIdx < 0) DeleteFromAEL(e1);
-              else throw new ClipperException("Error intersecting polylines");
-            if (e2stops) 
-              if (e2.OutIdx < 0) DeleteFromAEL(e2);
-              else throw new ClipperException("Error intersecting polylines");
             return;
           }
 #endif
@@ -2466,8 +2451,7 @@ namespace ClipperLib
 
           if (e1Contributing && e2Contributing)
           {
-            if (e1stops || e2stops ||
-              (e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
+            if ((e1Wc != 0 && e1Wc != 1) || (e2Wc != 0 && e2Wc != 1) ||
               (e1.PolyTyp != e2.PolyTyp && m_ClipType != ClipType.ctXor))
             {
               AddLocalMaxPoly(e1, e2, pt);
@@ -2499,8 +2483,7 @@ namespace ClipperLib
                 SwapPolyIndexes(e1, e2);
               }
           }
-          else if ( (e1Wc == 0 || e1Wc == 1) && 
-              (e2Wc == 0 || e2Wc == 1) && !e1stops && !e2stops )
+          else if ( (e1Wc == 0 || e1Wc == 1) && (e2Wc == 0 || e2Wc == 1))
           {
               //neither edge is currently contributing ...
               cInt e1Wc2, e2Wc2;
@@ -2544,17 +2527,6 @@ namespace ClipperLib
               else
                 SwapSides(e1, e2);
           }
-
-          if ((e1stops != e2stops) &&
-            ((e1stops && (e1.OutIdx >= 0)) || (e2stops && (e2.OutIdx >= 0))))
-          {
-              SwapSides(e1, e2);
-              SwapPolyIndexes(e1, e2);
-          }
-
-          //finally, delete any non-contributing maxima edges  ...
-          if (e1stops) DeleteFromAEL(e1);
-          if (e2stops) DeleteFromAEL(e2);
       }
       //------------------------------------------------------------------------------
 
@@ -2700,12 +2672,12 @@ namespace ClipperLib
               else if(dir == Direction.dLeftToRight)
               {
                 IntPoint Pt = new IntPoint(e.Curr.X, horzEdge.Curr.Y);
-                IntersectEdges(horzEdge, e, Pt, true);
+                IntersectEdges(horzEdge, e, Pt);
               }
               else
               {
                 IntPoint Pt = new IntPoint(e.Curr.X, horzEdge.Curr.Y);
-                IntersectEdges(e, horzEdge, Pt, true);
+                IntersectEdges(e, horzEdge, Pt);
               }
               SwapPositionsInAEL(horzEdge, e);
             }
@@ -2918,7 +2890,7 @@ namespace ClipperLib
         {
           IntersectNode iNode = m_IntersectList[i];
           {
-            IntersectEdges(iNode.Edge1, iNode.Edge2, iNode.Pt, true);
+            IntersectEdges(iNode.Edge1, iNode.Edge2, iNode.Pt);
             SwapPositionsInAEL(iNode.Edge1, iNode.Edge2);
           }
         }
@@ -3129,7 +3101,7 @@ namespace ClipperLib
         TEdge eNext = e.NextInAEL;
         while(eNext != null && eNext != eMaxPair)
         {
-          IntersectEdges(e, eNext, e.Top, true);
+          IntersectEdges(e, eNext, e.Top);
           SwapPositionsInAEL(e, eNext);
           eNext = e.NextInAEL;
         }
@@ -3989,7 +3961,27 @@ namespace ClipperLib
       private static bool SlopesNearCollinear(IntPoint pt1, 
           IntPoint pt2, IntPoint pt3, double distSqrd)
       {
-        return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+        //this function is more accurate when the point that's GEOMETRICALLY 
+        //between the other 2 points is the one that's tested for distance.  
+        //nb: with 'spikes', either pt1 or pt3 is geometrically between the other pts                    
+        if (Math.Abs(pt1.X - pt2.X) > Math.Abs(pt1.Y - pt2.Y))
+	      {
+          if ((pt1.X > pt2.X) == (pt1.X < pt3.X))
+            return DistanceFromLineSqrd(pt1, pt2, pt3) < distSqrd;
+          else if ((pt2.X > pt1.X) == (pt2.X < pt3.X))
+            return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+		      else
+	          return DistanceFromLineSqrd(pt3, pt1, pt2) < distSqrd;
+	      }
+	      else
+	      {
+          if ((pt1.Y > pt2.Y) == (pt1.Y < pt3.Y))
+            return DistanceFromLineSqrd(pt1, pt2, pt3) < distSqrd;
+          else if ((pt2.Y > pt1.Y) == (pt2.Y < pt3.Y))
+            return DistanceFromLineSqrd(pt2, pt1, pt3) < distSqrd;
+		      else
+            return DistanceFromLineSqrd(pt3, pt1, pt2) < distSqrd;
+	      }
       }
       //------------------------------------------------------------------------------
 
