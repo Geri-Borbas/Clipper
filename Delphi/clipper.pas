@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  14 May 2014                                                     *
+* Date      :  15 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1662,9 +1662,10 @@ begin
   ELoopStop := EStart;
   while (E <> E.Next) do //ie in case loop reduces to a single vertex
   begin
-    if PointsEqual(E.Curr, E.Next.Curr) then
+    //allow matching start and end points when not Closed ...
+    if PointsEqual(E.Curr, E.Next.Curr) and
+      (Closed or (E.Next <> EStart)) then
     begin
-      //nb E.OutIdx never equals Skip here because it would then be SemiClosed
       if E = EStart then EStart := E.Next;
       E := RemoveEdge(E);
       ELoopStop := E;
@@ -1746,6 +1747,11 @@ begin
   Result := true;
   FEdgeList.Add(Edges);
   EMin := nil;
+
+  //workaround to avoid an endless loop in the while loop below when
+  //open paths have matching start and end points ...
+  if PointsEqual(E.Prev.Bot, E.Prev.Top) then E := E.Next;
+
   while true do
   begin
     E := FindNextLocMin(E);
