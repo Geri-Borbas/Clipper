@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  15 May 2014                                                     *
+* Date      :  22 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1065,7 +1065,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   for (;;)
   {
     //nb: allows matching start and end points when not Closed ...
-    if (E->Curr == E->Next->Curr && (Closed || E.Next != eStart))
+    if (E->Curr == E->Next->Curr && (Closed || E->Next != eStart))
     {
       if (E == E->Next) break;
       if (E == eStart) eStart = E->Next;
@@ -1153,7 +1153,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
 
   //workaround to avoid an endless loop in the while loop below when
   //open paths have matching start and end points ...
-  if (E.Prev.Bot == E.Prev.Top) E = E.Next;
+  if (E->Prev->Bot == E->Prev->Top) E = E->Next;
 
   for (;;)
   {
