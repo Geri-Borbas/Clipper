@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  15 May 2014                                                     *
+* Date      :  24 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -739,18 +739,60 @@ namespace ClipperLib
     }
     //------------------------------------------------------------------------------
 
-    private TEdge ProcessBound(TEdge E, bool IsClockwise)
+    private TEdge ProcessBound(TEdge E, bool NextIsForward)
     {
       TEdge EStart = E, Result = E;
       TEdge Horz;
       cInt StartX;
+
+      if (Result.OutIdx == Skip)
+      {
+        //check if there are edges beyond the skip edge in the bound and if so
+        //create another LocMin and calling ProcessBound once more ...
+        E = Result;
+        if (NextIsForward)
+        {
+          while (E.Top.Y == E.Next.Bot.Y) E = E.Next;
+          //don't include top horizontals when parsing a bound a second time,
+          //they will be contained in the opposite bound ...
+          while (E != Result && E.Dx == horizontal) E = E.Prev;
+        }
+        else
+        {
+          while (E.Top.Y == E.Prev.Bot.Y) E = E.Prev;
+          while (E != Result && E.Dx == horizontal) E = E.Next;
+        }
+        if (E == Result)
+        {
+          if (NextIsForward) Result = E.Next;
+          else Result = E.Prev;
+        }
+        else
+        {
+          //there are more edges in the bound beyond result starting with E
+          if (NextIsForward)
+            E = Result.Next;
+          else
+            E = Result.Prev;
+          LocalMinima locMin = new LocalMinima();
+          locMin.Next = null;
+          locMin.Y = E.Bot.Y;
+          locMin.LeftBound = null;
+          locMin.RightBound = E;
+          locMin.RightBound.WindDelta = 0;
+          Result = ProcessBound(locMin.RightBound, NextIsForward);
+          InsertLocalMinima(locMin);
+        }
+        return Result;
+      }
+
       if (E.Dx == horizontal)
       {
-        //first we need to be careful here with open paths because this
-        //may not be a true local minima (ie may be following a skip edge).
-        //also, watch for adjacent horz edges to start heading left
+        //we need to be careful with open paths because this may not be 
+        //a true local minima (ie may be following a skip edge).
+        //Also, watch for adjacent horz edges that may head left
         //before finishing right ...
-        if (IsClockwise)
+        if (NextIsForward)
         {
             if (E.Prev.Bot.Y == E.Bot.Y) StartX = E.Prev.Bot.X;
             else StartX = E.Prev.Top.X;
@@ -762,100 +804,60 @@ namespace ClipperLib
         }
         if (E.Bot.X != StartX) ReverseHorizontal(E);
       }
-      if (Result.OutIdx != Skip)
+
+      if (NextIsForward)
       {
-        if (IsClockwise)
+        while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
+          Result = Result.Next;
+        if (Result.Dx == horizontal && Result.Next.OutIdx != Skip)
         {
-          while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
-            Result = Result.Next;
-          if (Result.Dx == horizontal && Result.Next.OutIdx != Skip)
+          //nb: at the top of a bound, horizontals are added to the bound
+          //only when the preceding edge attaches to the horizontal's left vertex
+          //unless a Skip edge is encountered when that becomes the top divide
+          Horz = Result;
+          while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
+          if (Horz.Prev.Top.X == Result.Next.Top.X)
           {
-            //nb: at the top of a bound, horizontals are added to the bound
-            //only when the preceding edge attaches to the horizontal's left vertex
-            //unless a Skip edge is encountered when that becomes the top divide
-            Horz = Result;
-            while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
-            if (Horz.Prev.Top.X == Result.Next.Top.X)
-            {
-              if (!IsClockwise) Result = Horz.Prev;
-            }
-            else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
+            if (!NextIsForward) Result = Horz.Prev;
           }
-          while (E != Result)
-          {
-            E.NextInLML = E.Next;
-            if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Prev.Top.X) 
-              ReverseHorizontal(E);
-            E = E.Next;
-          }
+          else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
+        }
+        while (E != Result)
+        {
+          E.NextInLML = E.Next;
           if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Prev.Top.X) 
             ReverseHorizontal(E);
-          Result = Result.Next; //move to the edge just beyond current bound
+          E = E.Next;
         }
-        else
+        if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Prev.Top.X) 
+          ReverseHorizontal(E);
+        Result = Result.Next; //move to the edge just beyond current bound
+      }
+      else
+      {
+        while (Result.Top.Y == Result.Prev.Bot.Y && Result.Prev.OutIdx != Skip)
+          Result = Result.Prev;
+        if (Result.Dx == horizontal && Result.Prev.OutIdx != Skip)
         {
-          while (Result.Top.Y == Result.Prev.Bot.Y && Result.Prev.OutIdx != Skip)
-            Result = Result.Prev;
-          if (Result.Dx == horizontal && Result.Prev.OutIdx != Skip)
+          Horz = Result;
+          while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
+          if (Horz.Next.Top.X == Result.Prev.Top.X)
           {
-            Horz = Result;
-            while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
-            if (Horz.Next.Top.X == Result.Prev.Top.X)
-            {
-              if (!IsClockwise) Result = Horz.Next;
-            }
-            else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+            if (!NextIsForward) Result = Horz.Next;
           }
+          else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+        }
 
-          while (E != Result)
-          {
-            E.NextInLML = E.Prev;
-            if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Next.Top.X) 
-              ReverseHorizontal(E);
-            E = E.Prev;
-          }
+        while (E != Result)
+        {
+          E.NextInLML = E.Prev;
           if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Next.Top.X) 
             ReverseHorizontal(E);
-          Result = Result.Prev; //move to the edge just beyond current bound
+          E = E.Prev;
         }
-      }
-        
-      if (Result.OutIdx == Skip) 
-      {
-        //if edges still remain in the current bound beyond the skip edge then
-        //create another LocMin and call ProcessBound once more
-        E = Result;
-        if (IsClockwise)
-        {
-          while (E.Top.Y == E.Next.Bot.Y) E = E.Next;
-          //don't include top horizontals when parsing a bound a second time,
-          //they will be contained in the opposite bound ...
-          while (E != Result && E.Dx == horizontal) E = E.Prev;
-        } else
-        {
-          while (E.Top.Y == E.Prev.Bot.Y) E = E.Prev;
-          while (E != Result && E.Dx == horizontal) E = E.Next;
-        }
-        if (E == Result)
-        {
-          if (IsClockwise) Result = E.Next;
-          else Result = E.Prev;
-        } else
-        {
-          //there are more edges in the bound beyond result starting with E
-          if (IsClockwise)
-            E = Result.Next; 
-          else
-            E = Result.Prev;
-          LocalMinima locMin = new LocalMinima();
-          locMin.Next = null;
-          locMin.Y = E.Bot.Y;
-          locMin.LeftBound = null;
-          locMin.RightBound = E;
-          locMin.RightBound.WindDelta = 0;
-          Result = ProcessBound(locMin.RightBound, IsClockwise);
-          InsertLocalMinima(locMin);
-        }
+        if (E.Dx == horizontal && E != EStart && E.Bot.X != E.Next.Top.X) 
+          ReverseHorizontal(E);
+        Result = Result.Prev; //move to the edge just beyond current bound
       }
       return Result;
     }

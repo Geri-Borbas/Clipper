@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  15 May 2014                                                     *
+* Date      :  24 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -255,7 +255,7 @@ type
     procedure DisposeLocalMinimaList;
     procedure DisposePolyPts(PP: POutPt);
     procedure InsertLocalMinima(Lm: PLocalMinima);
-    function ProcessBound(E: PEdge; IsClockwise: Boolean): PEdge;
+    function ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
   protected
     FPreserveCollinear : Boolean;
     procedure Reset; virtual;
@@ -843,8 +843,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function PointsEqual(const P1, P2: TIntPoint): Boolean;
-  {$IFDEF INLINING} inline; {$ENDIF}
+function PointsEqual(const P1, P2: TIntPoint): Boolean; {$IFDEF INLINING} inline; {$ENDIF}
 begin
   Result := (P1.X = P2.X) and (P1.Y = P2.Y);
 end;
@@ -1439,10 +1438,12 @@ begin
       PointsEqual(E.Curr, E.Top) do E := E.Next;
     if (E.Dx <> Horizontal) and (E.Prev.Dx <> Horizontal) then break;
     while (E.Prev.Dx = Horizontal) do E := E.Prev;
-    E2 := E;
+    E2 := E; //E2 == first horizontal
     while (E.Dx = Horizontal) do E := E.Next;
     if (E.Top.Y = E.Prev.Bot.Y) then Continue; //ie just an intermediate horz.
+    //E == first edge past horizontals
     if E2.Prev.Bot.X < E.Bot.X then E := E2;
+    //E is first horizontal when CW and first past horizontals when CCW
     break;
   end;
   Result := E;
@@ -1492,7 +1493,7 @@ begin
 end;
 //----------------------------------------------------------------------
 
-function TClipperBase.ProcessBound(E: PEdge; IsClockwise: Boolean): PEdge;
+function TClipperBase.ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
 var
   EStart, Horz: PEdge;
   locMin: PLocalMinima;
@@ -1500,13 +1501,49 @@ var
 begin
   EStart := E;
   Result := E;
+
+  if (E.OutIdx = Skip) then
+  begin
+    //check if there are edges beyond the skip edge in the bound and if so
+    //create another LocMin and calling ProcessBound once more ...
+    if NextIsForward then
+    begin
+      while (E.Top.Y = E.Next.Bot.Y) do E := E.Next;
+      //don't include top horizontals here ...
+      while (E <> Result) and (E.Dx = Horizontal) do E := E.Prev;
+    end else
+    begin
+      while (E.Top.Y = E.Prev.Bot.Y) do E := E.Prev;
+      while (E <> Result) and (E.Dx = Horizontal) do E := E.Next;
+    end;
+    if E = Result then
+    begin
+      if NextIsForward then Result := E.Next
+      else Result := E.Prev;
+    end else
+    begin
+      if NextIsForward then
+        E := Result.Next else
+        E := Result.Prev;
+      new(locMin);
+      locMin.Next := nil;
+      locMin.Y := E.Bot.Y;
+      locMin.LeftBound := nil;
+      locMin.RightBound := E;
+      locMin.RightBound.WindDelta := 0;
+      Result := ProcessBound(locMin.RightBound, NextIsForward);
+      InsertLocalMinima(locMin);
+    end;
+    Exit;
+  end;
+
   if (E.Dx = Horizontal) then
   begin
-    //first we need to be careful here with open paths because this
-    //may not be a true local minima (ie may be following a skip edge).
+    //we need to be careful with open paths because this may not be a
+    //true local minima (ie may be following a skip edge).
     //also, watch for adjacent horz edges to start heading left
     //before finishing right ...
-    if IsClockwise then
+    if NextIsForward then
     begin
       if (E.Prev.Bot.Y = E.Bot.Y) then
         StartX := E.Prev.Bot.X else
@@ -1519,9 +1556,8 @@ begin
     end;
     if (E.Bot.X <> StartX) then ReverseHorizontal(E);
   end;
-  if Result.OutIdx = Skip then
-    //do nothing here
-  else if IsClockwise then
+
+  if NextIsForward then
   begin
     while (Result.Top.Y = Result.Next.Bot.Y) and (Result.Next.OutIdx <> Skip) do
       Result := Result.Next;
@@ -1534,7 +1570,7 @@ begin
       while (Horz.Prev.Dx = Horizontal) do Horz := Horz.Prev;
       if (Horz.Prev.Top.X = Result.Next.Top.X) then
       begin
-        if not IsClockwise then Result := Horz.Prev;
+        if not NextIsForward then Result := Horz.Prev;
       end
       else if (Horz.Prev.Top.X > Result.Next.Top.X) then Result := Horz.Prev;
     end;
@@ -1558,7 +1594,7 @@ begin
       while (Horz.Next.Dx = Horizontal) do Horz := Horz.Next;
       if (Horz.Next.Top.X = Result.Prev.Top.X) then
       begin
-        if not IsClockwise then Result := Horz.Next;
+        if not NextIsForward then Result := Horz.Next;
       end
       else if (Horz.Next.Top.X > Result.Prev.Top.X) then Result := Horz.Next;
     end;
@@ -1573,42 +1609,6 @@ begin
       ReverseHorizontal(E);
     Result := Result.Prev; //move to the edge just beyond current bound
   end;
-  if (Result.OutIdx = Skip) then
-  begin
-    //if edges still remain in the current bound beyond the skip edge then
-    //create another LocMin and call ProcessBound once more
-    E := Result;
-    if IsClockwise then
-    begin
-      while (E.Top.Y = E.Next.Bot.Y) do E := E.Next;
-      //don't include top horizontals when parsing a bound a second time,
-      //they will be contained in the opposite bound ...
-      while (E <> Result) and (E.Dx = Horizontal) do E := E.Prev;
-    end else
-    begin
-      while (E.Top.Y = E.Prev.Bot.Y) do E := E.Prev;
-      while (E <> Result) and (E.Dx = Horizontal) do E := E.Next;
-    end;
-    if E = Result then
-    begin
-      if IsClockwise then Result := E.Next
-      else Result := E.Prev;
-    end else
-    begin
-      //there are more edges in the bound beyond result starting with E
-      if IsClockwise then
-        E := Result.Next else
-        E := Result.Prev;
-      new(locMin);
-      locMin.Next := nil;
-      locMin.Y := E.Bot.Y;
-      locMin.LeftBound := nil;
-      locMin.RightBound := E;
-      locMin.RightBound.WindDelta := 0;
-      Result := ProcessBound(locMin.RightBound, isClockwise);
-      InsertLocalMinima(locMin);
-    end;
-  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -1618,7 +1618,7 @@ var
   I, HighI: Integer;
   Edges: PEdgeArray;
   E, E2, EMin, EStart, ELoopStop: PEdge;
-  IsFlat, clockwise: Boolean;
+  IsFlat, nextIsForward: Boolean;
   locMin: PLocalMinima;
 begin
 {$IFDEF use_lines}
@@ -1766,13 +1766,13 @@ begin
     if (E.Dx < E.Prev.Dx) then
     begin
       locMin.LeftBound := E.Prev;
-      locMin.RightBound := E;
-      clockwise := false; //Q.nextInLML = Q.prev
+      locMin.RightBound := E; //can be horz when CW
+      nextIsForward := false; //Q.nextInLML = Q.prev
     end else
     begin
       locMin.LeftBound := E;
-      locMin.RightBound := E.Prev;
-      clockwise := true; //Q.nextInLML = Q.next
+      locMin.RightBound := E.Prev; //can be horz when CCW
+      nextIsForward := true; //Q.nextInLML = Q.next
     end;
     locMin.LeftBound.Side := esLeft;
     locMin.RightBound.Side := esRight;
@@ -1783,15 +1783,14 @@ begin
     else locMin.LeftBound.WindDelta := 1;
     locMin.RightBound.WindDelta := -locMin.LeftBound.WindDelta;
 
-    E := ProcessBound(locMin.LeftBound, clockwise);
-    E2 := ProcessBound(locMin.RightBound, not clockwise);
+    E := ProcessBound(locMin.LeftBound, nextIsForward);
+    E2 := ProcessBound(locMin.RightBound, not nextIsForward);
 
-    if (locMin.LeftBound.OutIdx = Skip) then
-      locMin.LeftBound := nil
-    else if (locMin.RightBound.OutIdx = Skip) then
-      locMin.RightBound := nil;
+    if (locMin.LeftBound.OutIdx = Skip) then locMin.LeftBound := nil
+    else if (locMin.RightBound.OutIdx = Skip) then locMin.RightBound := nil;
     InsertLocalMinima(locMin);
-    if not clockwise then E := E2;
+
+    if not nextIsForward then E := E2;
   end;
 end;
 //------------------------------------------------------------------------------
