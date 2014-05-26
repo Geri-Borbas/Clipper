@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  24 May 2014                                                     *
+* Date      :  26 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1497,18 +1497,16 @@ function TClipperBase.ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
 var
   EStart, Horz: PEdge;
   locMin: PLocalMinima;
-  StartX: cInt;
 begin
-  EStart := E;
   Result := E;
-
   if (E.OutIdx = Skip) then
   begin
     //check if there are edges beyond the skip edge in the bound and if so
     //create another LocMin and calling ProcessBound once more ...
     if NextIsForward then
     begin
-      while (E.Top.Y = E.Next.Bot.Y) do E := E.Next;
+      while (E.Top.Y = E.Next.Bot.Y) do
+        E := E.Next;
       //don't include top horizontals here ...
       while (E <> Result) and (E.Dx = Horizontal) do E := E.Prev;
     end else
@@ -1530,8 +1528,8 @@ begin
       locMin.Y := E.Bot.Y;
       locMin.LeftBound := nil;
       locMin.RightBound := E;
-      locMin.RightBound.WindDelta := 0;
-      Result := ProcessBound(locMin.RightBound, NextIsForward);
+      E.WindDelta := 0;
+      Result := ProcessBound(E, NextIsForward);
       InsertLocalMinima(locMin);
     end;
     Exit;
@@ -1539,24 +1537,21 @@ begin
 
   if (E.Dx = Horizontal) then
   begin
-    //we need to be careful with open paths because this may not be a
-    //true local minima (ie may be following a skip edge).
-    //also, watch for adjacent horz edges to start heading left
-    //before finishing right ...
-    if NextIsForward then
+    //We need to be careful with open paths because this may not be a
+    //true local minima (ie E may be following a skip edge).
+    //Also, consecutive horz. edges may start heading left before going right.
+    if NextIsForward then EStart := E.Prev
+    else EStart := E.Next;
+    if (EStart.Dx = Horizontal) then //ie an adjoining horizontal skip edge
     begin
-      if (E.Prev.Bot.Y = E.Bot.Y) then
-        StartX := E.Prev.Bot.X else
-        StartX := E.Prev.Top.X;
-    end else
-    begin
-      if (E.Next.Bot.Y = E.Bot.Y) then
-        StartX := E.Next.Bot.X else
-        StartX := E.Next.Top.X;
-    end;
-    if (E.Bot.X <> StartX) then ReverseHorizontal(E);
+      if (EStart.Bot.X <> E.Bot.X) and (EStart.Top.X <> E.Bot.X) then
+        ReverseHorizontal(E);
+    end
+    else if (EStart.Bot.X <> E.Bot.X) then
+        ReverseHorizontal(E);
   end;
 
+  EStart := E;
   if NextIsForward then
   begin
     while (Result.Top.Y = Result.Next.Bot.Y) and (Result.Next.OutIdx <> Skip) do
@@ -1618,7 +1613,7 @@ var
   I, HighI: Integer;
   Edges: PEdgeArray;
   E, E2, EMin, EStart, ELoopStop: PEdge;
-  IsFlat, nextIsForward: Boolean;
+  IsFlat, leftBoundIsForward: Boolean;
   locMin: PLocalMinima;
 begin
 {$IFDEF use_lines}
@@ -1767,12 +1762,12 @@ begin
     begin
       locMin.LeftBound := E.Prev;
       locMin.RightBound := E; //can be horz when CW
-      nextIsForward := false; //Q.nextInLML = Q.prev
+      leftBoundIsForward := false; //Q.nextInLML = Q.prev
     end else
     begin
       locMin.LeftBound := E;
       locMin.RightBound := E.Prev; //can be horz when CCW
-      nextIsForward := true; //Q.nextInLML = Q.next
+      leftBoundIsForward := true; //Q.nextInLML = Q.next
     end;
     locMin.LeftBound.Side := esLeft;
     locMin.RightBound.Side := esRight;
@@ -1783,14 +1778,14 @@ begin
     else locMin.LeftBound.WindDelta := 1;
     locMin.RightBound.WindDelta := -locMin.LeftBound.WindDelta;
 
-    E := ProcessBound(locMin.LeftBound, nextIsForward);
-    E2 := ProcessBound(locMin.RightBound, not nextIsForward);
+    E := ProcessBound(locMin.LeftBound, leftBoundIsForward);
+    E2 := ProcessBound(locMin.RightBound, not leftBoundIsForward);
 
     if (locMin.LeftBound.OutIdx = Skip) then locMin.LeftBound := nil
     else if (locMin.RightBound.OutIdx = Skip) then locMin.RightBound := nil;
     InsertLocalMinima(locMin);
 
-    if not nextIsForward then E := E2;
+    if not leftBoundIsForward then E := E2;
   end;
 end;
 //------------------------------------------------------------------------------

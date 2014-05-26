@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  24 May 2014                                                     *
+* Date      :  26 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -739,22 +739,19 @@ namespace ClipperLib
     }
     //------------------------------------------------------------------------------
 
-    private TEdge ProcessBound(TEdge E, bool NextIsForward)
+    private TEdge ProcessBound(TEdge E, bool LeftBoundIsForward)
     {
-      TEdge EStart = E, Result = E;
+      TEdge EStart, Result = E;
       TEdge Horz;
-      cInt StartX;
 
       if (Result.OutIdx == Skip)
       {
         //check if there are edges beyond the skip edge in the bound and if so
         //create another LocMin and calling ProcessBound once more ...
         E = Result;
-        if (NextIsForward)
+        if (LeftBoundIsForward)
         {
           while (E.Top.Y == E.Next.Bot.Y) E = E.Next;
-          //don't include top horizontals when parsing a bound a second time,
-          //they will be contained in the opposite bound ...
           while (E != Result && E.Dx == horizontal) E = E.Prev;
         }
         else
@@ -764,13 +761,13 @@ namespace ClipperLib
         }
         if (E == Result)
         {
-          if (NextIsForward) Result = E.Next;
+          if (LeftBoundIsForward) Result = E.Next;
           else Result = E.Prev;
         }
         else
         {
           //there are more edges in the bound beyond result starting with E
-          if (NextIsForward)
+          if (LeftBoundIsForward)
             E = Result.Next;
           else
             E = Result.Prev;
@@ -779,8 +776,8 @@ namespace ClipperLib
           locMin.Y = E.Bot.Y;
           locMin.LeftBound = null;
           locMin.RightBound = E;
-          locMin.RightBound.WindDelta = 0;
-          Result = ProcessBound(locMin.RightBound, NextIsForward);
+          E.WindDelta = 0;
+          Result = ProcessBound(E, LeftBoundIsForward);
           InsertLocalMinima(locMin);
         }
         return Result;
@@ -788,24 +785,22 @@ namespace ClipperLib
 
       if (E.Dx == horizontal)
       {
-        //we need to be careful with open paths because this may not be 
-        //a true local minima (ie may be following a skip edge).
-        //Also, watch for adjacent horz edges that may head left
-        //before finishing right ...
-        if (NextIsForward)
+        //We need to be careful with open paths because this may not be a
+        //true local minima (ie E may be following a skip edge).
+        //Also, consecutive horz. edges may start heading left before going right.
+        if (LeftBoundIsForward) EStart = E.Prev;
+        else EStart = E.Next;
+        if (EStart.Dx == horizontal) //ie an adjoining horizontal skip edge
         {
-            if (E.Prev.Bot.Y == E.Bot.Y) StartX = E.Prev.Bot.X;
-            else StartX = E.Prev.Top.X;
+          if (EStart.Bot.X != E.Bot.X && EStart.Top.X != E.Bot.X) 
+            ReverseHorizontal(E);
         }
-        else
-        {
-            if (E.Next.Bot.Y == E.Bot.Y) StartX = E.Next.Bot.X;
-            else StartX = E.Next.Top.X;
-        }
-        if (E.Bot.X != StartX) ReverseHorizontal(E);
+        else if (EStart.Bot.X != E.Bot.X)
+            ReverseHorizontal(E);
       }
 
-      if (NextIsForward)
+      EStart = E;
+      if (LeftBoundIsForward)
       {
         while (Result.Top.Y == Result.Next.Bot.Y && Result.Next.OutIdx != Skip)
           Result = Result.Next;
@@ -818,7 +813,7 @@ namespace ClipperLib
           while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
           if (Horz.Prev.Top.X == Result.Next.Top.X)
           {
-            if (!NextIsForward) Result = Horz.Prev;
+            if (!LeftBoundIsForward) Result = Horz.Prev;
           }
           else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
         }
@@ -843,7 +838,7 @@ namespace ClipperLib
           while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
           if (Horz.Next.Top.X == Result.Prev.Top.X)
           {
-            if (!NextIsForward) Result = Horz.Next;
+            if (!LeftBoundIsForward) Result = Horz.Next;
           }
           else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
         }
