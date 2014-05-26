@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  26 May 2014                                                     *
+* Date      :  27 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1779,7 +1779,10 @@ begin
     locMin.RightBound.WindDelta := -locMin.LeftBound.WindDelta;
 
     E := ProcessBound(locMin.LeftBound, leftBoundIsForward);
+    if E.OutIdx = Skip then E := ProcessBound(E, leftBoundIsForward);
+
     E2 := ProcessBound(locMin.RightBound, not leftBoundIsForward);
+    if E2.OutIdx = Skip then E2 := ProcessBound(E2, not leftBoundIsForward);
 
     if (locMin.LeftBound.OutIdx = Skip) then locMin.LeftBound := nil
     else if (locMin.RightBound.OutIdx = Skip) then locMin.RightBound := nil;

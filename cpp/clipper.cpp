@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  26 May 2014                                                     *
+* Date      :  27 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1190,7 +1190,10 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     locMin->RightBound->WindDelta = -locMin->LeftBound->WindDelta;
 
     E = ProcessBound(locMin->LeftBound, leftBoundIsForward);
+    if (E->OutIdx == Skip) E = ProcessBound(E, leftBoundIsForward);
+
     TEdge* E2 = ProcessBound(locMin->RightBound, !leftBoundIsForward);
+    if (E2->OutIdx == Skip) E2 = ProcessBound(E2, !leftBoundIsForward);
 
     if (locMin->LeftBound->OutIdx == Skip)
       locMin->LeftBound = 0;

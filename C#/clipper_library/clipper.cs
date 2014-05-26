@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  26 May 2014                                                     *
+* Date      :  27 May 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -974,7 +974,7 @@ namespace ClipperLib
       }
 
       m_edges.Add(edges);
-      bool clockwise;
+      bool leftBoundIsForward;
       TEdge EMin = null;
 
       //workaround to avoid an endless loop in the while loop below when
@@ -996,12 +996,12 @@ namespace ClipperLib
         {
           locMin.LeftBound = E.Prev;
           locMin.RightBound = E;
-          clockwise = false; //Q.nextInLML = Q.prev
+          leftBoundIsForward = false; //Q.nextInLML = Q.prev
         } else
         {
           locMin.LeftBound = E;
           locMin.RightBound = E.Prev;
-          clockwise = true; //Q.nextInLML = Q.next
+          leftBoundIsForward = true; //Q.nextInLML = Q.next
         }
         locMin.LeftBound.Side = EdgeSide.esLeft;
         locMin.RightBound.Side = EdgeSide.esRight;
@@ -1012,15 +1012,18 @@ namespace ClipperLib
         else locMin.LeftBound.WindDelta = 1;
         locMin.RightBound.WindDelta = -locMin.LeftBound.WindDelta;
 
-        E = ProcessBound(locMin.LeftBound, clockwise);
-        TEdge E2 = ProcessBound(locMin.RightBound, !clockwise);
+        E = ProcessBound(locMin.LeftBound, leftBoundIsForward);
+        if (E.OutIdx == Skip) E = ProcessBound(E, leftBoundIsForward);
+
+        TEdge E2 = ProcessBound(locMin.RightBound, !leftBoundIsForward);
+        if (E2.OutIdx == Skip) E2 = ProcessBound(E2, !leftBoundIsForward);
 
         if (locMin.LeftBound.OutIdx == Skip)
           locMin.LeftBound = null;
         else if (locMin.RightBound.OutIdx == Skip)
           locMin.RightBound = null;
         InsertLocalMinima(locMin);
-        if (!clockwise) E = E2;
+        if (!leftBoundIsForward) E = E2;
       }
       return true;
 
