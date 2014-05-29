@@ -302,6 +302,20 @@ namespace ClipperLib
         return new Int128(~val.hi, ~val.lo + 1);
     }
 
+    public static explicit operator double(Int128 val)
+    {
+      const double shift64 = 18446744073709551616.0; //2^64
+      if (val.hi < 0)
+      {
+        if (val.lo == 0)
+          return (double)val.hi * shift64;
+        else
+          return -(double)(~val.lo + ~val.hi * shift64);
+      }
+      else
+        return (double)(val.lo + val.hi * shift64);
+    }
+    
     //nb: Constructing two new Int128 objects every time we want to multiply longs  
     //is slow. So, although calling the Int128Mul method doesn't look as clean, the 
     //code runs significantly faster than if we'd used the * operator.

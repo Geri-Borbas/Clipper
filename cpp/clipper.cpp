@@ -4186,7 +4186,7 @@ bool SlopesNearCollinear(const IntPoint& pt1,
   //this function is more accurate when the point that's geometrically
   //between the other 2 points is the one that's tested for distance.
   //ie makes it more likely to pick up 'spikes' ...
-	if (std::abs(pt1.X - pt2.X) > std::abs(pt1.Y - pt2.Y))
+	if (Abs(pt1.X - pt2.X) > Abs(pt1.Y - pt2.Y))
 	{
     if ((pt1.X > pt2.X) == (pt1.X < pt3.X))
       return DistanceFromLineSqrd(pt1, pt2, pt3) < distSqrd;
