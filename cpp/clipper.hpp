@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  27 May 2014                                                     *
+* Date      :  7 July 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -57,6 +57,7 @@
 #include <cstdlib>
 #include <ostream>
 #include <functional>
+#include <queue>
 
 namespace ClipperLib {
 
@@ -74,10 +75,11 @@ enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
   static cInt const hiRange = 46340;
 #else
   typedef signed long long cInt;
-  typedef signed long long long64;     //used by Int128 class
-  typedef unsigned long long ulong64;
   static cInt const loRange = 0x3FFFFFFF;
   static cInt const hiRange = 0x3FFFFFFFFFFFFFFFLL;
+  typedef signed long long long64;     //used by Int128 class
+  typedef unsigned long long ulong64;
+
 #endif
 
 struct IntPoint {
@@ -205,7 +207,7 @@ enum EdgeSide { esLeft = 1, esRight = 2};
 //forward declarations (for stuff used internally) ...
 struct TEdge;
 struct IntersectNode;
-struct LocalMinima;
+struct LocalMinimum;
 struct Scanbeam;
 struct OutPt;
 struct OutRec;
@@ -215,7 +217,6 @@ typedef std::vector < OutRec* > PolyOutList;
 typedef std::vector < TEdge* > EdgeList;
 typedef std::vector < Join* > JoinList;
 typedef std::vector < IntersectNode* > IntersectList;
-
 
 //------------------------------------------------------------------------------
 
@@ -239,12 +240,14 @@ protected:
   void PopLocalMinima();
   virtual void Reset();
   TEdge* ProcessBound(TEdge* E, bool IsClockwise);
-  void InsertLocalMinima(LocalMinima *newLm);
   void DoMinimaLML(TEdge* E1, TEdge* E2, bool IsClosed);
   TEdge* DescendToMin(TEdge *&E);
   void AscendToMax(TEdge *&E, bool Appending, bool IsClosed);
-  LocalMinima      *m_CurrentLM;
-  LocalMinima      *m_MinimaList;
+
+  typedef std::vector<LocalMinimum> MinimaList;
+  MinimaList::iterator m_CurrentLM;
+  MinimaList           m_MinimaList;
+
   bool              m_UseFullRange;
   EdgeList          m_edges;
   bool             m_PreserveCollinear;
@@ -282,7 +285,8 @@ private:
   JoinList          m_GhostJoins;
   IntersectList     m_IntersectList;
   ClipType          m_ClipType;
-  std::set< cInt, std::greater<cInt> > m_Scanbeam;
+  typedef std::priority_queue<cInt> ScanbeamList;
+  ScanbeamList      m_Scanbeam;
   TEdge           *m_ActiveEdges;
   TEdge           *m_SortedEdges;
   bool             m_ExecuteLocked;

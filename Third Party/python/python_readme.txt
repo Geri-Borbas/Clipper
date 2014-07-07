@@ -1,9 +1,10 @@
 
-The clipper.py file included in this distribution is a **very old** Python translation of the Clipper Library. 
-I've given up updating this version of Clipper because, since the Python code is interpreted, it's about 
-100 times slower than compiled versions of Clipper (see below).
+The clipper.py file included in this distribution contains a very old version of Clipper.
 
-Alternatively, Maxime Chalon <maxime.chalon@gmail.com> has written a Python extension module for Clipper:
+I found it too onerous maintaining 4 parallel translations of Clipper, and I only wrote clipper.py to teach myself Python. 
+Besides, the Python code is about 100 times slower than compiled versions of Clipper so there are better alternatives.
+
+Maxime Chalon <maxime.chalon@gmail.com> has written a Python extension module for Clipper:
 https://sites.google.com/site/maxelsbackyard/home/pyclipper
-This module provides a Python interface to the C++ compiled Clipper Library (and runs about 100 times faster than clipper.py).
+This module provides a Python interface to the C++ compiled Clipper Library.
 

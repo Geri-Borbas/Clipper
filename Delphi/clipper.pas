@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  27 May 2014                                                     *
+* Date      :  7 July 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -206,12 +206,11 @@ type
     Pt   : TIntPoint;
   end;
 
-  PLocalMinima = ^TLocalMinima;
-  TLocalMinima = record
+  PLocalMinimum = ^TLocalMinimum;
+  TLocalMinimum = record
     Y         : cInt;
     LeftBound : PEdge;
     RightBound: PEdge;
-    Next      : PLocalMinima;
   end;
 
   POutRec = ^TOutRec;
@@ -248,19 +247,16 @@ type
   TClipperBase = class
   private
     FEdgeList         : TList;
-    FLmList           : PLocalMinima; //localMinima list
-    FCurrLm           : PLocalMinima; //current localMinima node
     FUse64BitRange    : Boolean;      //see LoRange and HiRange consts notes below
     FHasOpenPaths     : Boolean;
     procedure DisposeLocalMinimaList;
     procedure DisposePolyPts(PP: POutPt);
-    procedure InsertLocalMinima(Lm: PLocalMinima);
     function ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
   protected
+    FLocMinList       : TList;
+    FCurrentLocMinIdx : Integer;
     FPreserveCollinear : Boolean;
     procedure Reset; virtual;
-    procedure PopLocalMinima;
-    property CurrentLm: PLocalMinima read FCurrLm;
     property HasOpenPaths: Boolean read FHasOpenPaths;
   public
     constructor Create; virtual;
@@ -1456,8 +1452,8 @@ end;
 constructor TClipperBase.Create;
 begin
   FEdgeList := TList.Create;
-  FLmList := nil;
-  FCurrLm := nil;
+  FLocMinList := TList.Create;
+  FCurrentLocMinIdx := 0;
   FUse64BitRange := False; //ie default is False
 end;
 //------------------------------------------------------------------------------
@@ -1470,33 +1466,10 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipperBase.InsertLocalMinima(Lm: PLocalMinima);
-var
-  TmpLm: PLocalMinima;
-begin
-  if not Assigned(FLmList) then
-  begin
-    FLmList := Lm;
-  end
-  else if (Lm.Y >= FLmList.Y) then
-  begin
-    Lm.Next := FLmList;
-    FLmList := Lm;
-  end else
-  begin
-    TmpLm := FLmList;
-    while Assigned(TmpLm.Next) and (Lm.Y < TmpLm.Next.Y) do
-        TmpLm := TmpLm.Next;
-    Lm.Next := TmpLm.Next;
-    TmpLm.Next := Lm;
-  end;
-end;
-//----------------------------------------------------------------------
-
 function TClipperBase.ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
 var
   EStart, Horz: PEdge;
-  locMin: PLocalMinima;
+  locMin: PLocalMinimum;
 begin
   Result := E;
   if (E.OutIdx = Skip) then
@@ -1524,13 +1497,12 @@ begin
         E := Result.Next else
         E := Result.Prev;
       new(locMin);
-      locMin.Next := nil;
       locMin.Y := E.Bot.Y;
       locMin.LeftBound := nil;
       locMin.RightBound := E;
       E.WindDelta := 0;
       Result := ProcessBound(E, NextIsForward);
-      InsertLocalMinima(locMin);
+      FLocMinList.Add(locMin);
     end;
     Exit;
   end;
@@ -1614,7 +1586,7 @@ var
   Edges: PEdgeArray;
   E, E2, EMin, EStart, ELoopStop: PEdge;
   IsFlat, leftBoundIsForward: Boolean;
-  locMin: PLocalMinima;
+  locMin: PLocalMinimum;
 begin
 {$IFDEF use_lines}
   if not Closed and (polyType = ptClip) then
@@ -1721,7 +1693,6 @@ begin
     end;
     if E.Prev.Bot.X < E.Prev.Top.X then ReverseHorizontal(E.Prev);
     new(locMin);
-    locMin.Next := nil;
     locMin.Y := E.Bot.Y;
     locMin.LeftBound := nil;
     locMin.RightBound := E;
@@ -1733,7 +1704,7 @@ begin
       if E.Bot.X <> E.Prev.Top.X then ReverseHorizontal(E);
       E := E.Next;
     end;
-    InsertLocalMinima(locMin);
+    FLocMinList.Add(locMin);
     Result := true;
     FEdgeList.Add(Edges);
     Exit;
@@ -1756,7 +1727,6 @@ begin
     //E and E.Prev now share a local minima (left aligned if horizontal).
     //Compare their slopes to find which starts which bound ...
     new(locMin);
-    locMin.Next := nil;
     locMin.Y := E.Bot.Y;
     if (E.Dx < E.Prev.Dx) then
     begin
@@ -1786,7 +1756,7 @@ begin
 
     if (locMin.LeftBound.OutIdx = Skip) then locMin.LeftBound := nil
     else if (locMin.RightBound.OutIdx = Skip) then locMin.RightBound := nil;
-    InsertLocalMinima(locMin);
+    FLocMinList.Add(locMin);
 
     if not leftBoundIsForward then E := E2;
   end;
@@ -1819,16 +1789,23 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function LocMinListSort(item1, item2:Pointer): Integer;
+begin
+  result := PLocalMinimum(item2).Y - PLocalMinimum(item1).Y;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipperBase.Reset;
 var
-  Lm: PLocalMinima;
+  i: Integer;
+  Lm: PLocalMinimum;
 begin
   //Reset() allows various clipping operations to be executed
   //multiple times on the same polygon sets.
-  FCurrLm := FLmList;
-  Lm := FCurrLm;
-  while Assigned(Lm) do
+  FLocMinList.Sort(LocMinListSort);
+  for i := 0 to FLocMinList.Count -1 do
   begin
+    Lm := PLocalMinimum(FLocMinList[i]);
     //resets just the two (L & R) edges attached to each Local Minima ...
     if assigned(Lm.LeftBound) then
       with Lm.LeftBound^ do
@@ -1844,8 +1821,8 @@ begin
         Side := esRight;
         OutIdx := Unassigned;
       end;
-    Lm := Lm.Next;
   end;
+  FCurrentLocMinIdx := 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -1864,21 +1841,13 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipperBase.DisposeLocalMinimaList;
+var
+  i: Integer;
 begin
-  while Assigned(FLmList) do
-  begin
-    FCurrLm := FLmList.Next;
-    Dispose(FLmList);
-    FLmList := FCurrLm;
-  end;
-  FCurrLm := nil;
-end;
-//------------------------------------------------------------------------------
-
-procedure TClipperBase.PopLocalMinima;
-begin
-  if not Assigned(fCurrLM) then Exit;
-  FCurrLM := FCurrLM.Next;
+  for i := 0 to FLocMinList.Count -1 do
+    Dispose(PLocalMinimum(FLocMinList[i]));
+  FLocMinList.Clear;
+  FCurrentLocMinIdx := 0;
 end;
 
 //------------------------------------------------------------------------------
@@ -1927,16 +1896,12 @@ end;
 
 procedure TClipper.Reset;
 var
-  Lm: PLocalMinima;
+  i: Integer;
 begin
   inherited Reset;
   FScanbeam := nil;
-  Lm := FLmList;
-  while Assigned(Lm) do
-  begin
-    InsertScanbeam(Lm.Y);
-    Lm := Lm.Next;
-  end;
+  for i := 0 to FLocMinList.Count -1 do
+    InsertScanbeam(PLocalMinimum(FLocMinList[i]).Y);
 end;
 //------------------------------------------------------------------------------
 
@@ -2031,7 +1996,7 @@ begin
       if not ProcessIntersections(BotY, TopY) then Exit;
       ProcessEdgesAtTopOfScanbeam(TopY);
       BotY := TopY;
-    until not assigned(FScanbeam) and not assigned(CurrentLm);
+    until not assigned(FScanbeam) and (FCurrentLocMinIdx >= FLocMinList.Count);
 
     //fix orientations ...
     for I := 0 to FPolyOutList.Count -1 do
@@ -2506,15 +2471,18 @@ var
   Lb, Rb: PEdge;
   Jr: PJoin;
   Op1, Op2: POutPt;
+  LocMin: PLocalMinimum;
 begin
-  while Assigned(CurrentLm) and (CurrentLm.Y = BotY) do
+
+  while (FCurrentLocMinIdx < FLocMinList.Count) do
   begin
-    Lb := CurrentLm.LeftBound;
-    Rb := CurrentLm.RightBound;
-    PopLocalMinima;
+    LocMin := PLocalMinimum(FLocMinList[FCurrentLocMinIdx]);
+    if (LocMin.Y <> BotY) then break;
+    inc(FCurrentLocMinIdx);
 
+    Lb := LocMin.LeftBound;
+    Rb := LocMin.RightBound;
     Op1 := nil;
-
     if not assigned(Lb) then
     begin
       InsertEdgeIntoAEL(Rb, nil);
@@ -4186,6 +4154,7 @@ var
   I: Integer;
   OutRec: POutRec;
 begin
+  //tests if NewOutRec contains the polygon before reassigning FirstLeft
   for I := 0 to FPolyOutList.Count -1 do
   begin
     OutRec := fPolyOutList[I];
@@ -4202,6 +4171,7 @@ procedure TClipper.FixupFirstLefts2(OldOutRec, NewOutRec: POutRec);
 var
   I: Integer;
 begin
+  //reassigns FirstLeft WITHOUT testing if NewOutRec contains the polygon
   for I := 0 to FPolyOutList.Count -1 do
     with POutRec(fPolyOutList[I])^ do
       if (FirstLeft = OldOutRec) then FirstLeft := NewOutRec;
@@ -4359,6 +4329,7 @@ begin
             //OutRec2 is contained by OutRec1 ...
             OutRec2.IsHole := not OutRec1.IsHole;
             OutRec2.FirstLeft := OutRec1;
+            if FUsingPolyTree then FixupFirstLefts2(OutRec2, OutRec1);
           end
           else
           if Poly2ContainsPoly1(OutRec1.Pts, OutRec2.Pts) then
@@ -4368,11 +4339,13 @@ begin
             OutRec1.IsHole := not OutRec2.IsHole;
             OutRec2.FirstLeft := OutRec1.FirstLeft;
             OutRec1.FirstLeft := OutRec2;
+            if FUsingPolyTree then FixupFirstLefts2(OutRec1, OutRec2);
           end else
           begin
             //the 2 polygons are separate ...
             OutRec2.IsHole := OutRec1.IsHole;
             OutRec2.FirstLeft := OutRec1.FirstLeft;
+            if FUsingPolyTree then FixupFirstLefts1(OutRec1, OutRec2);
           end;
           Op2 := Op; //ie get ready for the next iteration
         end;

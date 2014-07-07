@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  27 May 2014                                                     *
+* Date      :  7 July 2014                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -490,6 +490,8 @@ namespace ClipperLib
   {
     public int Compare(IntersectNode node1, IntersectNode node2)
     {
+      //the following int typecast is almost certainly safe because 
+      //we're comparing IntersectNodes that are within a single scanbeam ...
       return (int)(node2.Pt.Y - node1.Pt.Y);
     }
   }
@@ -3859,6 +3861,7 @@ namespace ClipperLib
                   //OutRec2 is contained by OutRec1 ...
                   outrec2.IsHole = !outrec.IsHole;
                   outrec2.FirstLeft = outrec;
+                  if (m_UsingPolyTree) FixupFirstLefts2(outrec2, outrec);
                 }
                 else
                   if (Poly2ContainsPoly1(outrec.Pts, outrec2.Pts))
@@ -3868,11 +3871,14 @@ namespace ClipperLib
                   outrec.IsHole = !outrec2.IsHole;
                   outrec2.FirstLeft = outrec.FirstLeft;
                   outrec.FirstLeft = outrec2;
-                } else
+                  if (m_UsingPolyTree) FixupFirstLefts2(outrec, outrec2);
+                }
+                  else
                 {
                   //the 2 polygons are separate ...
                   outrec2.IsHole = outrec.IsHole;
                   outrec2.FirstLeft = outrec.FirstLeft;
+                  if (m_UsingPolyTree) FixupFirstLefts1(outrec, outrec2);
                 }
                 op2 = op; //ie get ready for the next iteration
               }
