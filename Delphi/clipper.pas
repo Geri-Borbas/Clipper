@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  7 July 2014                                                     *
+* Date      :  16 July 2014                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -222,7 +222,7 @@ type
     //The 'FirstLeft' field points to the OutRec representing the polygon
     //immediately to the left of the current OutRec's polygon. When a polygon is
     //contained within another polygon, the polygon immediately to its left will
-    //either be its owner polygon or a sibling also contained by the same outer
+    //either be its outer polygon or a sibling also contained by the same outer
     //polygon. By storing  this field, it's easy to sort polygons into a tree
     //structure which reflects the parent/child relationships of all polygons.
     FirstLeft   : POutRec;
@@ -1117,10 +1117,11 @@ var
 begin
   op := OutPt1;
   repeat
+    //nb: PointInPolygon returns 0 if false, +1 if true, -1 if pt on polygon
     res := PointInPolygon(op.Pt, OutPt2);
     if (res >= 0) then
     begin
-      Result := res <> 0;
+      Result := res > 0;
       Exit;
     end;
     op := op.Next;
@@ -1462,6 +1463,7 @@ destructor TClipperBase.Destroy;
 begin
   Clear;
   FEdgeList.Free;
+  FLocMinList.Free;
   inherited;
 end;
 //------------------------------------------------------------------------------
@@ -1790,8 +1792,13 @@ end;
 //------------------------------------------------------------------------------
 
 function LocMinListSort(item1, item2:Pointer): Integer;
+var
+  y: cInt;
 begin
-  result := PLocalMinimum(item2).Y - PLocalMinimum(item1).Y;
+  y := PLocalMinimum(item2).Y - PLocalMinimum(item1).Y;
+  if y < 0 then result := -1
+  else if y > 0 then result := 1
+  else result := 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -3836,8 +3843,13 @@ end;
 //------------------------------------------------------------------------------
 
 function IntersectListSort(Node1, Node2: Pointer): Integer;
+var
+  i: cInt;
 begin
-  Result := Integer(PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y);
+  i := PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y;
+  if i < 0 then Result := -1
+  else if i > 0 then Result := 1
+  else Result := 0;
 end;
 //------------------------------------------------------------------------------
 
@@ -4149,16 +4161,27 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function ParseFirstLeft(FirstLeft: POutRec): POutRec;
+begin
+  while Assigned(FirstLeft) and not Assigned(FirstLeft.Pts) do
+    FirstLeft := FirstLeft.FirstLeft;
+  Result := FirstLeft;
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.FixupFirstLefts1(OldOutRec, NewOutRec: POutRec);
 var
   I: Integer;
   OutRec: POutRec;
+  firstLeft: POutRec;
 begin
   //tests if NewOutRec contains the polygon before reassigning FirstLeft
   for I := 0 to FPolyOutList.Count -1 do
   begin
     OutRec := fPolyOutList[I];
-    if Assigned(OutRec.Pts) and (OutRec.FirstLeft = OldOutRec) then
+    if not Assigned(OutRec.Pts) or not Assigned(OutRec.FirstLeft) then continue;
+    firstLeft := ParseFirstLeft(OutRec.FirstLeft);
+    if (firstLeft = OldOutRec) then
     begin
       if Poly2ContainsPoly1(OutRec.Pts, NewOutRec.Pts) then
         OutRec.FirstLeft := NewOutRec;
@@ -4175,14 +4198,6 @@ begin
   for I := 0 to FPolyOutList.Count -1 do
     with POutRec(fPolyOutList[I])^ do
       if (FirstLeft = OldOutRec) then FirstLeft := NewOutRec;
-end;
-//------------------------------------------------------------------------------
-
-function ParseFirstLeft(FirstLeft: POutRec): POutRec;
-begin
-  while Assigned(FirstLeft) and not Assigned(FirstLeft.Pts) do
-    FirstLeft := FirstLeft.FirstLeft;
-  Result := FirstLeft;
 end;
 //------------------------------------------------------------------------------
 
@@ -5188,7 +5203,7 @@ end;
 type
   TNodeType = (ntAny, ntOpen, ntClosed);
 
-procedure AddPolyNodeToPolygons(PolyNode: TPolyNode;
+procedure AddPolyNodeToPaths(PolyNode: TPolyNode;
   NodeType: TNodeType; var Paths: TPaths);
 var
   I: Integer;
@@ -5207,21 +5222,21 @@ begin
     Paths[I] := PolyNode.Contour;
   end;
   for I := 0 to PolyNode.ChildCount - 1 do
-    AddPolyNodeToPolygons(PolyNode.Childs[I], NodeType, Paths);
+    AddPolyNodeToPaths(PolyNode.Childs[I], NodeType, Paths);
 end;
 //------------------------------------------------------------------------------
 
 function PolyTreeToPaths(PolyTree: TPolyTree): TPaths;
 begin
   Result := nil;
-  AddPolyNodeToPolygons(PolyTree, ntAny, Result);
+  AddPolyNodeToPaths(PolyTree, ntAny, Result);
 end;
 //------------------------------------------------------------------------------
 
 function ClosedPathsFromPolyTree(PolyTree: TPolyTree): TPaths;
 begin
   Result := nil;
-  AddPolyNodeToPolygons(PolyTree, ntClosed, Result);
+  AddPolyNodeToPaths(PolyTree, ntClosed, Result);
 end;
 //------------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  7 July 2014                                                     *
+* Date      :  16 July 2014                                                    *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -3677,8 +3677,9 @@ namespace ClipperLib
         OutPt op = outPt1;
         do
         {
+          //nb: PointInPolygon returns 0 if false, +1 if true, -1 if pt on polygon
           int res = PointInPolygon(op.Pt, outPt2);
-          if (res >= 0) return res != 0;
+          if (res >= 0) return res > 0;
           op = op.Next;
         }
         while (op != outPt1);
@@ -3691,7 +3692,9 @@ namespace ClipperLib
           for (int i = 0; i < m_PolyOuts.Count; i++)
           {
               OutRec outRec = m_PolyOuts[i];
-              if (outRec.Pts != null && outRec.FirstLeft == OldOutRec) 
+              if (outRec.Pts == null || outRec.FirstLeft == null) continue;
+              OutRec firstLeft = ParseFirstLeft(outRec.FirstLeft);
+              if (firstLeft == OldOutRec)
               {
                   if (Poly2ContainsPoly1(outRec.Pts, NewOutRec.Pts))
                       outRec.FirstLeft = NewOutRec;
