@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  16 July 2014                                                    *
+* Date      :  15 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1516,7 +1516,8 @@ begin
     //Also, consecutive horz. edges may start heading left before going right.
     if NextIsForward then EStart := E.Prev
     else EStart := E.Next;
-    if (EStart.Dx = Horizontal) then //ie an adjoining horizontal skip edge
+    if EStart.OutIdx = Skip then //do nothing
+    else if (EStart.Dx = Horizontal) then //ie an adjoining horizontal skip edge
     begin
       if (EStart.Bot.X <> E.Bot.X) and (EStart.Top.X <> E.Bot.X) then
         ReverseHorizontal(E);
@@ -4318,13 +4319,13 @@ begin
     OutRec1 := POutRec(fPolyOutList[I]);
     inc(I);
     Op := OutRec1.Pts;
-    if not assigned(OP) then Continue;
+    if not assigned(Op) or OutRec1.IsOpen then Continue;
     repeat //for each Pt in Path until duplicate found do ...
       Op2 := Op.Next;
       while (Op2 <> OutRec1.Pts) do
       begin
         if (PointsEqual(Op.Pt, Op2.Pt) and
-          (Op2.Next <> Op)and (Op2.Prev <> Op)) then
+          (Op2.Next <> Op) and (Op2.Prev <> Op)) then
         begin
           //split the polygon into two ...
           Op3 := Op.Prev;

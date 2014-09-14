@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  16 July 2014                                                    *
+* Date      :  15 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -973,13 +973,16 @@ TEdge* ClipperBase::ProcessBound(TEdge* E, bool NextIsForward)
       EStart = E->Prev;
     else 
       EStart = E->Next;
-    if (IsHorizontal(*EStart)) //ie an adjoining horizontal skip edge
+    if (EStart->OutIdx != Skip)
     {
-      if (EStart->Bot.X != E->Bot.X && EStart->Top.X != E->Bot.X) 
+      if (IsHorizontal(*EStart)) //ie an adjoining horizontal skip edge
+      {
+        if (EStart->Bot.X != E->Bot.X && EStart->Top.X != E->Bot.X)
+          ReverseHorizontal(*E);
+      }
+      else if (EStart->Bot.X != E->Bot.X)
         ReverseHorizontal(*E);
     }
-    else if (EStart->Bot.X != E->Bot.X) 
-      ReverseHorizontal(*E);
   }
   
   EStart = E;
@@ -4054,7 +4057,7 @@ void Clipper::DoSimplePolygons()
   {
     OutRec* outrec = m_PolyOuts[i++];
     OutPt* op = outrec->Pts;
-    if (!op) continue;
+    if (!op || outrec->IsOpen) continue;
     do //for each Pt in Polygon until duplicate found do ...
     {
       OutPt* op2 = op->Next;

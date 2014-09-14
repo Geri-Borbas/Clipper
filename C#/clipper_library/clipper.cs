@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.1.5                                                           *
-* Date      :  16 July 2014                                                    *
+* Date      :  15 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -806,13 +806,16 @@ namespace ClipperLib
         //Also, consecutive horz. edges may start heading left before going right.
         if (LeftBoundIsForward) EStart = E.Prev;
         else EStart = E.Next;
-        if (EStart.Dx == horizontal) //ie an adjoining horizontal skip edge
+        if (EStart.OutIdx != Skip)
         {
-          if (EStart.Bot.X != E.Bot.X && EStart.Top.X != E.Bot.X) 
+          if (EStart.Dx == horizontal) //ie an adjoining horizontal skip edge
+          {
+            if (EStart.Bot.X != E.Bot.X && EStart.Top.X != E.Bot.X)
+              ReverseHorizontal(E);
+          }
+          else if (EStart.Bot.X != E.Bot.X)
             ReverseHorizontal(E);
         }
-        else if (EStart.Bot.X != E.Bot.X)
-            ReverseHorizontal(E);
       }
 
       EStart = E;
@@ -3839,7 +3842,7 @@ namespace ClipperLib
         {
           OutRec outrec = m_PolyOuts[i++];
           OutPt op = outrec.Pts;
-          if (op == null) continue;
+          if (op == null || outrec.IsOpen) continue;
           do //for each Pt in Polygon until duplicate found do ...
           {
             OutPt op2 = op.Next;
