@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.5                                                           *
-* Date      :  15 September 2014                                               *
+* Version   :  6.2.0                                                           *
+* Date      :  28 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -45,12 +45,11 @@
 //use_xyz: adds a Z member to IntPoint. Adds a minor cost to performance.
 //#define use_xyz
 
-//use_lines: Enables line clipping. Adds a very minor cost to performance.
+//use_lines: Enables open path clipping. Adds a very minor cost to performance.
 //#define use_lines
 
-//use_deprecated: Enables support for the obsolete OffsetPaths() function
-//which has been replace with the ClipperOffset class.
-#define use_deprecated
+//use_deprecated: Enables temporary support for the obsolete functions
+//#define use_deprecated
 
 
 using System;
@@ -451,9 +450,6 @@ namespace ClipperLib
   
   public enum JoinType { jtSquare, jtRound, jtMiter };
   public enum EndType { etClosedPolygon, etClosedLine, etOpenButt, etOpenSquare, etOpenRound };
-#if use_deprecated
-  public enum EndType_ { etClosed, etButt, etSquare, etRound };
-#endif
 
   internal enum EdgeSide {esLeft, esRight};
   internal enum Direction {dRightToLeft, dLeftToRight};
@@ -490,9 +486,10 @@ namespace ClipperLib
   {
     public int Compare(IntersectNode node1, IntersectNode node2)
     {
-      //the following int typecast is almost certainly safe because 
-      //we're comparing IntersectNodes that are within a single scanbeam ...
-      return (int)(node2.Pt.Y - node1.Pt.Y);
+      cInt i = node2.Pt.Y - node1.Pt.Y;
+      if (i > 0) return 1;
+      else if (i < 0) return -1;
+      else return 0;
     }
   }
 
@@ -1198,9 +1195,9 @@ namespace ClipperLib
       private List<Join> m_GhostJoins;
       private bool m_UsingPolyTree;
 #if use_xyz
-      public delegate void TZFillCallback(IntPoint bot1, IntPoint top1, 
-        IntPoint bot2, IntPoint top2, ref IntPoint intersectPt);
-      public TZFillCallback ZFillFunction { get; set; }
+      public delegate void ZFillCallback(IntPoint bot1, IntPoint top1, 
+        IntPoint bot2, IntPoint top2, ref IntPoint pt);
+      public ZFillCallback ZFillFunction { get; set; }
 #endif
       public Clipper(int InitOptions = 0): base() //constructor
       {
@@ -3923,21 +3920,7 @@ namespace ClipperLib
         return a * 0.5;
       }
 
-#if use_deprecated
-
-      public static Paths OffsetPaths(Paths polys, double delta,
-          JoinType jointype, EndType_ endtype, double MiterLimit)
-      {
-        Paths result = new Paths();
-        ClipperOffset co = new ClipperOffset(MiterLimit, MiterLimit);
-        co.AddPaths(polys, jointype, (EndType)endtype);
-        co.Execute(ref result, delta);
-        return result;
-      }
       //------------------------------------------------------------------------------
-#endif
-
-    //------------------------------------------------------------------------------
       // SimplifyPolygon functions ...
       // Convert self-intersecting polygons into simple polygons
       //------------------------------------------------------------------------------

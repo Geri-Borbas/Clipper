@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.5                                                           *
-* Date      :  15 September 2014                                               *
+* Version   :  6.2.0                                                           *
+* Date      :  26 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1357,7 +1357,7 @@ Clipper::~Clipper() //destructor
 //------------------------------------------------------------------------------
 
 #ifdef use_xyz  
-void Clipper::ZFillFunction(TZFillCallback zFillFunc)
+void Clipper::ZFillFunction(ZFillCallback zFillFunc)
 {  
   m_ZFill = zFillFunc;
 }
@@ -4456,19 +4456,5 @@ std::ostream& operator <<(std::ostream &s, const Paths &p)
   return s;
 }
 //------------------------------------------------------------------------------
-
-#ifdef use_deprecated
-
-void OffsetPaths(const Paths &in_polys, Paths &out_polys,
-  double delta, JoinType jointype, EndType_ endtype, double limit)
-{
-  ClipperOffset co(limit, limit);
-  co.AddPaths(in_polys, jointype, (EndType)endtype); 
-  co.Execute(out_polys, delta);
-}
-//------------------------------------------------------------------------------
-
-#endif
-
 
 } //ClipperLib namespace

@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.1.5                                                           *
-* Date      :  15 September 2014                                               *
+* Version   :  6.2.0                                                           *
+* Date      :  26 September 2014                                               *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -35,17 +35,16 @@ unit clipper;
 
 //use_int32: When enabled 32bit ints are used instead of 64bit ints. This
 //improve performance but coordinate values are limited to the range +/- 46340
-{.$DEFINE use_int32}
+//{$DEFINE use_int32}
 
 //use_xyz: adds a Z member to IntPoint (with only a minor cost to performance)
-{.$DEFINE use_xyz}
+//{$DEFINE use_xyz}
 
-//use_lines: Enables line clipping. Adds a very minor cost to performance.
-{$DEFINE use_lines}
+//use_lines: Enables open path clipping (with a very minor cost to performance)
+//{$DEFINE use_lines}
 
-//use_deprecated: Enables support for the obsolete OffsetPaths() function
-//which has been replace with the ClipperOffset class.
-{$DEFINE use_deprecated}
+//use_deprecated: Enables temporary support for the obsolete functions
+//{$DEFINE use_deprecated}
 
 {$IFDEF FPC}
   {$DEFINE INLINING}
@@ -118,10 +117,6 @@ type
 
   TPath = array of TIntPoint;
   TPaths = array of TPath;
-
-{$IFDEF use_deprecated}
-  TEndType_ = (etClosed, etButt = 2, etSquare, etRound);
-{$ENDIF}
 
   TPolyNode = class;
   TArrayOfPolyNode = array of TPolyNode;
@@ -416,12 +411,6 @@ function DoublePoint(const Ip: TIntPoint): TDoublePoint; overload;
 
 function ReversePath(const Pts: TPath): TPath;
 function ReversePaths(const Pts: TPaths): TPaths;
-
-{$IFDEF use_deprecated}
-function OffsetPaths(const Polys: TPaths; const Delta: Double;
-  JoinType: TJoinType = jtSquare; EndType: TEndType_ = etClosed;
-  Limit: Double = 0): TPaths;
-{$ENDIF}
 
 //SimplifyPolygon converts a self-intersecting polygon into a simple polygon.
 function SimplifyPolygon(const Poly: TPath; FillType: TPolyFillType = pftEvenOdd): TPaths;
@@ -5258,22 +5247,5 @@ end;
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-
-{$IFDEF use_deprecated}
-function OffsetPaths(const Polys: TPaths; const Delta: Double;
-  JoinType: TJoinType = jtSquare; EndType: TEndType_ = etClosed;
-  Limit: Double = 0): TPaths;
-begin
-  with TClipperOffset.Create(Limit, Limit) do
-  try
-    AddPaths(Polys, JoinType, TEndType(EndType));
-    Execute(Result, Delta);
-  finally
-    Free;
-  end;
-end;
-//------------------------------------------------------------------------------
-{$ENDIF}
-
 
 end.
