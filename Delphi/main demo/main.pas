@@ -17,7 +17,9 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls, Math,
-  GR32, GR32_Image, GR32_Polygons, //http://sourceforge.net/projects/graphics32/
+  //requires Graphics32 (revision 2180 or later) ...
+  //https://sourceforge.net/p/graphics32/code/HEAD/tree/trunk/Source/
+  GR32, GR32_Image, GR32_Polygons,
   GR32_Misc, clipper;
 
 type

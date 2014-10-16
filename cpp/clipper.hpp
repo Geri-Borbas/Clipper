@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.0                                                           *
-* Date      :  26 September 2014                                               *
+* Date      :  2 October 2014                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -70,8 +70,8 @@ enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
 
 #ifdef use_int32
   typedef int cInt;
-  static cInt const loRange = 46340;
-  static cInt const hiRange = 46340;
+  static cInt const loRange = 0x7FFF;
+  static cInt const hiRange = 0x7FFF;
 #else
   typedef signed long long cInt;
   static cInt const loRange = 0x3FFFFFFF;

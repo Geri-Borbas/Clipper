@@ -2,6 +2,14 @@
 Clipper Change Log
 =====================================================================
 
+v6.2.0 (28 September 2014)
+
+* Numerous bugfixes - too many to list. 
+  See revisions 454-475 in Sourceforge Repository.
+* Parameters changed in the custom callback function that can be 
+  assigned to ZFillFunction. Curves demo temporarily removed.
+* Deprecated functions have been removed. 
+
 v6.1.5 (26 February 2014)
 * Improved the joining of output polygons sharing a common edge 
   when those common edges are horizontal.

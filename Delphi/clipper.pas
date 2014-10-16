@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.0                                                           *
-* Date      :  26 September 2014                                               *
+* Date      :  17 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -46,6 +46,16 @@ unit clipper;
 //use_deprecated: Enables temporary support for the obsolete functions
 //{$DEFINE use_deprecated}
 
+// enable LEGACYIFEND for Delphi XE4+
+{$IF CompilerVersion >= 25.0}
+  {$LEGACYIFEND ON}
+{$IFEND}
+
+// use generic lists for NextGen compiler
+{$IFDEF NEXTGEN}
+  {$DEFINE USEGENERICS}
+{$ENDIF}
+
 {$IFDEF FPC}
   {$DEFINE INLINING}
   {$DEFINE UInt64Support}
@@ -66,7 +76,11 @@ unit clipper;
 interface
 
 uses
-  SysUtils, Types, Classes, Math;
+  SysUtils, Types, Classes,
+  {$IFDEF USEGENERICS}
+    Generics.Collections, Generics.Defaults,
+  {$ENDIF}
+  Math;
 
 const
   def_arc_tolerance = 0.25;
@@ -239,16 +253,24 @@ type
     OffPt    : TIntPoint; //offset point (provides slope of common edges)
   end;
 
+  {$IFDEF USEGENERICS}
+  TEgdeList = TList<PEdgeArray>;
+  TLocMinList = TList<PLocalMinimum>;
+  {$ELSE}
+  TEgdeList = TList;
+  TLocMinList = TList;
+  {$ENDIF}
+
   TClipperBase = class
   private
-    FEdgeList         : TList;
+    FEdgeList         : TEgdeList;
     FUse64BitRange    : Boolean;      //see LoRange and HiRange consts notes below
     FHasOpenPaths     : Boolean;
     procedure DisposeLocalMinimaList;
     procedure DisposePolyPts(PP: POutPt);
     function ProcessBound(E: PEdge; NextIsForward: Boolean): PEdge;
   protected
-    FLocMinList       : TList;
+    FLocMinList       : TLocMinList;
     FCurrentLocMinIdx : Integer;
     FPreserveCollinear : Boolean;
     procedure Reset; virtual;
@@ -266,12 +288,23 @@ type
       read FPreserveCollinear write FPreserveCollinear;
   end;
 
+
+  {$IFDEF USEGENERICS}
+  TPolyOutList = TList<POutRec>;
+  TJoinList = TList<PJoin>;
+  TIntersecList = TList<PIntersectNode>;
+  {$ELSE}
+  TPolyOutList = TList;
+  TJoinList = TList;
+  TIntersecList = TList;
+  {$ENDIF}
+
   TClipper = class(TClipperBase)
   private
-    FPolyOutList      : TList;
-    FJoinList         : TList;
-    FGhostJoinList    : TList;
-    FIntersectList    : TList;
+    FPolyOutList      : TPolyOutList;
+    FJoinList         : TJoinList;
+    FGhostJoinList    : TJoinList;
+    FIntersectList    : TIntersecList;
     FClipType         : TClipType;
     FScanbeam         : PScanbeam; //scanbeam list
     FActiveEdges      : PEdge;     //active Edge list
@@ -1441,8 +1474,8 @@ end;
 
 constructor TClipperBase.Create;
 begin
-  FEdgeList := TList.Create;
-  FLocMinList := TList.Create;
+  FEdgeList := TEgdeList.Create;
+  FLocMinList := TLocMinList.Create;
   FCurrentLocMinIdx := 0;
   FUse64BitRange := False; //ie default is False
 end;
@@ -1781,6 +1814,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+{$IFNDEF USEGENERICS}
 function LocMinListSort(item1, item2:Pointer): Integer;
 var
   y: cInt;
@@ -1790,6 +1824,8 @@ begin
   else if y > 0 then result := 1
   else result := 0;
 end;
+{$ENDIF}
+
 //------------------------------------------------------------------------------
 
 procedure TClipperBase.Reset;
@@ -1799,7 +1835,21 @@ var
 begin
   //Reset() allows various clipping operations to be executed
   //multiple times on the same polygon sets.
+{$IFDEF USEGENERICS}
+    FLocMinList.Sort(TComparer<PLocalMinimum>.Construct(
+      function (const Item1, Item2 : PLocalMinimum) : integer
+      var
+        y: cInt;
+      begin
+        y := PLocalMinimum(item2).Y - PLocalMinimum(item1).Y;
+        if y < 0 then result := -1
+        else if y > 0 then result := 1
+        else result := 0;
+      end
+    ));
+{$ELSE}
   FLocMinList.Sort(LocMinListSort);
+{$ENDIF}
   for i := 0 to FLocMinList.Count -1 do
   begin
     Lm := PLocalMinimum(FLocMinList[i]);
@@ -1854,10 +1904,10 @@ end;
 constructor TClipper.Create(InitOptions: TInitOptions = []);
 begin
   inherited Create;
-  FJoinList := TList.Create;
-  FGhostJoinList := TList.Create;
-  FPolyOutList := TList.Create;
-  FIntersectList := TList.Create;
+  FJoinList := TJoinList.Create;
+  FGhostJoinList := TJoinList.Create;
+  FPolyOutList := TPolyOutList.Create;
+  FIntersectList := TIntersecList.Create;
   if ioReverseSolution in InitOptions then
     FReverseOutput := true;
   if ioStrictlySimple in InitOptions then
@@ -3856,7 +3906,21 @@ begin
   if Cnt < 2 then exit;
 
   CopyAELToSEL;
+  {$IFDEF USEGENERICS}
+  FIntersectList.Sort(TComparer<PIntersectNode>.Construct(
+    function (const Node1, Node2 : PIntersectNode) : integer
+    var
+      i: cInt;
+    begin
+      i := PIntersectNode(Node2).Pt.Y - PIntersectNode(Node1).Pt.Y;
+      if i < 0 then Result := -1
+      else if i > 0 then Result := 1
+      else Result := 0;
+    end
+    ));
+  {$ELSE}
   FIntersectList.Sort(IntersectListSort);
+  {$ENDIF}
   for I := 0 to Cnt - 1 do
   begin
     if not EdgesAdjacent(FIntersectList[I]) then
@@ -4407,9 +4471,13 @@ end;
 procedure TClipperOffset.Clear;
 var
   I: Integer;
+  PolyNode: TPolyNode;
 begin
   for I := 0 to FPolyNodes.ChildCount -1 do
-    FPolyNodes.Childs[I].Free;
+    begin
+      PolyNode:= FPolyNodes.Childs[I];
+      PolyNode.Free;
+    end;
   FPolyNodes.FCount := 0;
   FPolyNodes.FBuffLen := 16;
   SetLength(FPolyNodes.FChilds, 16);

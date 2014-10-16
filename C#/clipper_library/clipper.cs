@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.0                                                           *
-* Date      :  28 September 2014                                               *
+* Date      :  2 October 2014                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -542,8 +542,8 @@ namespace ClipperLib
     internal static bool near_zero(double val){return (val > -tolerance) && (val < tolerance);}
 
 #if use_int32
-    public const cInt loRange = 46340;
-    public const cInt hiRange = 46340;
+    public const cInt loRange = 0x7FFF;
+    public const cInt hiRange = 0x7FFF;
 #else
     public const cInt loRange = 0x3FFFFFFF;
     public const cInt hiRange = 0x3FFFFFFFFFFFFFFFL; 
