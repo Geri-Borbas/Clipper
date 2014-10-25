@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.0                                                           *
-* Date      :  17 October 2014                                                 *
+* Version   :  6.2.1                                                           *
+* Date      :  25 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1474,6 +1474,7 @@ end;
 
 constructor TClipperBase.Create;
 begin
+  inherited;
   FEdgeList := TEgdeList.Create;
   FLocMinList := TLocMinList.Create;
   FCurrentLocMinIdx := 0;
@@ -4454,6 +4455,7 @@ constructor TClipperOffset.Create(
   MiterLimit: Double = 2;
   ArcTolerance: Double = def_arc_tolerance);
 begin
+  inherited;
   FPolyNodes := TPolyNode.Create;
   FLowest.X := -1;
   FMiterLimit := MiterLimit;
@@ -4465,6 +4467,7 @@ destructor TClipperOffset.Destroy;
 begin
   Clear;
   FPolyNodes.Free;
+  inherited;
 end;
 //------------------------------------------------------------------------------
 
