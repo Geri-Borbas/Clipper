@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.1                                                           *
-* Date      :  25 October 2014                                                 *
+* Date      :  30 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -331,8 +331,8 @@ type
     procedure SwapPositionsInSEL(E1, E2: PEdge);
     procedure ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
     procedure ProcessHorizontals(IsTopOfScanbeam: Boolean);
-    function ProcessIntersections(const BotY, TopY: cInt): Boolean;
-    procedure BuildIntersectList(const BotY, TopY: cInt);
+    function ProcessIntersections(const TopY: cInt): Boolean;
+    procedure BuildIntersectList(const TopY: cInt);
     procedure ProcessIntersectList;
     procedure DeleteFromAEL(E: PEdge);
     procedure DeleteFromSEL(E: PEdge);
@@ -2041,7 +2041,7 @@ begin
       ProcessHorizontals(False);
       if not assigned(FScanbeam) then Break;
       TopY := PopScanbeam;
-      if not ProcessIntersections(BotY, TopY) then Exit;
+      if not ProcessIntersections(TopY) then Exit;
       ProcessEdgesAtTopOfScanbeam(TopY);
       BotY := TopY;
     until not assigned(FScanbeam) and (FCurrentLocMinIdx >= FLocMinList.Count);
@@ -3466,11 +3466,11 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TClipper.ProcessIntersections(const BotY, TopY: cInt): Boolean;
+function TClipper.ProcessIntersections(const TopY: cInt): Boolean;
 begin
   Result := True;
   try
-    BuildIntersectList(BotY, TopY);
+    BuildIntersectList(TopY);
     if (FIntersectList.Count = 0) then
       Exit
     else if FixupIntersectionOrder then
@@ -3494,7 +3494,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.BuildIntersectList(const BotY, TopY: cInt);
+procedure TClipper.BuildIntersectList(const TopY: cInt);
 var
   E, eNext: PEdge;
   Pt: TIntPoint;
@@ -4455,7 +4455,7 @@ constructor TClipperOffset.Create(
   MiterLimit: Double = 2;
   ArcTolerance: Double = def_arc_tolerance);
 begin
-  inherited;
+  inherited Create;
   FPolyNodes := TPolyNode.Create;
   FLowest.X := -1;
   FMiterLimit := MiterLimit;
@@ -4908,7 +4908,7 @@ var
   A, X, X2, Y: Double;
 begin
   A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
-  Steps := Round(FStepsPerRad * Abs(A));
+  Steps := Max(Round(FStepsPerRad * Abs(A)), 1);
 
   X := FNorms[K].X;
   Y := FNorms[K].Y;

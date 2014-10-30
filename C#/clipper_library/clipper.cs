@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.0                                                           *
-* Date      :  2 October 2014                                                  *
+* Version   :  6.2.1                                                           *
+* Date      :  30 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1384,7 +1384,7 @@ namespace ClipperLib
             ProcessHorizontals(false);
             if (m_Scanbeam == null) break;
             cInt topY = PopScanbeam();
-            if (!ProcessIntersections(botY, topY)) return false;
+            if (!ProcessIntersections(topY)) return false;
             ProcessEdgesAtTopOfScanbeam(topY);
             botY = topY;
           } while (m_Scanbeam != null || m_CurrentLM != null);
@@ -2795,11 +2795,11 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private bool ProcessIntersections(cInt botY, cInt topY)
+      private bool ProcessIntersections(cInt topY)
       {
         if( m_ActiveEdges == null ) return true;
         try {
-          BuildIntersectList(botY, topY);
+          BuildIntersectList(topY);
           if ( m_IntersectList.Count == 0) return true;
           if (m_IntersectList.Count == 1 || FixupIntersectionOrder()) 
               ProcessIntersectList();
@@ -2816,7 +2816,7 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private void BuildIntersectList(cInt botY, cInt topY)
+      private void BuildIntersectList(cInt topY)
       {
         if ( m_ActiveEdges == null ) return;
 
@@ -4682,7 +4682,7 @@ namespace ClipperLib
     {
       double a = Math.Atan2(m_sinA,
       m_normals[k].X * m_normals[j].X + m_normals[k].Y * m_normals[j].Y);
-      int steps = (int)Round(m_StepsPerRad * Math.Abs(a));
+      int steps = Math.Max((int)Round(m_StepsPerRad * Math.Abs(a)),1);
 
       double X = m_normals[k].X, Y = m_normals[k].Y, X2;
       for (int i = 0; i < steps; ++i)
