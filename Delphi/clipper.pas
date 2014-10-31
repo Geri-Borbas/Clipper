@@ -4,7 +4,7 @@ unit clipper;
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.1                                                           *
-* Date      :  30 October 2014                                                 *
+* Date      :  31 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -594,6 +594,8 @@ end;
 function TPolyTree.GetTotal: Integer;
 begin
   Result := length(FAllNodes);
+  //with negative offsets, ignore the hidden outer polygon ...
+  if (Result > 0) and (FAllNodes[0] <> FChilds[0]) then dec(Result);
 end;
 
 {$IFNDEF use_int32}
@@ -4854,6 +4856,7 @@ begin
         OuterNode := solution.Childs[0];
         SetLength(solution.FChilds, OuterNode.ChildCount);
         solution.FChilds[0] := OuterNode.Childs[0];
+        solution.FChilds[0].FParent := solution;
         for I := 1 to OuterNode.ChildCount -1 do
           solution.AddChild(OuterNode.Childs[I]);
       end else

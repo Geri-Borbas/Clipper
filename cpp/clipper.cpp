@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.1                                                           *
-* Date      :  30 October 2014                                                 *
+* Date      :  31 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -168,7 +168,10 @@ PolyNode* PolyTree::GetFirst() const
 
 int PolyTree::Total() const
 {
-  return (int)AllNodes.size();
+  int result = (int)AllNodes.size();
+  //with negative offsets, ignore the hidden outer polygon ...
+  if (result > 0 && Childs[0] != AllNodes[0]) result--;
+  return result;
 }
 
 //------------------------------------------------------------------------------
@@ -3778,6 +3781,7 @@ void ClipperOffset::Execute(PolyTree& solution, double delta)
       PolyNode* outerNode = solution.Childs[0];
       solution.Childs.reserve(outerNode->ChildCount());
       solution.Childs[0] = outerNode->Childs[0];
+      solution.Childs[0]->Parent = outerNode->Parent;
       for (int i = 1; i < outerNode->ChildCount(); ++i)
         solution.AddChild(*outerNode->Childs[i]);
     }

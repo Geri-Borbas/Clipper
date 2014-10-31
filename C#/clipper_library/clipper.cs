@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.1                                                           *
-* Date      :  30 October 2014                                                 *
+* Date      :  31 October 2014                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -121,7 +121,13 @@ namespace ClipperLib
 
       public int Total
       {
-          get { return m_AllPolys.Count; }
+          get 
+          { 
+            int result = m_AllPolys.Count;
+            //with negative offsets, ignore the hidden outer polygon ...
+            if (result > 0 && m_Childs[0] != m_AllPolys[0]) result--;
+            return result;
+          }
       }
 
   }
@@ -4603,6 +4609,7 @@ namespace ClipperLib
           PolyNode outerNode = solution.Childs[0];
           solution.Childs.Capacity = outerNode.ChildCount;
           solution.Childs[0] = outerNode.Childs[0];
+          solution.Childs[0].m_Parent = solution;
           for (int i = 1; i < outerNode.ChildCount; i++)
             solution.AddChild(outerNode.Childs[i]);
         }
