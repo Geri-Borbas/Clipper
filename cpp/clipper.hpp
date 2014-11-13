@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.1                                                           *
-* Date      :  31 October 2014                                                 *
+* Version   :  6.2.2                                                           *
+* Date      :  14 November 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -232,7 +232,6 @@ protected:
   void PopLocalMinima();
   virtual void Reset();
   TEdge* ProcessBound(TEdge* E, bool IsClockwise);
-  void DoMinimaLML(TEdge* E1, TEdge* E2, bool IsClosed);
   TEdge* DescendToMin(TEdge *&E);
   void AscendToMax(TEdge *&E, bool Appending, bool IsClosed);
 
@@ -260,7 +259,7 @@ public:
     PolyTree &polytree,
     PolyFillType subjFillType = pftEvenOdd,
     PolyFillType clipFillType = pftEvenOdd);
-  bool ReverseSolution() {return m_ReverseOutput;};
+  bool ReverseSolution() { return m_ReverseOutput; };
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
   bool StrictlySimple() {return m_StrictSimple;};
   void StrictlySimple(bool value) {m_StrictSimple = value;};

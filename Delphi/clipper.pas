@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.1                                                           *
-* Date      :  31 October 2014                                                 *
+* Version   :  6.2.2                                                           *
+* Date      :  14 November 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -42,9 +42,6 @@ unit clipper;
 
 //use_lines: Enables open path clipping (with a very minor cost to performance)
 //{$DEFINE use_lines}
-
-//use_deprecated: Enables temporary support for the obsolete functions
-//{$DEFINE use_deprecated}
 
 // enable LEGACYIFEND for Delphi XE4+
 {$IF CompilerVersion >= 25.0}
@@ -1719,17 +1716,17 @@ begin
       FreeMem(Edges);
       Exit;
     end;
-    if E.Prev.Bot.X < E.Prev.Top.X then ReverseHorizontal(E.Prev);
     new(locMin);
     locMin.Y := E.Bot.Y;
     locMin.LeftBound := nil;
     locMin.RightBound := E;
     locMin.RightBound.Side := esRight;
     locMin.RightBound.WindDelta := 0;
-    while E.Next.OutIdx <> Skip do
+    while true do
     begin
-      E.NextInLML := E.Next;
       if E.Bot.X <> E.Prev.Top.X then ReverseHorizontal(E);
+      if E.Next.OutIdx = Skip then break;
+      E.NextInLML := E.Next;
       E := E.Next;
     end;
     FLocMinList.Add(locMin);

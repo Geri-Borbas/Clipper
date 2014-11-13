@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.1                                                           *
-* Date      :  31 October 2014                                                 *
+* Version   :  6.2.2                                                           *
+* Date      :  14 November 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1155,17 +1155,17 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
       return false;
     }
     E->Prev->OutIdx = Skip;
-    if (E->Prev->Bot.X < E->Prev->Top.X) ReverseHorizontal(*E->Prev);
     MinimaList::value_type locMin;
     locMin.Y = E->Bot.Y;
     locMin.LeftBound = 0;
     locMin.RightBound = E;
     locMin.RightBound->Side = esRight;
     locMin.RightBound->WindDelta = 0;
-    while (E->Next->OutIdx != Skip)
+    for (;;)
     {
-      E->NextInLML = E->Next;
       if (E->Bot.X != E->Prev->Top.X) ReverseHorizontal(*E);
+      if (E->Next->OutIdx == Skip) break;
+      E->NextInLML = E->Next;
       E = E->Next;
     }
     m_MinimaList.push_back(locMin);

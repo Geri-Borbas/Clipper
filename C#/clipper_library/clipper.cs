@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.1                                                           *
-* Date      :  31 October 2014                                                 *
+* Version   :  6.2.2                                                           *
+* Date      :  14 November 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -47,9 +47,6 @@
 
 //use_lines: Enables open path clipping. Adds a very minor cost to performance.
 //#define use_lines
-
-//use_deprecated: Enables temporary support for the obsolete functions
-//#define use_deprecated
 
 
 using System;
@@ -98,10 +95,8 @@ namespace ClipperLib
   {
       internal List<PolyNode> m_AllPolys = new List<PolyNode>();
 
-      ~PolyTree()
-      {
-          Clear();
-      }
+      //The GC probably handles this cleanup more efficiently ...
+      //~PolyTree(){Clear();}
         
       public void Clear() 
       {
@@ -976,7 +971,6 @@ namespace ClipperLib
       {
         if (Closed) return false;
         E.Prev.OutIdx = Skip;
-        if (E.Prev.Bot.X < E.Prev.Top.X) ReverseHorizontal(E.Prev);
         LocalMinima locMin = new LocalMinima();
         locMin.Next = null;
         locMin.Y = E.Bot.Y;
@@ -984,10 +978,11 @@ namespace ClipperLib
         locMin.RightBound = E;
         locMin.RightBound.Side = EdgeSide.esRight;
         locMin.RightBound.WindDelta = 0;
-        while (E.Next.OutIdx != Skip)
+        for ( ; ; )
         {
-          E.NextInLML = E.Next;
           if (E.Bot.X != E.Prev.Top.X) ReverseHorizontal(E);
+          if (E.Next.OutIdx == Skip) break;
+          E.NextInLML = E.Next;
           E = E.Next;
         }
         InsertLocalMinima(locMin);
