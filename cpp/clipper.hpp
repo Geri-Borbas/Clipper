@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.2                                                           *
-* Date      :  14 November 2014                                                *
+* Version   :  6.2.3                                                           *
+* Date      :  16 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -306,8 +306,8 @@ private:
   bool IsTopHorz(const cInt XPos);
   void SwapPositionsInAEL(TEdge *edge1, TEdge *edge2);
   void DoMaxima(TEdge *e);
-  void ProcessHorizontals(bool IsTopOfScanbeam);
-  void ProcessHorizontal(TEdge *horzEdge, bool isTopOfScanbeam);
+  void ProcessHorizontals();
+  void ProcessHorizontal(TEdge *horzEdge);
   void AddLocalMaxPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
   OutPt* AddLocalMinPoly(TEdge *e1, TEdge *e2, const IntPoint &pt);
   OutRec* GetOutRec(int idx);

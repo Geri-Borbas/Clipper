@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.2                                                           *
-* Date      :  14 November 2014                                                *
+* Version   :  6.2.3                                                           *
+* Date      :  16 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -46,7 +46,7 @@
 //#define use_xyz
 
 //use_lines: Enables open path clipping. Adds a very minor cost to performance.
-//#define use_lines
+#define use_lines
 
 
 using System;
@@ -1382,7 +1382,7 @@ namespace ClipperLib
           {
             InsertLocalMinimaIntoAEL(botY);
             m_GhostJoins.Clear();
-            ProcessHorizontals(false);
+            ProcessHorizontals();
             if (m_Scanbeam == null) break;
             cInt topY = PopScanbeam();
             if (!ProcessIntersections(topY)) return false;
@@ -2048,7 +2048,6 @@ namespace ClipperLib
 
       private OutPt AddOutPt(TEdge e, IntPoint pt)
       {
-        bool ToFront = (e.Side == EdgeSide.esLeft);
         if(  e.OutIdx < 0 )
         {
           OutRec outRec = CreateOutRec();
@@ -2068,6 +2067,7 @@ namespace ClipperLib
           OutRec outRec = m_PolyOuts[e.OutIdx];
           //OutRec.Pts is the 'Left-most' point & OutRec.Pts.Prev is the 'Right-most'
           OutPt op = outRec.Pts;
+          bool ToFront = (e.Side == EdgeSide.esLeft);
           if (ToFront && pt == op.Pt) return op;
           else if (!ToFront && pt == op.Prev.Pt) return op.Prev;
 
@@ -2609,13 +2609,13 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      private void ProcessHorizontals(bool isTopOfScanbeam)
+      private void ProcessHorizontals()
       {
           TEdge horzEdge = m_SortedEdges;
           while (horzEdge != null)
           {
               DeleteFromSEL(horzEdge);
-              ProcessHorizontal(horzEdge, isTopOfScanbeam);
+              ProcessHorizontal(horzEdge);
               horzEdge = m_SortedEdges;
           }
       }
@@ -2637,7 +2637,7 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------
 
-      private void ProcessHorizontal(TEdge horzEdge, bool isTopOfScanbeam)
+      private void ProcessHorizontal(TEdge horzEdge)
       {
         Direction dir;
         cInt horzLeft, horzRight;
@@ -2650,49 +2650,50 @@ namespace ClipperLib
         if (eLastHorz.NextInLML == null)
           eMaxPair = GetMaximaPair(eLastHorz);
 
-        for (;;)
+        for (;;) //loop through consec. horizontal edges
         {
           bool IsLastHorz = (horzEdge == eLastHorz);
           TEdge e = GetNextInAEL(horzEdge, dir);
           while(e != null)
           {
-            //Break if we've got to the end of an intermediate horizontal edge ...
-            //nb: Smaller Dx's are to the right of larger Dx's ABOVE the horizontal.
-            if (e.Curr.X == horzEdge.Top.X && horzEdge.NextInLML != null && 
-              e.Dx < horzEdge.NextInLML.Dx) break;
+              if ((dir == Direction.dLeftToRight && e.Curr.X > horzRight) ||
+                (dir == Direction.dRightToLeft && e.Curr.X < horzLeft)) break;
+                                
+              //Also break if we've got to the end of an intermediate horizontal edge ...
+              //nb: Smaller Dx's are to the right of larger Dx's ABOVE the horizontal.
+              if (e.Curr.X == horzEdge.Top.X && horzEdge.NextInLML != null && 
+                e.Dx < horzEdge.NextInLML.Dx) break;
 
-            TEdge eNext = GetNextInAEL(e, dir); //saves eNext for later
-
-            if ((dir == Direction.dLeftToRight && e.Curr.X <= horzRight) ||
-              (dir == Direction.dRightToLeft && e.Curr.X >= horzLeft))
-            {
-              //so far we're still in range of the horizontal Edge  but make sure
+              if (horzEdge.OutIdx >= 0)  //note: may be done multiple times
+              {
+                  OutPt op1 = AddOutPt(horzEdge, e.Curr);
+                  TEdge eNextHorz = m_SortedEdges;
+                  while (eNextHorz != null)
+                  {
+                      if (eNextHorz.OutIdx >= 0 &&
+                        HorzSegmentsOverlap(horzEdge.Bot.X,
+                        horzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X))
+                      {
+                          OutPt op2 = AddOutPt(eNextHorz, eNextHorz.Bot);
+                          AddJoin(op2, op1, eNextHorz.Top);
+                      }
+                      eNextHorz = eNextHorz.NextInSEL;
+                  }
+                  AddGhostJoin(op1, horzEdge.Bot); //also may be done multiple times
+              }
+            
+              //OK, so far we're still in range of the horizontal Edge  but make sure
               //we're at the last of consec. horizontals when matching with eMaxPair
               if(e == eMaxPair && IsLastHorz)
               {
                 if (horzEdge.OutIdx >= 0)
-                {
-                  OutPt op1 = AddOutPt(horzEdge, horzEdge.Top);
-                  TEdge eNextHorz = m_SortedEdges;
-                  while (eNextHorz != null)
-                  {
-                    if (eNextHorz.OutIdx >= 0 &&
-                      HorzSegmentsOverlap(horzEdge.Bot.X,
-                      horzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X))
-                    {
-                      OutPt op2 = AddOutPt(eNextHorz, eNextHorz.Bot);
-                      AddJoin(op2, op1, eNextHorz.Top);
-                    }
-                    eNextHorz = eNextHorz.NextInSEL;
-                  }
-                  AddGhostJoin(op1, horzEdge.Bot);
                   AddLocalMaxPoly(horzEdge, eMaxPair, horzEdge.Top);
-                }
                 DeleteFromAEL(horzEdge);
                 DeleteFromAEL(eMaxPair);
                 return;
               }
-              else if(dir == Direction.dLeftToRight)
+              
+              if(dir == Direction.dLeftToRight)
               {
                 IntPoint Pt = new IntPoint(e.Curr.X, horzEdge.Curr.Y);
                 IntersectEdges(horzEdge, e, Pt);
@@ -2702,20 +2703,18 @@ namespace ClipperLib
                 IntPoint Pt = new IntPoint(e.Curr.X, horzEdge.Curr.Y);
                 IntersectEdges(e, horzEdge, Pt);
               }
-              SwapPositionsInAEL(horzEdge, e);
-            }
-            else if ((dir == Direction.dLeftToRight && e.Curr.X >= horzRight) ||
-              (dir == Direction.dRightToLeft && e.Curr.X <= horzLeft)) break;
-            e = eNext;
-          } //end while
 
-          if (horzEdge.NextInLML != null && IsHorizontal(horzEdge.NextInLML))
-          {
-            UpdateEdgeIntoAEL(ref horzEdge);
-            if (horzEdge.OutIdx >= 0) AddOutPt(horzEdge, horzEdge.Bot);
-            GetHorzDirection(horzEdge, out dir, out horzLeft, out horzRight);
-          } else
-            break;
+              SwapPositionsInAEL(horzEdge, e);
+              e = GetNextInAEL(e, dir);
+          } //end while(e != null)
+
+          //Break out of loop if HorzEdge.NextInLML is not also horizontal ...
+          if (horzEdge.NextInLML == null || !IsHorizontal(horzEdge.NextInLML)) break;
+
+          UpdateEdgeIntoAEL(ref horzEdge);
+          if (horzEdge.OutIdx >= 0) AddOutPt(horzEdge, horzEdge.Bot);
+          GetHorzDirection(horzEdge, out dir, out horzLeft, out horzRight);
+
         } //end for (;;)
 
         if(horzEdge.NextInLML != null)
@@ -2723,7 +2722,6 @@ namespace ClipperLib
           if(horzEdge.OutIdx >= 0)
           {
             OutPt op1 = AddOutPt( horzEdge, horzEdge.Top);
-            if (isTopOfScanbeam) AddGhostJoin(op1, horzEdge.Bot);
 
             UpdateEdgeIntoAEL(ref horzEdge);
             if (horzEdge.WindDelta == 0) return;
@@ -3070,7 +3068,7 @@ namespace ClipperLib
         }
 
         //3. Process horizontals at the Top of the scanbeam ...
-        ProcessHorizontals(true);
+        ProcessHorizontals();
 
         //4. Promote intermediate vertices ...
         e = m_ActiveEdges;
@@ -3425,7 +3423,7 @@ namespace ClipperLib
         OutPt op2 = j.OutPt2, op2b;
 
         //There are 3 kinds of joins for output polygons ...
-        //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are a vertices anywhere
+        //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are vertices anywhere
         //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
         //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
         //location at the Bottom of the overlapping segment (& Join.OffPt is above).

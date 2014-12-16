@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.2                                                           *
-* Date      :  14 November 2014                                                *
+* Version   :  6.2.3                                                           *
+* Date      :  16 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -41,7 +41,7 @@ unit clipper;
 //{$DEFINE use_xyz}
 
 //use_lines: Enables open path clipping (with a very minor cost to performance)
-//{$DEFINE use_lines}
+{$DEFINE use_lines}
 
 // enable LEGACYIFEND for Delphi XE4+
 {$IF CompilerVersion >= 25.0}
@@ -3090,7 +3090,6 @@ var
   PrevOp, Op: POutPt;
   ToFront: Boolean;
 begin
-  ToFront := E.Side = esLeft;
   if E.OutIdx < 0 then
   begin
     OutRec := CreateOutRec;
@@ -3106,6 +3105,7 @@ begin
     E.OutIdx := OutRec.Idx;
   end else
   begin
+    ToFront := E.Side = esLeft;
     OutRec := FPolyOutList[E.OutIdx];
     //OutRec.Pts is the 'left-most' point & OutRec.Pts.Prev is the 'right-most'
     Op := OutRec.Pts;
@@ -3328,73 +3328,72 @@ begin
     eMaxPair := nil else
     eMaxPair := GetMaximaPair(eLastHorz);
 
-  while true do //loops consec. horizontal edges
+  while true do //loop through consec. horizontal edges
   begin
     IsLastHorz := (HorzEdge = eLastHorz);
     E := GetNextInAEL(HorzEdge, Direction);
     while Assigned(E) do
     begin
-      //Break if we've got to the end of an intermediate horizontal edge ...
+      if ((Direction = dLeftToRight) and (E.Curr.X > HorzRight)) or
+        ((Direction = dRightToLeft) and (E.Curr.X < HorzLeft)) then
+          Break;
+
+      //also break if we've got to the end of an intermediate horizontal edge
       //nb: Smaller Dx's are to the right of larger Dx's ABOVE the horizontal.
       if (E.Curr.X = HorzEdge.Top.X) and
         Assigned(HorzEdge.NextInLML) and (E.Dx < HorzEdge.NextInLML.Dx) then
           Break;
-      eNext := GetNextInAEL(E, Direction); //saves eNext for later
 
-      if ((Direction = dLeftToRight) and (E.Curr.X <= HorzRight)) or
-        ((Direction = dRightToLeft) and (E.Curr.X >= HorzLeft)) then
+      if (HorzEdge.OutIdx >= 0) then //note: done multiple times
       begin
-        //so far we're still in range of the horizontal Edge  but make sure
-        //we're at the last of consec. horizontals when matching with eMaxPair
-        if (E = eMaxPair) and IsLastHorz then
+        Op1 := AddOutPt(HorzEdge, E.Curr);
+        eNextHorz := FSortedEdges;
+        while Assigned(eNextHorz) do
         begin
-          if HorzEdge.OutIdx >= 0 then
+          if (eNextHorz.OutIdx >= 0) and
+            HorzSegmentsOverlap(HorzEdge.Bot.X,
+            HorzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X) then
           begin
-            Op1 := AddOutPt(HorzEdge, HorzEdge.Top);
-            eNextHorz := FSortedEdges;
-            while Assigned(eNextHorz) do
-            begin
-              if (eNextHorz.OutIdx >= 0) and
-                HorzSegmentsOverlap(HorzEdge.Bot.X,
-                HorzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X) then
-              begin
-                Op2 := AddOutPt(eNextHorz, eNextHorz.Bot);
-                AddJoin(Op2, Op1, eNextHorz.Top);
-              end;
-              eNextHorz := eNextHorz.NextInSEL;
-            end;
-            AddGhostJoin(Op1, HorzEdge.Bot);
-            AddLocalMaxPoly(HorzEdge, eMaxPair, HorzEdge.Top);
+            Op2 := AddOutPt(eNextHorz, eNextHorz.Bot);
+            AddJoin(Op2, Op1, eNextHorz.Top);
           end;
-          deleteFromAEL(HorzEdge);
-          deleteFromAEL(eMaxPair);
-          Exit;
-        end
-        else if (Direction = dLeftToRight) then
-        begin
-          Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-          IntersectEdges(HorzEdge, E, Pt);
-        end else
-        begin
-          Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
-          IntersectEdges(E, HorzEdge, Pt);
+          eNextHorz := eNextHorz.NextInSEL;
         end;
-        SwapPositionsInAEL(HorzEdge, E);
-      end
-      else if ((Direction = dLeftToRight) and (E.Curr.X >= HorzRight)) or
-        ((Direction = dRightToLeft) and (E.Curr.X <= HorzLeft)) then
-          Break;
-      E := eNext;
+        AddGhostJoin(Op1, HorzEdge.Bot); //note: also done multiple times
+      end;
+
+      //OK, so far we're still in range of the horizontal Edge  but make sure
+      //we're at the last of consec. horizontals when matching with eMaxPair
+      if (E = eMaxPair) and IsLastHorz then
+      begin
+        if HorzEdge.OutIdx >= 0 then
+          AddLocalMaxPoly(HorzEdge, eMaxPair, HorzEdge.Top);
+        deleteFromAEL(HorzEdge);
+        deleteFromAEL(eMaxPair);
+        Exit;
+      end;
+
+      if (Direction = dLeftToRight) then
+      begin
+        Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
+        IntersectEdges(HorzEdge, E, Pt);
+      end else
+      begin
+        Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
+        IntersectEdges(E, HorzEdge, Pt);
+      end;
+      SwapPositionsInAEL(HorzEdge, E);
+
+      E := GetNextInAEL(E, Direction);
     end;
 
-    if Assigned(HorzEdge.NextInLML) and
-      (HorzEdge.NextInLML.Dx = Horizontal) then
-    begin
-      UpdateEdgeIntoAEL(HorzEdge);
-      if (HorzEdge.OutIdx >= 0) then AddOutPt(HorzEdge, HorzEdge.Bot);
-      GetHorzDirection(HorzEdge, Direction, HorzLeft, HorzRight);
-    end else
-      Break;
+    //Break out of loop if HorzEdge.NextInLML is not also horizontal ...
+    if not Assigned(HorzEdge.NextInLML) or
+      (HorzEdge.NextInLML.Dx <> Horizontal) then Break;
+
+    UpdateEdgeIntoAEL(HorzEdge);
+    if (HorzEdge.OutIdx >= 0) then AddOutPt(HorzEdge, HorzEdge.Bot);
+    GetHorzDirection(HorzEdge, Direction, HorzLeft, HorzRight);
   end;
 
   if Assigned(HorzEdge.NextInLML) then
@@ -3402,7 +3401,6 @@ begin
     if (HorzEdge.OutIdx >= 0) then
     begin
       Op1 := AddOutPt(HorzEdge, HorzEdge.Top);
-      if IsTopOfScanbeam then AddGhostJoin(Op1, HorzEdge.Bot);
 
       UpdateEdgeIntoAEL(HorzEdge);
       if (HorzEdge.WindDelta = 0) then Exit;
@@ -4065,7 +4063,7 @@ begin
   Op2 := Jr.OutPt2;
 
   //There are 3 kinds of joins for output polygons ...
-  //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are a vertices anywhere
+  //1. Horizontal joins where Join.OutPt1 & Join.OutPt2 are vertices anywhere
   //along (horizontal) collinear edges (& Join.OffPt is on the same horizontal).
   //2. Non-horizontal joins where Join.OutPt1 & Join.OutPt2 are at the same
   //location at the bottom of the overlapping segment (& Join.OffPt is above).
