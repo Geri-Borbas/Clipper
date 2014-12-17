@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.4                                                           *
-* Date      :  17 December 2014                                                *
+* Version   :  6.2.5                                                           *
+* Date      :  18 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -502,7 +502,7 @@ resourcestring
   rsIntersect = 'Intersection error';
   rsOpenPath  = 'AddPath: Open paths must be subject.';
   rsOpenPath2  = 'AddPath: Open paths have been disabled.';
-  rsOpenPath3  = 'Error: TPolyTree struct is need for open path clipping.';
+  rsOpenPath3  = 'Error: TPolyTree struct is needed for open path clipping.';
   rsPolylines = 'Error intersecting polylines';
   rsClipperOffset = 'Error: No PolyTree assigned';
 
@@ -3364,12 +3364,7 @@ begin
     eMaxPair := nil else
     eMaxPair := GetMaximaPair(eLastHorz);
 
-  if (HorzEdge.OutIdx >= 0) then
-  begin
-    Op1 := GetLastOutPt(HorzEdge);
-    AddGhostJoin(Op1, HorzEdge.Top);
-  end;
-
+  Op1 := nil;
   while true do //loop through consec. horizontal edges
   begin
     IsLastHorz := (HorzEdge = eLastHorz);
@@ -3436,6 +3431,24 @@ begin
     UpdateEdgeIntoAEL(HorzEdge);
     if (HorzEdge.OutIdx >= 0) then AddOutPt(HorzEdge, HorzEdge.Bot);
     GetHorzDirection(HorzEdge, Direction, HorzLeft, HorzRight);
+  end;
+
+  if (HorzEdge.OutIdx >= 0) and not Assigned(Op1) then
+  begin
+    Op1 := GetLastOutPt(HorzEdge);
+    eNextHorz := FSortedEdges;
+    while Assigned(eNextHorz) do
+    begin
+      if (eNextHorz.OutIdx >= 0) and
+        HorzSegmentsOverlap(HorzEdge.Bot.X,
+        HorzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X) then
+      begin
+        Op2 := GetLastOutPt(eNextHorz);
+        AddJoin(Op2, Op1, eNextHorz.Top);
+      end;
+      eNextHorz := eNextHorz.NextInSEL;
+    end;
+    AddGhostJoin(Op1, HorzEdge.Bot);
   end;
 
   if Assigned(HorzEdge.NextInLML) then

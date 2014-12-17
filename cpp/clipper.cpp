@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.4                                                           *
-* Date      :  17 December 2014                                                *
+* Version   :  6.2.5                                                           *
+* Date      :  18 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1388,7 +1388,7 @@ bool Clipper::Execute(ClipType clipType, Paths &solution,
 {
   if( m_ExecuteLocked ) return false;
   if (m_HasOpenPaths)
-    throw clipperException("Error: PolyTree struct is need for open path clipping.");
+    throw clipperException("Error: PolyTree struct is needed for open path clipping.");
   m_ExecuteLocked = true;
   solution.resize(0);
   m_SubjFillType = subjFillType;
@@ -2592,11 +2592,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   if (!eLastHorz->NextInLML)
     eMaxPair = GetMaximaPair(eLastHorz);
 
-  if (horzEdge->OutIdx >= 0)
-  {
-	  OutPt* op1 = GetLastOutPt(horzEdge);
-	  AddGhostJoin(op1, horzEdge->Top);
-  }
+  OutPt* op1 = 0;
 
   for (;;) //loop through consec. horizontal edges
   {
@@ -2615,7 +2611,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 
 		if (horzEdge->OutIdx >= 0)  //note: may be done multiple times
 		{
-			OutPt* op1 = AddOutPt(horzEdge, e->Curr);
+            op1 = AddOutPt(horzEdge, e->Curr);
 			TEdge* eNextHorz = m_SortedEdges;
 			while (eNextHorz)
 			{
@@ -2666,11 +2662,29 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 
   } //end for (;;)
 
-  if(horzEdge->NextInLML)
+  if (horzEdge->OutIdx >= 0 && !op1)
+  {
+      op1 = GetLastOutPt(horzEdge);
+      TEdge* eNextHorz = m_SortedEdges;
+      while (eNextHorz)
+      {
+          if (eNextHorz->OutIdx >= 0 &&
+              HorzSegmentsOverlap(horzEdge->Bot.X,
+              horzEdge->Top.X, eNextHorz->Bot.X, eNextHorz->Top.X))
+          {
+              OutPt* op2 = GetLastOutPt(eNextHorz);
+              AddJoin(op2, op1, eNextHorz->Top);
+          }
+          eNextHorz = eNextHorz->NextInSEL;
+      }
+      AddGhostJoin(op1, horzEdge->Top);
+  }
+
+  if (horzEdge->NextInLML)
   {
     if(horzEdge->OutIdx >= 0)
     {
-      OutPt* op1 = AddOutPt( horzEdge, horzEdge->Top);
+      op1 = AddOutPt( horzEdge, horzEdge->Top);
       UpdateEdgeIntoAEL(horzEdge);
       if (horzEdge->WindDelta == 0) return;
       //nb: HorzEdge is no longer horizontal here
