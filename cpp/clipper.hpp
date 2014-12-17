@@ -252,13 +252,19 @@ public:
   Clipper(int initOptions = 0);
   ~Clipper();
   bool Execute(ClipType clipType,
-    Paths &solution,
-    PolyFillType subjFillType = pftEvenOdd,
-    PolyFillType clipFillType = pftEvenOdd);
+      Paths &solution,
+      PolyFillType fillType = pftEvenOdd);
   bool Execute(ClipType clipType,
-    PolyTree &polytree,
-    PolyFillType subjFillType = pftEvenOdd,
-    PolyFillType clipFillType = pftEvenOdd);
+      Paths &solution,
+      PolyFillType subjFillType,
+      PolyFillType clipFillType);
+  bool Execute(ClipType clipType,
+      PolyTree &polytree,
+      PolyFillType fillType = pftEvenOdd);
+  bool Execute(ClipType clipType,
+      PolyTree &polytree,
+      PolyFillType subjFillType,
+      PolyFillType clipFillType);
   bool ReverseSolution() { return m_ReverseOutput; };
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
   bool StrictlySimple() {return m_StrictSimple;};

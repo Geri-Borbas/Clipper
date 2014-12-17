@@ -1287,6 +1287,20 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
+      public bool Execute(ClipType clipType, Paths solution, 
+          PolyFillType FillType = PolyFillType.pftEvenOdd)
+      {
+          return Execute(clipType, solution, FillType, FillType);
+      }
+      //------------------------------------------------------------------------------
+
+      public bool Execute(ClipType clipType, PolyTree polytree,
+          PolyFillType FillType = PolyFillType.pftEvenOdd)
+      {
+          return Execute(clipType, polytree, FillType, FillType);
+      }
+      //------------------------------------------------------------------------------
+
       public bool Execute(ClipType clipType, Paths solution,
           PolyFillType subjFillType, PolyFillType clipFillType)
       {
@@ -1338,20 +1352,6 @@ namespace ClipperLib
             m_ExecuteLocked = false;
           }
           return succeeded;
-      }
-      //------------------------------------------------------------------------------
-
-      public bool Execute(ClipType clipType, Paths solution)
-      {
-          return Execute(clipType, solution,
-              PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
-      }
-      //------------------------------------------------------------------------------
-
-      public bool Execute(ClipType clipType, PolyTree polytree)
-      {
-          return Execute(clipType, polytree,
-              PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
       }
       //------------------------------------------------------------------------------
 

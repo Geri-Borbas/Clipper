@@ -369,12 +369,18 @@ type
   public
     function Execute(clipType: TClipType;
       out solution: TPaths;
-      subjFillType: TPolyFillType = pftEvenOdd;
-      clipFillType: TPolyFillType = pftEvenOdd): Boolean; overload;
+      FillType: TPolyFillType = pftEvenOdd): Boolean; overload;
+    function Execute(clipType: TClipType;
+      out solution: TPaths;
+      subjFillType: TPolyFillType;
+      clipFillType: TPolyFillType): Boolean; overload;
     function Execute(clipType: TClipType;
       out PolyTree: TPolyTree;
-      subjFillType: TPolyFillType = pftEvenOdd;
-      clipFillType: TPolyFillType = pftEvenOdd): Boolean; overload;
+      FillType: TPolyFillType = pftEvenOdd): Boolean; overload;
+    function Execute(clipType: TClipType;
+      out PolyTree: TPolyTree;
+      subjFillType: TPolyFillType;
+      clipFillType: TPolyFillType): Boolean; overload;
     constructor Create(InitOptions: TInitOptions = []); reintroduce; overload;
     destructor Destroy; override;
     //ReverseSolution: reverses the default orientation
@@ -1955,8 +1961,15 @@ end;
 
 function TClipper.Execute(clipType: TClipType;
   out solution: TPaths;
-  subjFillType: TPolyFillType = pftEvenOdd;
-  clipFillType: TPolyFillType = pftEvenOdd): Boolean;
+  FillType: TPolyFillType = pftEvenOdd): Boolean;
+begin
+  Result := Execute(clipType, solution, FillType, FillType);
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.Execute(clipType: TClipType;
+  out solution: TPaths;
+  subjFillType: TPolyFillType; clipFillType: TPolyFillType): Boolean;
 begin
   Result := False;
   solution := nil;
@@ -1984,8 +1997,16 @@ end;
 
 function TClipper.Execute(clipType: TClipType;
   out PolyTree: TPolyTree;
-  subjFillType: TPolyFillType = pftEvenOdd;
-  clipFillType: TPolyFillType = pftEvenOdd): Boolean;
+  FillType: TPolyFillType = pftEvenOdd): Boolean;
+begin
+  Result := Execute(clipType, PolyTree, FillType, FillType);
+end;
+//------------------------------------------------------------------------------
+
+function TClipper.Execute(clipType: TClipType;
+  out PolyTree: TPolyTree;
+  subjFillType: TPolyFillType;
+  clipFillType: TPolyFillType): Boolean;
 begin
   Result := False;
   if FExecuteLocked or not Assigned(PolyTree) then Exit;

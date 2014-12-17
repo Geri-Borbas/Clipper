@@ -1371,6 +1371,18 @@ void Clipper::Reset()
 }
 //------------------------------------------------------------------------------
 
+bool Clipper::Execute(ClipType clipType, Paths &solution, PolyFillType fillType)
+{
+    return Execute(clipType, solution, fillType, fillType);
+}
+//------------------------------------------------------------------------------
+
+bool Clipper::Execute(ClipType clipType, PolyTree &polytree, PolyFillType fillType)
+{
+    return Execute(clipType, polytree, fillType, fillType);
+}
+//------------------------------------------------------------------------------
+
 bool Clipper::Execute(ClipType clipType, Paths &solution,
     PolyFillType subjFillType, PolyFillType clipFillType)
 {
