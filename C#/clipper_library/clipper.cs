@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.3                                                           *
-* Date      :  16 December 2014                                                *
+* Version   :  6.2.4                                                           *
+* Date      :  17 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1381,8 +1381,8 @@ namespace ClipperLib
           do
           {
             InsertLocalMinimaIntoAEL(botY);
-            m_GhostJoins.Clear();
             ProcessHorizontals();
+            m_GhostJoins.Clear();
             if (m_Scanbeam == null) break;
             cInt topY = PopScanbeam();
             if (!ProcessIntersections(topY)) return false;
@@ -2048,39 +2048,50 @@ namespace ClipperLib
 
       private OutPt AddOutPt(TEdge e, IntPoint pt)
       {
-        if(  e.OutIdx < 0 )
-        {
-          OutRec outRec = CreateOutRec();
-          outRec.IsOpen = (e.WindDelta == 0);
-          OutPt newOp = new OutPt();
-          outRec.Pts = newOp;
-          newOp.Idx = outRec.Idx;
-          newOp.Pt = pt;
-          newOp.Next = newOp;
-          newOp.Prev = newOp;
-          if (!outRec.IsOpen)
-            SetHoleState(e, outRec);
-          e.OutIdx = outRec.Idx; //nb: do this after SetZ !
-          return newOp;
-        } else
-        {
-          OutRec outRec = m_PolyOuts[e.OutIdx];
-          //OutRec.Pts is the 'Left-most' point & OutRec.Pts.Prev is the 'Right-most'
-          OutPt op = outRec.Pts;
-          bool ToFront = (e.Side == EdgeSide.esLeft);
-          if (ToFront && pt == op.Pt) return op;
-          else if (!ToFront && pt == op.Prev.Pt) return op.Prev;
+          if (e.OutIdx < 0)
+          {
+              OutRec outRec = CreateOutRec();
+              outRec.IsOpen = (e.WindDelta == 0);
+              OutPt newOp = new OutPt();
+              outRec.Pts = newOp;
+              newOp.Idx = outRec.Idx;
+              newOp.Pt = pt;
+              newOp.Next = newOp;
+              newOp.Prev = newOp;
+              if (!outRec.IsOpen)
+                  SetHoleState(e, outRec);
+              e.OutIdx = outRec.Idx; //nb: do this after SetZ !
+              return newOp;
+          }
+          else
+          {
+              OutRec outRec = m_PolyOuts[e.OutIdx];
+              //OutRec.Pts is the 'Left-most' point & OutRec.Pts.Prev is the 'Right-most'
+              OutPt op = outRec.Pts;
+              bool ToFront = (e.Side == EdgeSide.esLeft);
+              if (ToFront && pt == op.Pt) return op;
+              else if (!ToFront && pt == op.Prev.Pt) return op.Prev;
 
-          OutPt newOp = new OutPt();
-          newOp.Idx = outRec.Idx;
-          newOp.Pt = pt;
-          newOp.Next = op;
-          newOp.Prev = op.Prev;
-          newOp.Prev.Next = newOp;
-          op.Prev = newOp;
-          if (ToFront) outRec.Pts = newOp;
-          return newOp;
-        }
+              OutPt newOp = new OutPt();
+              newOp.Idx = outRec.Idx;
+              newOp.Pt = pt;
+              newOp.Next = op;
+              newOp.Prev = op.Prev;
+              newOp.Prev.Next = newOp;
+              op.Prev = newOp;
+              if (ToFront) outRec.Pts = newOp;
+              return newOp;
+          }
+      }
+      //------------------------------------------------------------------------------
+
+      private OutPt GetLastOutPt(TEdge e)
+      {
+        OutRec outRec = m_PolyOuts[e.OutIdx];
+        if (e.Side == EdgeSide.esLeft) 
+            return outRec.Pts;
+        else
+            return outRec.Pts.Prev;
       }
       //------------------------------------------------------------------------------
 
@@ -2650,6 +2661,12 @@ namespace ClipperLib
         if (eLastHorz.NextInLML == null)
           eMaxPair = GetMaximaPair(eLastHorz);
 
+        if (horzEdge.OutIdx >= 0)
+        {
+            OutPt op1 = GetLastOutPt(horzEdge);
+            AddGhostJoin(op1, horzEdge.Top);
+        }
+
         for (;;) //loop through consec. horizontal edges
         {
           bool IsLastHorz = (horzEdge == eLastHorz);
@@ -2674,7 +2691,7 @@ namespace ClipperLib
                         HorzSegmentsOverlap(horzEdge.Bot.X,
                         horzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X))
                       {
-                          OutPt op2 = AddOutPt(eNextHorz, eNextHorz.Bot);
+                          OutPt op2 = GetLastOutPt(eNextHorz);
                           AddJoin(op2, op1, eNextHorz.Top);
                       }
                       eNextHorz = eNextHorz.NextInSEL;

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.3                                                           *
-* Date      :  16 December 2014                                                *
+* Version   :  6.2.4                                                           *
+* Date      :  17 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -1432,9 +1432,9 @@ bool Clipper::ExecuteInternal()
     cInt botY = PopScanbeam();
     do {
       InsertLocalMinimaIntoAEL(botY);
-      ClearGhostJoins();
       ProcessHorizontals();
-      if (m_Scanbeam.empty()) break;
+	  ClearGhostJoins();
+	  if (m_Scanbeam.empty()) break;
       cInt topY = PopScanbeam();
       succeeded = ProcessIntersections(topY);
       if (!succeeded) break;
@@ -2386,6 +2386,16 @@ OutPt* Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
 }
 //------------------------------------------------------------------------------
 
+OutPt* Clipper::GetLastOutPt(TEdge *e)
+{
+	OutRec *outRec = m_PolyOuts[e->OutIdx];
+	if (e->Side == esLeft)
+		return outRec->Pts;
+	else
+		return outRec->Pts->Prev;
+}
+//------------------------------------------------------------------------------
+
 void Clipper::ProcessHorizontals()
 {
   TEdge* horzEdge = m_SortedEdges;
@@ -2570,6 +2580,12 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   if (!eLastHorz->NextInLML)
     eMaxPair = GetMaximaPair(eLastHorz);
 
+  if (horzEdge->OutIdx >= 0)
+  {
+	  OutPt* op1 = GetLastOutPt(horzEdge);
+	  AddGhostJoin(op1, horzEdge->Top);
+  }
+
   for (;;) //loop through consec. horizontal edges
   {
 		  
@@ -2595,8 +2611,8 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 					HorzSegmentsOverlap(horzEdge->Bot.X,
 					horzEdge->Top.X, eNextHorz->Bot.X, eNextHorz->Top.X))
 				{
-					OutPt* op2 = AddOutPt(eNextHorz, eNextHorz->Bot);
-					AddJoin(op2, op1, eNextHorz->Top);
+                    OutPt* op2 = GetLastOutPt(eNextHorz);
+                    AddJoin(op2, op1, eNextHorz->Top);
 				}
 				eNextHorz = eNextHorz->NextInSEL;
 			}

@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.3                                                           *
-* Date      :  16 December 2014                                                *
+* Version   :  6.2.4                                                           *
+* Date      :  17 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -315,6 +315,7 @@ private:
   void IntersectEdges(TEdge *e1, TEdge *e2, IntPoint &pt);
   OutRec* CreateOutRec();
   OutPt* AddOutPt(TEdge *e, const IntPoint &pt);
+  OutPt* GetLastOutPt(TEdge *e);
   void DisposeAllOutRecs();
   void DisposeOutRec(PolyOutList::size_type index);
   bool ProcessIntersections(const cInt topY);

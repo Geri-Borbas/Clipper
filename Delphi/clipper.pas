@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.3                                                           *
-* Date      :  16 December 2014                                                *
+* Version   :  6.2.4                                                           *
+* Date      :  17 December 2014                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2014                                         *
 *                                                                              *
@@ -326,8 +326,8 @@ type
     procedure InsertLocalMinimaIntoAEL(const BotY: cInt);
     procedure SwapPositionsInAEL(E1, E2: PEdge);
     procedure SwapPositionsInSEL(E1, E2: PEdge);
-    procedure ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
-    procedure ProcessHorizontals(IsTopOfScanbeam: Boolean);
+    procedure ProcessHorizontal(HorzEdge: PEdge);
+    procedure ProcessHorizontals;
     function ProcessIntersections(const TopY: cInt): Boolean;
     procedure BuildIntersectList(const TopY: cInt);
     procedure ProcessIntersectList;
@@ -341,6 +341,7 @@ type
     function IsContributing(Edge: PEdge): Boolean;
     function CreateOutRec: POutRec;
     function AddOutPt(E: PEdge; const Pt: TIntPoint): POutPt;
+    function GetLastOutPt(E: PEdge): POutPt;
     procedure AddLocalMaxPoly(E1, E2: PEdge; const Pt: TIntPoint);
     function AddLocalMinPoly(E1, E2: PEdge; const Pt: TIntPoint): POutPt;
     function GetOutRec(Idx: integer): POutRec;
@@ -2036,8 +2037,8 @@ begin
     BotY := PopScanbeam;
     repeat
       InsertLocalMinimaIntoAEL(BotY);
+      ProcessHorizontals;
       ClearGhostJoins;
-      ProcessHorizontals(False);
       if not assigned(FScanbeam) then Break;
       TopY := PopScanbeam;
       if not ProcessIntersections(TopY) then Exit;
@@ -2432,6 +2433,9 @@ procedure TClipper.AddGhostJoin(OutPt: POutPt; const OffPt: TIntPoint);
 var
   Jr: PJoin;
 begin
+  //Ghost joins are used to find horizontal edges at the top of one scanbeam
+  //that coincide with horizontal edges at the bottom of the next. Ghost joins
+  //are converted to real joins when match ups occur.
   new(Jr);
   Jr.OutPt1 := OutPt;
   Jr.OffPt := OffPt;
@@ -3127,7 +3131,18 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-procedure TClipper.ProcessHorizontals(IsTopOfScanbeam: Boolean);
+function TClipper.GetLastOutPt(E: PEdge): POutPt;
+var
+  OutRec: POutRec;
+begin
+  OutRec := FPolyOutList[E.OutIdx];
+  if E.Side = esLeft then
+    Result := OutRec.Pts else
+    Result := OutRec.Pts.Prev;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.ProcessHorizontals;
 var
   E: PEdge;
 begin
@@ -3135,7 +3150,7 @@ begin
   begin
     E := FSortedEdges;
     DeleteFromSEL(E);
-    ProcessHorizontal(E, IsTopOfScanbeam);
+    ProcessHorizontal(E);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -3289,7 +3304,7 @@ begin
 end;
 //------------------------------------------------------------------------
 
-procedure TClipper.ProcessHorizontal(HorzEdge: PEdge; IsTopOfScanbeam: Boolean);
+procedure TClipper.ProcessHorizontal(HorzEdge: PEdge);
 var
   E, eNext, eNextHorz, ePrev, eMaxPair, eLastHorz: PEdge;
   HorzLeft, HorzRight: cInt;
@@ -3328,6 +3343,12 @@ begin
     eMaxPair := nil else
     eMaxPair := GetMaximaPair(eLastHorz);
 
+  if (HorzEdge.OutIdx >= 0) then
+  begin
+    Op1 := GetLastOutPt(HorzEdge);
+    AddGhostJoin(Op1, HorzEdge.Top);
+  end;
+
   while true do //loop through consec. horizontal edges
   begin
     IsLastHorz := (HorzEdge = eLastHorz);
@@ -3344,7 +3365,7 @@ begin
         Assigned(HorzEdge.NextInLML) and (E.Dx < HorzEdge.NextInLML.Dx) then
           Break;
 
-      if (HorzEdge.OutIdx >= 0) then //note: done multiple times
+      if (HorzEdge.OutIdx >= 0) then //note: may be done multiple times
       begin
         Op1 := AddOutPt(HorzEdge, E.Curr);
         eNextHorz := FSortedEdges;
@@ -3354,12 +3375,12 @@ begin
             HorzSegmentsOverlap(HorzEdge.Bot.X,
             HorzEdge.Top.X, eNextHorz.Bot.X, eNextHorz.Top.X) then
           begin
-            Op2 := AddOutPt(eNextHorz, eNextHorz.Bot);
+            Op2 := GetLastOutPt(eNextHorz);
             AddJoin(Op2, Op1, eNextHorz.Top);
           end;
           eNextHorz := eNextHorz.NextInSEL;
         end;
-        AddGhostJoin(Op1, HorzEdge.Bot); //note: also done multiple times
+        AddGhostJoin(Op1, HorzEdge.Bot); //also may be done multiple times
       end;
 
       //OK, so far we're still in range of the horizontal Edge  but make sure
@@ -3700,7 +3721,7 @@ begin
   end;
 
   //3. Process horizontals at the top of the scanbeam ...
-  ProcessHorizontals(True);
+  ProcessHorizontals;
 
   //4. Promote intermediate vertices ...
   E := FActiveEdges;
