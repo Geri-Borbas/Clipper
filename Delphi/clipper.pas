@@ -43,20 +43,20 @@ unit clipper;
 //use_lines: Enables open path clipping (with a very minor cost to performance)
 {$DEFINE use_lines}
 
-// enable LEGACYIFEND for Delphi XE4+
-{$IF CompilerVersion >= 25.0}
-  {$LEGACYIFEND ON}
-{$IFEND}
-
-// use generic lists for NextGen compiler
-{$IFDEF NEXTGEN}
-  {$DEFINE USEGENERICS}
-{$ENDIF}
-
 {$IFDEF FPC}
   {$DEFINE INLINING}
   {$DEFINE UInt64Support}
 {$ELSE}
+  // enable LEGACYIFEND for Delphi XE4+
+  {$IF CompilerVersion >= 25.0}
+    {$LEGACYIFEND ON}
+  {$IFEND}
+
+  // use generic lists for NextGen compiler
+  {$IFDEF NEXTGEN}
+    {$DEFINE USEGENERICS}
+  {$ENDIF}
+
   {$IFDEF ConditionalExpressions}
     {$IF CompilerVersion >= 15} //Delphi 7
       {$DEFINE UInt64Support} //nb: Delphi7 only marginally supports UInt64.
