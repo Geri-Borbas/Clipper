@@ -1,10 +1,10 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.5                                                           *
-* Date      :  18 December 2014                                                *
+* Version   :  6.2.6                                                           *
+* Date      :  4 January 2015                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2014                                         *
+* Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -34,7 +34,7 @@
 #ifndef clipper_hpp
 #define clipper_hpp
 
-#define CLIPPER_VERSION "6.2.0"
+#define CLIPPER_VERSION "6.2.6"
 
 //use_int32: When enabled 32bit ints are used instead of 64bit ints. This
 //improve performance but coordinate values are limited to the range +/- 46340
@@ -44,12 +44,13 @@
 //#define use_xyz
 
 //use_lines: Enables line clipping. Adds a very minor cost to performance.
-//#define use_lines
+#define use_lines
   
 //use_deprecated: Enables temporary support for the obsolete functions
 //#define use_deprecated  
 
 #include <vector>
+#include <list>
 #include <set>
 #include <stdexcept>
 #include <cstring>
@@ -200,7 +201,6 @@ enum EdgeSide { esLeft = 1, esRight = 2};
 struct TEdge;
 struct IntersectNode;
 struct LocalMinimum;
-struct Scanbeam;
 struct OutPt;
 struct OutRec;
 struct Join;
@@ -277,13 +277,15 @@ protected:
   void Reset();
   virtual bool ExecuteInternal();
 private:
-  PolyOutList       m_PolyOuts;
-  JoinList          m_Joins;
-  JoinList          m_GhostJoins;
-  IntersectList     m_IntersectList;
-  ClipType          m_ClipType;
+  PolyOutList      m_PolyOuts;
+  JoinList         m_Joins;
+  JoinList         m_GhostJoins;
+  IntersectList    m_IntersectList;
+  ClipType         m_ClipType;
   typedef std::priority_queue<cInt> ScanbeamList;
-  ScanbeamList      m_Scanbeam;
+  ScanbeamList     m_Scanbeam;
+  typedef std::list<cInt> MaximaList;
+  MaximaList       m_Maxima;
   TEdge           *m_ActiveEdges;
   TEdge           *m_SortedEdges;
   bool             m_ExecuteLocked;

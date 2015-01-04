@@ -1,10 +1,10 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.5                                                           *
-* Date      :  18 December 2014                                                *
+* Version   :  6.2.6                                                           *
+* Date      :  4 January 2015                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2014                                         *
+* Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -504,8 +504,15 @@ namespace ClipperLib
 
   internal class Scanbeam
   {
-    internal cInt Y;
-    internal Scanbeam Next;
+      internal cInt Y;
+      internal Scanbeam Next;
+  };
+
+  internal class Maxima
+  {
+      internal cInt X;
+      internal Maxima Next;
+      internal Maxima Prev;
   };
 
   internal class OutRec
@@ -1185,6 +1192,7 @@ namespace ClipperLib
       private List<OutRec> m_PolyOuts;
       private ClipType m_ClipType;
       private Scanbeam m_Scanbeam;
+      private Maxima m_Maxima;
       private TEdge m_ActiveEdges;
       private TEdge m_SortedEdges;
       private List<IntersectNode> m_IntersectList;
@@ -1203,6 +1211,7 @@ namespace ClipperLib
       public Clipper(int InitOptions = 0): base() //constructor
       {
           m_Scanbeam = null;
+          m_Maxima = null;
           m_ActiveEdges = null;
           m_SortedEdges = null;
           m_IntersectList = new List<IntersectNode>();
@@ -1221,13 +1230,63 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
-      void DisposeScanbeamList()
+      private void InsertScanbeam(cInt Y)
       {
-        while ( m_Scanbeam != null ) {
-        Scanbeam sb2 = m_Scanbeam.Next;
-        m_Scanbeam = null;
-        m_Scanbeam = sb2;
-        }
+          //single-linked list: sorted descending, ignoring dups.
+          if (m_Scanbeam == null)
+          {
+              m_Scanbeam = new Scanbeam();
+              m_Scanbeam.Next = null;
+              m_Scanbeam.Y = Y;
+          }
+          else if (Y > m_Scanbeam.Y)
+          {
+              Scanbeam newSb = new Scanbeam();
+              newSb.Y = Y;
+              newSb.Next = m_Scanbeam;
+              m_Scanbeam = newSb;
+          }
+          else
+          {
+              Scanbeam sb2 = m_Scanbeam;
+              while (sb2.Next != null && (Y <= sb2.Next.Y)) sb2 = sb2.Next;
+              if (Y == sb2.Y) return; //ie ignores duplicates
+              Scanbeam newSb = new Scanbeam();
+              newSb.Y = Y;
+              newSb.Next = sb2.Next;
+              sb2.Next = newSb;
+          }
+      }
+      //------------------------------------------------------------------------------
+
+      private void InsertMaxima(cInt X)
+      {
+          //double-linked list: sorted ascending, ignoring dups.
+          Maxima newMax = new Maxima();
+          newMax.X = X;
+          if (m_Maxima == null)
+          {
+              m_Maxima = newMax;
+              m_Maxima.Next = null;
+              m_Maxima.Prev = null;
+          }
+          else if (X < m_Maxima.X)
+          {
+              newMax.Next = m_Maxima;
+              newMax.Prev = null;
+              m_Maxima = newMax;
+          }
+          else
+          {
+              Maxima m = m_Maxima;
+              while (m.Next != null && (X >= m.Next.X)) m = m.Next;
+              if (X == m.X) return; //ie ignores duplicates (& CG to clean up newMax)
+              //insert newMax between m and m.Next ...
+              newMax.Next = m.Next;
+              newMax.Prev = m;
+              if (m.Next != null) m.Next.Prev = newMax;
+              m.Next = newMax;
+          }
       }
       //------------------------------------------------------------------------------
 
@@ -1235,6 +1294,7 @@ namespace ClipperLib
       {
         base.Reset();
         m_Scanbeam = null;
+        m_Maxima = null;
         m_ActiveEdges = null;
         m_SortedEdges = null;
         LocalMinima lm = m_MinimaList;
@@ -1260,33 +1320,6 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
        
-      private void InsertScanbeam(cInt Y)
-      {
-        if( m_Scanbeam == null )
-        {
-          m_Scanbeam = new Scanbeam();
-          m_Scanbeam.Next = null;
-          m_Scanbeam.Y = Y;
-        }
-        else if(  Y > m_Scanbeam.Y )
-        {
-          Scanbeam newSb = new Scanbeam();
-          newSb.Y = Y;
-          newSb.Next = m_Scanbeam;
-          m_Scanbeam = newSb;
-        } else
-        {
-          Scanbeam sb2 = m_Scanbeam;
-          while( sb2.Next != null  && ( Y <= sb2.Next.Y ) ) sb2 = sb2.Next;
-          if(  Y == sb2.Y ) return; //ie ignores duplicates
-          Scanbeam newSb = new Scanbeam();
-          newSb.Y = Y;
-          newSb.Next = sb2.Next;
-          sb2.Next = newSb;
-        }
-      }
-      //------------------------------------------------------------------------------
-
       public bool Execute(ClipType clipType, Paths solution, 
           PolyFillType FillType = PolyFillType.pftEvenOdd)
       {
@@ -2661,6 +2694,25 @@ namespace ClipperLib
         if (eLastHorz.NextInLML == null)
           eMaxPair = GetMaximaPair(eLastHorz);
 
+        Maxima currMax = m_Maxima;
+        if (currMax != null)
+        {
+            //get the first maxima in range (X) ...
+            if (dir == Direction.dLeftToRight)
+            {
+              while (currMax != null && currMax.X <= horzEdge.Bot.X)
+                  currMax = currMax.Next;
+              if (currMax != null && currMax.X >= eLastHorz.Top.X) 
+                  currMax = null;
+            }
+            else
+            {
+              while (currMax.Next != null && currMax.Next.X < horzEdge.Bot.X) 
+                  currMax = currMax.Next;
+              if (currMax.X <= eLastHorz.Top.X) currMax = null;
+            }
+        }
+
         OutPt op1 = null;
         for (;;) //loop through consec. horizontal edges
         {
@@ -2668,6 +2720,32 @@ namespace ClipperLib
           TEdge e = GetNextInAEL(horzEdge, dir);
           while(e != null)
           {
+
+              //this code block inserts extra coords into horizontal edges (in output
+              //polygons) whereever maxima touch these horizontal edges. This helps
+              //'simplifying' polygons (ie if the Simplify property is set).
+              if (currMax != null)
+              {
+                  if (dir == Direction.dLeftToRight)
+                  {
+                      while (currMax != null && currMax.X < e.Curr.X) 
+                      {
+                        if (horzEdge.OutIdx >= 0) 
+                          AddOutPt(horzEdge, new IntPoint(currMax.X, horzEdge.Bot.Y));
+                        currMax = currMax.Next;                  
+                      }
+                  }
+                  else
+                  {
+                      while (currMax != null && currMax.X > e.Curr.X)
+                      {
+                        if (horzEdge.OutIdx >= 0)
+                          AddOutPt(horzEdge, new IntPoint(currMax.X, horzEdge.Bot.Y));
+                        currMax = currMax.Prev;
+                      }
+                  }
+              };
+
               if ((dir == Direction.dLeftToRight && e.Curr.X > horzRight) ||
                 (dir == Direction.dRightToLeft && e.Curr.X < horzLeft)) break;
                                 
@@ -3055,6 +3133,7 @@ namespace ClipperLib
 
           if(IsMaximaEdge)
           {
+            if (StrictlySimple) InsertMaxima(e.Top.X);
             TEdge ePrev = e.PrevInAEL;
             DoMaxima(e);
             if( ePrev == null) e = m_ActiveEdges;
@@ -3076,6 +3155,8 @@ namespace ClipperLib
               e.Curr.Y = topY;
             }
 
+            //When StrictlySimple and 'e' is being touched by another edge, then
+            //make sure both edges have a vertex here ...
             if (StrictlySimple)
             {
               TEdge ePrev = e.PrevInAEL;
@@ -3099,6 +3180,7 @@ namespace ClipperLib
 
         //3. Process horizontals at the Top of the scanbeam ...
         ProcessHorizontals();
+        m_Maxima = null;
 
         //4. Promote intermediate vertices ...
         e = m_ActiveEdges;
@@ -3291,6 +3373,7 @@ namespace ClipperLib
           OutPt lastOK = null;
           outRec.BottomPt = null;
           OutPt pp = outRec.Pts;
+          bool preserveCol = PreserveCollinear || StrictlySimple;
           for (;;)
           {
               if (pp.Prev == pp || pp.Prev == pp.Next)
@@ -3301,7 +3384,7 @@ namespace ClipperLib
               //test for duplicate points and collinear edges ...
               if ((pp.Pt == pp.Next.Pt) || (pp.Pt == pp.Prev.Pt) ||
                 (SlopesEqual(pp.Prev.Pt, pp.Pt, pp.Next.Pt, m_UseFullRange) &&
-                (!PreserveCollinear || !Pt2IsBetweenPt1AndPt3(pp.Prev.Pt, pp.Pt, pp.Next.Pt))))
+                (!preserveCol || !Pt2IsBetweenPt1AndPt3(pp.Prev.Pt, pp.Pt, pp.Next.Pt))))
               {
                   lastOK = null;
                   pp.Prev.Next = pp.Next;
@@ -3757,6 +3840,7 @@ namespace ClipperLib
           OutRec outRec2 = GetOutRec(join.OutPt2.Idx);
 
           if (outRec1.Pts == null || outRec2.Pts == null) continue;
+          if (outRec1.IsOpen || outRec2.IsOpen) continue;
 
           //get the polygon fragment with the correct hole state (FirstLeft)
           //before calling JoinPoints() ...

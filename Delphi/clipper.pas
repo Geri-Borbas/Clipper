@@ -3,10 +3,10 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.5                                                           *
-* Date      :  18 December 2014                                                *
+* Version   :  6.2.6                                                           *
+* Date      :  4 January 2015                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2014                                         *
+* Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -201,8 +201,15 @@ type
 
   PScanbeam = ^TScanbeam;
   TScanbeam = record
-    Y   : cInt;
-    Next: PScanbeam;
+    Y    : cInt;
+    Next : PScanbeam;
+  end;
+
+  PMaxima = ^TMaxima;
+  TMaxima = record
+    X     : cInt;
+    Next  : PMaxima;
+    Prev  : PMaxima;
   end;
 
   PIntersectNode = ^TIntersectNode;
@@ -303,9 +310,10 @@ type
     FGhostJoinList    : TJoinList;
     FIntersectList    : TIntersecList;
     FClipType         : TClipType;
-    FScanbeam         : PScanbeam; //scanbeam list
-    FActiveEdges      : PEdge;     //active Edge list
-    FSortedEdges      : PEdge;     //used for temporary sorting
+    FScanbeam         : PScanbeam;    //scanbeam list
+    FMaxima           : PMaxima;      //maxima XPos list
+    FActiveEdges      : PEdge;        //active Edge list
+    FSortedEdges      : PEdge;        //used for temporary sorting
     FClipFillType     : TPolyFillType;
     FSubjFillType     : TPolyFillType;
     FExecuteLocked    : Boolean;
@@ -318,6 +326,8 @@ type
     procedure DisposeScanbeamList;
     procedure InsertScanbeam(const Y: cInt);
     function PopScanbeam: cInt;
+    procedure InsertMaxima(const X: cInt);
+    procedure DisposeMaximaList;
     procedure SetWindingCount(Edge: PEdge);
     function IsEvenOddFillType(Edge: PEdge): Boolean;
     function IsEvenOddAltFillType(Edge: PEdge): Boolean;
@@ -1081,7 +1091,7 @@ end;
 
 function PointInPolygon (const pt: TIntPoint; ops: POutPt): Integer; overload;
 var
-  d, d2, d3: double; //Todo - consider using cInt here
+  d, d2, d3: double; //nb: double not cInt to avoid potential overflow errors
   opStart: POutPt;
   pt1, ptN: TIntPoint;
 begin
@@ -2087,7 +2097,6 @@ begin
     end;
 
     if FStrictSimple then DoSimplePolygons;
-
     Result := True;
   finally
     ClearJoins;
@@ -2098,28 +2107,29 @@ end;
 
 procedure TClipper.InsertScanbeam(const Y: cInt);
 var
-  Sb, Sb2: PScanbeam;
+  newSb, sb: PScanbeam;
 begin
-  new(Sb);
-  Sb.Y := Y;
+  //single-linked list: sorted descending, ignoring dups.
+  new(newSb);
+  newSb.Y := Y;
   if not Assigned(fScanbeam) then
   begin
-    FScanbeam := Sb;
-    Sb.Next := nil;
+    FScanbeam := newSb;
+    newSb.Next := nil;
   end else if Y > FScanbeam.Y then
   begin
-    Sb.Next := FScanbeam;
-    FScanbeam := Sb;
+    newSb.Next := FScanbeam;
+    FScanbeam := newSb;
   end else
   begin
-    Sb2 := FScanbeam;
-    while Assigned(Sb2.Next) and (Y <= Sb2.Next.Y) do Sb2 := Sb2.Next;
-    if Y <> Sb2.Y then
+    sb := FScanbeam;
+    while Assigned(sb.Next) and (Y <= sb.Next.Y) do sb := sb.Next;
+    if Y <> sb.Y then
     begin
-      Sb.Next := Sb2.Next;
-      Sb2.Next := Sb;
+      newSb.Next := sb.Next;
+      sb.Next := newSb;
     end
-    else dispose(Sb); //ie ignores duplicates
+    else dispose(newSb);
   end;
 end;
 //------------------------------------------------------------------------------
@@ -2132,6 +2142,54 @@ begin
   Sb := FScanbeam;
   FScanbeam := FScanbeam.Next;
   dispose(Sb);
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.InsertMaxima(const X: cInt);
+var
+  newMax, m: PMaxima;
+begin
+  //double-linked list: sorted ascending, ignoring dups.
+  new(newMax);
+  newMax.X := X;
+  if not Assigned(FMaxima) then
+  begin
+    FMaxima := newMax;
+    newMax.Next := nil;
+    newMax.Prev := nil;
+  end else if X < FMaxima.X then
+  begin
+    newMax.Next := FMaxima;
+    newMax.Prev := nil;
+    FMaxima.Prev := newMax;
+    FMaxima := newMax;
+  end else
+  begin
+    m := FMaxima;
+    while Assigned(m.Next) and (X >= m.Next.X) do m := m.Next;
+    if X <> m.X then
+    begin
+      //insert m1 between m2 and m2.Next ...
+      newMax.Next := m.Next;
+      newMax.Prev := m;
+      if assigned(m.Next) then m.Next.Prev := newMax;
+      m.Next := newMax;
+    end
+    else dispose(newMax);
+  end;
+end;
+//------------------------------------------------------------------------------
+
+procedure TClipper.DisposeMaximaList;
+var
+  m: PMaxima;
+begin
+  while Assigned(FMaxima) do
+  begin
+    m := FMaxima.Next;
+    Dispose(FMaxima);
+    FMaxima := m;
+  end;
 end;
 //------------------------------------------------------------------------------
 
@@ -3333,6 +3391,7 @@ var
   Pt: TIntPoint;
   Op1, Op2: POutPt;
   IsLastHorz: Boolean;
+  currMax: PMaxima;
 begin
 (*******************************************************************************
 * Notes: Horizontal edges (HEs) at scanline intersections (ie at the top or    *
@@ -3365,12 +3424,58 @@ begin
     eMaxPair := GetMaximaPair(eLastHorz);
 
   Op1 := nil;
-  while true do //loop through consec. horizontal edges
+  currMax := FMaxima;
+  //nb: FMaxima will only be assigned when the Simplify property is set true.
+
+  if assigned(currMax) then
+  begin
+    //get the first useful Maxima ...
+    if (Direction = dLeftToRight) then
+    begin
+      while Assigned(currMax) and (currMax.X <= HorzEdge.Bot.X) do
+        currMax := currMax.Next;
+      if Assigned(currMax) and (currMax.X >= eLastHorz.Top.X) then
+        currMax := nil;
+    end else
+    begin
+      while Assigned(currMax.Next) and (currMax.Next.X < HorzEdge.Bot.X) do
+        currMax := currMax.Next;
+      if (currMax.X <= eLastHorz.Top.X) then currMax := nil;
+    end;
+  end;
+
+
+  while true do //loops through consec. horizontal edges
   begin
     IsLastHorz := (HorzEdge = eLastHorz);
     E := GetNextInAEL(HorzEdge, Direction);
     while Assigned(E) do
     begin
+
+      //this code block inserts extra coords into horizontal edges (in output
+      //polygons) whereever maxima touch these horizontal edges. This helps
+      //'simplifying' polygons (ie if the Simplify property is set).
+      if assigned(currMax) then
+      begin
+        if (Direction = dLeftToRight) then
+        begin
+          while assigned(currMax) and (currMax.X < E.Curr.X) do
+          begin
+            if (HorzEdge.OutIdx >= 0) then
+              AddOutPt(HorzEdge, IntPoint(currMax.X, HorzEdge.Bot.Y));
+            currMax := currMax.Next;
+          end;
+        end else
+        begin
+          while assigned(currMax) and (currMax.X > E.Curr.X) do
+          begin
+            if (HorzEdge.OutIdx >= 0) then
+              AddOutPt(HorzEdge, IntPoint(currMax.X, HorzEdge.Bot.Y));
+            currMax := currMax.Prev;
+          end;
+        end;
+      end;
+
       if ((Direction = dLeftToRight) and (E.Curr.X > HorzRight)) or
         ((Direction = dRightToLeft) and (E.Curr.X < HorzLeft)) then
           Break;
@@ -3448,7 +3553,7 @@ begin
       end;
       eNextHorz := eNextHorz.NextInSEL;
     end;
-    AddGhostJoin(Op1, HorzEdge.Bot);
+    AddGhostJoin(Op1, HorzEdge.Top);
   end;
 
   if Assigned(HorzEdge.NextInLML) then
@@ -3710,6 +3815,8 @@ begin
 
     if IsMaximaEdge then
     begin
+      if FStrictSimple then
+        InsertMaxima(E.Top.X);
       //'E' might be removed from AEL, as may any following edges so ...
       ePrev := E.PrevInAEL;
       DoMaxima(E);
@@ -3756,6 +3863,7 @@ begin
 
   //3. Process horizontals at the top of the scanbeam ...
   ProcessHorizontals;
+  if FStrictSimple then DisposeMaximaList;
 
   //4. Promote intermediate vertices ...
   E := FActiveEdges;
@@ -3889,11 +3997,13 @@ end;
 procedure TClipper.FixupOutPolygon(OutRec: POutRec);
 var
   PP, Tmp, LastOK: POutPt;
+  PreserveCol: Boolean;
 begin
   //remove duplicate points and collinear edges
   LastOK := nil;
   OutRec.BottomPt := nil; //flag as stale
   PP := OutRec.Pts;
+  PreserveCol := FPreserveCollinear or FStrictSimple;
   while True do
   begin
     if (PP = PP.Prev) or (PP.Next = PP.Prev) then
@@ -3906,7 +4016,7 @@ begin
     //test for duplicate points and collinear edges ...
     if PointsEqual(PP.Pt, PP.Next.Pt) or PointsEqual(PP.Pt, PP.Prev.Pt) or
       (SlopesEqual(PP.Prev.Pt, PP.Pt, PP.Next.Pt, FUse64BitRange) and
-      (not FPreserveCollinear or
+      (not PreserveCol or
       not Pt2IsBetweenPt1AndPt3(PP.Prev.Pt, PP.Pt, PP.Next.Pt))) then
     begin
       //OK, we need to delete a point ...

@@ -1,10 +1,10 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.5                                                           *
-* Date      :  18 December 2014                                                *
+* Version   :  6.2.6                                                           *
+* Date      :  4 January 2015                                                  *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2014                                         *
+* Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -1364,6 +1364,7 @@ void Clipper::Reset()
 {
   ClipperBase::Reset();
   m_Scanbeam = ScanbeamList();
+  m_Maxima = MaximaList();
   m_ActiveEdges = 0;
   m_SortedEdges = 0;
   for (MinimaList::iterator lm = m_MinimaList.begin(); lm != m_MinimaList.end(); ++lm)
@@ -1491,17 +1492,16 @@ bool Clipper::ExecuteInternal()
 
 void Clipper::InsertScanbeam(const cInt Y)
 {
-  //if (!m_Scanbeam.empty() && Y == m_Scanbeam.top()) return;// avoid duplicates.
-  m_Scanbeam.push(Y);
+    m_Scanbeam.push(Y);
 }
 //------------------------------------------------------------------------------
 
 cInt Clipper::PopScanbeam()
 {
-  const cInt Y = m_Scanbeam.top();
-  m_Scanbeam.pop();
-  while (!m_Scanbeam.empty() && Y == m_Scanbeam.top()) { m_Scanbeam.pop(); } // Pop duplicates.
-  return Y;
+    const cInt Y = m_Scanbeam.top();
+    m_Scanbeam.pop();
+    while (!m_Scanbeam.empty() && Y == m_Scanbeam.top()) { m_Scanbeam.pop(); } // Pop duplicates.
+    return Y;
 }
 //------------------------------------------------------------------------------
 
@@ -2592,6 +2592,27 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
   if (!eLastHorz->NextInLML)
     eMaxPair = GetMaximaPair(eLastHorz);
 
+  MaximaList::const_iterator maxIt;
+  MaximaList::const_reverse_iterator maxRit;
+  if (m_Maxima.size() > 0)
+  {
+      //get the first maxima in range (X) ...
+      if (dir == dLeftToRight)
+      {
+          maxIt = m_Maxima.begin();
+          while (maxIt != m_Maxima.end() && *maxIt <= horzEdge->Bot.X) maxIt++;
+          if (maxIt != m_Maxima.end() && *maxIt >= eLastHorz->Top.X)
+              maxIt = m_Maxima.end();
+      }
+      else
+      {
+          maxRit = m_Maxima.rbegin();
+          while (maxRit != m_Maxima.rend() && *maxRit > horzEdge->Bot.X) maxRit++;
+          if (maxRit != m_Maxima.rend() && *maxRit <= eLastHorz->Top.X)
+              maxRit = m_Maxima.rend();
+      }
+  }
+
   OutPt* op1 = 0;
 
   for (;;) //loop through consec. horizontal edges
@@ -2601,7 +2622,33 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
     TEdge* e = GetNextInAEL(horzEdge, dir);
     while(e)
     {
-		if ((dir == dLeftToRight && e->Curr.X > horzRight) ||
+
+        //this code block inserts extra coords into horizontal edges (in output
+        //polygons) whereever maxima touch these horizontal edges. This helps
+        //'simplifying' polygons (ie if the Simplify property is set).
+        if (m_Maxima.size() > 0)
+        {
+            if (dir == dLeftToRight)
+            {
+                while (maxIt != m_Maxima.end() && *maxIt < e->Curr.X) 
+                {
+                    if (horzEdge->OutIdx >= 0)
+                        AddOutPt(horzEdge, IntPoint(*maxIt, horzEdge->Bot.Y));
+                    maxIt++;
+                }
+            }
+            else
+            {
+                while (maxRit != m_Maxima.rend() && *maxRit > e->Curr.X)
+                {
+                    if (horzEdge->OutIdx >= 0)
+                        AddOutPt(horzEdge, IntPoint(*maxIt, horzEdge->Bot.Y));
+                    maxRit++;
+                }
+            }
+        };
+
+        if ((dir == dLeftToRight && e->Curr.X > horzRight) ||
 			(dir == dRightToLeft && e->Curr.X < horzLeft)) break;
 
 		//Also break if we've got to the end of an intermediate horizontal edge ...
@@ -2939,6 +2986,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
 
     if(IsMaximaEdge)
     {
+      if (m_StrictSimple) m_Maxima.push_back(e->Top.X);
       TEdge* ePrev = e->PrevInAEL;
       DoMaxima(e);
       if( !ePrev ) e = m_ActiveEdges;
@@ -2960,6 +3008,8 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
         e->Curr.Y = topY;
       }
 
+      //When StrictlySimple and 'e' is being touched by another edge, then
+      //make sure both edges have a vertex here ...
       if (m_StrictSimple)
       {  
         TEdge* ePrev = e->PrevInAEL;
@@ -2981,7 +3031,9 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
   }
 
   //3. Process horizontals at the Top of the scanbeam ...
+  m_Maxima.sort();
   ProcessHorizontals();
+  m_Maxima.clear();
 
   //4. Promote intermediate vertices ...
   e = m_ActiveEdges;
@@ -3028,6 +3080,7 @@ void Clipper::FixupOutPolygon(OutRec &outrec)
   OutPt *lastOK = 0;
   outrec.BottomPt = 0;
   OutPt *pp = outrec.Pts;
+  bool preserveCol = m_PreserveCollinear || m_StrictSimple;
 
   for (;;)
   {
@@ -3041,8 +3094,7 @@ void Clipper::FixupOutPolygon(OutRec &outrec)
     //test for duplicate points and collinear edges ...
     if ((pp->Pt == pp->Next->Pt) || (pp->Pt == pp->Prev->Pt) || 
       (SlopesEqual(pp->Prev->Pt, pp->Pt, pp->Next->Pt, m_UseFullRange) &&
-      (!m_PreserveCollinear || 
-      !Pt2IsBetweenPt1AndPt3(pp->Prev->Pt, pp->Pt, pp->Next->Pt))))
+      (!preserveCol || !Pt2IsBetweenPt1AndPt3(pp->Prev->Pt, pp->Pt, pp->Next->Pt))))
     {
       lastOK = 0;
       OutPt *tmp = pp;
@@ -3541,6 +3593,7 @@ void Clipper::JoinCommonEdges()
     OutRec *outRec2 = GetOutRec(join->OutPt2->Idx);
 
     if (!outRec1->Pts || !outRec2->Pts) continue;
+    if (outRec1->IsOpen || outRec2->IsOpen) continue;
 
     //get the polygon fragment with the correct hole state (FirstLeft)
     //before calling JoinPoints() ...
