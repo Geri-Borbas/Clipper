@@ -2,7 +2,7 @@
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
 * Version   :  6.2.6                                                           *
-* Date      :  4 January 2015                                                  *
+* Date      :  5 January 2015                                                  *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -2642,7 +2642,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
                 while (maxRit != m_Maxima.rend() && *maxRit > e->Curr.X)
                 {
                     if (horzEdge->OutIdx >= 0)
-                        AddOutPt(horzEdge, IntPoint(*maxIt, horzEdge->Bot.Y));
+                        AddOutPt(horzEdge, IntPoint(*maxRit, horzEdge->Bot.Y));
                     maxRit++;
                 }
             }
