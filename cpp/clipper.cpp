@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.6                                                           *
-* Date      :  5 January 2015                                                  *
+* Version   :  6.2.7                                                           *
+* Date      :  17 January 2015                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -993,11 +993,7 @@ TEdge* ClipperBase::ProcessBound(TEdge* E, bool NextIsForward)
       //unless a Skip edge is encountered when that becomes the top divide
       Horz = Result;
       while (IsHorizontal(*Horz->Prev)) Horz = Horz->Prev;
-      if (Horz->Prev->Top.X == Result->Next->Top.X) 
-      {
-        if (!NextIsForward) Result = Horz->Prev;
-      }
-      else if (Horz->Prev->Top.X > Result->Next->Top.X) Result = Horz->Prev;
+      if (Horz->Prev->Top.X > Result->Next->Top.X) Result = Horz->Prev;
     }
     while (E != Result) 
     {
@@ -1017,11 +1013,8 @@ TEdge* ClipperBase::ProcessBound(TEdge* E, bool NextIsForward)
     {
       Horz = Result;
       while (IsHorizontal(*Horz->Next)) Horz = Horz->Next;
-      if (Horz->Next->Top.X == Result->Prev->Top.X) 
-      {
-        if (!NextIsForward) Result = Horz->Next;
-      }
-      else if (Horz->Next->Top.X > Result->Prev->Top.X) Result = Horz->Next;
+      if (Horz->Next->Top.X == Result->Prev->Top.X ||
+          Horz->Next->Top.X > Result->Prev->Top.X) Result = Horz->Next;
     }
 
     while (E != Result)
@@ -2695,9 +2688,9 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
           IntPoint Pt = IntPoint(e->Curr.X, horzEdge->Curr.Y);
           IntersectEdges( e, horzEdge, Pt);
         }
-
+        TEdge* eNext = GetNextInAEL(e, dir);
         SwapPositionsInAEL( horzEdge, e );
-		e = GetNextInAEL(e, dir); 
+        e = eNext;
     } //end while(e)
 
 	//Break out of loop if HorzEdge.NextInLML is not also horizontal ...
@@ -4441,7 +4434,7 @@ void MinkowskiSum(const Path& pattern, const Path& path, Paths& solution, bool p
 }
 //------------------------------------------------------------------------------
 
-void TranslatePath(const Path& input, Path& output, IntPoint delta) 
+void TranslatePath(const Path& input, Path& output, const IntPoint delta)
 {
   //precondition: input != output
   output.resize(input.size());

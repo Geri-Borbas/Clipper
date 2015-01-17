@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.6                                                           *
-* Date      :  4 January 2015                                                  *
+* Version   :  6.2.7                                                           *
+* Date      :  17 January 2015                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *

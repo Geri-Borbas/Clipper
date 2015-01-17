@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.6                                                           *
-* Date      :  4 January 2015                                                  *
+* Version   :  6.2.7                                                           *
+* Date      :  17 January 2015                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -835,11 +835,7 @@ namespace ClipperLib
           //unless a Skip edge is encountered when that becomes the top divide
           Horz = Result;
           while (Horz.Prev.Dx == horizontal) Horz = Horz.Prev;
-          if (Horz.Prev.Top.X == Result.Next.Top.X)
-          {
-            if (!LeftBoundIsForward) Result = Horz.Prev;
-          }
-          else if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
+          if (Horz.Prev.Top.X > Result.Next.Top.X) Result = Horz.Prev;
         }
         while (E != Result)
         {
@@ -860,11 +856,8 @@ namespace ClipperLib
         {
           Horz = Result;
           while (Horz.Next.Dx == horizontal) Horz = Horz.Next;
-          if (Horz.Next.Top.X == Result.Prev.Top.X)
-          {
-            if (!LeftBoundIsForward) Result = Horz.Next;
-          }
-          else if (Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
+          if (Horz.Next.Top.X == Result.Prev.Top.X || 
+              Horz.Next.Top.X > Result.Prev.Top.X) Result = Horz.Next;
         }
 
         while (E != Result)
@@ -2793,9 +2786,9 @@ namespace ClipperLib
                 IntPoint Pt = new IntPoint(e.Curr.X, horzEdge.Curr.Y);
                 IntersectEdges(e, horzEdge, Pt);
               }
-
+              TEdge eNext = GetNextInAEL(e, dir);
               SwapPositionsInAEL(horzEdge, e);
-              e = GetNextInAEL(e, dir);
+              e = eNext;
           } //end while(e != null)
 
           //Break out of loop if HorzEdge.NextInLML is not also horizontal ...

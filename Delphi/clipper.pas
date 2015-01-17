@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.6                                                           *
-* Date      :  4 January 2015                                                  *
+* Version   :  6.2.7                                                           *
+* Date      :  17 January 2015                                                 *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -1577,11 +1577,7 @@ begin
       //unless a Skip edge is encountered when that becomes the top divide
       Horz := Result;
       while (Horz.Prev.Dx = Horizontal) do Horz := Horz.Prev;
-      if (Horz.Prev.Top.X = Result.Next.Top.X) then
-      begin
-        if not NextIsForward then Result := Horz.Prev;
-      end
-      else if (Horz.Prev.Top.X > Result.Next.Top.X) then Result := Horz.Prev;
+      if (Horz.Prev.Top.X > Result.Next.Top.X) then Result := Horz.Prev;
     end;
     while (E <> Result) do
     begin
@@ -1601,11 +1597,8 @@ begin
     begin
       Horz := Result;
       while (Horz.Next.Dx = Horizontal) do Horz := Horz.Next;
-      if (Horz.Next.Top.X = Result.Prev.Top.X) then
-      begin
-        if not NextIsForward then Result := Horz.Next;
-      end
-      else if (Horz.Next.Top.X > Result.Prev.Top.X) then Result := Horz.Next;
+      if (Horz.Next.Top.X = Result.Prev.Top.X) or
+        (Horz.Next.Top.X > Result.Prev.Top.X) then Result := Horz.Next;
     end;
     while (E <> Result) do
     begin
@@ -3444,7 +3437,6 @@ begin
     end;
   end;
 
-
   while true do //loops through consec. horizontal edges
   begin
     IsLastHorz := (HorzEdge = eLastHorz);
@@ -3524,9 +3516,9 @@ begin
         Pt := IntPoint(E.Curr.X, HorzEdge.Curr.Y);
         IntersectEdges(E, HorzEdge, Pt);
       end;
+      eNext := GetNextInAEL(E, Direction);
       SwapPositionsInAEL(HorzEdge, E);
-
-      E := GetNextInAEL(E, Direction);
+      E := eNext;
     end;
 
     //Break out of loop if HorzEdge.NextInLML is not also horizontal ...
@@ -5355,7 +5347,7 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function TranslatePath(const Path: TPath; Delta: TIntPoint): TPath;
+function TranslatePath(const Path: TPath; const Delta: TIntPoint): TPath;
 var
   i, len: Integer;
 begin
