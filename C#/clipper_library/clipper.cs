@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.7                                                           *
-* Date      :  17 January 2015                                                 *
+* Version   :  6.2.8                                                           *
+* Date      :  10 February 2015                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -1430,8 +1430,12 @@ namespace ClipperLib
           for (int i = 0; i < m_PolyOuts.Count; i++)
           {
             OutRec outRec = m_PolyOuts[i];
-            if (outRec.Pts != null && !outRec.IsOpen) 
-              FixupOutPolygon(outRec);
+            if (outRec.Pts == null) 
+                continue;
+            else if (outRec.IsOpen)
+                FixupOutPolyline(outRec);
+            else
+                FixupOutPolygon(outRec);
           }
 
           if (StrictlySimple) DoSimplePolygons();
@@ -2678,6 +2682,7 @@ namespace ClipperLib
       {
         Direction dir;
         cInt horzLeft, horzRight;
+        bool IsOpen = horzEdge.OutIdx >= 0 && m_PolyOuts[horzEdge.OutIdx].IsOpen;
 
         GetHorzDirection(horzEdge, out dir, out horzLeft, out horzRight);
 
@@ -2723,7 +2728,7 @@ namespace ClipperLib
                   {
                       while (currMax != null && currMax.X < e.Curr.X) 
                       {
-                        if (horzEdge.OutIdx >= 0) 
+                        if (horzEdge.OutIdx >= 0 && !IsOpen) 
                           AddOutPt(horzEdge, new IntPoint(currMax.X, horzEdge.Bot.Y));
                         currMax = currMax.Next;                  
                       }
@@ -2732,8 +2737,8 @@ namespace ClipperLib
                   {
                       while (currMax != null && currMax.X > e.Curr.X)
                       {
-                        if (horzEdge.OutIdx >= 0)
-                          AddOutPt(horzEdge, new IntPoint(currMax.X, horzEdge.Bot.Y));
+                          if (horzEdge.OutIdx >= 0 && !IsOpen)
+                            AddOutPt(horzEdge, new IntPoint(currMax.X, horzEdge.Bot.Y));
                         currMax = currMax.Prev;
                       }
                   }
@@ -2747,7 +2752,7 @@ namespace ClipperLib
               if (e.Curr.X == horzEdge.Top.X && horzEdge.NextInLML != null && 
                 e.Dx < horzEdge.NextInLML.Dx) break;
 
-              if (horzEdge.OutIdx >= 0)  //note: may be done multiple times
+              if (horzEdge.OutIdx >= 0 && !IsOpen)  //note: may be done multiple times
               {
                   op1 = AddOutPt(horzEdge, e.Curr);
                   TEdge eNextHorz = m_SortedEdges;
@@ -2762,7 +2767,7 @@ namespace ClipperLib
                       }
                       eNextHorz = eNextHorz.NextInSEL;
                   }
-                  AddGhostJoin(op1, horzEdge.Bot); //also may be done multiple times
+                  AddGhostJoin(op1, horzEdge.Bot);
               }
             
               //OK, so far we're still in range of the horizontal Edge  but make sure
@@ -3359,6 +3364,26 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
+      private void FixupOutPolyline(OutRec outrec)
+      {
+        OutPt pp = outrec.Pts;
+        OutPt lastPP = pp.Prev;
+        while (pp != lastPP)
+        {
+            pp = pp.Next;
+            if (pp.Pt == pp.Prev.Pt)
+            {
+                if (pp == lastPP) lastPP = pp.Prev;
+                OutPt tmpPP = pp.Prev;
+                tmpPP.Next = pp.Next;
+                pp.Next.Prev = tmpPP;
+                pp = tmpPP;
+            }
+        }
+        if (pp == pp.Prev) outrec.Pts = null;
+      }
+      //------------------------------------------------------------------------------
+
       private void FixupOutPolygon(OutRec outRec)
       {
           //FixupOutPolygon() - removes duplicate points and simplifies consecutive
@@ -3728,11 +3753,11 @@ namespace ClipperLib
       }
       //------------------------------------------------------------------------------
 
+      //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
+      //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
       private static int PointInPolygon(IntPoint pt, OutPt op)
       {
         //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-        //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
-        //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
         int result = 0;
         OutPt startOp = op;
         cInt ptx = pt.X, pty = pt.Y;

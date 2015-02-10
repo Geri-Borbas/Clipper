@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.7                                                           *
-* Date      :  17 January 2015                                                 *
+* Version   :  6.2.8                                                           *
+* Date      :  10 February 2015                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -336,6 +336,7 @@ private:
   void DisposeIntersectNodes();
   bool FixupIntersectionOrder();
   void FixupOutPolygon(OutRec &outrec);
+  void FixupOutPolyline(OutRec &outrec);
   bool IsHole(TEdge *e);
   bool FindOwnerFromSplitRecs(OutRec &outRec, OutRec *&currOrfl);
   void FixHoleLinkage(OutRec &outrec);

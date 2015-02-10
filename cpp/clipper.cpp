@@ -1,8 +1,8 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.7                                                           *
-* Date      :  17 January 2015                                                 *
+* Version   :  6.2.8                                                           *
+* Date      :  10 February 2015                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -428,11 +428,11 @@ bool PointIsVertex(const IntPoint &Pt, OutPt *pp)
 }
 //------------------------------------------------------------------------------
 
-int PointInPolygon (const IntPoint &pt, const Path &path)
+//See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
+//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
+int PointInPolygon(const IntPoint &pt, const Path &path)
 {
   //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-  //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
-  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
   int result = 0;
   size_t cnt = path.size();
   if (cnt < 3) return 0;
@@ -1470,7 +1470,10 @@ bool Clipper::ExecuteInternal()
     for (PolyOutList::size_type i = 0; i < m_PolyOuts.size(); ++i)
     {
       OutRec *outRec = m_PolyOuts[i];
-      if (outRec->Pts && !outRec->IsOpen)
+      if (!outRec->Pts) continue;
+      if (outRec->IsOpen)
+        FixupOutPolyline(*outRec);
+      else
         FixupOutPolygon(*outRec);
     }
 
@@ -2576,6 +2579,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 {
   Direction dir;
   cInt horzLeft, horzRight;
+  bool IsOpen = (horzEdge->OutIdx >= 0 && m_PolyOuts[horzEdge->OutIdx]->IsOpen);
 
   GetHorzDirection(*horzEdge, dir, horzLeft, horzRight);
 
@@ -2625,18 +2629,18 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
             {
                 while (maxIt != m_Maxima.end() && *maxIt < e->Curr.X) 
                 {
-                    if (horzEdge->OutIdx >= 0)
-                        AddOutPt(horzEdge, IntPoint(*maxIt, horzEdge->Bot.Y));
-                    maxIt++;
+                  if (horzEdge->OutIdx >= 0 && !IsOpen)
+                    AddOutPt(horzEdge, IntPoint(*maxIt, horzEdge->Bot.Y));
+                  maxIt++;
                 }
             }
             else
             {
                 while (maxRit != m_Maxima.rend() && *maxRit > e->Curr.X)
                 {
-                    if (horzEdge->OutIdx >= 0)
-                        AddOutPt(horzEdge, IntPoint(*maxRit, horzEdge->Bot.Y));
-                    maxRit++;
+                  if (horzEdge->OutIdx >= 0 && !IsOpen)
+                    AddOutPt(horzEdge, IntPoint(*maxRit, horzEdge->Bot.Y));
+                  maxRit++;
                 }
             }
         };
@@ -2649,7 +2653,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 		if (e->Curr.X == horzEdge->Top.X && horzEdge->NextInLML && 
 			e->Dx < horzEdge->NextInLML->Dx) break;
 
-		if (horzEdge->OutIdx >= 0)  //note: may be done multiple times
+    if (horzEdge->OutIdx >= 0 && !IsOpen)  //note: may be done multiple times
 		{
             op1 = AddOutPt(horzEdge, e->Curr);
 			TEdge* eNextHorz = m_SortedEdges;
@@ -2664,7 +2668,7 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 				}
 				eNextHorz = eNextHorz->NextInSEL;
 			}
-			AddGhostJoin(op1, horzEdge->Bot); //also may be done multiple times
+			AddGhostJoin(op1, horzEdge->Bot);
 		}
 		
 		//OK, so far we're still in range of the horizontal Edge  but make sure
@@ -3066,44 +3070,71 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::FixupOutPolygon(OutRec &outrec)
+void Clipper::FixupOutPolyline(OutRec &outrec)
 {
-  //FixupOutPolygon() - removes duplicate points and simplifies consecutive
-  //parallel edges by removing the middle vertex.
-  OutPt *lastOK = 0;
-  outrec.BottomPt = 0;
   OutPt *pp = outrec.Pts;
-  bool preserveCol = m_PreserveCollinear || m_StrictSimple;
-
-  for (;;)
+  OutPt *lastPP = pp->Prev;
+  while (pp != lastPP)
   {
-    if (pp->Prev == pp || pp->Prev == pp->Next )
+    pp = pp->Next;
+    if (pp->Pt == pp->Prev->Pt)
     {
-      DisposeOutPts(pp);
-      outrec.Pts = 0;
-      return;
-    }
-
-    //test for duplicate points and collinear edges ...
-    if ((pp->Pt == pp->Next->Pt) || (pp->Pt == pp->Prev->Pt) || 
-      (SlopesEqual(pp->Prev->Pt, pp->Pt, pp->Next->Pt, m_UseFullRange) &&
-      (!preserveCol || !Pt2IsBetweenPt1AndPt3(pp->Prev->Pt, pp->Pt, pp->Next->Pt))))
-    {
-      lastOK = 0;
-      OutPt *tmp = pp;
-      pp->Prev->Next = pp->Next;
-      pp->Next->Prev = pp->Prev;
-      pp = pp->Prev;
-      delete tmp;
-    }
-    else if (pp == lastOK) break;
-    else
-    {
-      if (!lastOK) lastOK = pp;
-      pp = pp->Next;
+      if (pp == lastPP) lastPP = pp->Prev;
+      OutPt *tmpPP = pp->Prev;
+      tmpPP->Next = pp->Next;
+      pp->Next->Prev = tmpPP;
+      delete pp;
+      pp = tmpPP;
     }
   }
-  outrec.Pts = pp;
+
+  if (pp == pp->Prev)
+  {
+    DisposeOutPts(pp);
+    outrec.Pts = 0;
+    return;
+  }
+}
+//------------------------------------------------------------------------------
+
+void Clipper::FixupOutPolygon(OutRec &outrec)
+{
+    //FixupOutPolygon() - removes duplicate points and simplifies consecutive
+    //parallel edges by removing the middle vertex.
+    OutPt *lastOK = 0;
+    outrec.BottomPt = 0;
+    OutPt *pp = outrec.Pts;
+    bool preserveCol = m_PreserveCollinear || m_StrictSimple;
+
+    for (;;)
+    {
+        if (pp->Prev == pp || pp->Prev == pp->Next)
+        {
+            DisposeOutPts(pp);
+            outrec.Pts = 0;
+            return;
+        }
+
+        //test for duplicate points and collinear edges ...
+        if ((pp->Pt == pp->Next->Pt) || (pp->Pt == pp->Prev->Pt) ||
+            (SlopesEqual(pp->Prev->Pt, pp->Pt, pp->Next->Pt, m_UseFullRange) &&
+            (!preserveCol || !Pt2IsBetweenPt1AndPt3(pp->Prev->Pt, pp->Pt, pp->Next->Pt))))
+        {
+            lastOK = 0;
+            OutPt *tmp = pp;
+            pp->Prev->Next = pp->Next;
+            pp->Next->Prev = pp->Prev;
+            pp = pp->Prev;
+            delete tmp;
+        }
+        else if (pp == lastOK) break;
+        else
+        {
+            if (!lastOK) lastOK = pp;
+            pp = pp->Next;
+        }
+    }
+    outrec.Pts = pp;
 }
 //------------------------------------------------------------------------------
 
