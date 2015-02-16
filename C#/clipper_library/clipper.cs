@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.8                                                           *
-* Date      :  10 February 2015                                                *
+* Version   :  6.2.9                                                           *
+* Date      :  16 February 2015                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -811,16 +811,13 @@ namespace ClipperLib
         //Also, consecutive horz. edges may start heading left before going right.
         if (LeftBoundIsForward) EStart = E.Prev;
         else EStart = E.Next;
-        if (EStart.OutIdx != Skip)
+        if (EStart.Dx == horizontal) //ie an adjoining horizontal skip edge
         {
-          if (EStart.Dx == horizontal) //ie an adjoining horizontal skip edge
-          {
-            if (EStart.Bot.X != E.Bot.X && EStart.Top.X != E.Bot.X)
-              ReverseHorizontal(E);
-          }
-          else if (EStart.Bot.X != E.Bot.X)
+        if (EStart.Bot.X != E.Bot.X && EStart.Top.X != E.Bot.X)
             ReverseHorizontal(E);
         }
+        else if (EStart.Bot.X != E.Bot.X)
+        ReverseHorizontal(E);
       }
 
       EStart = E;

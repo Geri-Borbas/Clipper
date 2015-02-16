@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.2.7                                                           *
-* Date      :  17 January 2015                                                 *
+* Version   :  6.2.9                                                           *
+* Date      :  16 February 2015                                                *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -362,6 +362,7 @@ type
     function BuildResult: TPaths;
     function BuildResult2(PolyTree: TPolyTree): Boolean;
     procedure FixupOutPolygon(OutRec: POutRec);
+    procedure FixupOutPolyline(OutRec: POutRec);
     procedure SetHoleState(E: PEdge; OutRec: POutRec);
     procedure AddJoin(Op1, Op2: POutPt; const OffPt: TIntPoint);
     procedure ClearJoins;
@@ -1089,15 +1090,15 @@ begin
 end;
 //---------------------------------------------------------------------------
 
+//See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
+//http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
 function PointInPolygon (const pt: TIntPoint; ops: POutPt): Integer; overload;
 var
-  d, d2, d3: double; //nb: double not cInt to avoid potential overflow errors
+  d, d2, d3: double; //nb: double not cInt avoids potential overflow errors
   opStart: POutPt;
   pt1, ptN: TIntPoint;
 begin
   //returns 0 if false, +1 if true, -1 if pt ON polygon boundary
-  //See "The Point in Polygon Problem for Arbitrary Polygons" by Hormann & Agathos
-  //http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.88.5498&rep=rep1&type=pdf
   result := 0;
   opStart := ops;
   pt1.X := ops.Pt.X; pt1.Y := ops.Pt.Y;
@@ -1555,8 +1556,7 @@ begin
     //Also, consecutive horz. edges may start heading left before going right.
     if NextIsForward then EStart := E.Prev
     else EStart := E.Next;
-    if EStart.OutIdx = Skip then //do nothing
-    else if (EStart.Dx = Horizontal) then //ie an adjoining horizontal skip edge
+    if (EStart.Dx = Horizontal) then
     begin
       if (EStart.Bot.X <> E.Bot.X) and (EStart.Top.X <> E.Bot.X) then
         ReverseHorizontal(E);
@@ -2085,7 +2085,10 @@ begin
     for I := 0 to FPolyOutList.Count -1 do
     begin
       OutRec := FPolyOutList[I];
-      if Assigned(OutRec.Pts) and not OutRec.IsOpen then
+      if not Assigned(OutRec.Pts) then continue;
+      if OutRec.IsOpen then
+        FixupOutPolyline(OutRec)
+      else
         FixupOutPolygon(OutRec);
     end;
 
@@ -3383,7 +3386,7 @@ var
   Direction: TDirection;
   Pt: TIntPoint;
   Op1, Op2: POutPt;
-  IsLastHorz: Boolean;
+  IsLastHorz, IsOpen: Boolean;
   currMax: PMaxima;
 begin
 (*******************************************************************************
@@ -3407,6 +3410,8 @@ begin
 *******************************************************************************)
 
   GetHorzDirection(HorzEdge, Direction, HorzLeft, HorzRight);
+  IsOpen := (HorzEdge.OutIdx >= 0) and
+    POutRec(FPolyOutList[HorzEdge.OutIdx]).IsOpen;
 
   eLastHorz := HorzEdge;
   while Assigned(eLastHorz.NextInLML) and
@@ -3453,7 +3458,7 @@ begin
         begin
           while assigned(currMax) and (currMax.X < E.Curr.X) do
           begin
-            if (HorzEdge.OutIdx >= 0) then
+            if (HorzEdge.OutIdx >= 0) and not IsOpen then
               AddOutPt(HorzEdge, IntPoint(currMax.X, HorzEdge.Bot.Y));
             currMax := currMax.Next;
           end;
@@ -3461,7 +3466,7 @@ begin
         begin
           while assigned(currMax) and (currMax.X > E.Curr.X) do
           begin
-            if (HorzEdge.OutIdx >= 0) then
+            if (HorzEdge.OutIdx >= 0) and not IsOpen then
               AddOutPt(HorzEdge, IntPoint(currMax.X, HorzEdge.Bot.Y));
             currMax := currMax.Prev;
           end;
@@ -3478,7 +3483,7 @@ begin
         Assigned(HorzEdge.NextInLML) and (E.Dx < HorzEdge.NextInLML.Dx) then
           Break;
 
-      if (HorzEdge.OutIdx >= 0) then //note: may be done multiple times
+      if (HorzEdge.OutIdx >= 0) and not IsOpen then //may be done multiple times
       begin
         Op1 := AddOutPt(HorzEdge, E.Curr);
         eNextHorz := FSortedEdges;
@@ -3493,7 +3498,7 @@ begin
           end;
           eNextHorz := eNextHorz.NextInSEL;
         end;
-        AddGhostJoin(Op1, HorzEdge.Bot); //also may be done multiple times
+        AddGhostJoin(Op1, HorzEdge.Bot);
       end;
 
       //OK, so far we're still in range of the horizontal Edge  but make sure
@@ -3986,6 +3991,38 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+procedure TClipper.FixupOutPolyline(OutRec: POutRec);
+var
+  PP, LastPP, TmpPP: POutPt;
+begin
+  //remove duplicate points ...
+  PP := OutRec.Pts;
+  LastPP := PP.Prev;
+  while (PP <> LastPP) do
+  begin
+    PP := PP.Next;
+    //strip duplicate points ...
+    if PointsEqual(PP.Pt, PP.Prev.Pt) then
+    begin
+      if PP = LastPP then LastPP := PP.Prev;
+      TmpPP := PP.Prev;
+      TmpPP.Next := PP.Next;
+      PP.Next.Prev := TmpPP;
+      dispose(PP);
+      PP := TmpPP;
+    end;
+  end;
+
+  if (PP = PP.Prev) then
+  begin
+    Dispose(PP);
+    OutRec.Pts := nil;
+    Exit;
+  end;
+
+end;
+//------------------------------------------------------------------------------
+
 procedure TClipper.FixupOutPolygon(OutRec: POutRec);
 var
   PP, Tmp, LastOK: POutPt;
@@ -4000,7 +4037,7 @@ begin
   begin
     if (PP = PP.Prev) or (PP.Next = PP.Prev) then
     begin
-      DisposePolyPts(PP);
+      Dispose(PP);
       OutRec.Pts := nil;
       Exit;
     end;
