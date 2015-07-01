@@ -1,8 +1,8 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.3.0                                                           *
-* Date      :  19 April 2015                                                   *
+* Version   :  6.4.0                                                           *
+* Date      :  2 July 2015                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -1657,12 +1657,16 @@ namespace ClipperLib
           if (rb != null)
           {
             if (IsHorizontal(rb))
+            {
+              if (rb.NextInLML != null)
+                InsertScanbeam(rb.NextInLML.Top.Y);
               AddEdgeToSEL(rb);
+            }
             else
               InsertScanbeam(rb.Top.Y);
           }
 
-          if (lb == null || rb == null) continue;
+        if (lb == null || rb == null) continue;
 
           //if output polygons share an Edge with a horizontal rb, they'll need joining later ...
           if (Op1 != null && IsHorizontal(rb) && 

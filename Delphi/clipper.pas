@@ -3,8 +3,8 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.3.0                                                           *
-* Date      :  19 April 2015                                                   *
+* Version   :  6.4.0                                                           *
+* Date      :  2 July 2015                                                     *
 * Website   :  http://www.angusj.com                                           *
 * Copyright :  Angus Johnson 2010-2015                                         *
 *                                                                              *
@@ -2897,7 +2897,11 @@ begin
     if Assigned(Rb) then
     begin
       if (Rb.Dx = Horizontal) then
-        AddEdgeToSEL(Rb) else
+      begin
+        AddEdgeToSEL(Rb);
+        if assigned(Rb.NextInLML) then
+          InsertScanbeam(Rb.NextInLML.Top.Y);
+      end else
         InsertScanbeam(Rb.Top.Y);
     end;
 
