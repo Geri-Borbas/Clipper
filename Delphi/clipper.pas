@@ -3,10 +3,10 @@ unit clipper;
 (*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.4.0                                                           *
-* Date      :  2 July 2015                                                     *
+* Version   :  6.4.1                                                           *
+* Date      :  21 November 2016                                                *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2015                                         *
+* Copyright :  Angus Johnson 2010-2016                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -4153,7 +4153,7 @@ begin
   begin
     if (PP = PP.Prev) or (PP.Next = PP.Prev) then
     begin
-      Dispose(PP);
+      DisposePolyPts(PP);
       OutRec.Pts := nil;
       Exit;
     end;
@@ -5185,18 +5185,13 @@ end;
 //------------------------------------------------------------------------------
 
 procedure TClipperOffset.DoSquare(J, K: Integer);
-var
-  A, Dx: Double;
 begin
-  //see offset_triginometry.svg in the documentation folder ...
-  A := ArcTan2(FSinA, FNorms[K].X * FNorms[J].X + FNorms[K].Y * FNorms[J].Y);
-  Dx := tan(A/4);
   AddPoint(IntPoint(
-    round(FInP[J].X + FDelta * (FNorms[K].X - FNorms[K].Y *Dx)),
-    round(FInP[J].Y + FDelta * (FNorms[K].Y + FNorms[K].X *Dx))));
+    round(FInP[J].X + FDelta * (FNorms[K].X - FNorms[K].Y)),
+    round(FInP[J].Y + FDelta * (FNorms[K].Y + FNorms[K].X))));
   AddPoint(IntPoint(
-    round(FInP[J].X + FDelta * (FNorms[J].X + FNorms[J].Y *Dx)),
-    round(FInP[J].Y + FDelta * (FNorms[J].Y - FNorms[J].X *Dx))));
+    round(FInP[J].X + FDelta * (FNorms[J].X + FNorms[J].Y)),
+    round(FInP[J].Y + FDelta * (FNorms[J].Y - FNorms[J].X))));
 end;
 //------------------------------------------------------------------------------
 
