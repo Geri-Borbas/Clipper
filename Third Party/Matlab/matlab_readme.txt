@@ -1,3 +1,1 @@
-To compile your own mexfile run the command:
-
-mex clipper.cpp mexclipper.cpp
+http://mathworks.com/matlabcentral/fileexchange/61329-new-polygon-clipping-and-offsetting
