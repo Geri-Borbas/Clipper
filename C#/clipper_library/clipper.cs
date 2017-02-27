@@ -1,10 +1,10 @@
 ﻿/*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.4.1                                                           *
-* Date      :  5 December 2016                                                 *
+* Version   :  6.4.2                                                           *
+* Date      :  27 February 2017                                                *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2015                                         *
+* Copyright :  Angus Johnson 2010-2017                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -2126,7 +2126,7 @@ namespace ClipperLib
               prevE = e.PrevInAEL;
         }
 
-        if (prevE != null && prevE.OutIdx >= 0)
+        if (prevE != null && prevE.OutIdx >= 0 && prevE.Top.Y < pt.Y && e.Top.Y < pt.Y)
         {
           cInt xPrev = TopX(prevE, pt.Y);
           cInt xE = TopX(e, pt.Y);
@@ -2788,6 +2788,11 @@ namespace ClipperLib
 
               if (horzEdge.OutIdx >= 0 && !IsOpen)  //note: may be done multiple times
               {
+#if use_xyz
+                  if (dir == Direction.dLeftToRight) SetZ(ref e.Curr, horzEdge, e);
+                  else SetZ(ref e.Curr, e, horzEdge);
+#endif
+
                   op1 = AddOutPt(horzEdge, e.Curr);
                   TEdge eNextHorz = m_SortedEdges;
                   while (eNextHorz != null)
@@ -3194,8 +3199,12 @@ namespace ClipperLib
             {
               e.Curr.X = TopX( e, topY );
               e.Curr.Y = topY;
+#if use_xyz
+              if (e.Top.Y == topY) e.Curr.Z = e.Top.Z;
+              else if (e.Bot.Y == topY) e.Curr.Z = e.Bot.Z;
+              else e.Curr.Z = 0;
+#endif
             }
-
             //When StrictlySimple and 'e' is being touched by another edge, then
             //make sure both edges have a vertex here ...
             if (StrictlySimple)
