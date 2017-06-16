@@ -1,1 +1,0 @@
-http://mathworks.com/matlabcentral/fileexchange/61329-new-polygon-clipping-and-offsetting
